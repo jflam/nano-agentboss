@@ -12,6 +12,105 @@ import {
   type FrontendCommand,
   type FrontendEventEnvelope,
 } from "./src/frontend-events.ts";
+
+class HttpRunTracker {
+  private readonly startedRunIds: string[] = [];
+  private readonly startWaiters: Array<(runId: string) => void> = [];
+  private readonly completions = new Map<string, {
+    done: boolean;
+    waiters: Array<() => void>;
+  }>();
+
+  observe(event: FrontendEventEnvelope): void {
+    if (event.type === "run_started") {
+      const existing = this.completions.get(event.data.runId);
+      if (!existing) {
+        this.completions.set(event.data.runId, {
+          done: false,
+          waiters: [],
+        });
+      }
+
+      const next = this.startWaiters.shift();
+      if (next) {
+        next(event.data.runId);
+        return;
+      }
+
+      this.startedRunIds.push(event.data.runId);
+      return;
+    }
+
+    if (event.type !== "run_completed" && event.type !== "run_failed") {
+      return;
+    }
+
+    const completion = this.completions.get(event.data.runId) ?? {
+      done: false,
+      waiters: [],
+    };
+    completion.done = true;
+    this.completions.set(event.data.runId, completion);
+
+    for (const waiter of completion.waiters.splice(0)) {
+      waiter();
+    }
+  }
+
+  async waitForNextRunStart(timeoutMs = 10_000): Promise<string> {
+    const existing = this.startedRunIds.shift();
+    if (existing) {
+      return existing;
+    }
+
+    return withTimeout(
+      new Promise<string>((resolve) => {
+        this.startWaiters.push(resolve);
+      }),
+      timeoutMs,
+      "Timed out waiting for run start",
+    );
+  }
+
+  async waitForRunCompletion(runId: string, timeoutMs = 60_000): Promise<void> {
+    const completion = this.completions.get(runId);
+    if (completion?.done) {
+      return;
+    }
+
+    await withTimeout(
+      new Promise<void>((resolve) => {
+        const current = this.completions.get(runId) ?? {
+          done: false,
+          waiters: [],
+        };
+        current.waiters.push(resolve);
+        this.completions.set(runId, current);
+      }),
+      timeoutMs,
+      `Timed out waiting for run completion: ${runId}`,
+    );
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(message));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
 import {
   createHttpSession,
   sendSessionPrompt,
@@ -243,6 +342,7 @@ async function runAcpCli(showToolCalls: boolean): Promise<void> {
 
 async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<void> {
   const client = new OutputClient({ showToolCalls });
+  const tracker = new HttpRunTracker();
   const session = await createHttpSession(serverUrl, process.cwd());
   client.setCommands(session.commands);
 
@@ -250,6 +350,7 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
     baseUrl: serverUrl,
     sessionId: session.sessionId,
     onEvent: (event) => {
+      tracker.observe(event);
       client.handleFrontendEvent(event);
     },
     onError: (error) => {
@@ -277,6 +378,8 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
       }
 
       await sendSessionPrompt(serverUrl, session.sessionId, line);
+      const runId = await tracker.waitForNextRunStart();
+      await tracker.waitForRunCompletion(runId);
       client.writeLineBreak();
     }
   } finally {
