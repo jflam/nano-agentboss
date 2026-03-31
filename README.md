@@ -24,7 +24,9 @@ Tool call progress lines are shown by default. Hide them with:
 bun run cli --no-tool-calls
 ```
 
-By default the REPL spawns `copilot --acp --allow-all-tools`. Override the downstream
+By default the REPL spawns `copilot --acp --allow-all-tools`. In that default path,
+nano-agentboss does not set a model, so the downstream Copilot CLI uses its own
+default model unless a procedure selects one explicitly. Override the downstream
 agent with `NANO_AGENTBOSS_AGENT_CMD` and `NANO_AGENTBOSS_AGENT_ARGS` if needed.
 
 To lint the repository:
