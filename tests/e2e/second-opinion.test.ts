@@ -26,6 +26,7 @@ describeE2E("/second-opinion (real agents)", () => {
         throw new Error("Missing /second-opinion procedure");
       }
 
+      const output: string[] = [];
       const logger = new RunLogger();
       const store = new SessionStore({
         sessionId: crypto.randomUUID(),
@@ -38,7 +39,14 @@ describeE2E("/second-opinion (real agents)", () => {
         procedureName: "second-opinion",
         spanId: logger.newSpan(),
         emitter: {
-          emit() {},
+          emit(update) {
+            if (
+              update.sessionUpdate === "agent_message_chunk" &&
+              update.content.type === "text"
+            ) {
+              output.push(update.content.text);
+            }
+          },
           async flush() {},
         },
         store,
@@ -63,6 +71,12 @@ describeE2E("/second-opinion (real agents)", () => {
       expect(result.display).toContain("Claude (opus)");
       expect(result.display).toContain("Codex critique (gpt-5.4)");
       expect(result.display).toContain("Revised answer");
+
+      const transcript = output.join("");
+      expect(transcript).toContain("Starting second-opinion workflow...");
+      expect(transcript).toContain("Asking Claude for the first answer...");
+      expect(transcript).toContain("Asking Codex to critique the answer...");
+      expect(transcript).toContain("Completed second-opinion workflow with verdict:");
 
       const data = result.data as SecondOpinionData | undefined;
       expect(data?.subject).toBe("What is 2 + 2? Reply with just the number.");

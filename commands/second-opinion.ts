@@ -63,6 +63,9 @@ export default {
       };
     }
 
+    ctx.print("Starting second-opinion workflow...\n");
+    ctx.print("Asking Claude for the first answer...\n");
+
     const firstPass = await ctx.callAgent(
       buildClaudePrompt(trimmed),
       {
@@ -75,6 +78,8 @@ export default {
     );
     const firstPassDataRef = expectDataRef(firstPass, "Missing first-pass data ref");
     const firstPassText = firstPass.data ?? "";
+
+    ctx.print("Asking Codex to critique the answer...\n");
 
     const critique = await ctx.callAgent(
       [
@@ -97,6 +102,8 @@ export default {
     );
     const critiqueData: CritiqueResult = expectData(critique, "Missing critique data");
     const critiqueDataRef = expectDataRef(critique, "Missing critique data ref");
+
+    ctx.print(`Completed second-opinion workflow with verdict: ${critiqueData.verdict}.\n`);
 
     return {
       data: {
