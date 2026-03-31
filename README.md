@@ -16,16 +16,25 @@ During development:
 bun run nanoboss --help
 ```
 
-Build a single compiled binary:
+Build a single compiled binary and install it onto your `PATH`:
 
 ```bash
 bun run build
 ```
 
-That produces:
+By default the build installs `nanoboss` into the first suitable user-owned PATH
+location, preferring `~/.local/bin`, then `~/bin`, then `~/.bun/bin`.
+
+It also leaves the compiled artifact at:
 
 ```bash
 dist/nanoboss
+```
+
+To override the install location:
+
+```bash
+NANOBOSS_INSTALL_DIR=~/bin bun run build
 ```
 
 The compiled binary includes the built-in commands. By default it skips loading
