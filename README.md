@@ -20,3 +20,9 @@ bun run cli
 
 By default the REPL spawns `copilot --acp --allow-all-tools`. Override the downstream
 agent with `NANO_AGENTBOSS_AGENT_CMD` and `NANO_AGENTBOSS_AGENT_ARGS` if needed.
+
+To lint the repository:
+
+```bash
+bun run lint
+```

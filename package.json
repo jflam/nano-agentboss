@@ -6,6 +6,8 @@
   "scripts": {
     "server": "bun run src/server.ts",
     "cli": "bun run cli.ts",
+    "lint": "eslint . --cache",
+    "lint:fix": "eslint . --cache --fix",
     "test": "bun test",
     "test:unit": "bun test tests/unit",
     "test:e2e": "bun test tests/e2e",
@@ -17,8 +19,12 @@
     "typia": "^12.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/bun": "latest",
+    "eslint": "^10.1.0",
+    "globals": "^17.4.0",
     "ts-patch": "^3.3.0",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.58.0"
   }
 }
