@@ -1,8 +1,8 @@
 import { isAbsolute, relative, resolve } from "node:path";
 
+import { expectData, expectDataRef } from "../src/run-result.ts";
 import {
   type CommandContext,
-  type KernelValue,
   type Procedure,
   type RunResult,
   type TypeDescriptor,
@@ -238,7 +238,7 @@ async function runLinter(
     LinterRunResultType,
   );
 
-  requireData(result, "Linter discovery returned no data");
+  expectData(result, "Linter discovery returned no data");
   return result;
 }
 
@@ -252,7 +252,7 @@ export default {
     let totalFailed = 0;
 
     let linterRun = await runLinter(ctx, prompt);
-    let linter = requireData(linterRun, "Missing linter result");
+    let linter = expectData(linterRun, "Missing linter result");
     if (linter.status === "missing_linter" || !linter.command) {
       const recommendations = renderRecommendations(linter.recommendations);
       return {
@@ -303,7 +303,7 @@ export default {
             LintFixResultType,
           );
           fixRetries += 1;
-          const fixData = requireData(result, "Missing fix result");
+          const fixData = expectData(result, "Missing fix result");
           if (fixData.applied) {
             agentReportedFixed = true;
             break;
@@ -311,7 +311,7 @@ export default {
         }
 
         linterRun = await runLinter(ctx, prompt, linterCommand);
-        linter = requireData(linterRun, "Missing rerun linter result");
+        linter = expectData(linterRun, "Missing rerun linter result");
         if (linter.status === "missing_linter" || !linter.command) {
           const recommendations = renderRecommendations(linter.recommendations);
           return {
@@ -376,25 +376,9 @@ function buildSummaryData(
   return {
     status: linter.status,
     command: linter.command,
-    linterRun: requireDataRef(linterRun, "Missing linter run ref"),
+    linterRun: expectDataRef(linterRun, "Missing linter run ref"),
     fixedErrors,
     failedErrors,
     remainingErrors: linter.errors.length,
   };
-}
-
-function requireData<T extends KernelValue>(result: RunResult<T>, message: string): T {
-  if (result.data === undefined) {
-    throw new Error(message);
-  }
-
-  return result.data;
-}
-
-function requireDataRef<T extends KernelValue>(result: RunResult<T>, message: string): ValueRef {
-  if (!result.dataRef) {
-    throw new Error(message);
-  }
-
-  return result.dataRef;
 }

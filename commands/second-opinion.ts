@@ -1,9 +1,7 @@
+import { expectData, expectDataRef } from "../src/run-result.ts";
 import {
-  type KernelValue,
-  type RunResult,
   type Procedure,
   type TypeDescriptor,
-  type ValueRef,
 } from "../src/types.ts";
 
 interface CritiqueResult {
@@ -75,7 +73,7 @@ export default {
         stream: false,
       },
     );
-    const firstPassDataRef = requireDataRef(firstPass, "Missing first-pass data ref");
+    const firstPassDataRef = expectDataRef(firstPass, "Missing first-pass data ref");
     const firstPassText = firstPass.data ?? "";
 
     const critique = await ctx.callAgent(
@@ -97,8 +95,8 @@ export default {
         },
       },
     );
-    const critiqueData: CritiqueResult = requireData(critique, "Missing critique data");
-    const critiqueDataRef = requireDataRef(critique, "Missing critique data ref");
+    const critiqueData: CritiqueResult = expectData(critique, "Missing critique data");
+    const critiqueDataRef = expectDataRef(critique, "Missing critique data ref");
 
     return {
       data: {
@@ -146,20 +144,4 @@ function renderSecondOpinion(
     critique.revisedAnswer.trim(),
     "",
   ].join("\n");
-}
-
-function requireData<T extends KernelValue>(result: RunResult<T>, message: string): T {
-  if (result.data === undefined) {
-    throw new Error(message);
-  }
-
-  return result.data;
-}
-
-function requireDataRef<T extends KernelValue>(result: RunResult<T>, message: string): ValueRef {
-  if (!result.dataRef) {
-    throw new Error(message);
-  }
-
-  return result.dataRef;
 }

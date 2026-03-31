@@ -1,11 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { expectData } from "./run-result.ts";
 import {
-  type KernelValue,
   type Procedure,
   type ProcedureRegistryLike,
-  type RunResult,
   type TypeDescriptor,
 } from "./types.ts";
 
@@ -76,7 +75,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
         ].join("\n"),
         GeneratedProcedureType,
       );
-      const generatedData: GeneratedProcedure = requireData(
+      const generatedData: GeneratedProcedure = expectData(
         generated,
         "Procedure generation returned no data",
       );
@@ -140,12 +139,4 @@ function sanitizeProcedureName(value: string): string {
   }
 
   return sanitized;
-}
-
-function requireData<T extends KernelValue>(result: RunResult<T>, message: string): T {
-  if (result.data === undefined) {
-    throw new Error(message);
-  }
-
-  return result.data;
 }
