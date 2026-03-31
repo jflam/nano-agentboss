@@ -39,11 +39,18 @@ export function resolveDownstreamAgentConfig(
 
   const command = process.env.NANO_AGENTBOSS_AGENT_CMD?.trim() || DEFAULT_AGENT_COMMAND;
   const args = parseArgs(process.env.NANO_AGENTBOSS_AGENT_ARGS) ?? DEFAULT_AGENT_ARGS;
+  const provider = inferProviderFromCommand(command);
+  const parsedModel = provider && process.env.NANO_AGENTBOSS_AGENT_MODEL?.trim()
+    ? parseAgentModelSelection(provider, process.env.NANO_AGENTBOSS_AGENT_MODEL)
+    : undefined;
 
   return {
+    provider,
     command,
     args,
     cwd: cwd ?? process.cwd(),
+    model: parsedModel?.modelId,
+    reasoningEffort: parsedModel?.reasoningEffort,
   };
 }
 
@@ -91,6 +98,21 @@ function resolveAgentSelection(
     model: parsedModel?.modelId || undefined,
     reasoningEffort: parsedModel?.reasoningEffort,
   };
+}
+
+function inferProviderFromCommand(command: string): DownstreamAgentProvider | undefined {
+  switch (command) {
+    case "claude-code-acp":
+      return "claude";
+    case "gemini":
+      return "gemini";
+    case "codex-acp":
+      return "codex";
+    case "copilot":
+      return "copilot";
+    default:
+      return undefined;
+  }
 }
 
 function baseAgentConfig(provider: DownstreamAgentProvider): DownstreamAgentConfig {

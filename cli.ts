@@ -155,6 +155,7 @@ import {
   startSessionEventStream,
 } from "./src/http-client.ts";
 import { parseCliOptions } from "./src/cli-options.ts";
+import { getCliStartupBanner } from "./src/runtime-banner.ts";
 import { resolveSelfCommand } from "./src/self-command.ts";
 
 class OutputClient {
@@ -343,6 +344,8 @@ async function runAcpCli(showToolCalls: boolean): Promise<void> {
     mcpServers: [],
   });
 
+  writeStartupBanner(getCliStartupBanner(process.cwd()));
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -383,6 +386,7 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
   const tracker = new HttpRunTracker();
   const session = await createHttpSession(serverUrl, process.cwd());
   client.setCommands(session.commands);
+  writeStartupBanner(`${session.buildLabel} ${session.agentLabel}`);
 
   const stream = startSessionEventStream({
     baseUrl: serverUrl,
@@ -424,6 +428,10 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
     stream.close();
     rl.close();
   }
+}
+
+function writeStartupBanner(text: string): void {
+  process.stderr.write(`${text}\n`);
 }
 
 function printHelp(): void {

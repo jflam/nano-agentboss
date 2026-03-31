@@ -1,3 +1,4 @@
+import { getBuildLabel } from "./build-info.ts";
 import type { FrontendEventEnvelope } from "./frontend-events.ts";
 import { NanoAgentBossService } from "./service.ts";
 
@@ -181,7 +182,7 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
     },
   });
 
-  console.log(`nanoboss http server listening on http://localhost:${options.port}`);
+  console.log(`${getBuildLabel()} server listening on http://localhost:${options.port}`);
   return server;
 }
 

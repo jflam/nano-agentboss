@@ -1,5 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
+import { getBuildLabel } from "./build-info.ts";
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
 import {
   mapSessionUpdateToFrontendEvents,
@@ -9,6 +10,7 @@ import {
 } from "./frontend-events.ts";
 import { RunLogger } from "./logger.ts";
 import { ProcedureRegistry } from "./registry.ts";
+import { getDefaultAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import {
   SessionStore,
@@ -28,6 +30,8 @@ export interface SessionDescriptor {
   sessionId: string;
   cwd: string;
   commands: FrontendCommand[];
+  buildLabel: string;
+  agentLabel: string;
 }
 
 class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
@@ -105,6 +109,8 @@ export class NanoAgentBossService {
       sessionId,
       cwd: params.cwd,
       commands,
+      buildLabel: getBuildLabel(),
+      agentLabel: getDefaultAgentBanner(params.cwd),
     };
   }
 
@@ -118,6 +124,8 @@ export class NanoAgentBossService {
       sessionId,
       cwd: state.cwd,
       commands: state.commands,
+      buildLabel: getBuildLabel(),
+      agentLabel: getDefaultAgentBanner(state.cwd),
     };
   }
 

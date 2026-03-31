@@ -1,6 +1,7 @@
 import * as acp from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 
+import { getBuildLabel } from "./build-info.ts";
 import { NanoAgentBossService } from "./service.ts";
 
 class QueuedSessionUpdateEmitter {
@@ -85,6 +86,7 @@ function extractPromptText(prompt: acp.PromptRequest["prompt"]): string {
 }
 
 export async function runAcpServerCommand(): Promise<void> {
+  console.error(`${getBuildLabel()} acp-server ready`);
   const service = await NanoAgentBossService.create();
   const stream = acp.ndJsonStream(
     Writable.toWeb(process.stdout),

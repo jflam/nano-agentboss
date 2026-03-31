@@ -8,6 +8,8 @@ interface SessionResponse {
     description: string;
     inputHint?: string;
   }>;
+  buildLabel: string;
+  agentLabel: string;
 }
 
 interface SseMessage {

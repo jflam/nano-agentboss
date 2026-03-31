@@ -41,6 +41,9 @@ To override the install location:
 NANOBOSS_INSTALL_DIR=~/bin bun run build
 ```
 
+Each build embeds the current git commit hash. On startup, the server and CLI
+print a banner like `nanoboss-<commit>`.
+
 The compiled binary includes the built-in commands. By default it skips loading
 additional `.ts` commands from `./commands` at runtime. If you want to opt back
 into disk-loaded commands, set:
@@ -92,6 +95,18 @@ By default the local REPL path spawns `copilot --acp --allow-all-tools`. In that
 nano-agentboss does not set a model, so the downstream Copilot CLI uses its own
 default model unless a procedure selects one explicitly. Override the downstream
 agent with `NANO_AGENTBOSS_AGENT_CMD` and `NANO_AGENTBOSS_AGENT_ARGS` if needed.
+
+To set a default model for the startup banner and downstream agent config, use:
+
+```bash
+NANO_AGENTBOSS_AGENT_MODEL=gpt-5.4/xhigh
+```
+
+With that set, the CLI banner looks like:
+
+```text
+nanoboss-<commit> copilot/gpt-5.4/x-high
+```
 
 To lint the repository:
 
