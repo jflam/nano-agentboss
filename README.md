@@ -16,11 +16,15 @@ During development:
 bun run nanoboss --help
 ```
 
-Build a single compiled binary and install it onto your `PATH`:
+## Build the `nanoboss` binary
+
+The build command is:
 
 ```bash
 bun run build
 ```
+
+This compiles the standalone `nanoboss` binary and installs it onto your `PATH`.
 
 By default the build installs `nanoboss` into the first suitable user-owned PATH
 location, preferring `~/.local/bin`, then `~/bin`, then `~/.bun/bin`.
