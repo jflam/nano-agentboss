@@ -1,10 +1,12 @@
 import { isAbsolute, relative, resolve } from "node:path";
 
+import typia from "typia";
+
 import { expectData } from "../src/run-result.ts";
 import {
   type CommandContext,
+  jsonType,
   type Procedure,
-  type TypeDescriptor,
 } from "../src/types.ts";
 
 export interface LinterError {
@@ -29,85 +31,12 @@ interface LinterRunResult {
   recommendations: string[];
 }
 
-const LinterRunResultType: TypeDescriptor<LinterRunResult> = {
-  schema: {
-    type: "object",
-    properties: {
-      status: {
-        type: "string",
-        enum: ["configured", "missing_linter"],
-      },
-      command: {
-        type: ["string", "null"],
-      },
-      summary: {
-        type: "string",
-      },
-      errors: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            file: { type: "string" },
-            line: { type: "number" },
-            column: { type: "number" },
-            message: { type: "string" },
-            rule: { type: "string" },
-          },
-          required: ["file", "line", "column", "message", "rule"],
-          additionalProperties: false,
-        },
-      },
-      recommendations: {
-        type: "array",
-        items: { type: "string" },
-      },
-    },
-    required: ["status", "command", "summary", "errors", "recommendations"],
-    additionalProperties: false,
-  },
-  validate(input: unknown): input is LinterRunResult {
-    return (
-      typeof input === "object" &&
-      input !== null &&
-      "status" in input &&
-      ((input as { status: unknown }).status === "configured" ||
-        (input as { status: unknown }).status === "missing_linter") &&
-      "command" in input &&
-      ((input as { command: unknown }).command === null ||
-        typeof (input as { command: unknown }).command === "string") &&
-      "summary" in input &&
-      typeof (input as { summary: unknown }).summary === "string" &&
-      "errors" in input &&
-      Array.isArray((input as { errors: unknown }).errors) &&
-      (input as { errors: unknown[] }).errors.every(
-        (item) => isLinterError(item),
-      ) &&
-      "recommendations" in input &&
-      Array.isArray((input as { recommendations: unknown }).recommendations) &&
-      (input as { recommendations: unknown[] }).recommendations.every(
-        (item) => typeof item === "string",
-      )
-    );
-  },
-};
+const LinterRunResultType = jsonType<LinterRunResult>(
+  typia.json.schema<LinterRunResult>(),
+  typia.createValidate<LinterRunResult>(),
+);
 
 const MAX_ROUNDS = 3;
-
-function isLinterError(item: unknown): item is LinterError {
-  if (typeof item !== "object" || item === null) {
-    return false;
-  }
-
-  const candidate = item as Partial<LinterError>;
-  return (
-    typeof candidate.file === "string" &&
-    typeof candidate.line === "number" &&
-    typeof candidate.column === "number" &&
-    typeof candidate.message === "string" &&
-    typeof candidate.rule === "string"
-  );
-}
 
 function renderRecommendations(recommendations: string[]): string {
   if (recommendations.length === 0) {

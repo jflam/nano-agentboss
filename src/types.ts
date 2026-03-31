@@ -1,5 +1,4 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import typia from "typia";
 
 export type KernelScalar = null | boolean | number | string;
 
@@ -90,26 +89,29 @@ export interface TypeDescriptor<T> {
   validate: (input: unknown) => input is T;
 }
 
-export function jsonType<T extends KernelValue>(): TypeDescriptor<T> {
-  try {
-    const validator = typia.createValidate<T>();
+type ValidatorResult = boolean | { success: boolean };
 
-    return {
-      schema: typia.json.schema<T>(),
-      validate(input: unknown): input is T {
-        return validator(input).success;
-      },
-    };
-  } catch (error) {
-    if (isTypiaTransformError(error)) {
-      throw new Error(
-        "jsonType<T>() requires typia's compile-time transform. Ensure bun preload (preload.ts / bun.toml) or ts-patch is configured before calling jsonType<T>().",
-        { cause: error },
-      );
-    }
-
-    throw error;
+export function jsonType<T extends KernelValue>(
+  schema: object,
+  validator: (input: unknown) => ValidatorResult,
+): TypeDescriptor<T>;
+export function jsonType<T extends KernelValue>(
+  schema?: object,
+  validator?: (input: unknown) => ValidatorResult,
+): TypeDescriptor<T> {
+  if (!schema || !validator) {
+    throw new Error(
+      "jsonType(...) requires concrete schema and validator arguments, for example jsonType(typia.json.schema<Foo>(), typia.createValidate<Foo>()).",
+    );
   }
+
+  return {
+    schema,
+    validate(input: unknown): input is T {
+      const result = validator(input);
+      return typeof result === "boolean" ? result : result.success;
+    },
+  };
 }
 
 export interface ProcedureResult<T extends KernelValue = KernelValue> {
@@ -207,8 +209,4 @@ export interface CallAgentTransport {
     logFile?: string;
     updates: acp.SessionUpdate[];
   }>;
-}
-
-function isTypiaTransformError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("no transform has been configured");
 }

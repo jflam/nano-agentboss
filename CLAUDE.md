@@ -104,3 +104,14 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+## nano-agentboss command authoring
+
+- For typed downstream agent outputs, import `typia` from `typia` and `jsonType` from `../src/types.ts`.
+- Prefer `const ResultType = jsonType<Result>(typia.json.schema<Result>(), typia.createValidate<Result>())`.
+- Do not hand-write `TypeDescriptor` schema/`validate()` boilerplate when the `typia` + `jsonType(...)`
+  pattern can describe the shape.
+- Use `ctx.callAgent(prompt)` for plain text results and `ctx.callAgent(prompt, ResultType)` for typed
+  JSON results.
+- Keep `ProcedureResult.data` small and machine-oriented; put user-facing prose in `display` and short
+  discovery text in `summary`.

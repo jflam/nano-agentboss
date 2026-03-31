@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import typia from "typia";
 
 import {
   MAX_PARSE_RETRIES,
@@ -7,30 +8,16 @@ import {
   parseAgentResponse,
   sanitizeJsonResponse,
 } from "../../src/call-agent.ts";
-import type { CallAgentTransport, TypeDescriptor } from "../../src/types.ts";
+import { jsonType, type CallAgentTransport } from "../../src/types.ts";
 
 interface MathResult {
   result: number;
 }
 
-const MathResultType: TypeDescriptor<MathResult> = {
-  schema: {
-    type: "object",
-    properties: {
-      result: { type: "number" },
-    },
-    required: ["result"],
-    additionalProperties: false,
-  },
-  validate(input: unknown): input is MathResult {
-    return (
-      typeof input === "object" &&
-      input !== null &&
-      "result" in input &&
-      typeof (input as { result: unknown }).result === "number"
-    );
-  },
-};
+const MathResultType = jsonType<MathResult>(
+  typia.json.schema<MathResult>(),
+  typia.createValidate<MathResult>(),
+);
 
 describe("callAgent response parsing", () => {
   test("returns raw string when no descriptor provided", async () => {

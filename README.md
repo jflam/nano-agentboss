@@ -32,3 +32,8 @@ To lint the repository:
 ```bash
 bun run lint
 ```
+
+Typed downstream agent outputs should use `jsonType(...)` from `src/types.ts` with concrete `typia`
+inputs, for example `jsonType<Result>(typia.json.schema<Result>(), typia.createValidate<Result>())`,
+instead of handwritten schema/validator descriptors. Bun preload for the typia transform is configured
+in `bunfig.toml`.

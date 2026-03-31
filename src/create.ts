@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import typia from "typia";
+
 import { expectData } from "./run-result.ts";
 import {
+  jsonType,
   type Procedure,
   type ProcedureRegistryLike,
-  type TypeDescriptor,
 } from "./types.ts";
 
 interface GeneratedProcedure {
@@ -13,27 +15,10 @@ interface GeneratedProcedure {
   source: string;
 }
 
-const GeneratedProcedureType: TypeDescriptor<GeneratedProcedure> = {
-  schema: {
-    type: "object",
-    properties: {
-      name: { type: "string" },
-      source: { type: "string" },
-    },
-    required: ["name", "source"],
-    additionalProperties: false,
-  },
-  validate(input: unknown): input is GeneratedProcedure {
-    return (
-      typeof input === "object" &&
-      input !== null &&
-      "name" in input &&
-      typeof (input as { name: unknown }).name === "string" &&
-      "source" in input &&
-      typeof (input as { source: unknown }).source === "string"
-    );
-  },
-};
+const GeneratedProcedureType = jsonType<GeneratedProcedure>(
+  typia.json.schema<GeneratedProcedure>(),
+  typia.createValidate<GeneratedProcedure>(),
+);
 
 export function createCreateProcedure(registry: ProcedureRegistryLike): Procedure {
   return {
@@ -60,6 +45,11 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           "- `ctx.refs.read(...)` and `ctx.refs.writeToFile(...)` for durable references",
           "- `ctx.print(text)` to stream progress back to the CLI",
           `- \`ctx.cwd\` for the current working directory (${ctx.cwd})`,
+          "",
+          "For typed agent outputs:",
+          "- import `typia` from `typia` and `jsonType` from `../src/types.ts`",
+          "- define descriptors as `const ResultType = jsonType<Result>(typia.json.schema<Result>(), typia.createValidate<Result>())`",
+          "- do not hand-write JSON schema or `validate()` boilerplate when the `typia` + `jsonType(...)` pattern can express the shape",
           "",
           "ProcedureResult should usually:",
           "- keep `data` small and ref-heavy",
