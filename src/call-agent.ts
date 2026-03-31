@@ -1,0 +1,267 @@
+import * as acp from "@agentclientprotocol/sdk";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { Readable, Writable } from "node:stream";
+import { join } from "node:path";
+
+import { getAgentTranscriptDir, resolveDownstreamAgentConfig } from "./config.ts";
+import type { AgentResult, CallAgentOptions, CallAgentTransport, TypeDescriptor } from "./types.ts";
+
+export const MAX_PARSE_RETRIES = 2;
+
+export async function callAgent<T = string>(
+  prompt: string,
+  descriptor?: TypeDescriptor<T>,
+  options: CallAgentOptions = {},
+  transport: CallAgentTransport = defaultTransport,
+): Promise<AgentResult<T>> {
+  const startedAt = Date.now();
+  let lastError = "";
+  let lastRaw = "";
+  let lastLogFile: string | undefined;
+
+  for (let attempt = 0; attempt <= MAX_PARSE_RETRIES; attempt += 1) {
+    const fullPrompt = buildPrompt(prompt, descriptor, attempt, lastError, lastRaw);
+    const response = await transport.invoke(fullPrompt, options);
+
+    lastRaw = response.raw;
+    lastLogFile = response.logFile;
+
+    if (!descriptor) {
+      return {
+        value: response.raw as T,
+        logFile: response.logFile,
+        durationMs: Date.now() - startedAt,
+        raw: response.raw,
+      };
+    }
+
+    try {
+      const parsed = parseAgentResponse(response.raw, descriptor);
+      return {
+        value: parsed,
+        logFile: response.logFile,
+        durationMs: Date.now() - startedAt,
+        raw: response.raw,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  throw new Error(
+    `callAgent failed after ${MAX_PARSE_RETRIES + 1} attempts: ${lastError}`,
+  );
+}
+
+export function buildPrompt<T>(
+  prompt: string,
+  descriptor: TypeDescriptor<T> | undefined,
+  attempt = 0,
+  lastError = "",
+  lastRaw = "",
+): string {
+  if (!descriptor) {
+    return prompt;
+  }
+
+  const parts = [
+    prompt,
+    "",
+    "Respond ONLY with valid JSON matching this schema.",
+    "Do not use markdown or code fences.",
+    JSON.stringify(descriptor.schema, null, 2),
+  ];
+
+  if (attempt > 0) {
+    parts.push(
+      "",
+      `Your previous response was invalid: ${lastError}`,
+      "Previous response:",
+      lastRaw,
+      "Try again with JSON only.",
+    );
+  }
+
+  return parts.join("\n");
+}
+
+export function sanitizeJsonResponse(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced?.[1]?.trim() ?? trimmed;
+}
+
+export function parseAgentResponse<T>(
+  raw: string,
+  descriptor: TypeDescriptor<T>,
+): T {
+  const sanitized = sanitizeJsonResponse(raw);
+  const parsed = JSON.parse(sanitized) as unknown;
+
+  if (!descriptor.validate(parsed)) {
+    throw new Error("JSON parsed but failed schema validation");
+  }
+
+  return parsed;
+}
+
+const defaultTransport: CallAgentTransport = {
+  async invoke(prompt, options) {
+    return runAcpPrompt(prompt, options);
+  },
+};
+
+async function runAcpPrompt(
+  prompt: string,
+  options: CallAgentOptions,
+): Promise<{ raw: string; logFile?: string; updates: acp.SessionUpdate[] }> {
+  const config = options.config ?? resolveDownstreamAgentConfig();
+  const cwd = config.cwd ?? process.cwd();
+  const transcriptPath = createTranscriptPath();
+  const updates: acp.SessionUpdate[] = [];
+  let raw = "";
+
+  mkdirSync(getAgentTranscriptDir(), { recursive: true });
+  appendAgentTranscript(
+    transcriptPath,
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      event: "spawn",
+      command: config.command,
+      args: config.args,
+      cwd,
+    }),
+  );
+
+  const child = spawn(config.command, config.args, {
+    cwd,
+    env: {
+      ...process.env,
+      ...config.env,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  child.stderr?.on("data", (chunk: Buffer | string) => {
+    appendAgentTranscript(
+      transcriptPath,
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        stream: "stderr",
+        text: chunk.toString(),
+      }),
+    );
+  });
+
+  if (!child.stdin || !child.stdout) {
+    child.kill();
+    throw new Error("Failed to acquire stdio pipes for downstream agent");
+  }
+
+  const stream = acp.ndJsonStream(
+    Writable.toWeb(child.stdin),
+    Readable.toWeb(child.stdout),
+  );
+
+  let sessionId: acp.SessionId | undefined;
+
+  const client: acp.Client = {
+    async requestPermission(params) {
+      const selected =
+        params.options.find((option) => option.kind.startsWith("allow")) ??
+        params.options[0];
+
+      if (!selected) {
+        return { outcome: { outcome: "cancelled" } };
+      }
+
+      appendAgentTranscript(
+        transcriptPath,
+        JSON.stringify({
+          timestamp: new Date().toISOString(),
+          event: "permission",
+          toolCall: params.toolCall,
+          selected: selected.optionId,
+        }),
+      );
+
+      return {
+        outcome: {
+          outcome: "selected",
+          optionId: selected.optionId,
+        },
+      };
+    },
+    async sessionUpdate(params) {
+      updates.push(params.update);
+      appendAgentTranscript(
+        transcriptPath,
+        JSON.stringify({
+          timestamp: new Date().toISOString(),
+          event: "session_update",
+          update: params.update,
+        }),
+      );
+
+      if (
+        params.update.sessionUpdate === "agent_message_chunk" &&
+        params.update.content.type === "text"
+      ) {
+        raw += params.update.content.text;
+      }
+
+      await options.onUpdate?.(params.update);
+    },
+  };
+
+  const connection = new acp.ClientSideConnection(() => client, stream);
+  const abortListener = () => {
+    if (sessionId !== undefined) {
+      void connection.cancel({ sessionId });
+    }
+    child.kill();
+  };
+
+  options.signal?.addEventListener("abort", abortListener);
+
+  try {
+    await connection.initialize({
+      protocolVersion: acp.PROTOCOL_VERSION,
+      clientCapabilities: {},
+    });
+
+    const session = await connection.newSession({
+      cwd,
+      mcpServers: [],
+    });
+    sessionId = session.sessionId;
+
+    await connection.prompt({
+      sessionId,
+      prompt: [
+        {
+          type: "text",
+          text: prompt,
+        },
+      ],
+    });
+
+    return {
+      raw,
+      logFile: transcriptPath,
+      updates,
+    };
+  } finally {
+    options.signal?.removeEventListener("abort", abortListener);
+    child.kill();
+  }
+}
+
+function createTranscriptPath(): string {
+  return join(getAgentTranscriptDir(), `${crypto.randomUUID()}.jsonl`);
+}
+
+function appendAgentTranscript(path: string, line: string): void {
+  appendFileSync(path, `${line}\n`, "utf8");
+}

@@ -1,0 +1,24 @@
+{
+  "name": "nano-agentboss",
+  "module": "src/server.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "server": "bun run src/server.ts",
+    "cli": "bun run cli.ts",
+    "test": "bun test",
+    "test:unit": "bun test tests/unit",
+    "test:e2e": "bun test tests/e2e",
+    "prepare": "ts-patch install"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.17.1",
+    "@ryoppippi/unplugin-typia": "^2.6.5",
+    "typia": "^12.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "ts-patch": "^3.3.0",
+    "typescript": "~5.9.3"
+  }
+}
