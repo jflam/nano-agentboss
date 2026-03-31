@@ -43,6 +43,15 @@ describe("callAgent response parsing", () => {
     expect(parseAgentResponse('{"result":4}', MathResultType)).toEqual({ result: 4 });
   });
 
+  test("extracts typed JSON from mixed prose and trailing text", () => {
+    expect(
+      parseAgentResponse(
+        'Running lint now, then I will report back.{"result":4}\nDone validating.',
+        MathResultType,
+      ),
+    ).toEqual({ result: 4 });
+  });
+
   test("rejects JSON that fails schema validation", () => {
     expect(() => parseAgentResponse('{"result":"nope"}', MathResultType)).toThrow(
       "JSON parsed but failed schema validation",
@@ -56,6 +65,16 @@ describe("callAgent response parsing", () => {
     expect(result.value).toEqual({ result: 4 });
     expect(transport.invocations).toHaveLength(2);
     expect(transport.invocations[1]).toContain("Your previous response was invalid");
+  });
+
+  test("accepts mixed prose and final JSON without retrying", async () => {
+    const transport = createTransport([
+      'Running the required lint command now.{"result":4}',
+    ]);
+    const result = await callAgent("compute", MathResultType, {}, transport);
+
+    expect(result.value).toEqual({ result: 4 });
+    expect(transport.invocations).toHaveLength(1);
   });
 
   test("throws after retries are exhausted", async () => {

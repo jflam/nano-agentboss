@@ -97,13 +97,137 @@ export function parseAgentResponse<T>(
   descriptor: TypeDescriptor<T>,
 ): T {
   const sanitized = sanitizeJsonResponse(raw);
-  const parsed = JSON.parse(sanitized) as unknown;
+  const directParse = tryParseAndValidate(sanitized, descriptor);
+  if (directParse.status === "valid") {
+    return directParse.value;
+  }
 
-  if (!descriptor.validate(parsed)) {
+  if (directParse.status === "invalid") {
     throw new Error("JSON parsed but failed schema validation");
   }
 
-  return parsed;
+  let foundInvalidJson = false;
+
+  for (const fragment of extractTopLevelJsonFragments(sanitized)) {
+    const fragmentParse = tryParseAndValidate(fragment, descriptor);
+    if (fragmentParse.status === "valid") {
+      return fragmentParse.value;
+    }
+    if (fragmentParse.status === "invalid") {
+      foundInvalidJson = true;
+    }
+  }
+
+  if (foundInvalidJson) {
+    throw new Error("JSON parsed but failed schema validation");
+  }
+
+  throw directParse.error;
+}
+
+function tryParseAndValidate<T>(
+  candidate: string,
+  descriptor: TypeDescriptor<T>,
+):
+  | { status: "valid"; value: T }
+  | { status: "invalid" }
+  | { status: "parse_error"; error: Error } {
+  try {
+    const parsed = JSON.parse(candidate) as unknown;
+    if (!descriptor.validate(parsed)) {
+      return { status: "invalid" };
+    }
+    return { status: "valid", value: parsed };
+  } catch (error) {
+    return {
+      status: "parse_error",
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+}
+
+function extractTopLevelJsonFragments(raw: string): string[] {
+  const fragments: Array<{ start: number; end: number }> = [];
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (char !== "{" && char !== "[") {
+      continue;
+    }
+
+    const end = findJsonValueEnd(raw, index);
+    if (end !== undefined) {
+      fragments.push({ start: index, end });
+    }
+  }
+
+  return fragments
+    .filter((fragment, index) =>
+      !fragments.some(
+        (candidate, candidateIndex) =>
+          candidateIndex !== index &&
+          candidate.start <= fragment.start &&
+          candidate.end >= fragment.end &&
+          (candidate.start !== fragment.start || candidate.end !== fragment.end),
+      ),
+    )
+    .sort((left, right) => right.start - left.start)
+    .map((fragment) => raw.slice(fragment.start, fragment.end));
+}
+
+function findJsonValueEnd(raw: string, start: number): number | undefined {
+  const stack = [raw[start] === "{" ? "}" : "]"];
+  let inString = false;
+  let escaping = false;
+
+  for (let index = start + 1; index < raw.length; index += 1) {
+    const char = raw[index];
+
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaping = true;
+        continue;
+      }
+      if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      stack.push("}");
+      continue;
+    }
+
+    if (char === "[") {
+      stack.push("]");
+      continue;
+    }
+
+    if (char !== "}" && char !== "]") {
+      continue;
+    }
+
+    if (char !== stack.at(-1)) {
+      return undefined;
+    }
+
+    stack.pop();
+    if (stack.length === 0) {
+      return index + 1;
+    }
+  }
+
+  return undefined;
 }
 
 const defaultTransport: CallAgentTransport = {

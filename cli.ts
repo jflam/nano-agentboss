@@ -5,6 +5,8 @@ import { Readable, Writable } from "node:stream";
 
 class CliClient implements acp.Client {
   availableCommands: string[] = [];
+  private readonly toolTitles = new Map<string, string>();
+  private outputEndsWithNewline = true;
 
   async requestPermission(
     params: acp.RequestPermissionRequest,
@@ -31,17 +33,16 @@ class CliClient implements acp.Client {
     switch (update.sessionUpdate) {
       case "agent_message_chunk":
         if (update.content.type === "text") {
-          process.stdout.write(update.content.text);
+          this.writeOutput(update.content.text);
         }
         break;
       case "tool_call":
-        process.stderr.write(`\n[tool] ${update.title} (${update.status ?? "pending"})\n`);
+        this.toolTitles.set(update.toolCallId, update.title);
+        this.writeToolLine(`[tool] ${update.title}`);
         break;
       case "tool_call_update":
         if (update.status) {
-          process.stderr.write(
-            `\n[tool:${update.toolCallId}] ${update.status}${update.title ? ` ${update.title}` : ""}\n`,
-          );
+          this.handleToolCallUpdate(update);
         }
         break;
       case "available_commands_update":
@@ -56,6 +57,42 @@ class CliClient implements acp.Client {
     const matches = this.availableCommands.filter((command) => command.startsWith(line));
     return [matches.length > 0 ? matches : this.availableCommands, line];
   };
+
+  private writeOutput(text: string): void {
+    process.stdout.write(text);
+    this.outputEndsWithNewline = text.endsWith("\n");
+  }
+
+  writeLineBreak(): void {
+    this.writeOutput("\n");
+  }
+
+  private writeToolLine(text: string): void {
+    const prefix = this.outputEndsWithNewline ? "" : "\n";
+    process.stderr.write(`${prefix}${text}\n`);
+    this.outputEndsWithNewline = true;
+  }
+
+  private handleToolCallUpdate(update: Extract<acp.SessionUpdate, { sessionUpdate: "tool_call_update" }>): void {
+    const title = update.title ?? this.toolTitles.get(update.toolCallId) ?? update.toolCallId;
+
+    if (update.status === "completed") {
+      this.toolTitles.delete(update.toolCallId);
+      return;
+    }
+
+    if (update.status === "pending") {
+      return;
+    }
+
+    if (update.status === "failed") {
+      this.toolTitles.delete(update.toolCallId);
+      this.writeToolLine(`[tool] ${title} failed`);
+      return;
+    }
+
+    this.writeToolLine(`[tool] ${title} ${update.status}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -112,7 +149,7 @@ async function main(): Promise<void> {
           },
         ],
       });
-      process.stdout.write("\n");
+      client.writeLineBreak();
     }
   } finally {
     rl.close();
