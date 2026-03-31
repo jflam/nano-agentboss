@@ -63,4 +63,12 @@ describe("ProcedureRegistry", () => {
       },
     ]);
   });
+
+  test("loadBuiltins registers default but keeps it hidden from slash commands", () => {
+    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-commands-")));
+    registry.loadBuiltins();
+
+    expect(registry.get("default")).toBeDefined();
+    expect(registry.toAvailableCommands().some((command) => command.name === "default")).toBe(false);
+  });
 });

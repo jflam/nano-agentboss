@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import commitProcedure from "../commands/commit.ts";
+import defaultProcedure from "../commands/default.ts";
 import linterProcedure from "../commands/linter.ts";
 import secondOpinionProcedure from "../commands/second-opinion.ts";
 
@@ -32,6 +33,7 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
   }
 
   loadBuiltins(): void {
+    this.register(defaultProcedure);
     this.register(createCreateProcedure(this));
     this.register(commitProcedure);
     this.register(linterProcedure);
