@@ -1,5 +1,5 @@
 import * as acp from "@agentclientprotocol/sdk";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
 import readline from "node:readline/promises";
 import { Readable, Writable } from "node:stream";
 
@@ -96,14 +96,10 @@ class CliClient implements acp.Client {
 }
 
 async function main(): Promise<void> {
-  const server = spawn("bun", ["run", "src/server.ts"], {
+  const server: ChildProcessByStdio<Writable, Readable, null> = spawn("bun", ["run", "src/server.ts"], {
     cwd: process.cwd(),
     stdio: ["pipe", "pipe", "inherit"],
   });
-
-  if (!server.stdin || !server.stdout) {
-    throw new Error("Failed to start nano-agentboss server process");
-  }
 
   const client = new CliClient();
   const stream = acp.ndJsonStream(
@@ -130,7 +126,7 @@ async function main(): Promise<void> {
   });
 
   try {
-    while (true) {
+    for (;;) {
       const line = await rl.question("> ");
       const trimmed = line.trim();
       if (!trimmed) {
