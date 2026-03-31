@@ -37,10 +37,13 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
     private readonly sessionId: string,
     private readonly runId: string,
     private readonly eventLog: SessionEventLog,
+    private readonly onActivity: () => void,
     private readonly delegate?: SessionUpdateEmitter,
   ) {}
 
   emit(update: acp.SessionUpdate): void {
+    this.onActivity();
+
     if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
       this.streamedText += update.content.text;
     }
@@ -146,6 +149,25 @@ export class NanoAgentBossService {
     const runId = crypto.randomUUID();
     const startedAt = Date.now();
 
+    let lastRunActivityAt = Date.now();
+    const markRunActivity = () => {
+      lastRunActivityAt = Date.now();
+    };
+    const heartbeatMs = getRunHeartbeatMs();
+    const heartbeatTimer = setInterval(() => {
+      if (Date.now() - lastRunActivityAt < heartbeatMs) {
+        return;
+      }
+
+      session.events.publish(sessionId, {
+        type: "run_heartbeat",
+        runId,
+        procedure: procedureName,
+        at: new Date().toISOString(),
+      });
+      markRunActivity();
+    }, heartbeatMs);
+
     session.events.publish(sessionId, {
       type: "run_started",
       runId,
@@ -153,6 +175,7 @@ export class NanoAgentBossService {
       prompt: commandPrompt,
       startedAt: new Date(startedAt).toISOString(),
     });
+    markRunActivity();
 
     if (!procedure) {
       const error = `Unknown command: /${commandName}`;
@@ -172,6 +195,8 @@ export class NanoAgentBossService {
         completedAt: new Date().toISOString(),
         error,
       });
+      markRunActivity();
+      clearInterval(heartbeatTimer);
 
       return { stopReason: "end_turn", runId };
     }
@@ -180,6 +205,7 @@ export class NanoAgentBossService {
       sessionId,
       runId,
       session.events,
+      markRunActivity,
       delegate,
     );
     const logger = new RunLogger();
@@ -241,6 +267,7 @@ export class NanoAgentBossService {
         summary: finalized.summary,
         display: result.display,
       });
+      markRunActivity();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const errorText = `Error: ${message}\n`;
@@ -266,7 +293,9 @@ export class NanoAgentBossService {
         error: message,
         cell: finalized.cell,
       });
+      markRunActivity();
     } finally {
+      clearInterval(heartbeatTimer);
       const commands = toFrontendCommands(this.registry.toAvailableCommands());
       session.commands = commands;
       session.events.publish(sessionId, {
@@ -284,6 +313,11 @@ export class NanoAgentBossService {
 
     return { stopReason: "end_turn", runId };
   }
+}
+
+function getRunHeartbeatMs(): number {
+  const value = Number(process.env.NANO_AGENTBOSS_RUN_HEARTBEAT_MS ?? "5000");
+  return Number.isFinite(value) && value > 0 ? value : 5000;
 }
 
 function resolveCommand(text: string): { commandName: string; commandPrompt: string } {

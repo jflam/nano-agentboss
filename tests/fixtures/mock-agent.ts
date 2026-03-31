@@ -33,7 +33,7 @@ class MockAgent implements acp.Agent {
       .map((block) => block.text)
       .join("\n");
 
-    const text = answerForPrompt(prompt);
+    const text = await answerForPrompt(prompt);
 
     await this.connection.sessionUpdate({
       sessionId: params.sessionId,
@@ -54,8 +54,12 @@ class MockAgent implements acp.Agent {
   }
 }
 
-function answerForPrompt(prompt: string): string {
+async function answerForPrompt(prompt: string): Promise<string> {
   const normalized = prompt.toLowerCase();
+
+  if (normalized.includes("simulate-long-run")) {
+    await Bun.sleep(3_500);
+  }
 
   if (normalized.includes("what is 2+2") || normalized.includes("what is 2 + 2")) {
     return "4";

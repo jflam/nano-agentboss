@@ -27,6 +27,12 @@ export type FrontendEvent =
       stream: "agent";
     }
   | {
+      type: "run_heartbeat";
+      runId: string;
+      procedure: string;
+      at: string;
+    }
+  | {
       type: "tool_started";
       runId: string;
       toolCallId: string;

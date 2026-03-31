@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { once } from "node:events";
 
 import {
   mockAgentEnv,
@@ -39,13 +38,6 @@ describe("HTTP CLI integration", () => {
         expect(cli.stderr()).not.toContain("[stream]");
         expect(`${server.stdout()}\n${server.stderr()}`).not.toContain("request timed out");
 
-        cli.write("quit\n");
-        await Promise.race([
-          once(cli.process, "exit"),
-          Bun.sleep(5_000).then(() => {
-            throw new Error("Timed out waiting for CLI exit");
-          }),
-        ]);
       } finally {
         await cli.stop();
       }

@@ -13,51 +13,59 @@ import {
   type FrontendEventEnvelope,
 } from "./src/frontend-events.ts";
 
+const HTTP_RUN_START_TIMEOUT_MS = Number(process.env.NANO_AGENTBOSS_HTTP_RUN_START_TIMEOUT_MS ?? "10000");
+const HTTP_RUN_IDLE_TIMEOUT_MS = Number(process.env.NANO_AGENTBOSS_HTTP_RUN_IDLE_TIMEOUT_MS ?? "30000");
+const HTTP_RUN_HARD_TIMEOUT_MS = Number(process.env.NANO_AGENTBOSS_HTTP_RUN_HARD_TIMEOUT_MS ?? String(30 * 60 * 1000));
+
+interface TrackedHttpRun {
+  done: boolean;
+  startedAt: number;
+  lastActivityAt: number;
+  waiters: Array<() => void>;
+}
+
 class HttpRunTracker {
   private readonly startedRunIds: string[] = [];
   private readonly startWaiters: Array<(runId: string) => void> = [];
-  private readonly completions = new Map<string, {
-    done: boolean;
-    waiters: Array<() => void>;
-  }>();
+  private readonly runs = new Map<string, TrackedHttpRun>();
 
   observe(event: FrontendEventEnvelope): void {
-    if (event.type === "run_started") {
-      const existing = this.completions.get(event.data.runId);
-      if (!existing) {
-        this.completions.set(event.data.runId, {
-          done: false,
-          waiters: [],
-        });
-      }
-
-      const next = this.startWaiters.shift();
-      if (next) {
-        next(event.data.runId);
-        return;
-      }
-
-      this.startedRunIds.push(event.data.runId);
+    const runId = getRunId(event);
+    if (!runId) {
       return;
     }
 
-    if (event.type !== "run_completed" && event.type !== "run_failed") {
-      return;
-    }
-
-    const completion = this.completions.get(event.data.runId) ?? {
+    const now = Date.now();
+    const run = this.runs.get(runId) ?? {
       done: false,
+      startedAt: now,
+      lastActivityAt: now,
       waiters: [],
     };
-    completion.done = true;
-    this.completions.set(event.data.runId, completion);
+    run.lastActivityAt = now;
 
-    for (const waiter of completion.waiters.splice(0)) {
+    if (event.type === "run_started") {
+      run.startedAt = now;
+      const next = this.startWaiters.shift();
+      if (next) {
+        next(runId);
+      } else {
+        this.startedRunIds.push(runId);
+      }
+    }
+
+    if (event.type === "run_completed" || event.type === "run_failed") {
+      run.done = true;
+    }
+
+    this.runs.set(runId, run);
+
+    for (const waiter of run.waiters.splice(0)) {
       waiter();
     }
   }
 
-  async waitForNextRunStart(timeoutMs = 10_000): Promise<string> {
+  async waitForNextRunStart(timeoutMs = HTTP_RUN_START_TIMEOUT_MS): Promise<string> {
     const existing = this.startedRunIds.shift();
     if (existing) {
       return existing;
@@ -72,25 +80,55 @@ class HttpRunTracker {
     );
   }
 
-  async waitForRunCompletion(runId: string, timeoutMs = 60_000): Promise<void> {
-    const completion = this.completions.get(runId);
-    if (completion?.done) {
-      return;
-    }
+  async waitForRunCompletion(
+    runId: string,
+    idleTimeoutMs = HTTP_RUN_IDLE_TIMEOUT_MS,
+    hardTimeoutMs = HTTP_RUN_HARD_TIMEOUT_MS,
+  ): Promise<void> {
+    for (;;) {
+      const run = this.runs.get(runId);
+      if (run?.done) {
+        return;
+      }
 
-    await withTimeout(
-      new Promise<void>((resolve) => {
-        const current = this.completions.get(runId) ?? {
-          done: false,
-          waiters: [],
-        };
-        current.waiters.push(resolve);
-        this.completions.set(runId, current);
-      }),
-      timeoutMs,
-      `Timed out waiting for run completion: ${runId}`,
-    );
+      const now = Date.now();
+      const lastActivityAt = run?.lastActivityAt ?? now;
+      const startedAt = run?.startedAt ?? now;
+      const idleRemainingMs = idleTimeoutMs - (now - lastActivityAt);
+      const hardRemainingMs = hardTimeoutMs - (now - startedAt);
+      const waitMs = Math.min(idleRemainingMs, hardRemainingMs);
+
+      if (hardRemainingMs <= 0) {
+        throw new Error(`Timed out waiting for run completion: ${runId}`);
+      }
+
+      if (idleRemainingMs <= 0) {
+        throw new Error(`Timed out waiting for run activity: ${runId}`);
+      }
+
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          const current = this.runs.get(runId) ?? {
+            done: false,
+            startedAt: now,
+            lastActivityAt: now,
+            waiters: [],
+          };
+          current.waiters.push(resolve);
+          this.runs.set(runId, current);
+        }),
+        Bun.sleep(waitMs),
+      ]);
+    }
   }
+}
+
+function getRunId(event: FrontendEventEnvelope): string | undefined {
+  if (event.type === "commands_updated") {
+    return undefined;
+  }
+
+  return event.data.runId;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
