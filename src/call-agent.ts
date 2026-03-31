@@ -5,42 +5,100 @@ import { Readable, Writable } from "node:stream";
 import { join } from "node:path";
 
 import { getAgentTranscriptDir, resolveDownstreamAgentConfig } from "./config.ts";
-import type { AgentResult, CallAgentOptions, CallAgentTransport, TypeDescriptor } from "./types.ts";
+import { SessionStore, summarizeText } from "./session-store.ts";
+import type {
+  AgentRunResult,
+  CallAgentOptions,
+  CallAgentTransport,
+  KernelValue,
+  TypeDescriptor,
+} from "./types.ts";
 
 export const MAX_PARSE_RETRIES = 2;
+
+interface InvokedAgentResult<T> {
+  data: T;
+  logFile?: string;
+  durationMs: number;
+  raw: string;
+  updates: acp.SessionUpdate[];
+}
 
 export async function callAgent<T = string>(
   prompt: string,
   descriptor?: TypeDescriptor<T>,
   options: CallAgentOptions = {},
   transport: CallAgentTransport = defaultTransport,
-): Promise<AgentResult<T>> {
+): Promise<AgentRunResult<T & KernelValue>> {
+  const result = await invokeAgent(prompt, descriptor, options, transport);
+  const cwd = options.config?.cwd ?? process.cwd();
+  const store = new SessionStore({
+    sessionId: crypto.randomUUID(),
+    cwd,
+  });
+  const cell = store.startCell({
+    procedure: "callAgent",
+    input: prompt,
+    kind: "agent",
+  });
+  const finalized = store.finalizeCell(cell, {
+    data: result.data as T & KernelValue,
+    display: result.raw,
+    summary: summarizeStandaloneResult(result.data, result.raw),
+  }, {
+    stream: collectStreamText(result.updates),
+    raw: result.raw,
+  });
+
+  return {
+    ...finalized,
+    durationMs: result.durationMs,
+    raw: result.raw,
+    logFile: result.logFile,
+  };
+}
+
+export async function invokeAgent<T = string>(
+  prompt: string,
+  descriptor?: TypeDescriptor<T>,
+  options: CallAgentOptions = {},
+  transport: CallAgentTransport = defaultTransport,
+): Promise<InvokedAgentResult<T>> {
   const startedAt = Date.now();
   let lastError = "";
   let lastRaw = "";
 
   for (let attempt = 0; attempt <= MAX_PARSE_RETRIES; attempt += 1) {
-    const fullPrompt = buildPrompt(prompt, descriptor, attempt, lastError, lastRaw);
+    const fullPrompt = buildPrompt(
+      prompt,
+      descriptor,
+      attempt,
+      lastError,
+      lastRaw,
+      options.namedRefs,
+    );
     const response = await transport.invoke(fullPrompt, options);
 
     lastRaw = response.raw;
 
     if (!descriptor) {
       return {
-        value: response.raw as T,
+        data: response.raw as T,
         logFile: response.logFile,
         durationMs: Date.now() - startedAt,
         raw: response.raw,
+        updates: response.updates,
       };
     }
 
     try {
       const parsed = parseAgentResponse(response.raw, descriptor);
       return {
-        value: parsed,
+        data: parsed,
         logFile: response.logFile,
         durationMs: Date.now() - startedAt,
         raw: response.raw,
+        updates: response.updates,
       };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
@@ -58,18 +116,37 @@ export function buildPrompt<T>(
   attempt = 0,
   lastError = "",
   lastRaw = "",
+  namedRefs?: Record<string, unknown>,
 ): string {
-  if (!descriptor) {
-    return prompt;
+  const parts = [prompt];
+
+  if (namedRefs && Object.keys(namedRefs).length > 0) {
+    parts.push(
+      "",
+      "Use the following named refs as source material when the prompt mentions them.",
+      "Each ref already contains the resolved value of a prior durable session reference.",
+    );
+
+    for (const [name, value] of Object.entries(namedRefs)) {
+      parts.push(
+        "",
+        `<ref name="${name}">`,
+        serializeNamedRef(value),
+        "</ref>",
+      );
+    }
   }
 
-  const parts = [
-    prompt,
+  if (!descriptor) {
+    return parts.join("\n");
+  }
+
+  parts.push(
     "",
     "Respond ONLY with valid JSON matching this schema.",
     "Do not use markdown or code fences.",
     JSON.stringify(descriptor.schema, null, 2),
-  ];
+  );
 
   if (attempt > 0) {
     parts.push(
@@ -368,7 +445,7 @@ async function runAcpPrompt(
       await connection.setSessionConfigOption({
         sessionId,
         configId: "reasoning_effort",
-        valueId: config.reasoningEffort,
+        value: config.reasoningEffort,
       });
     }
 
@@ -399,4 +476,39 @@ function createTranscriptPath(): string {
 
 function appendAgentTranscript(path: string, line: string): void {
   appendFileSync(path, `${line}\n`, "utf8");
+}
+
+function serializeNamedRef(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value === undefined) {
+    return "undefined";
+  }
+
+  const serialized = JSON.stringify(value, null, 2);
+  return typeof serialized === "string" ? serialized : "[unserializable]";
+}
+
+function collectStreamText(updates: acp.SessionUpdate[]): string | undefined {
+  let text = "";
+
+  for (const update of updates) {
+    if (update.sessionUpdate !== "agent_message_chunk" || update.content.type !== "text") {
+      continue;
+    }
+
+    text += update.content.text;
+  }
+
+  return text || undefined;
+}
+
+function summarizeStandaloneResult(data: unknown, raw: string): string | undefined {
+  if (typeof data === "string") {
+    return summarizeText(data);
+  }
+
+  return summarizeText(raw);
 }

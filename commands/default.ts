@@ -5,6 +5,9 @@ export default {
   description: "Pass prompt through to the downstream agent",
   async execute(prompt, ctx) {
     const result = await ctx.callAgent(prompt);
-    return result.value;
+
+    return {
+      display: result.data,
+    };
   },
 } satisfies Procedure;

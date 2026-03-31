@@ -1,20 +1,28 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
-import { callAgent } from "./call-agent.ts";
+import { invokeAgent } from "./call-agent.ts";
 import { resolveDownstreamAgentConfig } from "./config.ts";
 import type { RunLogger } from "./logger.ts";
+import {
+  normalizeProcedureResult,
+  summarizeText,
+} from "./session-store.ts";
+import type { SessionStore } from "./session-store.ts";
 import type {
-  AgentResult,
+  CellRef,
   CommandCallAgentOptions,
   CommandContext,
   DownstreamAgentSelection,
   ProcedureRegistryLike,
+  KernelValue,
+  RefsApi,
+  RunResult,
+  SessionApi,
   TypeDescriptor,
+  ValueRef,
 } from "./types.ts";
 
-interface OutputState {
-  hasOutput: boolean;
-}
+type ActiveCell = ReturnType<SessionStore["startCell"]>;
 
 export interface SessionUpdateEmitter {
   emit(update: acp.SessionUpdate): void;
@@ -28,20 +36,24 @@ interface CommandContextParams {
   procedureName: string;
   spanId: string;
   emitter: SessionUpdateEmitter;
-  outputState?: OutputState;
+  store: SessionStore;
+  cell: ActiveCell;
   signal?: AbortSignal;
 }
 
 export class CommandContextImpl implements CommandContext {
   readonly cwd: string;
+  readonly refs: RefsApi;
+  readonly session: SessionApi;
 
   private readonly logger: RunLogger;
   private readonly registry: ProcedureRegistryLike;
   private readonly procedureName: string;
   private readonly spanId: string;
   private readonly emitter: SessionUpdateEmitter;
-  private readonly outputState: OutputState;
   private readonly signal?: AbortSignal;
+  private readonly store: SessionStore;
+  private readonly cell: ActiveCell;
 
   constructor(params: CommandContextParams) {
     this.cwd = params.cwd;
@@ -50,23 +62,42 @@ export class CommandContextImpl implements CommandContext {
     this.procedureName = params.procedureName;
     this.spanId = params.spanId;
     this.emitter = params.emitter;
-    this.outputState = params.outputState ?? { hasOutput: false };
     this.signal = params.signal;
+    this.store = params.store;
+    this.cell = params.cell;
+    this.refs = new CommandRefs(this.store, this.cwd);
+    this.session = new CommandSession(this.store, this.cell.cell.cellId);
   }
 
-  get hasOutput(): boolean {
-    return this.outputState.hasOutput;
-  }
-
-  async callAgent<T = string>(
+  async callAgent(
     prompt: string,
-    descriptor?: TypeDescriptor<T>,
     options?: CommandCallAgentOptions,
-  ): Promise<AgentResult<T>> {
+  ): Promise<RunResult<string>>;
+  async callAgent<T extends KernelValue>(
+    prompt: string,
+    descriptor: TypeDescriptor<T>,
+    options?: CommandCallAgentOptions,
+  ): Promise<RunResult<T>>;
+  async callAgent<T extends KernelValue>(
+    prompt: string,
+    descriptorOrOptions?: TypeDescriptor<T> | CommandCallAgentOptions,
+    maybeOptions?: CommandCallAgentOptions,
+  ): Promise<RunResult<T> | RunResult<string>> {
+    const descriptor = isTypeDescriptor(descriptorOrOptions)
+      ? descriptorOrOptions
+      : undefined;
+    const options = (descriptor ? maybeOptions : descriptorOrOptions) as CommandCallAgentOptions | undefined;
     const childSpanId = this.logger.newSpan(this.spanId);
     const startedAt = Date.now();
     const toolCallId = crypto.randomUUID();
     const agentLabel = formatAgentLabel(options?.agent);
+    const childCell = this.store.startCell({
+      procedure: "callAgent",
+      input: prompt,
+      kind: "agent",
+      parentCellId: this.cell.cell.cellId,
+    });
+    const namedRefs = resolveNamedRefs(this.store, options?.refs);
 
     this.logger.write({
       spanId: childSpanId,
@@ -84,12 +115,17 @@ export class CommandContextImpl implements CommandContext {
       title: `callAgent${agentLabel}: ${summarize(prompt)}`,
       kind: "other",
       status: "pending",
-      rawInput: { prompt, agent: options?.agent },
+      rawInput: {
+        prompt,
+        agent: options?.agent,
+        refs: options?.refs,
+      },
     });
 
     try {
-      const result = await callAgent(prompt, descriptor, {
+      const result = await invokeAgent(prompt, descriptor, {
         config: resolveDownstreamAgentConfig(this.cwd, options?.agent),
+        namedRefs,
         signal: this.signal,
         onUpdate: async (update) => {
           if (
@@ -102,15 +138,16 @@ export class CommandContextImpl implements CommandContext {
           ) {
             this.emitter.emit(update);
           }
-
-          if (
-            options?.stream !== false &&
-            update.sessionUpdate === "agent_message_chunk" &&
-            update.content.type === "text"
-          ) {
-            this.outputState.hasOutput = true;
-          }
         },
+      });
+
+      const finalized = this.store.finalizeCell(childCell, {
+        data: result.data,
+        display: result.raw,
+        summary: summarizeAgentResult(result.data, result.raw),
+      }, {
+        stream: options?.stream === false ? undefined : collectStreamText(result.updates),
+        raw: result.raw,
       });
 
       this.logger.write({
@@ -119,7 +156,7 @@ export class CommandContextImpl implements CommandContext {
         procedure: this.procedureName,
         kind: "agent_end",
         durationMs: Date.now() - startedAt,
-        result: descriptor ? result.value : undefined,
+        result: result.data,
         raw: result.raw,
         agentLogFile: result.logFile,
         agentProvider: options?.agent?.provider,
@@ -131,12 +168,14 @@ export class CommandContextImpl implements CommandContext {
         toolCallId,
         status: "completed",
         rawOutput: {
+          cell: finalized.cell,
+          dataRef: finalized.dataRef,
           durationMs: result.durationMs,
           logFile: result.logFile,
         },
       });
 
-      return result;
+      return finalized;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 
@@ -162,7 +201,10 @@ export class CommandContextImpl implements CommandContext {
     }
   }
 
-  async callProcedure(name: string, prompt: string): Promise<string | void> {
+  async callProcedure<T extends KernelValue = never>(
+    name: string,
+    prompt: string,
+  ): Promise<RunResult<T>> {
     const procedure = this.registry.get(name);
     if (!procedure) {
       throw new Error(`Unknown procedure: ${name}`);
@@ -170,6 +212,12 @@ export class CommandContextImpl implements CommandContext {
 
     const childSpanId = this.logger.newSpan(this.spanId);
     const startedAt = Date.now();
+    const childCell = this.store.startCell({
+      procedure: name,
+      input: prompt,
+      kind: "procedure",
+      parentCellId: this.cell.cell.cellId,
+    });
 
     this.logger.write({
       spanId: childSpanId,
@@ -187,10 +235,13 @@ export class CommandContextImpl implements CommandContext {
         procedureName: name,
         spanId: childSpanId,
         emitter: this.emitter,
-        outputState: this.outputState,
+        store: this.store,
+        cell: childCell,
         signal: this.signal,
       });
-      const result = await procedure.execute(prompt, childContext);
+      const rawResult = await procedure.execute(prompt, childContext);
+      const result = normalizeProcedureResult(rawResult);
+      const finalized = this.store.finalizeCell(childCell, result);
 
       this.logger.write({
         spanId: childSpanId,
@@ -198,10 +249,11 @@ export class CommandContextImpl implements CommandContext {
         procedure: name,
         kind: "procedure_end",
         durationMs: Date.now() - startedAt,
-        raw: typeof result === "string" ? result : undefined,
+        result: result.data,
+        raw: result.display,
       });
 
-      return result;
+      return finalized as RunResult<T>;
     } catch (error) {
       this.logger.write({
         spanId: childSpanId,
@@ -216,7 +268,7 @@ export class CommandContextImpl implements CommandContext {
   }
 
   print(text: string): void {
-    this.outputState.hasOutput = true;
+    this.store.appendStream(this.cell, text);
     this.logger.write({
       spanId: this.spanId,
       parentSpanId: undefined,
@@ -234,6 +286,43 @@ export class CommandContextImpl implements CommandContext {
   }
 }
 
+class CommandRefs implements RefsApi {
+  constructor(
+    private readonly store: SessionStore,
+    private readonly cwd: string,
+  ) {}
+
+  async read<T>(valueRef: ValueRef): Promise<T> {
+    return this.store.readRef(valueRef) as T;
+  }
+
+  async stat(valueRef: ValueRef) {
+    return this.store.statRef(valueRef);
+  }
+
+  async writeToFile(valueRef: ValueRef, path: string): Promise<void> {
+    this.store.writeRefToFile(valueRef, path, this.cwd);
+  }
+}
+
+class CommandSession implements SessionApi {
+  constructor(
+    private readonly store: SessionStore,
+    private readonly currentCellId: string,
+  ) {}
+
+  async last() {
+    return this.store.last({ excludeCellId: this.currentCellId });
+  }
+
+  async recent(options?: { procedure?: string; limit?: number }) {
+    return this.store.recent({
+      ...options,
+      excludeCellId: this.currentCellId,
+    });
+  }
+}
+
 function summarize(prompt: string): string {
   const compact = prompt.replace(/\s+/g, " ").trim();
   return compact.length > 60 ? `${compact.slice(0, 57)}...` : compact;
@@ -245,4 +334,56 @@ function formatAgentLabel(agent?: DownstreamAgentSelection): string {
   }
 
   return agent.model ? ` [${agent.provider}:${agent.model}]` : ` [${agent.provider}]`;
+}
+
+function isTypeDescriptor<T>(value: unknown): value is TypeDescriptor<T> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "schema" in value &&
+    "validate" in value &&
+    typeof (value as { validate: unknown }).validate === "function"
+  );
+}
+
+function resolveNamedRefs(
+  store: SessionStore,
+  refs: Record<string, CellRef | ValueRef> | undefined,
+): Record<string, unknown> | undefined {
+  if (!refs || Object.keys(refs).length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.entries(refs).map(([name, ref]) => [
+      name,
+      isValueRef(ref) ? store.readRef(ref) : store.readCell(ref),
+    ]),
+  );
+}
+
+function isValueRef(value: CellRef | ValueRef): value is ValueRef {
+  return "path" in value;
+}
+
+function collectStreamText(updates: acp.SessionUpdate[]): string | undefined {
+  let chunks = "";
+
+  for (const update of updates) {
+    if (update.sessionUpdate !== "agent_message_chunk" || update.content.type !== "text") {
+      continue;
+    }
+
+    chunks += update.content.text;
+  }
+
+  return chunks || undefined;
+}
+
+function summarizeAgentResult(data: unknown, raw: string): string | undefined {
+  if (typeof data === "string") {
+    return summarizeText(data);
+  }
+
+  return summarizeText(raw);
 }

@@ -6,6 +6,7 @@ import { afterEach, expect, test } from "bun:test";
 import { CommandContextImpl, type SessionUpdateEmitter } from "../../src/context.ts";
 import { RunLogger } from "../../src/logger.ts";
 import { ProcedureRegistry } from "../../src/registry.ts";
+import { SessionStore } from "../../src/session-store.ts";
 import { describeE2E } from "./helpers.ts";
 
 const repoRoot = process.cwd();
@@ -32,6 +33,10 @@ describeE2E("/linter fixture (real agent)", () => {
       await registry.loadFromDisk();
 
       const logger = new RunLogger();
+      const store = new SessionStore({
+        sessionId: crypto.randomUUID(),
+        cwd: fixtureDir,
+      });
       const ctx = new CommandContextImpl({
         cwd: fixtureDir,
         logger,
@@ -39,6 +44,12 @@ describeE2E("/linter fixture (real agent)", () => {
         procedureName: "linter",
         spanId: logger.newSpan(),
         emitter: createEmitter(output),
+        store,
+        cell: store.startCell({
+          procedure: "linter",
+          input: "",
+          kind: "top_level",
+        }),
       });
 
       const linter = registry.get("linter");

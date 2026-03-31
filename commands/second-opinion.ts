@@ -1,4 +1,4 @@
-import type { Procedure } from "../src/types.ts";
+import { jsonType, type KernelValue, type RunResult, type Procedure, type ValueRef } from "../src/types.ts";
 
 interface CritiqueResult {
   verdict: "sound" | "mixed" | "flawed";
@@ -7,44 +7,7 @@ interface CritiqueResult {
   revisedAnswer: string;
 }
 
-const CritiqueResultType = {
-  schema: {
-    type: "object",
-    properties: {
-      verdict: {
-        type: "string",
-        enum: ["sound", "mixed", "flawed"],
-      },
-      summary: { type: "string" },
-      issues: {
-        type: "array",
-        items: { type: "string" },
-      },
-      revisedAnswer: { type: "string" },
-    },
-    required: ["verdict", "summary", "issues", "revisedAnswer"],
-    additionalProperties: false,
-  },
-  validate(input: unknown): input is CritiqueResult {
-    return (
-      typeof input === "object" &&
-      input !== null &&
-      "verdict" in input &&
-      (
-        (input as { verdict: unknown }).verdict === "sound" ||
-        (input as { verdict: unknown }).verdict === "mixed" ||
-        (input as { verdict: unknown }).verdict === "flawed"
-      ) &&
-      "summary" in input &&
-      typeof (input as { summary: unknown }).summary === "string" &&
-      "issues" in input &&
-      Array.isArray((input as { issues: unknown }).issues) &&
-      (input as { issues: unknown[] }).issues.every((item) => typeof item === "string") &&
-      "revisedAnswer" in input &&
-      typeof (input as { revisedAnswer: unknown }).revisedAnswer === "string"
-    );
-  },
-};
+const CritiqueResultType = jsonType<CritiqueResult>();
 
 export default {
   name: "second-opinion",
@@ -53,13 +16,14 @@ export default {
   async execute(prompt, ctx) {
     const trimmed = prompt.trim();
     if (!trimmed) {
-      ctx.print("Provide a question or task for /second-opinion.\n");
-      return;
+      return {
+        display: "Provide a question or task for /second-opinion.\n",
+        summary: "second-opinion: missing prompt",
+      };
     }
 
     const firstPass = await ctx.callAgent(
       buildClaudePrompt(trimmed),
-      undefined,
       {
         agent: {
           provider: "claude",
@@ -68,9 +32,16 @@ export default {
         stream: false,
       },
     );
+    const firstPassDataRef = requireDataRef(firstPass, "Missing first-pass data ref");
+    const firstPassText = firstPass.data ?? "";
 
-    const critique = await ctx.callAgent<CritiqueResult>(
-      buildCritiquePrompt(trimmed, firstPass.value),
+    const critique = await ctx.callAgent(
+      [
+        "Critique the referenced answer `answer` and return a critique object.",
+        "Use the original user request below as the task being answered.",
+        "",
+        `Original user request:\n${trimmed}`,
+      ].join("\n"),
       CritiqueResultType,
       {
         agent: {
@@ -78,10 +49,24 @@ export default {
           model: "gpt-5.4",
         },
         stream: false,
+        refs: {
+          answer: firstPassDataRef,
+        },
       },
     );
+    const critiqueData: CritiqueResult = requireData(critique, "Missing critique data");
+    const critiqueDataRef = requireDataRef(critique, "Missing critique data ref");
 
-    ctx.print(renderSecondOpinion(firstPass.value, critique.value));
+    return {
+      data: {
+        subject: trimmed,
+        answer: firstPassDataRef,
+        critique: critiqueDataRef,
+        verdict: critiqueData.verdict,
+      },
+      display: renderSecondOpinion(firstPassText, critiqueData),
+      summary: `second-opinion: ${trimmed} (${critiqueData.verdict})`,
+    };
   },
 } satisfies Procedure;
 
@@ -92,20 +77,6 @@ function buildClaudePrompt(prompt: string): string {
     "Prefer a concise but complete answer.",
     "",
     `User request:\n${prompt}`,
-  ].join("\n");
-}
-
-function buildCritiquePrompt(prompt: string, answer: string): string {
-  return [
-    "You are providing a second opinion on another agent's answer.",
-    "Critique the answer rigorously.",
-    "Identify factual mistakes, weak assumptions, missing context, and places where the answer should be tightened.",
-    "If the answer is already strong, say so briefly and keep the issues list empty.",
-    "Always provide a revised answer that you would give instead.",
-    "",
-    `Original user request:\n${prompt}`,
-    "",
-    `Claude's answer:\n${answer}`,
   ].join("\n");
 }
 
@@ -132,4 +103,20 @@ function renderSecondOpinion(
     critique.revisedAnswer.trim(),
     "",
   ].join("\n");
+}
+
+function requireData<T extends KernelValue>(result: RunResult<T>, message: string): T {
+  if (result.data === undefined) {
+    throw new Error(message);
+  }
+
+  return result.data;
+}
+
+function requireDataRef<T extends KernelValue>(result: RunResult<T>, message: string): ValueRef {
+  if (!result.dataRef) {
+    throw new Error(message);
+  }
+
+  return result.dataRef;
 }

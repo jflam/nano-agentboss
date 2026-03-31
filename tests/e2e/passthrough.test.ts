@@ -8,9 +8,10 @@ describeE2E("callAgent passthrough (real agent)", () => {
     "returns a non-empty string response",
     async () => {
       const result = await callAgent("What is 2 + 2? Reply with just the number.");
-      expect(result.value.trim()).toBe("4");
+      expect(result.data?.trim()).toBe("4");
       expect(result.durationMs).toBeGreaterThan(0);
       expect(result.raw).toBeTruthy();
+      expect(result.dataRef).toBeDefined();
     },
     60_000,
   );
@@ -21,8 +22,8 @@ describeE2E("callAgent passthrough (real agent)", () => {
       const result = await callAgent(
         "List the first 3 prime numbers, one per line, just the numbers.",
       );
-      const lines = result.value
-        .trim()
+      const lines = result.data
+        ?.trim()
         .split("\n")
         .map((line) => line.trim());
       expect(lines).toEqual(["2", "3", "5"]);

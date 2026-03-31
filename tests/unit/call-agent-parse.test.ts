@@ -2,41 +2,28 @@ import { describe, expect, test } from "bun:test";
 
 import {
   MAX_PARSE_RETRIES,
+  buildPrompt,
   callAgent,
   parseAgentResponse,
   sanitizeJsonResponse,
 } from "../../src/call-agent.ts";
-import type { CallAgentTransport, TypeDescriptor } from "../../src/types.ts";
+import type { CallAgentTransport } from "../../src/types.ts";
+import { jsonType } from "../../src/types.ts";
 
 interface MathResult {
   result: number;
 }
 
-const MathResultType: TypeDescriptor<MathResult> = {
-  schema: {
-    type: "object",
-    properties: {
-      result: { type: "number" },
-    },
-    required: ["result"],
-  },
-  validate(input: unknown): input is MathResult {
-    return (
-      typeof input === "object" &&
-      input !== null &&
-      "result" in input &&
-      typeof (input as { result: unknown }).result === "number"
-    );
-  },
-};
+const MathResultType = jsonType<MathResult>();
 
 describe("callAgent response parsing", () => {
   test("returns raw string when no descriptor provided", async () => {
     const transport = createTransport(["plain text"]);
     const result = await callAgent("hello", undefined, {}, transport);
 
-    expect(result.value).toBe("plain text");
+    expect(result.data).toBe("plain text");
     expect(result.raw).toBe("plain text");
+    expect(result.dataRef).toBeDefined();
   });
 
   test("parses valid JSON matching schema", () => {
@@ -62,7 +49,7 @@ describe("callAgent response parsing", () => {
     const transport = createTransport(["no json", '{"result":4}']);
     const result = await callAgent("compute", MathResultType, {}, transport);
 
-    expect(result.value).toEqual({ result: 4 });
+    expect(result.data).toEqual({ result: 4 });
     expect(transport.invocations).toHaveLength(2);
     expect(transport.invocations[1]).toContain("Your previous response was invalid");
   });
@@ -73,8 +60,22 @@ describe("callAgent response parsing", () => {
     ]);
     const result = await callAgent("compute", MathResultType, {}, transport);
 
-    expect(result.value).toEqual({ result: 4 });
+    expect(result.data).toEqual({ result: 4 });
     expect(transport.invocations).toHaveLength(1);
+  });
+
+  test("includes named refs in the constructed prompt", () => {
+    const prompt = buildPrompt(
+      "Summarize `answer`.",
+      undefined,
+      0,
+      "",
+      "",
+      { answer: { text: "hello" } },
+    );
+
+    expect(prompt).toContain("<ref name=\"answer\">");
+    expect(prompt).toContain('"text": "hello"');
   });
 
   test("throws after retries are exhausted", async () => {
@@ -88,7 +89,8 @@ describe("callAgent response parsing", () => {
   });
 
   test("strips markdown code fences from response before parsing", () => {
-    expect(sanitizeJsonResponse("```json\n{\"result\":4}\n```")).toBe('{"result":4}');
+    expect(sanitizeJsonResponse("```json\n{\"result\":4}\n```"))
+      .toBe('{"result":4}');
   });
 });
 

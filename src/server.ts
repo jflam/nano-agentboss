@@ -4,9 +4,11 @@ import { Readable, Writable } from "node:stream";
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
 import { RunLogger } from "./logger.ts";
 import { ProcedureRegistry } from "./registry.ts";
+import { SessionStore, normalizeProcedureResult, summarizeText } from "./session-store.ts";
 
 interface SessionState {
   cwd: string;
+  store: SessionStore;
   abortController?: AbortController;
 }
 
@@ -24,7 +26,7 @@ class QueuedSessionUpdateEmitter implements SessionUpdateEmitter {
         this.connection.sessionUpdate({
           sessionId: this.sessionId,
           update,
-        }),
+        })
       )
       .catch((error: unknown) => {
         console.error("failed to emit session update", error);
@@ -61,6 +63,10 @@ class NanoAgentBoss implements acp.Agent {
     const sessionId = crypto.randomUUID();
     this.sessions.set(sessionId, {
       cwd: params.cwd,
+      store: new SessionStore({
+        sessionId,
+        cwd: params.cwd,
+      }),
     });
 
     await this.connection.sessionUpdate({
@@ -108,6 +114,11 @@ class NanoAgentBoss implements acp.Agent {
       return { stopReason: "end_turn" };
     }
 
+    const rootCell = session.store.startCell({
+      procedure: procedureName,
+      input: commandPrompt,
+      kind: "top_level",
+    });
     const ctx = new CommandContextImpl({
       cwd: session.cwd,
       logger,
@@ -115,6 +126,8 @@ class NanoAgentBoss implements acp.Agent {
       procedureName,
       spanId: rootSpanId,
       emitter,
+      store: session.store,
+      cell: rootCell,
       signal: session.abortController.signal,
     });
 
@@ -126,21 +139,33 @@ class NanoAgentBoss implements acp.Agent {
     });
 
     try {
-      const result = await procedure.execute(commandPrompt, ctx);
-
-      if (typeof result === "string" && result && !ctx.hasOutput) {
-        ctx.print(result);
-      }
+      const rawResult = await procedure.execute(commandPrompt, ctx);
+      const result = normalizeProcedureResult(rawResult);
+      session.store.finalizeCell(rootCell, result);
 
       logger.write({
         spanId: rootSpanId,
         procedure: procedureName,
         kind: "procedure_end",
         durationMs: Date.now() - startedAt,
-        raw: typeof result === "string" ? result : undefined,
+        result: result.data,
+        raw: result.display,
       });
+
+      if (result.display) {
+        emitter.emit({
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: result.display,
+          },
+        });
+      }
+
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const errorText = `Error: ${message}\n`;
+
       logger.write({
         spanId: rootSpanId,
         procedure: procedureName,
@@ -148,7 +173,11 @@ class NanoAgentBoss implements acp.Agent {
         durationMs: Date.now() - startedAt,
         error: message,
       });
-      ctx.print(`Error: ${message}\n`);
+
+      ctx.print(errorText);
+      session.store.finalizeCell(rootCell, {
+        summary: summarizeText(errorText),
+      });
     } finally {
       emitter.emit({
         sessionUpdate: "available_commands_update",

@@ -21,6 +21,10 @@ export function getRunLogDir(): string {
   return join(getNanoAgentBossHome(), "logs");
 }
 
+export function getSessionDir(sessionId: string): string {
+  return join(getNanoAgentBossHome(), "sessions", sessionId);
+}
+
 export function getAgentTranscriptDir(): string {
   return join(getNanoAgentBossHome(), "agent-logs");
 }

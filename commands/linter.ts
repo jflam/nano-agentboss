@@ -1,6 +1,13 @@
 import { isAbsolute, relative, resolve } from "node:path";
 
-import type { CommandContext, Procedure } from "../src/types.ts";
+import {
+  jsonType,
+  type CommandContext,
+  type KernelValue,
+  type Procedure,
+  type RunResult,
+  type ValueRef,
+} from "../src/types.ts";
 
 export interface LinterError {
   file: string;
@@ -24,113 +31,16 @@ interface LinterRunResult {
   recommendations: string[];
 }
 
-interface FixResult {
-  fixed: boolean;
+interface LintFixResult {
+  applied: boolean;
   description: string;
 }
 
-const LinterRunResultType = {
-  schema: {
-    type: "object",
-    properties: {
-      status: {
-        type: "string",
-        enum: ["configured", "missing_linter"],
-      },
-      command: {
-        type: ["string", "null"],
-      },
-      summary: {
-        type: "string",
-      },
-      errors: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            file: { type: "string" },
-            line: { type: "number" },
-            column: { type: "number" },
-            message: { type: "string" },
-            rule: { type: "string" },
-          },
-          required: ["file", "line", "column", "message", "rule"],
-          additionalProperties: false,
-        },
-      },
-      recommendations: {
-        type: "array",
-        items: { type: "string" },
-      },
-    },
-    required: ["status", "command", "summary", "errors", "recommendations"],
-    additionalProperties: false,
-  },
-  validate(input: unknown): input is LinterRunResult {
-    return (
-      typeof input === "object" &&
-      input !== null &&
-      "status" in input &&
-      ((input as { status: unknown }).status === "configured" ||
-        (input as { status: unknown }).status === "missing_linter") &&
-      "command" in input &&
-      ((input as { command: unknown }).command === null ||
-        typeof (input as { command: unknown }).command === "string") &&
-      "summary" in input &&
-      typeof (input as { summary: unknown }).summary === "string" &&
-      "errors" in input &&
-      Array.isArray((input as { errors: unknown }).errors) &&
-      (input as { errors: unknown[] }).errors.every(
-        (item) => isLinterError(item),
-      ) &&
-      "recommendations" in input &&
-      Array.isArray((input as { recommendations: unknown }).recommendations) &&
-      (input as { recommendations: unknown[] }).recommendations.every(
-        (item) => typeof item === "string",
-      )
-    );
-  },
-};
-
-const FixResultType = {
-  schema: {
-    type: "object",
-    properties: {
-      fixed: { type: "boolean" },
-      description: { type: "string" },
-    },
-    required: ["fixed", "description"],
-    additionalProperties: false,
-  },
-  validate(input: unknown): input is FixResult {
-    return (
-      typeof input === "object" &&
-      input !== null &&
-      "fixed" in input &&
-      typeof (input as { fixed: unknown }).fixed === "boolean" &&
-      "description" in input &&
-      typeof (input as { description: unknown }).description === "string"
-    );
-  },
-};
+const LinterRunResultType = jsonType<LinterRunResult>();
+const LintFixResultType = jsonType<LintFixResult>();
 
 const MAX_RETRIES = 3;
 const MAX_FIX_RETRIES = 2;
-
-function isLinterError(item: unknown): item is LinterError {
-  if (typeof item !== "object" || item === null) {
-    return false;
-  }
-
-  const candidate = item as Partial<LinterError>;
-  return (
-    typeof candidate.file === "string" &&
-    typeof candidate.line === "number" &&
-    typeof candidate.column === "number" &&
-    typeof candidate.message === "string" &&
-    typeof candidate.rule === "string"
-  );
-}
 
 function renderRecommendations(recommendations: string[]): string {
   if (recommendations.length === 0) {
@@ -225,13 +135,14 @@ async function runLinter(
   ctx: CommandContext,
   prompt: string,
   command?: string,
-): Promise<LinterRunResult> {
-  return (
-    await ctx.callAgent<LinterRunResult>(
-      buildDiscoveryPrompt(ctx.cwd, prompt, command),
-      LinterRunResultType,
-    )
-  ).value;
+): Promise<RunResult<LinterRunResult>> {
+  const result = await ctx.callAgent(
+    buildDiscoveryPrompt(ctx.cwd, prompt, command),
+    LinterRunResultType,
+  );
+
+  requireData(result, "Linter discovery returned no data");
+  return result;
 }
 
 export default {
@@ -243,21 +154,26 @@ export default {
     let totalFixed = 0;
     let totalFailed = 0;
 
-    let linter = await runLinter(ctx, prompt);
+    let linterRun = await runLinter(ctx, prompt);
+    let linter = requireData(linterRun, "Missing linter result");
     if (linter.status === "missing_linter" || !linter.command) {
       const recommendations = renderRecommendations(linter.recommendations);
-      ctx.print(
-        `${linter.summary}\n${recommendations ? `${recommendations}\n` : ""}`,
-      );
-      return;
+      return {
+        data: buildSummaryData(linterRun, linter, totalFixed, totalFailed),
+        display: `${linter.summary}\n${recommendations ? `${recommendations}\n` : ""}`,
+        summary: linter.summary,
+      };
     }
 
     let linterCommand = linter.command;
     let errors = linter.errors;
 
     if (errors.length === 0) {
-      ctx.print(`Linter command \`${linterCommand}\` ran cleanly. ${linter.summary}\n`);
-      return;
+      return {
+        data: buildSummaryData(linterRun, linter, totalFixed, totalFailed),
+        display: `Linter command \`${linterCommand}\` ran cleanly. ${linter.summary}\n`,
+        summary: `linter: clean (${linterCommand})`,
+      };
     }
 
     while (errors.length > 0 && retries < MAX_RETRIES) {
@@ -285,24 +201,27 @@ export default {
         );
 
         while (fixRetries < MAX_FIX_RETRIES) {
-          const result = await ctx.callAgent<FixResult>(
+          const result = await ctx.callAgent(
             buildFixPrompt(activeGroup),
-            FixResultType,
+            LintFixResultType,
           );
           fixRetries += 1;
-          if (result.value.fixed) {
+          const fixData = requireData(result, "Missing fix result");
+          if (fixData.applied) {
             agentReportedFixed = true;
             break;
           }
         }
 
-        linter = await runLinter(ctx, prompt, linterCommand);
+        linterRun = await runLinter(ctx, prompt, linterCommand);
+        linter = requireData(linterRun, "Missing rerun linter result");
         if (linter.status === "missing_linter" || !linter.command) {
           const recommendations = renderRecommendations(linter.recommendations);
-          ctx.print(
-            `${linter.summary}\n${recommendations ? `${recommendations}\n` : ""}`,
-          );
-          return;
+          return {
+            data: buildSummaryData(linterRun, linter, totalFixed, totalFailed),
+            display: `${linter.summary}\n${recommendations ? `${recommendations}\n` : ""}`,
+            summary: linter.summary,
+          };
         }
 
         linterCommand = linter.command;
@@ -336,8 +255,49 @@ export default {
       retries += 1;
     }
 
-    ctx.print(
-      `Done. Fixed ${totalFixed} errors, ${totalFailed} failed, ${errors.length} remaining with \`${linterCommand}\`.\n`,
-    );
+    return {
+      data: buildSummaryData(linterRun, linter, totalFixed, totalFailed),
+      display: `Done. Fixed ${totalFixed} errors, ${totalFailed} failed, ${errors.length} remaining with \`${linterCommand}\`.\n`,
+      summary: `linter: fixed ${totalFixed}, remaining ${errors.length}`,
+    };
   },
 } satisfies Procedure;
+
+function buildSummaryData(
+  linterRun: RunResult<LinterRunResult>,
+  linter: LinterRunResult,
+  fixedErrors: number,
+  failedErrors: number,
+): {
+  status: LinterRunResult["status"];
+  command: string | null;
+  linterRun: ValueRef;
+  fixedErrors: number;
+  failedErrors: number;
+  remainingErrors: number;
+} {
+  return {
+    status: linter.status,
+    command: linter.command,
+    linterRun: requireDataRef(linterRun, "Missing linter run ref"),
+    fixedErrors,
+    failedErrors,
+    remainingErrors: linter.errors.length,
+  };
+}
+
+function requireData<T extends KernelValue>(result: RunResult<T>, message: string): T {
+  if (result.data === undefined) {
+    throw new Error(message);
+  }
+
+  return result.data;
+}
+
+function requireDataRef<T extends KernelValue>(result: RunResult<T>, message: string): ValueRef {
+  if (!result.dataRef) {
+    throw new Error(message);
+  }
+
+  return result.dataRef;
+}
