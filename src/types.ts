@@ -161,6 +161,7 @@ export interface CommandCallAgentOptions {
 
 export interface CommandContext {
   readonly cwd: string;
+  readonly sessionId: string;
   readonly refs: RefsApi;
   readonly session: SessionApi;
   callAgent(
@@ -176,6 +177,7 @@ export interface CommandContext {
     name: string,
     prompt: string,
   ): Promise<RunResult<T>>;
+  continueDefaultSession(prompt: string): Promise<RunResult<string>>;
   print(text: string): void;
 }
 

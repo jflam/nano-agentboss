@@ -2,6 +2,7 @@ import type * as acp from "@agentclientprotocol/sdk";
 
 import { invokeAgent } from "./call-agent.ts";
 import { resolveDownstreamAgentConfig } from "./config.ts";
+import type { DefaultConversationSession } from "./default-session.ts";
 import type { RunLogger } from "./logger.ts";
 import {
   normalizeProcedureResult,
@@ -31,6 +32,7 @@ export interface SessionUpdateEmitter {
 
 interface CommandContextParams {
   cwd: string;
+  sessionId?: string;
   logger: RunLogger;
   registry: ProcedureRegistryLike;
   procedureName: string;
@@ -39,10 +41,12 @@ interface CommandContextParams {
   store: SessionStore;
   cell: ActiveCell;
   signal?: AbortSignal;
+  defaultConversation?: DefaultConversationSession;
 }
 
 export class CommandContextImpl implements CommandContext {
   readonly cwd: string;
+  readonly sessionId: string;
   readonly refs: RefsApi;
   readonly session: SessionApi;
 
@@ -54,9 +58,11 @@ export class CommandContextImpl implements CommandContext {
   private readonly signal?: AbortSignal;
   private readonly store: SessionStore;
   private readonly cell: ActiveCell;
+  private readonly defaultConversation?: DefaultConversationSession;
 
   constructor(params: CommandContextParams) {
     this.cwd = params.cwd;
+    this.sessionId = params.sessionId ?? params.store.sessionId;
     this.logger = params.logger;
     this.registry = params.registry;
     this.procedureName = params.procedureName;
@@ -65,6 +71,7 @@ export class CommandContextImpl implements CommandContext {
     this.signal = params.signal;
     this.store = params.store;
     this.cell = params.cell;
+    this.defaultConversation = params.defaultConversation;
     this.refs = new CommandRefs(this.store, this.cwd);
     this.session = new CommandSession(this.store, this.cell.cell.cellId);
   }
@@ -230,6 +237,7 @@ export class CommandContextImpl implements CommandContext {
     try {
       const childContext = new CommandContextImpl({
         cwd: this.cwd,
+        sessionId: this.sessionId,
         logger: this.logger,
         registry: this.registry,
         procedureName: name,
@@ -238,6 +246,7 @@ export class CommandContextImpl implements CommandContext {
         store: this.store,
         cell: childCell,
         signal: this.signal,
+        defaultConversation: this.defaultConversation,
       });
       const rawResult = await procedure.execute(prompt, childContext);
       const result = normalizeProcedureResult(rawResult);
@@ -263,6 +272,112 @@ export class CommandContextImpl implements CommandContext {
         durationMs: Date.now() - startedAt,
         error: error instanceof Error ? error.message : String(error),
       });
+      throw error;
+    }
+  }
+
+  async continueDefaultSession(prompt: string): Promise<RunResult<string>> {
+    if (!this.defaultConversation) {
+      return this.callAgent(prompt);
+    }
+
+    const childSpanId = this.logger.newSpan(this.spanId);
+    const startedAt = Date.now();
+    const toolCallId = crypto.randomUUID();
+    const childCell = this.store.startCell({
+      procedure: "callAgent",
+      input: prompt,
+      kind: "agent",
+      parentCellId: this.cell.cell.cellId,
+    });
+
+    this.logger.write({
+      spanId: childSpanId,
+      parentSpanId: this.spanId,
+      procedure: this.procedureName,
+      kind: "agent_start",
+      prompt,
+    });
+
+    this.emitter.emit({
+      sessionUpdate: "tool_call",
+      toolCallId,
+      title: `defaultSession: ${summarize(prompt)}`,
+      kind: "other",
+      status: "pending",
+      rawInput: {
+        prompt,
+        sessionId: this.sessionId,
+      },
+    });
+
+    try {
+      const result = await this.defaultConversation.prompt(prompt, {
+        signal: this.signal,
+        onUpdate: async (update) => {
+          if (
+            update.sessionUpdate === "agent_message_chunk" ||
+            update.sessionUpdate === "tool_call" ||
+            update.sessionUpdate === "tool_call_update"
+          ) {
+            this.emitter.emit(update);
+          }
+        },
+      });
+
+      const finalized = this.store.finalizeCell(childCell, {
+        data: result.raw,
+        display: result.raw,
+        summary: summarizeText(result.raw),
+      }, {
+        stream: collectStreamText(result.updates),
+        raw: result.raw,
+      });
+
+      this.logger.write({
+        spanId: childSpanId,
+        parentSpanId: this.spanId,
+        procedure: this.procedureName,
+        kind: "agent_end",
+        durationMs: Date.now() - startedAt,
+        result: result.raw,
+        raw: result.raw,
+        agentLogFile: result.logFile,
+      });
+
+      this.emitter.emit({
+        sessionUpdate: "tool_call_update",
+        toolCallId,
+        status: "completed",
+        rawOutput: {
+          cell: finalized.cell,
+          dataRef: finalized.dataRef,
+          durationMs: result.durationMs,
+          logFile: result.logFile,
+          sessionId: this.defaultConversation.currentSessionId,
+        },
+      });
+
+      return finalized;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      this.logger.write({
+        spanId: childSpanId,
+        parentSpanId: this.spanId,
+        procedure: this.procedureName,
+        kind: "agent_end",
+        durationMs: Date.now() - startedAt,
+        error: message,
+      });
+
+      this.emitter.emit({
+        sessionUpdate: "tool_call_update",
+        toolCallId,
+        status: "failed",
+        rawOutput: { error: message },
+      });
+
       throw error;
     }
   }

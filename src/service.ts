@@ -1,7 +1,9 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { getBuildLabel } from "./build-info.ts";
+import { resolveDownstreamAgentConfig } from "./config.ts";
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
+import { DefaultConversationSession } from "./default-session.ts";
 import {
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
@@ -17,11 +19,13 @@ import {
   normalizeProcedureResult,
   summarizeText,
 } from "./session-store.ts";
+import type { DownstreamAgentConfig } from "./types.ts";
 
 interface SessionState {
   cwd: string;
   store: SessionStore;
   events: SessionEventLog;
+  defaultConversation: DefaultConversationSession;
   abortController?: AbortController;
   commands: FrontendCommand[];
 }
@@ -71,7 +75,11 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
 export class NanoAgentBossService {
   private readonly sessions = new Map<acp.SessionId, SessionState>();
 
-  constructor(private readonly registry: ProcedureRegistry) {}
+  constructor(
+    private readonly registry: ProcedureRegistry,
+    private readonly resolveDefaultAgentConfig: (cwd: string) => DownstreamAgentConfig =
+      resolveDownstreamAgentConfig,
+  ) {}
 
   static async create(): Promise<NanoAgentBossService> {
     const registry = new ProcedureRegistry();
@@ -96,6 +104,9 @@ export class NanoAgentBossService {
         cwd: params.cwd,
       }),
       events: new SessionEventLog(),
+      defaultConversation: new DefaultConversationSession(
+        this.resolveDefaultAgentConfig(params.cwd),
+      ),
       commands,
     };
 
@@ -135,6 +146,17 @@ export class NanoAgentBossService {
 
   cancel(sessionId: string): void {
     this.sessions.get(sessionId)?.abortController?.abort();
+  }
+
+  destroySession(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+
+    session.abortController?.abort();
+    session.defaultConversation.closeLiveSession();
+    this.sessions.delete(sessionId);
   }
 
   async prompt(
@@ -225,6 +247,7 @@ export class NanoAgentBossService {
     });
     const ctx = new CommandContextImpl({
       cwd: session.cwd,
+      sessionId,
       logger,
       registry: this.registry,
       procedureName: procedure.name,
@@ -233,6 +256,7 @@ export class NanoAgentBossService {
       store: session.store,
       cell: rootCell,
       signal: session.abortController.signal,
+      defaultConversation: session.defaultConversation,
     });
 
     logger.write({

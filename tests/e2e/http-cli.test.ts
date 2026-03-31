@@ -27,7 +27,7 @@ describe("HTTP CLI integration", () => {
         await waitForMatch(cli.stdout, /> /);
         cli.write("what is 2+2\n");
 
-        await waitForMatch(cli.stderr, /callAgent: what is 2\+2/);
+        await waitForMatch(cli.stderr, /defaultSession: what is 2\+2/);
         await waitForMatch(() => stripAnsi(cli.stdout()), /4\n> /);
         await Bun.sleep(1_500);
 
