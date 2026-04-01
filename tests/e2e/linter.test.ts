@@ -96,11 +96,11 @@ function createFixtureRepo(): string {
     cwd: dir,
     stdio: "pipe",
   });
-  execFileSync("git", ["config", "user.name", "nano-agentboss test"], {
+  execFileSync("git", ["config", "user.name", "nanoboss test"], {
     cwd: dir,
     stdio: "pipe",
   });
-  execFileSync("git", ["config", "user.email", "nano-agentboss@example.com"], {
+  execFileSync("git", ["config", "user.email", "nanoboss@example.com"], {
     cwd: dir,
     stdio: "pipe",
   });

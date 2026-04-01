@@ -23,8 +23,8 @@ describe("HTTP/SSE frontend integration", () => {
       "--port",
       String(port),
     ], mockAgentEnv({
-      NANO_AGENTBOSS_HTTP_IDLE_TIMEOUT_SECONDS: "5",
-      NANO_AGENTBOSS_SSE_KEEPALIVE_MS: "100",
+      NANOBOSS_HTTP_IDLE_TIMEOUT_SECONDS: "5",
+      NANOBOSS_SSE_KEEPALIVE_MS: "100",
     }));
 
     try {

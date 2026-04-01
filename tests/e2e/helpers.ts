@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { createServer } from "node:net";
 
 export const runRealAgentE2E =
-  process.env.SKIP_E2E !== "1" && process.env.NANO_AGENTBOSS_RUN_E2E === "1";
+  process.env.SKIP_E2E !== "1" && process.env.NANOBOSS_RUN_E2E === "1";
 
 export const describeE2E = runRealAgentE2E ? describe : describe.skip;
 
@@ -46,8 +46,8 @@ export async function reservePort(): Promise<number> {
 export function mockAgentEnv(extra: Record<string, string> = {}): Record<string, string> {
   return {
     ...process.env,
-    NANO_AGENTBOSS_AGENT_CMD: "bun",
-    NANO_AGENTBOSS_AGENT_ARGS: JSON.stringify(["run", "tests/fixtures/mock-agent.ts"]),
+    NANOBOSS_AGENT_CMD: "bun",
+    NANOBOSS_AGENT_ARGS: JSON.stringify(["run", "tests/fixtures/mock-agent.ts"]),
     ...extra,
   } as Record<string, string>;
 }

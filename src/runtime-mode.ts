@@ -4,5 +4,5 @@ export function isCompiledRuntime(): boolean {
 }
 
 export function shouldLoadDiskCommands(): boolean {
-  return Bun.env.NANO_AGENTBOSS_LOAD_DISK_COMMANDS === "1";
+  return Bun.env.NANOBOSS_LOAD_DISK_COMMANDS === "1";
 }

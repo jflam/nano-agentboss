@@ -13,20 +13,20 @@ interface ParsedModelSelection {
   reasoningEffort?: string;
 }
 
-export function getNanoAgentBossHome(): string {
-  return join(homedir(), ".nano-agentboss");
+export function getNanobossHome(): string {
+  return join(homedir(), ".nanoboss");
 }
 
 export function getRunLogDir(): string {
-  return join(getNanoAgentBossHome(), "logs");
+  return join(getNanobossHome(), "logs");
 }
 
 export function getSessionDir(sessionId: string): string {
-  return join(getNanoAgentBossHome(), "sessions", sessionId);
+  return join(getNanobossHome(), "sessions", sessionId);
 }
 
 export function getAgentTranscriptDir(): string {
-  return join(getNanoAgentBossHome(), "agent-logs");
+  return join(getNanobossHome(), "agent-logs");
 }
 
 export function resolveDownstreamAgentConfig(
@@ -37,11 +37,11 @@ export function resolveDownstreamAgentConfig(
     return resolveAgentSelection(selection, cwd);
   }
 
-  const command = process.env.NANO_AGENTBOSS_AGENT_CMD?.trim() || DEFAULT_AGENT_COMMAND;
-  const args = parseArgs(process.env.NANO_AGENTBOSS_AGENT_ARGS) ?? DEFAULT_AGENT_ARGS;
+  const command = process.env.NANOBOSS_AGENT_CMD?.trim() || DEFAULT_AGENT_COMMAND;
+  const args = parseArgs(process.env.NANOBOSS_AGENT_ARGS) ?? DEFAULT_AGENT_ARGS;
   const provider = inferProviderFromCommand(command);
-  const parsedModel = provider && process.env.NANO_AGENTBOSS_AGENT_MODEL?.trim()
-    ? parseAgentModelSelection(provider, process.env.NANO_AGENTBOSS_AGENT_MODEL)
+  const parsedModel = provider && process.env.NANOBOSS_AGENT_MODEL?.trim()
+    ? parseAgentModelSelection(provider, process.env.NANOBOSS_AGENT_MODEL)
     : undefined;
 
   return {

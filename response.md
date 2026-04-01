@@ -15,7 +15,7 @@ connection.prompt({ sessionId, prompt: [{ type: "text", text: line }] })
 
 ### 2. Server Dispatch (`src/server.ts`)
 
-`NanoAgentBoss.prompt()` receives the ACP prompt:
+`Nanoboss.prompt()` receives the ACP prompt:
 1. `extractPromptText()` pulls the raw text
 2. `resolveCommand()` splits on `/` → `commandName = "second-opinion"`, `commandPrompt = "What is quantum computing?"`
 3. Looks up the `Procedure` from the registry (loaded from `commands/second-opinion.ts` at startup)
@@ -104,7 +104,7 @@ CLI                              Server                           Downstream Age
 
 ## What's Missing from the ACP Output
 
-Several gaps in what nano-agentboss emits:
+Several gaps in what nanoboss emits:
 
 | Gap | Detail |
 |-----|--------|
@@ -136,12 +136,12 @@ Issues
 Revised answer
 There are two ACP hops here, not one:
 
-1. CLI to nano-agentboss
+1. CLI to nanoboss
 - `cli.ts` spawns `bun run src/server.ts`, wraps stdio with ACP ndjson, then does `initialize()` and `newSession()` once.
 - Each REPL line is sent with `connection.prompt({ sessionId, prompt: [{ type: 'text', text: line }] })`.
 - The CLI prints `agent_message_chunk` text to stdout. It prints `tool_call` lines to stderr.
 
-2. nano-agentboss dispatches `/second-opinion`
+2. nanoboss dispatches `/second-opinion`
 - In `src/server.ts`, `prompt()` joins the incoming text blocks, parses `/second-opinion ...` into `{ commandName, commandPrompt }`, looks up the procedure in the registry, and calls `procedure.execute(commandPrompt, ctx)`.
 - Important context: the server session is almost stateless. `SessionState` only keeps `cwd` and an `AbortController`; it does not store conversation history.
 
@@ -175,6 +175,6 @@ There are two ACP hops here, not one:
 - Wrapper tool calls always use `kind: 'other'` and never set `content` or `locations`.
 - The top-level `PromptResponse` always returns only `stopReason: 'end_turn'`; it does not populate optional `usage` or `userMessageId`.
 - With `/second-opinion` specifically, the upstream client sees none of the downstream agents' own message chunks, tool calls, permission activity, or stderr because both calls run with `stream: false`.
-- Even when streaming is enabled elsewhere, nano-agentboss only forwards downstream `agent_message_chunk`, `tool_call`, and `tool_call_update`; it drops other ACP update types like `agent_thought_chunk`, `plan`, and `available_commands_update`.
+- Even when streaming is enabled elsewhere, nanoboss only forwards downstream `agent_message_chunk`, `tool_call`, and `tool_call_update`; it drops other ACP update types like `agent_thought_chunk`, `plan`, and `available_commands_update`.
 
-The shortest accurate summary is: the CLI sends one ACP prompt to nano-agentboss; nano-agentboss resolves `/second-opinion`; that command makes two fresh downstream ACP prompt turns in child processes; nano-agentboss wraps each child call in its own synthetic ACP `tool_call`; then it prints the final combined result back to the CLI.
+The shortest accurate summary is: the CLI sends one ACP prompt to nanoboss; nanoboss resolves `/second-opinion`; that command makes two fresh downstream ACP prompt turns in child processes; nanoboss wraps each child call in its own synthetic ACP `tool_call`; then it prints the final combined result back to the CLI.

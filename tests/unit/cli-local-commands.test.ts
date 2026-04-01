@@ -11,8 +11,8 @@ function spawnCli(): {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      NANO_AGENTBOSS_AGENT_CMD: "bun",
-      NANO_AGENTBOSS_AGENT_ARGS: JSON.stringify(["run", "tests/fixtures/mock-agent.ts"]),
+      NANOBOSS_AGENT_CMD: "bun",
+      NANOBOSS_AGENT_ARGS: JSON.stringify(["run", "tests/fixtures/mock-agent.ts"]),
     },
     stdio: ["pipe", "pipe", "pipe"],
   });

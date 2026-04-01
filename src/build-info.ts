@@ -17,7 +17,7 @@ export function getBuildCommit(): string {
     return cachedCommit;
   }
 
-  const envCommit = process.env.NANO_AGENTBOSS_BUILD_COMMIT?.trim();
+  const envCommit = process.env.NANOBOSS_BUILD_COMMIT?.trim();
   if (envCommit) {
     cachedCommit = envCommit;
     return cachedCommit;

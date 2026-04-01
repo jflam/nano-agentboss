@@ -2,7 +2,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 
 import { getBuildLabel } from "./build-info.ts";
-import { NanoAgentBossService } from "./service.ts";
+import { NanobossService } from "./service.ts";
 import type { DownstreamAgentSelection } from "./types.ts";
 
 class QueuedSessionUpdateEmitter {
@@ -31,17 +31,17 @@ class QueuedSessionUpdateEmitter {
   }
 }
 
-class NanoAgentBoss implements acp.Agent {
+class Nanoboss implements acp.Agent {
   constructor(
     private readonly connection: acp.AgentSideConnection,
-    private readonly service: NanoAgentBossService,
+    private readonly service: NanobossService,
   ) {}
 
   async initialize(_params: acp.InitializeRequest): Promise<acp.InitializeResponse> {
     return {
       protocolVersion: acp.PROTOCOL_VERSION,
       agentInfo: {
-        name: "nano-agentboss",
+        name: "nanoboss",
         version: "0.1.0",
       },
       agentCapabilities: {
@@ -114,13 +114,13 @@ function extractPromptText(prompt: acp.PromptRequest["prompt"]): string {
 
 export async function runAcpServerCommand(): Promise<void> {
   console.error(`${getBuildLabel()} acp-server ready`);
-  const service = await NanoAgentBossService.create();
+  const service = await NanobossService.create();
   const stream = acp.ndJsonStream(
     Writable.toWeb(process.stdout),
     Readable.toWeb(process.stdin),
   );
   const connection = new acp.AgentSideConnection(
-    (connection) => new NanoAgentBoss(connection, service),
+    (connection) => new Nanoboss(connection, service),
     stream,
   );
   await connection.closed;

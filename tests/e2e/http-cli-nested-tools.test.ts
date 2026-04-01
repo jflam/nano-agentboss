@@ -13,8 +13,8 @@ describe("HTTP CLI nested tool trace rendering", () => {
     const port = await reservePort();
     const baseUrl = `http://127.0.0.1:${port}`;
     const env = mockAgentEnv({
-      NANO_AGENTBOSS_HTTP_IDLE_TIMEOUT_SECONDS: "5",
-      NANO_AGENTBOSS_SSE_KEEPALIVE_MS: "100",
+      NANOBOSS_HTTP_IDLE_TIMEOUT_SECONDS: "5",
+      NANOBOSS_SSE_KEEPALIVE_MS: "100",
     });
     const server = spawnNanoboss(["server", "--port", String(port)], env);
 

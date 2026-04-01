@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { DefaultConversationSession } from "../../src/default-session.ts";
 import { ProcedureRegistry } from "../../src/registry.ts";
-import { NanoAgentBossService } from "../../src/service.ts";
+import { NanobossService } from "../../src/service.ts";
 import type { DownstreamAgentConfig } from "../../src/types.ts";
 
 function createMockConfig(
@@ -155,7 +155,7 @@ describe("/default native session continuity", () => {
       registry.loadBuiltins();
 
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-service-"));
-      const service = new NanoAgentBossService(
+      const service = new NanobossService(
         registry,
         (cwd) => createMockConfig(cwd, {
           supportLoadSession: true,

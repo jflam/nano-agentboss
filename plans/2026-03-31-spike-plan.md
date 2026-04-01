@@ -1,4 +1,4 @@
-# nano-agentboss Spike Plan
+# nanoboss Spike Plan
 
 ## Vision
 
@@ -13,7 +13,7 @@ dynamically using `/create`, making the system self-extending (like LISP's
 ```
                           ACP (stdio)                    ACP (stdio)
 ┌─────────────┐    JSON-RPC / newline     ┌───────────────────┐    JSON-RPC / newline     ┌─────────────────┐
-│  CLI Client  │◄────────────────────────►│  nano-agentboss   │◄────────────────────────►│  copilot / any  │
+│  CLI Client  │◄────────────────────────►│  nanoboss   │◄────────────────────────►│  copilot / any  │
 │  (thin REPL) │                          │  (Bun, ACP agent) │                          │  ACP agent      │
 └─────────────┘                          │                   │                          └─────────────────┘
                                           │  Procedure Registry│
@@ -31,7 +31,7 @@ dynamically using `/create`, making the system self-extending (like LISP's
                                           └───────────────────┘
 ```
 
-**nano-agentboss is both an ACP agent (upstream, talked to by CLI) and an ACP
+**nanoboss is both an ACP agent (upstream, talked to by CLI) and an ACP
 client (downstream, talks to copilot/claude/etc).**
 
 The two primitives available to procedures:
@@ -50,7 +50,7 @@ logged with hierarchical scoping.
 ### Log structure
 
 ```
-~/.nano-agentboss/logs/
+~/.nanoboss/logs/
   {runId}.jsonl                    # one JSONL file per top-level procedure run
 ```
 
@@ -144,7 +144,7 @@ class CommandContextImpl implements CommandContext {
 ## Project Structure
 
 ```
-nano-agentboss/
+nanoboss/
 ├── package.json
 ├── tsconfig.json
 ├── bun.toml                    # typia preload plugin config
@@ -288,7 +288,7 @@ Study how AgentBoss extracts log files in `crates/agentboss-executor/src/logging
 
 **File: `src/server.ts`**
 
-nano-agentboss itself is an ACP agent. The CLI talks to it over stdio.
+nanoboss itself is an ACP agent. The CLI talks to it over stdio.
 
 Using `@agentclientprotocol/sdk`'s `AgentSideConnection`:
 
@@ -296,12 +296,12 @@ Using `@agentclientprotocol/sdk`'s `AgentSideConnection`:
 import * as acp from "@agentclientprotocol/sdk";
 
 // Implement the Agent interface from the SDK
-class NanoAgentBoss implements acp.Agent {
+class Nanoboss implements acp.Agent {
   // Handle initialize — advertise our capabilities
   async initialize(params) {
     return {
       protocolVersion: acp.PROTOCOL_VERSION,
-      agent: { name: "nano-agentboss", version: "0.1.0" },
+      agent: { name: "nanoboss", version: "0.1.0" },
       agentCapabilities: { /* ... */ },
     };
   }
@@ -573,7 +573,7 @@ export default {
   async execute(prompt: string, ctx: CommandContext) {
     // 1. Ask the agent to generate a procedure
     const generated = await ctx.callAgent<{ name: string; source: string }>(
-      `You are generating a nano-agentboss procedure.
+      `You are generating a nanoboss procedure.
 
        A procedure is a TypeScript file that exports a default object with:
        - name: string
@@ -818,13 +818,13 @@ describe("callProcedure composition (real agent)", () => {
 
 **File: `cli.ts`**
 
-Dead simple — spawns nano-agentboss as a subprocess, sends prompts, renders updates.
+Dead simple — spawns nanoboss as a subprocess, sends prompts, renders updates.
 
 ```typescript
 import * as acp from "@agentclientprotocol/sdk";
 import readline from "readline";
 
-// 1. Spawn nano-agentboss as subprocess
+// 1. Spawn nanoboss as subprocess
 // 2. ACP initialize + session/new
 // 3. REPL loop:
 //    - Read user input

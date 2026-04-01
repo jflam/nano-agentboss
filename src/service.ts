@@ -74,7 +74,7 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
   }
 }
 
-export class NanoAgentBossService {
+export class NanobossService {
   private readonly sessions = new Map<acp.SessionId, SessionState>();
 
   constructor(
@@ -85,13 +85,13 @@ export class NanoAgentBossService {
     ) => DownstreamAgentConfig = resolveDownstreamAgentConfig,
   ) {}
 
-  static async create(): Promise<NanoAgentBossService> {
+  static async create(): Promise<NanobossService> {
     const registry = new ProcedureRegistry();
     registry.loadBuiltins();
     if (shouldLoadDiskCommands()) {
       await registry.loadFromDisk();
     }
-    return new NanoAgentBossService(registry);
+    return new NanobossService(registry);
   }
 
   getAvailableCommands(): acp.AvailableCommand[] {
@@ -361,7 +361,7 @@ export class NanoAgentBossService {
 }
 
 function getRunHeartbeatMs(): number {
-  const value = Number(process.env.NANO_AGENTBOSS_RUN_HEARTBEAT_MS ?? "5000");
+  const value = Number(process.env.NANOBOSS_RUN_HEARTBEAT_MS ?? "5000");
   return Number.isFinite(value) && value > 0 ? value : 5000;
 }
 

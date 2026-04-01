@@ -42,7 +42,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
       const examples = loadExamples();
       const generated = await ctx.callAgent(
         [
-          "You are generating a nano-agentboss procedure.",
+          "You are generating a nanoboss procedure.",
           "",
           "A procedure is a TypeScript module that exports a default object with:",
           '- `name: string`',

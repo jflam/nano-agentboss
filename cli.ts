@@ -14,9 +14,9 @@ import {
   type FrontendEventEnvelope,
 } from "./src/frontend-events.ts";
 
-const HTTP_RUN_START_TIMEOUT_MS = Number(process.env.NANO_AGENTBOSS_HTTP_RUN_START_TIMEOUT_MS ?? "10000");
-const HTTP_RUN_IDLE_TIMEOUT_MS = Number(process.env.NANO_AGENTBOSS_HTTP_RUN_IDLE_TIMEOUT_MS ?? "30000");
-const HTTP_RUN_HARD_TIMEOUT_MS = Number(process.env.NANO_AGENTBOSS_HTTP_RUN_HARD_TIMEOUT_MS ?? String(30 * 60 * 1000));
+const HTTP_RUN_START_TIMEOUT_MS = Number(process.env.NANOBOSS_HTTP_RUN_START_TIMEOUT_MS ?? "10000");
+const HTTP_RUN_IDLE_TIMEOUT_MS = Number(process.env.NANOBOSS_HTTP_RUN_IDLE_TIMEOUT_MS ?? "30000");
+const HTTP_RUN_HARD_TIMEOUT_MS = Number(process.env.NANOBOSS_HTTP_RUN_HARD_TIMEOUT_MS ?? String(30 * 60 * 1000));
 
 interface TrackedHttpRun {
   done: boolean;

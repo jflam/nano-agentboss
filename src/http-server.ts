@@ -1,6 +1,6 @@
 import { getBuildLabel } from "./build-info.ts";
 import type { FrontendEventEnvelope } from "./frontend-events.ts";
-import { NanoAgentBossService } from "./service.ts";
+import { NanobossService } from "./service.ts";
 import type { DownstreamAgentSelection } from "./types.ts";
 
 export interface HttpServerOptions {
@@ -10,9 +10,9 @@ export interface HttpServerOptions {
 }
 
 export function parseHttpServerOptions(argv: string[]): HttpServerOptions {
-  let port = Number(Bun.env.NANO_AGENTBOSS_PORT ?? "3000");
-  const idleTimeoutSeconds = Number(Bun.env.NANO_AGENTBOSS_HTTP_IDLE_TIMEOUT_SECONDS ?? "30");
-  const sseKeepAliveMs = Number(Bun.env.NANO_AGENTBOSS_SSE_KEEPALIVE_MS ?? "10000");
+  let port = Number(Bun.env.NANOBOSS_PORT ?? "3000");
+  const idleTimeoutSeconds = Number(Bun.env.NANOBOSS_HTTP_IDLE_TIMEOUT_SECONDS ?? "30");
+  const sseKeepAliveMs = Number(Bun.env.NANOBOSS_SSE_KEEPALIVE_MS ?? "10000");
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -56,7 +56,7 @@ export function parseHttpServerOptions(argv: string[]): HttpServerOptions {
 
 export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnType<typeof Bun.serve>> {
   const options = parseHttpServerOptions(argv);
-  const service = await NanoAgentBossService.create();
+  const service = await NanobossService.create();
   const encoder = new TextEncoder();
 
   const server = Bun.serve({

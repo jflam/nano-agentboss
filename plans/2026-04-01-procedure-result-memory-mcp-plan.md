@@ -394,7 +394,7 @@ Relevant files:
 
 For `nanoboss`, a similar context payload will probably be needed, e.g.:
 
-- `NANO_AGENTBOSS_SESSION_ID`
+- `NANOBOSS_SESSION_ID`
 - maybe current cwd / workspace root
 - maybe provider identity
 - maybe read-only vs write-enabled mode
@@ -465,7 +465,7 @@ interface ProcedureMemoryCard {
 
 ## Phase 3: track sync state for `/default`
 
-Extend `SessionState` in `NanoAgentBossService` with something like:
+Extend `SessionState` in `NanobossService` with something like:
 
 ```ts
 syncedProcedureMemoryCellIds: Set<string>

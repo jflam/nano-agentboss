@@ -105,7 +105,7 @@ bun --hot ./index.ts
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
 
-## nano-agentboss command authoring
+## nanoboss command authoring
 
 - For typed downstream agent outputs, import `typia` from `typia` and `jsonType` from `../src/types.ts`.
 - Prefer `const ResultType = jsonType<Result>(typia.json.schema<Result>(), typia.createValidate<Result>())`.

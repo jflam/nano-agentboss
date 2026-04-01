@@ -114,10 +114,10 @@ async function waitForCompletedRuns(
 function realAgentEnv(agent: AgentFixture): Record<string, string> {
   return {
     ...process.env,
-    NANO_AGENTBOSS_AGENT_CMD: agent.command,
-    NANO_AGENTBOSS_AGENT_ARGS: JSON.stringify(agent.args),
-    ...(agent.model ? { NANO_AGENTBOSS_AGENT_MODEL: agent.model } : {}),
-    NANO_AGENTBOSS_HTTP_IDLE_TIMEOUT_SECONDS: "5",
-    NANO_AGENTBOSS_SSE_KEEPALIVE_MS: "100",
+    NANOBOSS_AGENT_CMD: agent.command,
+    NANOBOSS_AGENT_ARGS: JSON.stringify(agent.args),
+    ...(agent.model ? { NANOBOSS_AGENT_MODEL: agent.model } : {}),
+    NANOBOSS_HTTP_IDLE_TIMEOUT_SECONDS: "5",
+    NANOBOSS_SSE_KEEPALIVE_MS: "100",
   } as Record<string, string>;
 }

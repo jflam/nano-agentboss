@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "nano-agentboss",
+      "name": "nanoboss",
       "dependencies": {
         "@agentclientprotocol/sdk": "^0.17.1",
         "@ryoppippi/unplugin-typia": "^2.6.5",

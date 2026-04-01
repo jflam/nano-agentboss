@@ -4,41 +4,41 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ProcedureRegistry } from "../../src/registry.ts";
-import { NanoAgentBossService } from "../../src/service.ts";
+import { NanobossService } from "../../src/service.ts";
 
 async function withMockAgentEnv(run: () => Promise<void>): Promise<void> {
-  const originalCommand = process.env.NANO_AGENTBOSS_AGENT_CMD;
-  const originalArgs = process.env.NANO_AGENTBOSS_AGENT_ARGS;
-  const originalModel = process.env.NANO_AGENTBOSS_AGENT_MODEL;
+  const originalCommand = process.env.NANOBOSS_AGENT_CMD;
+  const originalArgs = process.env.NANOBOSS_AGENT_ARGS;
+  const originalModel = process.env.NANOBOSS_AGENT_MODEL;
 
-  process.env.NANO_AGENTBOSS_AGENT_CMD = "bun";
-  process.env.NANO_AGENTBOSS_AGENT_ARGS = JSON.stringify(["run", "tests/fixtures/mock-agent.ts"]);
-  delete process.env.NANO_AGENTBOSS_AGENT_MODEL;
+  process.env.NANOBOSS_AGENT_CMD = "bun";
+  process.env.NANOBOSS_AGENT_ARGS = JSON.stringify(["run", "tests/fixtures/mock-agent.ts"]);
+  delete process.env.NANOBOSS_AGENT_MODEL;
 
   try {
     await run();
   } finally {
     if (originalCommand === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_CMD;
+      delete process.env.NANOBOSS_AGENT_CMD;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_CMD = originalCommand;
+      process.env.NANOBOSS_AGENT_CMD = originalCommand;
     }
 
     if (originalArgs === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_ARGS;
+      delete process.env.NANOBOSS_AGENT_ARGS;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_ARGS = originalArgs;
+      process.env.NANOBOSS_AGENT_ARGS = originalArgs;
     }
 
     if (originalModel === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_MODEL;
+      delete process.env.NANOBOSS_AGENT_MODEL;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_MODEL = originalModel;
+      process.env.NANOBOSS_AGENT_MODEL = originalModel;
     }
   }
 }
 
-describe("NanoAgentBossService", () => {
+describe("NanobossService", () => {
   test("does not duplicate final display when the same text was already streamed", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
     registry.register({
@@ -52,7 +52,7 @@ describe("NanoAgentBossService", () => {
       },
     });
 
-    const service = new NanoAgentBossService(registry);
+    const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
     await service.prompt(session.sessionId, "what is 2+2");
@@ -78,7 +78,7 @@ describe("NanoAgentBossService", () => {
         },
       });
 
-      const service = new NanoAgentBossService(registry);
+      const service = new NanobossService(registry);
       const session = service.createSession({ cwd: process.cwd() });
 
       await service.prompt(session.sessionId, "/probe");
@@ -101,7 +101,7 @@ describe("NanoAgentBossService", () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
     registry.loadBuiltins();
 
-    const service = new NanoAgentBossService(registry);
+    const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
     await service.prompt(session.sessionId, "/model copilot gpt-5.4/xhigh");
@@ -113,7 +113,7 @@ describe("NanoAgentBossService", () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
     registry.loadBuiltins();
 
-    const service = new NanoAgentBossService(registry);
+    const service = new NanobossService(registry);
     const session = service.createSession({
       cwd: process.cwd(),
       defaultAgentSelection: {

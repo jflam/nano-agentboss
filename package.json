@@ -1,21 +1,21 @@
 {
-  "name": "nano-agentboss",
+  "name": "nanoboss",
   "module": "nanoboss.ts",
   "type": "module",
   "private": true,
   "scripts": {
-    "nanoboss": "NANO_AGENTBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts",
-    "server": "NANO_AGENTBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts server",
-    "http": "NANO_AGENTBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts server",
-    "cli": "NANO_AGENTBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts cli",
-    "acp-server": "NANO_AGENTBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts acp-server",
+    "nanoboss": "NANOBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts",
+    "server": "NANOBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts server",
+    "http": "NANOBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts server",
+    "cli": "NANOBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts cli",
+    "acp-server": "NANOBOSS_LOAD_DISK_COMMANDS=1 bun run nanoboss.ts acp-server",
     "build": "bun run build.ts",
     "lint": "eslint . --cache",
     "lint:fix": "eslint . --cache --fix",
     "test": "bun test",
     "test:unit": "bun test tests/unit",
     "test:e2e": "bun test tests/e2e",
-    "test:e2e:real": "NANO_AGENTBOSS_RUN_E2E=1 bun test tests/e2e",
+    "test:e2e:real": "NANOBOSS_RUN_E2E=1 bun test tests/e2e",
     "prepare": "ts-patch install"
   },
   "dependencies": {

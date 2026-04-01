@@ -40,13 +40,13 @@ test("parseAgentModelSelection leaves non-copilot slash suffixes unchanged", () 
 });
 
 test("resolveDownstreamAgentConfig still supports raw env overrides", () => {
-  const originalCommand = process.env.NANO_AGENTBOSS_AGENT_CMD;
-  const originalArgs = process.env.NANO_AGENTBOSS_AGENT_ARGS;
-  const originalModel = process.env.NANO_AGENTBOSS_AGENT_MODEL;
+  const originalCommand = process.env.NANOBOSS_AGENT_CMD;
+  const originalArgs = process.env.NANOBOSS_AGENT_ARGS;
+  const originalModel = process.env.NANOBOSS_AGENT_MODEL;
 
-  process.env.NANO_AGENTBOSS_AGENT_CMD = "custom-agent";
-  process.env.NANO_AGENTBOSS_AGENT_ARGS = "[\"--foo\",\"bar\"]";
-  delete process.env.NANO_AGENTBOSS_AGENT_MODEL;
+  process.env.NANOBOSS_AGENT_CMD = "custom-agent";
+  process.env.NANOBOSS_AGENT_ARGS = "[\"--foo\",\"bar\"]";
+  delete process.env.NANOBOSS_AGENT_MODEL;
 
   try {
     const config = resolveDownstreamAgentConfig("/repo");
@@ -58,33 +58,33 @@ test("resolveDownstreamAgentConfig still supports raw env overrides", () => {
     expect(config.model).toBeUndefined();
   } finally {
     if (originalCommand === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_CMD;
+      delete process.env.NANOBOSS_AGENT_CMD;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_CMD = originalCommand;
+      process.env.NANOBOSS_AGENT_CMD = originalCommand;
     }
 
     if (originalArgs === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_ARGS;
+      delete process.env.NANOBOSS_AGENT_ARGS;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_ARGS = originalArgs;
+      process.env.NANOBOSS_AGENT_ARGS = originalArgs;
     }
 
     if (originalModel === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_MODEL;
+      delete process.env.NANOBOSS_AGENT_MODEL;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_MODEL = originalModel;
+      process.env.NANOBOSS_AGENT_MODEL = originalModel;
     }
   }
 });
 
 test("resolveDownstreamAgentConfig reads default model from env for known providers", () => {
-  const originalCommand = process.env.NANO_AGENTBOSS_AGENT_CMD;
-  const originalArgs = process.env.NANO_AGENTBOSS_AGENT_ARGS;
-  const originalModel = process.env.NANO_AGENTBOSS_AGENT_MODEL;
+  const originalCommand = process.env.NANOBOSS_AGENT_CMD;
+  const originalArgs = process.env.NANOBOSS_AGENT_ARGS;
+  const originalModel = process.env.NANOBOSS_AGENT_MODEL;
 
-  process.env.NANO_AGENTBOSS_AGENT_CMD = "copilot";
-  process.env.NANO_AGENTBOSS_AGENT_ARGS = "[\"--acp\",\"--allow-all-tools\"]";
-  process.env.NANO_AGENTBOSS_AGENT_MODEL = "gpt-5.4/xhigh";
+  process.env.NANOBOSS_AGENT_CMD = "copilot";
+  process.env.NANOBOSS_AGENT_ARGS = "[\"--acp\",\"--allow-all-tools\"]";
+  process.env.NANOBOSS_AGENT_MODEL = "gpt-5.4/xhigh";
 
   try {
     const config = resolveDownstreamAgentConfig("/repo");
@@ -94,21 +94,21 @@ test("resolveDownstreamAgentConfig reads default model from env for known provid
     expect(config.reasoningEffort).toBe("xhigh");
   } finally {
     if (originalCommand === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_CMD;
+      delete process.env.NANOBOSS_AGENT_CMD;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_CMD = originalCommand;
+      process.env.NANOBOSS_AGENT_CMD = originalCommand;
     }
 
     if (originalArgs === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_ARGS;
+      delete process.env.NANOBOSS_AGENT_ARGS;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_ARGS = originalArgs;
+      process.env.NANOBOSS_AGENT_ARGS = originalArgs;
     }
 
     if (originalModel === undefined) {
-      delete process.env.NANO_AGENTBOSS_AGENT_MODEL;
+      delete process.env.NANOBOSS_AGENT_MODEL;
     } else {
-      process.env.NANO_AGENTBOSS_AGENT_MODEL = originalModel;
+      process.env.NANOBOSS_AGENT_MODEL = originalModel;
     }
   }
 });

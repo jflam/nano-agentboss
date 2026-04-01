@@ -1,4 +1,4 @@
-# nano-agentboss
+# nanoboss
 
 To install dependencies:
 
@@ -49,7 +49,7 @@ additional `.ts` commands from `./commands` at runtime. If you want to opt back
 into disk-loaded commands, set:
 
 ```bash
-NANO_AGENTBOSS_LOAD_DISK_COMMANDS=1
+NANOBOSS_LOAD_DISK_COMMANDS=1
 ```
 
 ## Commands
@@ -92,14 +92,14 @@ bun run server
 ```
 
 By default the local REPL path spawns `copilot --acp --allow-all-tools`. In that default path,
-nano-agentboss does not set a model, so the downstream Copilot CLI uses its own
+nanoboss does not set a model, so the downstream Copilot CLI uses its own
 default model unless a procedure selects one explicitly. Override the downstream
-agent with `NANO_AGENTBOSS_AGENT_CMD` and `NANO_AGENTBOSS_AGENT_ARGS` if needed.
+agent with `NANOBOSS_AGENT_CMD` and `NANOBOSS_AGENT_ARGS` if needed.
 
 To set a default model for the startup banner and downstream agent config, use:
 
 ```bash
-NANO_AGENTBOSS_AGENT_MODEL=gpt-5.4/xhigh
+NANOBOSS_AGENT_MODEL=gpt-5.4/xhigh
 ```
 
 With that set, the CLI banner looks like:
@@ -122,7 +122,7 @@ Run the full test suite:
 bun run test
 ```
 
-This runs `bun test`. Real-agent end-to-end tests still skip unless `NANO_AGENTBOSS_RUN_E2E=1` is set.
+This runs `bun test`. Real-agent end-to-end tests still skip unless `NANOBOSS_RUN_E2E=1` is set.
 
 Run unit tests only:
 
@@ -139,7 +139,7 @@ bun run test:e2e
 ```
 
 This runs `bun test tests/e2e`. Real-agent tests are present in that directory, but they remain skipped
-unless `NANO_AGENTBOSS_RUN_E2E=1` is enabled.
+unless `NANOBOSS_RUN_E2E=1` is enabled.
 
 Run the full real-agent end-to-end suite:
 
@@ -147,12 +147,12 @@ Run the full real-agent end-to-end suite:
 bun run test:e2e:real
 ```
 
-This runs `NANO_AGENTBOSS_RUN_E2E=1 bun test tests/e2e` and exercises the real downstream agents.
+This runs `NANOBOSS_RUN_E2E=1 bun test tests/e2e` and exercises the real downstream agents.
 
 Run the `/default` multi-turn history real-agent coverage only:
 
 ```bash
-NANO_AGENTBOSS_RUN_E2E=1 bun test tests/e2e/default-history-agents.test.ts
+NANOBOSS_RUN_E2E=1 bun test tests/e2e/default-history-agents.test.ts
 ```
 
 That file contains 4 independent tests:
@@ -165,7 +165,7 @@ That file contains 4 independent tests:
 Run a single real-agent `/default` history test by name:
 
 ```bash
-NANO_AGENTBOSS_RUN_E2E=1 bun test tests/e2e/default-history-agents.test.ts --test-name-pattern claude
+NANOBOSS_RUN_E2E=1 bun test tests/e2e/default-history-agents.test.ts --test-name-pattern claude
 ```
 
 Replace `claude` with `gemini`, `codex`, or `copilot` as needed.
