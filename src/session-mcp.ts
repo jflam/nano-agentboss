@@ -1,6 +1,5 @@
 import { getBuildLabel } from "./build-info.ts";
 import { inferDataShape } from "./data-shape.ts";
-import type { SessionStore } from "./session-store.ts";
 import { SessionStore } from "./session-store.ts";
 import type { CellRecord, CellRef, ValueRef } from "./types.ts";
 

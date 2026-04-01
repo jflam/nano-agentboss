@@ -1,5 +1,4 @@
-import "./preload.ts";
-
+import UnpluginTypia from "@ryoppippi/unplugin-typia/bun";
 import { execFileSync } from "node:child_process";
 import { accessSync, chmodSync, constants, copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -14,6 +13,9 @@ const result = await Bun.build({
   define: {
     "globalThis.__NANOBOSS_BUILD_COMMIT__": JSON.stringify(buildCommit),
   },
+  plugins: [
+    UnpluginTypia(),
+  ],
   compile: {
     outfile,
     autoloadBunfig: true,

@@ -16,7 +16,7 @@ interface SessionMcpAttachmentParams {
 }
 
 interface LoopbackServerState {
-  server: Bun.Server;
+  server: ReturnType<typeof Bun.serve>;
   url: string;
 }
 

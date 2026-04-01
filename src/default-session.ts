@@ -442,7 +442,7 @@ function sameStringRecord(
     leftEntries.length === rightEntries.length &&
     leftEntries.every(([key, value], index) => {
       const rightEntry = rightEntries[index];
-      return key === rightEntry[0] && value === rightEntry[1];
+      return rightEntry !== undefined && key === rightEntry[0] && value === rightEntry[1];
     })
   );
 }

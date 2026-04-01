@@ -57,7 +57,7 @@ class ModelAwareMockAgent implements acp.Agent {
 
   async setSessionConfigOption(_params: acp.SetSessionConfigOptionRequest): Promise<acp.SetSessionConfigOptionResponse> {
     return {
-      options: [],
+      configOptions: [],
     };
   }
 

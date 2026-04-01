@@ -35,7 +35,6 @@ function buildStdioSessionMcpServer(
   const self = resolveSelfCommand("session-mcp-server");
 
   return {
-    type: "stdio",
     name: "nanoboss-session",
     command: self.command,
     args: self.args,

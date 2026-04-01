@@ -16,11 +16,13 @@ describe("session MCP attachment", () => {
     });
 
     expect(servers).toHaveLength(1);
-    expect(servers[0]).toMatchObject({
+    const server = servers[0];
+    expect(server).toBeDefined();
+    expect(server).toMatchObject({
       type: "http",
       name: "nanoboss-session",
     });
-    expect(servers[0]?.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+    expect(server && "url" in server ? server.url : undefined).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
   });
 
   test("uses loopback HTTP for gemini ACP sessions", () => {
@@ -36,10 +38,12 @@ describe("session MCP attachment", () => {
     });
 
     expect(servers).toHaveLength(1);
-    expect(servers[0]).toMatchObject({
+    const server = servers[0];
+    expect(server).toBeDefined();
+    expect(server).toMatchObject({
       type: "http",
       name: "nanoboss-session",
     });
-    expect(servers[0]?.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+    expect(server && "url" in server ? server.url : undefined).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
   });
 });
