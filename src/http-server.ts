@@ -1,6 +1,7 @@
 import { getBuildLabel } from "./build-info.ts";
 import type { FrontendEventEnvelope } from "./frontend-events.ts";
 import { NanoAgentBossService } from "./service.ts";
+import type { DownstreamAgentSelection } from "./types.ts";
 
 export interface HttpServerOptions {
   port: number;
@@ -70,9 +71,10 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
       }
 
       if (request.method === "POST" && path === "/v1/sessions") {
-        const body = await readJson<{ cwd?: string }>(request);
+        const body = await readJson<{ cwd?: string; defaultAgentSelection?: DownstreamAgentSelection }>(request);
         const session = service.createSession({
           cwd: body.cwd ?? process.cwd(),
+          defaultAgentSelection: body.defaultAgentSelection,
         });
         return json(session, 201);
       }

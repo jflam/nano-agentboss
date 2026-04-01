@@ -164,6 +164,8 @@ export interface CommandContext {
   readonly sessionId: string;
   readonly refs: RefsApi;
   readonly session: SessionApi;
+  getDefaultAgentConfig(): DownstreamAgentConfig;
+  setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig;
   callAgent(
     prompt: string,
     options?: CommandCallAgentOptions,

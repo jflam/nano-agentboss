@@ -54,6 +54,25 @@ export function resolveDownstreamAgentConfig(
   };
 }
 
+export function toDownstreamAgentSelection(
+  config: DownstreamAgentConfig,
+): DownstreamAgentSelection | undefined {
+  if (!config.provider) {
+    return undefined;
+  }
+
+  const model = config.model
+    ? config.provider === "copilot" && config.reasoningEffort
+      ? `${config.model}/${config.reasoningEffort}`
+      : config.model
+    : undefined;
+
+  return {
+    provider: config.provider,
+    model,
+  };
+}
+
 export function parseAgentModelSelection(
   provider: DownstreamAgentProvider,
   selector: string,

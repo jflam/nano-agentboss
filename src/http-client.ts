@@ -1,4 +1,5 @@
 import type { FrontendEventEnvelope } from "./frontend-events.ts";
+import type { DownstreamAgentSelection } from "./types.ts";
 
 interface SessionResponse {
   sessionId: string;
@@ -10,6 +11,7 @@ interface SessionResponse {
   }>;
   buildLabel: string;
   agentLabel: string;
+  defaultAgentSelection?: DownstreamAgentSelection;
 }
 
 interface SseMessage {
@@ -25,13 +27,14 @@ export interface SessionStreamHandle {
 export async function createHttpSession(
   baseUrl: string,
   cwd: string,
+  defaultAgentSelection?: DownstreamAgentSelection,
 ): Promise<SessionResponse> {
   const response = await fetch(new URL("/v1/sessions", baseUrl), {
     method: "POST",
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify({ cwd }),
+    body: JSON.stringify({ cwd, defaultAgentSelection }),
   });
 
   if (!response.ok) {

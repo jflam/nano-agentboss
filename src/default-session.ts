@@ -40,7 +40,7 @@ export class DefaultConversationSession {
   private persistedSessionId?: acp.SessionId;
   private liveSession?: PersistentAcpSession;
 
-  constructor(private readonly config: DownstreamAgentConfig) {}
+  constructor(private config: DownstreamAgentConfig) {}
 
   get currentSessionId(): string | undefined {
     return this.persistedSessionId;
@@ -89,6 +89,17 @@ export class DefaultConversationSession {
       }
       throw error;
     }
+  }
+
+  updateConfig(config: DownstreamAgentConfig): void {
+    if (sameAgentConfig(this.config, config)) {
+      this.config = config;
+      return;
+    }
+
+    this.closeLiveSession();
+    this.persistedSessionId = undefined;
+    this.config = config;
   }
 
   closeLiveSession(): void {
@@ -367,6 +378,38 @@ async function openConnection(config: DownstreamAgentConfig): Promise<OpenConnec
 function closeOpenConnection(state: OpenConnectionState): void {
   state.setSessionUpdateHandler(undefined);
   state.child.kill();
+}
+
+function sameAgentConfig(left: DownstreamAgentConfig, right: DownstreamAgentConfig): boolean {
+  return (
+    left.provider === right.provider &&
+    left.command === right.command &&
+    left.cwd === right.cwd &&
+    left.model === right.model &&
+    left.reasoningEffort === right.reasoningEffort &&
+    sameStringArray(left.args, right.args) &&
+    sameStringRecord(left.env, right.env)
+  );
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameStringRecord(
+  left: Record<string, string> | undefined,
+  right: Record<string, string> | undefined,
+): boolean {
+  const leftEntries = Object.entries(left ?? {}).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+  const rightEntries = Object.entries(right ?? {}).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+
+  return (
+    leftEntries.length === rightEntries.length &&
+    leftEntries.every(([key, value], index) => {
+      const rightEntry = rightEntries[index];
+      return key === rightEntry[0] && value === rightEntry[1];
+    })
+  );
 }
 
 function createTranscriptPath(): string {

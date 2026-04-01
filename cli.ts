@@ -155,13 +155,35 @@ import {
   startSessionEventStream,
 } from "./src/http-client.ts";
 import { parseCliOptions } from "./src/cli-options.ts";
-import { getCliStartupBanner } from "./src/runtime-banner.ts";
+import {
+  buildModelCommand,
+  isInteractiveModelPickerEnabled,
+  promptForModelCommand,
+} from "./src/cli-model-picker.ts";
+import {
+  resolveDownstreamAgentConfig,
+  toDownstreamAgentSelection,
+} from "./src/config.ts";
+import {
+  isKnownAgentProvider,
+  isKnownModelSelection,
+} from "./src/model-catalog.ts";
+import {
+  formatAgentBanner,
+  getCliStartupBanner,
+  getDefaultAgentBanner,
+} from "./src/runtime-banner.ts";
 import { resolveSelfCommand } from "./src/self-command.ts";
+import type { DownstreamAgentSelection } from "./src/types.ts";
 
 class OutputClient {
   availableCommands: string[] = [];
   private readonly toolTitles = new Map<string, string>();
   private outputEndsWithNewline = true;
+  private currentAgentBanner = getDefaultAgentBanner(process.cwd());
+  private currentAgentSelection = toDownstreamAgentSelection(
+    resolveDownstreamAgentConfig(process.cwd()),
+  );
 
   constructor(private readonly options: { showToolCalls: boolean }) {}
 
@@ -205,7 +227,11 @@ class OutputClient {
         }
         break;
       case "available_commands_update":
-        this.availableCommands = update.availableCommands.map((command) => `/${command.name}`);
+        this.setCommands(update.availableCommands.map((command) => ({
+          name: command.name,
+          description: command.description,
+          inputHint: command.input?.hint,
+        })));
         break;
       default:
         break;
@@ -214,7 +240,7 @@ class OutputClient {
 
   handleFrontendEvent(event: FrontendEventEnvelope): void {
     if (isCommandsUpdatedEvent(event)) {
-      this.availableCommands = event.data.commands.map((command) => `/${command.name}`);
+      this.setCommands(event.data.commands);
       return;
     }
 
@@ -261,6 +287,27 @@ class OutputClient {
 
   setCommands(commands: FrontendCommand[]): void {
     this.availableCommands = commands.map((command) => `/${command.name}`);
+  }
+
+  setCurrentAgentBanner(text: string): void {
+    this.currentAgentBanner = text;
+  }
+
+  getCurrentAgentBanner(): string {
+    return this.currentAgentBanner;
+  }
+
+  setCurrentAgentSelection(selection: DownstreamAgentSelection | undefined): void {
+    this.currentAgentSelection = selection;
+    if (selection) {
+      this.currentAgentBanner = formatAgentBanner(
+        resolveDownstreamAgentConfig(process.cwd(), selection),
+      );
+    }
+  }
+
+  getCurrentAgentSelection(): DownstreamAgentSelection | undefined {
+    return this.currentAgentSelection;
   }
 
   completer = (line: string): [string[], string] => {
@@ -339,11 +386,15 @@ async function runAcpCli(showToolCalls: boolean): Promise<void> {
     clientCapabilities: {},
   });
 
-  const session = await connection.newSession({
-    cwd: process.cwd(),
-    mcpServers: [],
-  });
+  const session = await createAcpSession(
+    connection,
+    process.cwd(),
+    client.getCurrentAgentSelection(),
+  );
 
+  client.setCurrentAgentSelection(
+    client.getCurrentAgentSelection() ?? toDownstreamAgentSelection(resolveDownstreamAgentConfig(process.cwd())),
+  );
   writeStartupBanner(getCliStartupBanner(process.cwd()));
 
   const rl = readline.createInterface({
@@ -364,12 +415,17 @@ async function runAcpCli(showToolCalls: boolean): Promise<void> {
         break;
       }
 
+      const prompt = await maybeResolveInteractiveCommand(line, rl, client);
+      if (!prompt) {
+        continue;
+      }
+
       await connection.prompt({
         sessionId: session.sessionId,
         prompt: [
           {
             type: "text",
-            text: line,
+            text: prompt,
           },
         ],
       });
@@ -384,8 +440,14 @@ async function runAcpCli(showToolCalls: boolean): Promise<void> {
 async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<void> {
   const client = new OutputClient({ showToolCalls });
   const tracker = new HttpRunTracker();
-  const session = await createHttpSession(serverUrl, process.cwd());
+  const session = await createHttpSession(
+    serverUrl,
+    process.cwd(),
+    client.getCurrentAgentSelection(),
+  );
   client.setCommands(session.commands);
+  client.setCurrentAgentBanner(session.agentLabel);
+  client.setCurrentAgentSelection(session.defaultAgentSelection);
   writeStartupBanner(`${session.buildLabel} ${session.agentLabel}`);
 
   const stream = startSessionEventStream({
@@ -419,7 +481,12 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
         break;
       }
 
-      await sendSessionPrompt(serverUrl, session.sessionId, line);
+      const prompt = await maybeResolveInteractiveCommand(line, rl, client);
+      if (!prompt) {
+        continue;
+      }
+
+      await sendSessionPrompt(serverUrl, session.sessionId, prompt);
       const runId = await tracker.waitForNextRunStart();
       await tracker.waitForRunCompletion(runId);
       client.writeLineBreak();
@@ -428,6 +495,67 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
     stream.close();
     rl.close();
   }
+}
+
+async function createAcpSession(
+  connection: acp.ClientSideConnection,
+  cwd: string,
+  defaultAgentSelection?: DownstreamAgentSelection,
+): Promise<{ sessionId: string }> {
+  return connection.newSession({
+    cwd,
+    mcpServers: [],
+    _meta: defaultAgentSelection
+      ? {
+          defaultAgentSelection,
+        }
+      : undefined,
+  });
+}
+
+async function maybeResolveInteractiveCommand(
+  line: string,
+  rl: { question(query: string): Promise<string> },
+  client: OutputClient,
+): Promise<string | undefined> {
+  const trimmed = line.trim();
+  if (trimmed === "/model" && isInteractiveModelPickerEnabled()) {
+    const selection = await promptForModelCommand(rl, client.getCurrentAgentBanner());
+    if (!selection) {
+      return undefined;
+    }
+
+    client.setCurrentAgentSelection(selection);
+    return buildModelCommand(selection.provider, selection.model);
+  }
+
+  const selection = parseModelSelectionCommand(trimmed);
+  if (selection) {
+    client.setCurrentAgentSelection(selection);
+  }
+
+  return line;
+}
+
+function parseModelSelectionCommand(line: string): DownstreamAgentSelection | undefined {
+  if (!line.startsWith("/model ")) {
+    return undefined;
+  }
+
+  const [, rawProvider, ...rest] = line.split(/\s+/);
+  if (!rawProvider || !isKnownAgentProvider(rawProvider)) {
+    return undefined;
+  }
+
+  const model = rest.join(" ").trim();
+  if (!model || !isKnownModelSelection(rawProvider, model)) {
+    return undefined;
+  }
+
+  return {
+    provider: rawProvider,
+    model,
+  };
 }
 
 function writeStartupBanner(text: string): void {

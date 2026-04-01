@@ -1,7 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { getBuildLabel } from "./build-info.ts";
-import { resolveDownstreamAgentConfig } from "./config.ts";
+import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
 import { DefaultConversationSession } from "./default-session.ts";
 import {
@@ -12,19 +12,20 @@ import {
 } from "./frontend-events.ts";
 import { RunLogger } from "./logger.ts";
 import { ProcedureRegistry } from "./registry.ts";
-import { getDefaultAgentBanner } from "./runtime-banner.ts";
+import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import {
   SessionStore,
   normalizeProcedureResult,
   summarizeText,
 } from "./session-store.ts";
-import type { DownstreamAgentConfig } from "./types.ts";
+import type { DownstreamAgentConfig, DownstreamAgentSelection } from "./types.ts";
 
 interface SessionState {
   cwd: string;
   store: SessionStore;
   events: SessionEventLog;
+  defaultAgentConfig: DownstreamAgentConfig;
   defaultConversation: DefaultConversationSession;
   abortController?: AbortController;
   commands: FrontendCommand[];
@@ -36,6 +37,7 @@ export interface SessionDescriptor {
   commands: FrontendCommand[];
   buildLabel: string;
   agentLabel: string;
+  defaultAgentSelection?: DownstreamAgentSelection;
 }
 
 class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
@@ -77,8 +79,10 @@ export class NanoAgentBossService {
 
   constructor(
     private readonly registry: ProcedureRegistry,
-    private readonly resolveDefaultAgentConfig: (cwd: string) => DownstreamAgentConfig =
-      resolveDownstreamAgentConfig,
+    private readonly resolveDefaultAgentConfig: (
+      cwd: string,
+      selection?: DownstreamAgentSelection,
+    ) => DownstreamAgentConfig = resolveDownstreamAgentConfig,
   ) {}
 
   static async create(): Promise<NanoAgentBossService> {
@@ -94,9 +98,10 @@ export class NanoAgentBossService {
     return this.registry.toAvailableCommands();
   }
 
-  createSession(params: { cwd: string }): SessionDescriptor {
+  createSession(params: { cwd: string; defaultAgentSelection?: DownstreamAgentSelection }): SessionDescriptor {
     const sessionId = crypto.randomUUID();
     const commands = toFrontendCommands(this.registry.toAvailableCommands());
+    const defaultAgentConfig = this.resolveDefaultAgentConfig(params.cwd, params.defaultAgentSelection);
     const state: SessionState = {
       cwd: params.cwd,
       store: new SessionStore({
@@ -104,9 +109,8 @@ export class NanoAgentBossService {
         cwd: params.cwd,
       }),
       events: new SessionEventLog(),
-      defaultConversation: new DefaultConversationSession(
-        this.resolveDefaultAgentConfig(params.cwd),
-      ),
+      defaultAgentConfig,
+      defaultConversation: new DefaultConversationSession(defaultAgentConfig),
       commands,
     };
 
@@ -121,7 +125,8 @@ export class NanoAgentBossService {
       cwd: params.cwd,
       commands,
       buildLabel: getBuildLabel(),
-      agentLabel: getDefaultAgentBanner(params.cwd),
+      agentLabel: formatAgentBanner(defaultAgentConfig),
+      defaultAgentSelection: toDownstreamAgentSelection(defaultAgentConfig),
     };
   }
 
@@ -136,7 +141,8 @@ export class NanoAgentBossService {
       cwd: state.cwd,
       commands: state.commands,
       buildLabel: getBuildLabel(),
-      agentLabel: getDefaultAgentBanner(state.cwd),
+      agentLabel: formatAgentBanner(state.defaultAgentConfig),
+      defaultAgentSelection: toDownstreamAgentSelection(state.defaultAgentConfig),
     };
   }
 
@@ -257,6 +263,13 @@ export class NanoAgentBossService {
       cell: rootCell,
       signal: session.abortController.signal,
       defaultConversation: session.defaultConversation,
+      getDefaultAgentConfig: () => session.defaultAgentConfig,
+      setDefaultAgentSelection: (selection) => {
+        const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
+        session.defaultAgentConfig = nextConfig;
+        session.defaultConversation.updateConfig(nextConfig);
+        return nextConfig;
+      },
     });
 
     logger.write({

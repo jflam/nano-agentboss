@@ -112,6 +112,43 @@ describe("/default native session continuity", () => {
   );
 
   test(
+    "changing the default agent config resets native session continuity",
+    async () => {
+      const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-reset-"));
+      const conversation = new DefaultConversationSession(
+        createMockConfig(process.cwd(), {
+          supportLoadSession: true,
+          sessionStoreDir,
+        }),
+      );
+
+      try {
+        await conversation.prompt("what is 2+2");
+        const firstSessionId = conversation.currentSessionId;
+        expect(firstSessionId).toBeTruthy();
+
+        conversation.updateConfig({
+          ...createMockConfig(process.cwd(), {
+            supportLoadSession: true,
+            sessionStoreDir,
+          }),
+          provider: "claude",
+        });
+
+        expect(conversation.currentSessionId).toBeUndefined();
+
+        const second = await conversation.prompt("add 3 to result");
+        expect(second.raw).toBe("no prior result");
+        expect(conversation.currentSessionId).toBeTruthy();
+        expect(conversation.currentSessionId).not.toBe(firstSessionId);
+      } finally {
+        conversation.closeLiveSession();
+      }
+    },
+    30_000,
+  );
+
+  test(
     "the built-in /default command is conversational across turns",
     async () => {
       const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-default-registry-")));

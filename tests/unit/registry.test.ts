@@ -69,6 +69,8 @@ describe("ProcedureRegistry", () => {
     registry.loadBuiltins();
 
     expect(registry.get("default")).toBeDefined();
+    expect(registry.get("model")).toBeDefined();
     expect(registry.toAvailableCommands().some((command) => command.name === "default")).toBe(false);
+    expect(registry.toAvailableCommands().some((command) => command.name === "model")).toBe(true);
   });
 });

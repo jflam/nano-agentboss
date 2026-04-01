@@ -54,6 +54,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           "- `ctx.callAgent(prompt, descriptor)` for typed downstream calls returning RunResult<T>",
           "- `ctx.callAgent(prompt, { agent: { provider, model }, refs })` to choose a downstream agent per call and pass prior refs",
           "- `ctx.callProcedure(name, prompt)` for composing procedures and getting RunResult<T>",
+          "- `ctx.getDefaultAgentConfig()` and `ctx.setDefaultAgentSelection(...)` to inspect or change the session's default downstream agent",
           "- `ctx.session.last()` and `ctx.session.recent(...)` for discovery over prior cells",
           "- `ctx.refs.read(...)` and `ctx.refs.writeToFile(...)` for durable references",
           "- `ctx.print(text)` to stream progress back to the CLI",

@@ -13,6 +13,7 @@ import type {
   CellRef,
   CommandCallAgentOptions,
   CommandContext,
+  DownstreamAgentConfig,
   DownstreamAgentSelection,
   ProcedureRegistryLike,
   KernelValue,
@@ -42,6 +43,8 @@ interface CommandContextParams {
   cell: ActiveCell;
   signal?: AbortSignal;
   defaultConversation?: DefaultConversationSession;
+  getDefaultAgentConfig: () => DownstreamAgentConfig;
+  setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
 }
 
 export class CommandContextImpl implements CommandContext {
@@ -59,6 +62,8 @@ export class CommandContextImpl implements CommandContext {
   private readonly store: SessionStore;
   private readonly cell: ActiveCell;
   private readonly defaultConversation?: DefaultConversationSession;
+  private readonly getDefaultAgentConfigValue: () => DownstreamAgentConfig;
+  private readonly setDefaultAgentSelectionValue: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
 
   constructor(params: CommandContextParams) {
     this.cwd = params.cwd;
@@ -72,8 +77,18 @@ export class CommandContextImpl implements CommandContext {
     this.store = params.store;
     this.cell = params.cell;
     this.defaultConversation = params.defaultConversation;
+    this.getDefaultAgentConfigValue = params.getDefaultAgentConfig;
+    this.setDefaultAgentSelectionValue = params.setDefaultAgentSelection;
     this.refs = new CommandRefs(this.store, this.cwd);
     this.session = new CommandSession(this.store, this.cell.cell.cellId);
+  }
+
+  getDefaultAgentConfig(): DownstreamAgentConfig {
+    return this.getDefaultAgentConfigValue();
+  }
+
+  setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig {
+    return this.setDefaultAgentSelectionValue(selection);
   }
 
   async callAgent(
@@ -247,6 +262,8 @@ export class CommandContextImpl implements CommandContext {
         cell: childCell,
         signal: this.signal,
         defaultConversation: this.defaultConversation,
+        getDefaultAgentConfig: this.getDefaultAgentConfigValue,
+        setDefaultAgentSelection: this.setDefaultAgentSelectionValue,
       });
       const rawResult = await procedure.execute(prompt, childContext);
       const result = normalizeProcedureResult(rawResult);
