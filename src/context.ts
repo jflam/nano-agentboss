@@ -31,6 +31,11 @@ export interface SessionUpdateEmitter {
   flush(): Promise<void>;
 }
 
+interface PreparedDefaultPrompt {
+  prompt: string;
+  markSubmitted?: () => void;
+}
+
 interface CommandContextParams {
   cwd: string;
   sessionId?: string;
@@ -45,6 +50,7 @@ interface CommandContextParams {
   defaultConversation?: DefaultConversationSession;
   getDefaultAgentConfig: () => DownstreamAgentConfig;
   setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+  prepareDefaultPrompt?: (prompt: string) => PreparedDefaultPrompt;
 }
 
 export class CommandContextImpl implements CommandContext {
@@ -64,6 +70,7 @@ export class CommandContextImpl implements CommandContext {
   private readonly defaultConversation?: DefaultConversationSession;
   private readonly getDefaultAgentConfigValue: () => DownstreamAgentConfig;
   private readonly setDefaultAgentSelectionValue: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+  private readonly prepareDefaultPromptValue?: (prompt: string) => PreparedDefaultPrompt;
 
   constructor(params: CommandContextParams) {
     this.cwd = params.cwd;
@@ -79,6 +86,7 @@ export class CommandContextImpl implements CommandContext {
     this.defaultConversation = params.defaultConversation;
     this.getDefaultAgentConfigValue = params.getDefaultAgentConfig;
     this.setDefaultAgentSelectionValue = params.setDefaultAgentSelection;
+    this.prepareDefaultPromptValue = params.prepareDefaultPrompt;
     this.refs = new CommandRefs(this.store, this.cwd);
     this.session = new CommandSession(this.store, this.cell.cell.cellId);
   }
@@ -146,9 +154,16 @@ export class CommandContextImpl implements CommandContext {
 
     try {
       const result = await invokeAgent(prompt, descriptor, {
-        config: resolveDownstreamAgentConfig(this.cwd, options?.agent),
+        config: options?.agent
+          ? resolveDownstreamAgentConfig(this.cwd, options.agent)
+          : this.getDefaultAgentConfigValue(),
         namedRefs,
         signal: this.signal,
+        sessionMcp: {
+          sessionId: this.sessionId,
+          cwd: this.cwd,
+          rootDir: this.store.rootDir,
+        },
         onUpdate: async (update) => {
           if (shouldForwardNestedAgentUpdate(update, options?.stream !== false)) {
             this.emitter.emit(update);
@@ -257,6 +272,7 @@ export class CommandContextImpl implements CommandContext {
         defaultConversation: this.defaultConversation,
         getDefaultAgentConfig: this.getDefaultAgentConfigValue,
         setDefaultAgentSelection: this.setDefaultAgentSelectionValue,
+        prepareDefaultPrompt: this.prepareDefaultPromptValue,
       });
       const rawResult = await procedure.execute(prompt, childContext);
       const result = normalizeProcedureResult(rawResult);
@@ -321,8 +337,10 @@ export class CommandContextImpl implements CommandContext {
       },
     });
 
+    const preparedPrompt = this.prepareDefaultPromptValue?.(prompt) ?? { prompt };
+
     try {
-      const result = await this.defaultConversation.prompt(prompt, {
+      const result = await this.defaultConversation.prompt(preparedPrompt.prompt, {
         signal: this.signal,
         onUpdate: async (update) => {
           if (
@@ -368,6 +386,7 @@ export class CommandContextImpl implements CommandContext {
         },
       });
 
+      preparedPrompt.markSubmitted?.();
       return finalized;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

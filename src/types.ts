@@ -1,6 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 export type KernelScalar = null | boolean | number | string;
+export type JsonValue = KernelScalar | JsonValue[] | { [key: string]: JsonValue };
 
 export interface CellRef {
   sessionId: string;
@@ -30,6 +31,8 @@ export interface CellRecord {
     display?: string;
     stream?: string;
     summary?: string;
+    memory?: string;
+    explicitDataSchema?: object;
   };
   meta: {
     createdAt: string;
@@ -42,9 +45,12 @@ export interface CellSummary {
   cell: CellRef;
   procedure: string;
   summary?: string;
+  memory?: string;
   dataRef?: ValueRef;
   displayRef?: ValueRef;
   streamRef?: ValueRef;
+  dataShape?: JsonValue;
+  explicitDataSchema?: object;
   createdAt: string;
 }
 
@@ -118,6 +124,8 @@ export interface ProcedureResult<T extends KernelValue = KernelValue> {
   data?: T;
   display?: string;
   summary?: string;
+  memory?: string;
+  explicitDataSchema?: object;
 }
 
 export interface RunResult<T extends KernelValue = KernelValue> {
@@ -205,6 +213,11 @@ export interface CallAgentOptions {
   namedRefs?: Record<string, unknown>;
   onUpdate?: (update: acp.SessionUpdate) => Promise<void> | void;
   signal?: AbortSignal;
+  sessionMcp?: {
+    sessionId: string;
+    cwd?: string;
+    rootDir?: string;
+  };
 }
 
 export interface CallAgentTransport {

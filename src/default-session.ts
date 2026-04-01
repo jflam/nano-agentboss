@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
 import { getAgentTranscriptDir } from "./config.ts";
+import { buildSessionMcpServers } from "./mcp-attachment.ts";
 import type { CallAgentOptions, DownstreamAgentConfig } from "./types.ts";
 
 interface DefaultSessionPromptOptions {
@@ -36,11 +37,24 @@ interface PromptCollector {
   onUpdate?: CallAgentOptions["onUpdate"];
 }
 
+interface DefaultConversationSessionParams {
+  config: DownstreamAgentConfig;
+  sessionId: string;
+  rootDir?: string;
+}
+
 export class DefaultConversationSession {
   private persistedSessionId?: acp.SessionId;
   private liveSession?: PersistentAcpSession;
+  private readonly sessionId: string;
+  private readonly rootDir?: string;
+  private config: DownstreamAgentConfig;
 
-  constructor(private config: DownstreamAgentConfig) {}
+  constructor(params: DefaultConversationSessionParams) {
+    this.config = params.config;
+    this.sessionId = params.sessionId;
+    this.rootDir = params.rootDir;
+  }
 
   get currentSessionId(): string | undefined {
     return this.persistedSessionId;
@@ -60,14 +74,19 @@ export class DefaultConversationSession {
     }
 
     if (!session && this.persistedSessionId) {
-      session = await PersistentAcpSession.load(this.config, this.persistedSessionId);
+      session = await PersistentAcpSession.load(
+        this.config,
+        this.persistedSessionId,
+        this.sessionId,
+        this.rootDir,
+      );
       if (session) {
         this.liveSession = session;
       }
     }
 
     if (!session) {
-      session = await PersistentAcpSession.createFresh(this.config);
+      session = await PersistentAcpSession.createFresh(this.config, this.sessionId, this.rootDir);
       this.liveSession = session;
     }
 
@@ -120,13 +139,22 @@ class PersistentAcpSession {
     this.state.setSessionUpdateHandler((params) => this.handleSessionUpdate(params));
   }
 
-  static async createFresh(config: DownstreamAgentConfig): Promise<PersistentAcpSession> {
+  static async createFresh(
+    config: DownstreamAgentConfig,
+    sessionId: string,
+    rootDir?: string,
+  ): Promise<PersistentAcpSession> {
     const state = await openConnection(config);
 
     try {
       const session = await state.connection.newSession({
         cwd: state.cwd,
-        mcpServers: [],
+        mcpServers: buildSessionMcpServers({
+          config,
+          sessionId,
+          cwd: state.cwd,
+          rootDir,
+        }),
       });
       const runtime = new PersistentAcpSession(state, session.sessionId, config);
       await runtime.applySessionConfig();
@@ -140,6 +168,8 @@ class PersistentAcpSession {
   static async load(
     config: DownstreamAgentConfig,
     sessionId: acp.SessionId,
+    nanobossSessionId: string,
+    rootDir?: string,
   ): Promise<PersistentAcpSession | undefined> {
     const state = await openConnection(config);
 
@@ -151,7 +181,12 @@ class PersistentAcpSession {
 
       await state.connection.loadSession({
         cwd: state.cwd,
-        mcpServers: [],
+        mcpServers: buildSessionMcpServers({
+          config,
+          sessionId: nanobossSessionId,
+          cwd: state.cwd,
+          rootDir,
+        }),
         sessionId,
       });
 

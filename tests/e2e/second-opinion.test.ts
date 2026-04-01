@@ -68,13 +68,13 @@ describeE2E("/second-opinion (real agents)", () => {
       }
 
       expect(result.summary).toContain("second-opinion:");
-      expect(result.display).toContain("Claude (opus)");
-      expect(result.display).toContain("Codex critique (gpt-5.4)");
+      expect(result.display).toContain("First answer (");
+      expect(result.display).toContain("Codex critique (gpt-5.4/high)");
       expect(result.display).toContain("Revised answer");
 
       const transcript = output.join("");
       expect(transcript).toContain("Starting second-opinion workflow...");
-      expect(transcript).toContain("Asking Claude for the first answer...");
+      expect(transcript).toContain("Asking the current default model (");
       expect(transcript).toContain("Asking Codex to critique the answer...");
       expect(transcript).toContain("Completed second-opinion workflow with verdict:");
 

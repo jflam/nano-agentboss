@@ -1,3 +1,6 @@
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
 export interface SelfCommand {
   command: string;
   args: string[];
@@ -8,9 +11,14 @@ export function resolveSelfCommand(subcommand: string, args: string[] = []): Sel
   const scriptPath = process.argv[1];
 
   if (scriptPath && scriptPath !== executable && /\.[cm]?[jt]sx?$/i.test(scriptPath)) {
+    // Always resolve to nanoboss.ts, not process.argv[1]. When test scripts or other
+    // entry points instantiate NanobossService directly, process.argv[1] points to
+    // the caller rather than nanoboss.ts, which is the only entry point that implements
+    // full subcommand dispatch (e.g. session-mcp-server).
+    const nanobossScript = resolve(dirname(fileURLToPath(import.meta.url)), "..", "nanoboss.ts");
     return {
       command: executable,
-      args: [scriptPath, subcommand, ...args],
+      args: [nanobossScript, subcommand, ...args],
     };
   }
 

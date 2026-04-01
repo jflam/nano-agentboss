@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import { getSessionDir } from "./config.ts";
+import { inferDataShape } from "./data-shape.ts";
 import type {
   CellKind,
   CellRecord,
@@ -123,6 +124,7 @@ export class SessionStore {
         ? summarizeText(display)
         : undefined
     );
+    const memory = result.memory;
 
     const record: CellRecord = {
       cellId: draft.cell.cellId,
@@ -133,6 +135,10 @@ export class SessionStore {
         ...(display !== undefined ? { display } : {}),
         ...(stream !== undefined && stream.length > 0 ? { stream } : {}),
         ...(summary !== undefined && summary.length > 0 ? { summary } : {}),
+        ...(memory !== undefined && memory.length > 0 ? { memory } : {}),
+        ...(result.explicitDataSchema !== undefined
+          ? { explicitDataSchema: result.explicitDataSchema }
+          : {}),
       },
       meta: draft.meta,
     };
@@ -249,11 +255,14 @@ export class SessionStore {
       cell,
       procedure: record.procedure,
       summary: record.output.summary,
+      memory: record.output.memory,
       dataRef: record.output.data !== undefined ? createValueRef(cell, "output.data") : undefined,
       displayRef: record.output.display !== undefined
         ? createValueRef(cell, "output.display")
         : undefined,
       streamRef: record.output.stream !== undefined ? createValueRef(cell, "output.stream") : undefined,
+      dataShape: record.output.data !== undefined ? inferDataShape(record.output.data) : undefined,
+      explicitDataSchema: record.output.explicitDataSchema,
       createdAt: record.meta.createdAt,
     };
   }

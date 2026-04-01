@@ -24,6 +24,13 @@ describe("parseNanobossArgs", () => {
     });
   });
 
+  test("accepts the MCP server alias", () => {
+    expect(parseNanobossArgs(["mcp-server"])).toEqual({
+      command: "session-mcp-server",
+      args: [],
+    });
+  });
+
   test("rejects unknown commands", () => {
     expect(() => parseNanobossArgs(["web"])).toThrow("Unknown nanoboss command: web");
   });

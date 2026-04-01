@@ -4,6 +4,13 @@ import { getBuildLabel } from "./build-info.ts";
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
 import { DefaultConversationSession } from "./default-session.ts";
+import { disposeSessionMcpTransport } from "./mcp-attachment.ts";
+import {
+  collectUnsyncedProcedureMemoryCards,
+  hasTopLevelNonDefaultProcedureHistory,
+  renderProcedureMemoryPreamble,
+  renderSessionToolGuidance,
+} from "./memory-cards.ts";
 import {
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
@@ -27,6 +34,7 @@ interface SessionState {
   events: SessionEventLog;
   defaultAgentConfig: DownstreamAgentConfig;
   defaultConversation: DefaultConversationSession;
+  syncedProcedureMemoryCellIds: Set<string>;
   abortController?: AbortController;
   commands: FrontendCommand[];
 }
@@ -102,15 +110,21 @@ export class NanobossService {
     const sessionId = crypto.randomUUID();
     const commands = toFrontendCommands(this.registry.toAvailableCommands());
     const defaultAgentConfig = this.resolveDefaultAgentConfig(params.cwd, params.defaultAgentSelection);
+    const store = new SessionStore({
+      sessionId,
+      cwd: params.cwd,
+    });
     const state: SessionState = {
       cwd: params.cwd,
-      store: new SessionStore({
-        sessionId,
-        cwd: params.cwd,
-      }),
+      store,
       events: new SessionEventLog(),
       defaultAgentConfig,
-      defaultConversation: new DefaultConversationSession(defaultAgentConfig),
+      defaultConversation: new DefaultConversationSession({
+        config: defaultAgentConfig,
+        sessionId,
+        rootDir: store.rootDir,
+      }),
+      syncedProcedureMemoryCellIds: new Set(),
       commands,
     };
 
@@ -162,7 +176,44 @@ export class NanobossService {
 
     session.abortController?.abort();
     session.defaultConversation.closeLiveSession();
+    disposeSessionMcpTransport(sessionId);
     this.sessions.delete(sessionId);
+  }
+
+  private prepareDefaultPrompt(
+    session: SessionState,
+    prompt: string,
+  ): { prompt: string; markSubmitted: () => void } {
+    const cards = collectUnsyncedProcedureMemoryCards(
+      session.store,
+      session.syncedProcedureMemoryCellIds,
+    );
+    const blocks: string[] = [];
+    const preamble = renderProcedureMemoryPreamble(cards);
+
+    if (preamble) {
+      blocks.push(preamble);
+    } else if (hasTopLevelNonDefaultProcedureHistory(session.store)) {
+      blocks.push(renderSessionToolGuidance());
+    }
+
+    if (blocks.length === 0) {
+      return {
+        prompt,
+        markSubmitted() {},
+      };
+    }
+
+    blocks.push(`User message:\n${prompt}`);
+
+    return {
+      prompt: blocks.join("\n\n"),
+      markSubmitted: () => {
+        for (const card of cards) {
+          session.syncedProcedureMemoryCellIds.add(card.cell.cellId);
+        }
+      },
+    };
   }
 
   async prompt(
@@ -270,6 +321,7 @@ export class NanobossService {
         session.defaultConversation.updateConfig(nextConfig);
         return nextConfig;
       },
+      prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt),
     });
 
     logger.write({

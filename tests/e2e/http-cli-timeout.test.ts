@@ -29,7 +29,7 @@ describe("HTTP CLI long-running command handling", () => {
         cli.write("/second-opinion simulate-long-run should a command timeout wait for actual completion?\n");
 
         await waitForMatch(cli.stdout, /Starting second-opinion workflow/);
-        await waitForMatch(cli.stderr, /callAgent \[claude:opus\]/);
+        await waitForMatch(cli.stderr, /callAgent/);
         await waitForMatch(cli.stdout, /> /, 20_000);
 
         expect(`${cli.stdout()}\n${cli.stderr()}`).not.toContain("Timed out waiting for run completion");

@@ -5,6 +5,7 @@ import { Readable, Writable } from "node:stream";
 import { join } from "node:path";
 
 import { getAgentTranscriptDir, resolveDownstreamAgentConfig } from "./config.ts";
+import { buildSessionMcpServers } from "./mcp-attachment.ts";
 import { SessionStore, summarizeText } from "./session-store.ts";
 import type {
   AgentRunResult,
@@ -430,7 +431,14 @@ async function runAcpPrompt(
 
     const session = await connection.newSession({
       cwd,
-      mcpServers: [],
+      mcpServers: options.sessionMcp
+        ? buildSessionMcpServers({
+            config,
+            sessionId: options.sessionMcp.sessionId,
+            cwd: options.sessionMcp.cwd ?? cwd,
+            rootDir: options.sessionMcp.rootDir,
+          })
+        : [],
     });
     sessionId = session.sessionId;
 

@@ -1,0 +1,196 @@
+import type * as acp from "@agentclientprotocol/sdk";
+
+import {
+  createSessionMcpApi,
+  formatSessionMcpToolResult,
+  listSessionMcpTools,
+  callSessionMcpTool,
+} from "./session-mcp.ts";
+import type { DownstreamAgentConfig } from "./types.ts";
+
+interface SessionMcpAttachmentParams {
+  config: DownstreamAgentConfig;
+  sessionId: string;
+  cwd: string;
+  rootDir?: string;
+}
+
+interface LoopbackServerState {
+  server: Bun.Server;
+  url: string;
+}
+
+const SESSION_HTTP_SERVERS = new Map<string, LoopbackServerState>();
+const MCP_PROTOCOL_VERSION = "2025-11-25";
+
+export function ensureSessionMcpHttpServer(
+  params: SessionMcpAttachmentParams,
+): acp.NewSessionRequest["mcpServers"][number] {
+  let existing = SESSION_HTTP_SERVERS.get(params.sessionId);
+  if (!existing) {
+    const api = createSessionMcpApi({
+      sessionId: params.sessionId,
+      cwd: params.cwd,
+      rootDir: params.rootDir,
+    });
+
+    const server = Bun.serve({
+      port: 0,
+      fetch: (request) => handleSessionMcpHttpRequest(api, request),
+    });
+
+    existing = {
+      server,
+      url: `http://127.0.0.1:${server.port}/mcp`,
+    };
+    SESSION_HTTP_SERVERS.set(params.sessionId, existing);
+  }
+
+  return {
+    type: "http",
+    name: "nanoboss-session",
+    url: existing.url,
+    headers: [],
+  };
+}
+
+export function disposeSessionMcpHttpServer(sessionId: string): void {
+  const state = SESSION_HTTP_SERVERS.get(sessionId);
+  if (!state) {
+    return;
+  }
+
+  state.server.stop(true);
+  SESSION_HTTP_SERVERS.delete(sessionId);
+}
+
+async function handleSessionMcpHttpRequest(api: ReturnType<typeof createSessionMcpApi>, request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.pathname !== "/mcp") {
+    return new Response("Not found", { status: 404 });
+  }
+
+  if (request.method === "GET") {
+    return new Response("nanoboss session mcp", {
+      status: 200,
+      headers: {
+        "content-type": "text/plain; charset=utf-8",
+      },
+    });
+  }
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        allow: "GET, POST, OPTIONS",
+      },
+    });
+  }
+
+  if (request.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonRpcError(null, -32700, "Parse error");
+  }
+
+  const message = body as { id?: string | number | null; method?: string; params?: unknown };
+  if (!message.method) {
+    return jsonRpcError(message.id ?? null, -32600, "Invalid Request");
+  }
+
+  if (message.method === "notifications/initialized") {
+    return new Response(null, { status: 202 });
+  }
+
+  try {
+    const result = dispatchSessionMcpMethod(api, message.method, message.params);
+    return jsonRpcResult(message.id ?? null, result);
+  } catch (error) {
+    return jsonRpcError(
+      message.id ?? null,
+      -32000,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+function dispatchSessionMcpMethod(
+  api: ReturnType<typeof createSessionMcpApi>,
+  method: string,
+  params: unknown,
+): unknown {
+  switch (method) {
+    case "initialize":
+      return {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {
+          tools: {},
+        },
+        serverInfo: {
+          name: "nanoboss-session",
+          version: "0.1.0",
+        },
+        instructions: "Use these tools to inspect durable nanoboss session cells and refs.",
+      };
+    case "ping":
+      return {};
+    case "tools/list":
+      return {
+        tools: listSessionMcpTools(),
+      };
+    case "tools/call": {
+      const args = asObject(params);
+      const name = asString(args.name, "name");
+      const toolArgs = asOptionalObject(args.arguments);
+      return formatSessionMcpToolResult(callSessionMcpTool(api, name, toolArgs));
+    }
+    default:
+      throw new Error(`Unsupported MCP method: ${method}`);
+  }
+}
+
+function jsonRpcResult(id: string | number | null, result: unknown): Response {
+  return Response.json({
+    jsonrpc: "2.0",
+    id,
+    result,
+  });
+}
+
+function jsonRpcError(id: string | number | null, code: number, message: string): Response {
+  return Response.json({
+    jsonrpc: "2.0",
+    id,
+    error: { code, message },
+  });
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Expected object");
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function asOptionalObject(value: unknown): Record<string, unknown> {
+  if (value === undefined) {
+    return {};
+  }
+
+  return asObject(value);
+}
+
+function asString(value: unknown, name: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Expected ${name} to be a non-empty string`);
+  }
+
+  return value;
+}

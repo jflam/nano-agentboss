@@ -31,12 +31,13 @@ describe("/default native session continuity", () => {
     "first prompt persists an ACP session id and second prompt reuses the live session",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-live-"));
-      const conversation = new DefaultConversationSession(
-        createMockConfig(process.cwd(), {
+      const conversation = new DefaultConversationSession({
+        config: createMockConfig(process.cwd(), {
           supportLoadSession: true,
           sessionStoreDir,
         }),
-      );
+        sessionId: crypto.randomUUID(),
+      });
 
       try {
         const first = await conversation.prompt("what is 2+2");
@@ -58,12 +59,13 @@ describe("/default native session continuity", () => {
     "falls back to session/load when the live session is gone",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-load-"));
-      const conversation = new DefaultConversationSession(
-        createMockConfig(process.cwd(), {
+      const conversation = new DefaultConversationSession({
+        config: createMockConfig(process.cwd(), {
           supportLoadSession: true,
           sessionStoreDir,
         }),
-      );
+        sessionId: crypto.randomUUID(),
+      });
 
       try {
         await conversation.prompt("what is 2+2");
@@ -86,12 +88,13 @@ describe("/default native session continuity", () => {
     "starts fresh when native resume is unavailable",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-fresh-"));
-      const conversation = new DefaultConversationSession(
-        createMockConfig(process.cwd(), {
+      const conversation = new DefaultConversationSession({
+        config: createMockConfig(process.cwd(), {
           supportLoadSession: false,
           sessionStoreDir,
         }),
-      );
+        sessionId: crypto.randomUUID(),
+      });
 
       try {
         await conversation.prompt("what is 2+2");
@@ -115,12 +118,13 @@ describe("/default native session continuity", () => {
     "changing the default agent config resets native session continuity",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-reset-"));
-      const conversation = new DefaultConversationSession(
-        createMockConfig(process.cwd(), {
+      const conversation = new DefaultConversationSession({
+        config: createMockConfig(process.cwd(), {
           supportLoadSession: true,
           sessionStoreDir,
         }),
-      );
+        sessionId: crypto.randomUUID(),
+      });
 
       try {
         await conversation.prompt("what is 2+2");

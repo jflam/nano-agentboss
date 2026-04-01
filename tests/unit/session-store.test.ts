@@ -37,6 +37,14 @@ describe("SessionStore", () => {
       },
       display: "hi\n",
       summary: "demo summary",
+      memory: "demo memory",
+      explicitDataSchema: {
+        type: "object",
+        properties: {
+          count: { type: "number" },
+          text: { type: "string" },
+        },
+      },
     });
 
     const reloaded = new SessionStore({
@@ -60,5 +68,17 @@ describe("SessionStore", () => {
     expect(last?.dataRef).toEqual(result.dataRef);
     expect(last?.displayRef).toEqual(result.displayRef);
     expect(last?.summary).toBe("demo summary");
+    expect(last?.memory).toBe("demo memory");
+    expect(last?.dataShape).toEqual({
+      count: "number",
+      text: "hi",
+    });
+    expect(last?.explicitDataSchema).toEqual({
+      type: "object",
+      properties: {
+        count: { type: "number" },
+        text: { type: "string" },
+      },
+    });
   });
 });
