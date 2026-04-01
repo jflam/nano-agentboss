@@ -114,6 +114,62 @@ To lint the repository:
 bun run lint
 ```
 
+## Testing
+
+Run the full test suite:
+
+```bash
+bun run test
+```
+
+This runs `bun test`. Real-agent end-to-end tests still skip unless `NANO_AGENTBOSS_RUN_E2E=1` is set.
+
+Run unit tests only:
+
+```bash
+bun run test:unit
+```
+
+This runs `bun test tests/unit`.
+
+Run end-to-end tests with the default gating behavior:
+
+```bash
+bun run test:e2e
+```
+
+This runs `bun test tests/e2e`. Real-agent tests are present in that directory, but they remain skipped
+unless `NANO_AGENTBOSS_RUN_E2E=1` is enabled.
+
+Run the full real-agent end-to-end suite:
+
+```bash
+bun run test:e2e:real
+```
+
+This runs `NANO_AGENTBOSS_RUN_E2E=1 bun test tests/e2e` and exercises the real downstream agents.
+
+Run the `/default` multi-turn history real-agent coverage only:
+
+```bash
+NANO_AGENTBOSS_RUN_E2E=1 bun test tests/e2e/default-history-agents.test.ts
+```
+
+That file contains 4 independent tests:
+
+- Claude
+- Gemini
+- Codex
+- Copilot
+
+Run a single real-agent `/default` history test by name:
+
+```bash
+NANO_AGENTBOSS_RUN_E2E=1 bun test tests/e2e/default-history-agents.test.ts --test-name-pattern claude
+```
+
+Replace `claude` with `gemini`, `codex`, or `copilot` as needed.
+
 Typed downstream agent outputs should use `jsonType(...)` from `src/types.ts` with concrete `typia`
 inputs, for example `jsonType<Result>(typia.json.schema<Result>(), typia.createValidate<Result>())`,
 instead of handwritten schema/validator descriptors. Bun preload for the typia transform is configured
