@@ -90,10 +90,24 @@ describe("NanobossService", () => {
       const textEvents = events
         .filter((event) => event.type === "text_delta")
         .map((event) => event.data.text);
+      const tokenUsageEvents = events.filter((event) => event.type === "token_usage");
+      const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "probe");
 
       expect(toolTitles).toContain("Mock read README.md");
       expect(toolTitles.some((title) => title.startsWith("callAgent:"))).toBe(true);
       expect(textEvents).toEqual(["done"]);
+      expect(tokenUsageEvents).toHaveLength(1);
+      expect(tokenUsageEvents[0]?.data.usage).toEqual({
+        source: "acp_usage_update",
+        currentContextTokens: 512,
+        maxContextTokens: 8192,
+      });
+      expect(completed?.type).toBe("run_completed");
+      expect(completed?.data.tokenUsage).toEqual({
+        source: "acp_usage_update",
+        currentContextTokens: 512,
+        maxContextTokens: 8192,
+      });
     });
   }, 30_000);
 

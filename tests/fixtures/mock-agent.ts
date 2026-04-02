@@ -101,6 +101,11 @@ class MockAgent implements acp.Agent {
           status: "completed",
           rawOutput: {
             path: "README.md",
+            tokenUsage: {
+              source: "acp_usage_update",
+              currentContextTokens: 512,
+              maxContextTokens: 8192,
+            },
           },
         },
       });

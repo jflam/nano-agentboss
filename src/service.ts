@@ -26,7 +26,7 @@ import {
   normalizeProcedureResult,
   summarizeText,
 } from "./session-store.ts";
-import type { DownstreamAgentConfig, DownstreamAgentSelection } from "./types.ts";
+import type { AgentTokenUsage, DownstreamAgentConfig, DownstreamAgentSelection } from "./types.ts";
 
 interface SessionState {
   cwd: string;
@@ -50,6 +50,7 @@ export interface SessionDescriptor {
 
 class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
   private streamedText = "";
+  private latestTokenUsage?: AgentTokenUsage;
 
   constructor(
     private readonly sessionId: string,
@@ -67,10 +68,17 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
     }
 
     for (const event of mapSessionUpdateToFrontendEvents(this.runId, update)) {
+      if (event.type === "token_usage") {
+        this.latestTokenUsage = event.usage;
+      }
       this.eventLog.publish(this.sessionId, event);
     }
 
     this.delegate?.emit(update);
+  }
+
+  get currentTokenUsage(): AgentTokenUsage | undefined {
+    return this.latestTokenUsage;
   }
 
   hasStreamedText(text: string): boolean {
@@ -363,6 +371,7 @@ export class NanobossService {
         cell: finalized.cell,
         summary: finalized.summary,
         display: result.display,
+        tokenUsage: emitter.currentTokenUsage,
       });
       markRunActivity();
     } catch (error) {

@@ -64,6 +64,7 @@ export type FrontendEvent =
       cell: CellRef;
       summary?: string;
       display?: string;
+      tokenUsage?: AgentTokenUsage;
     }
   | {
       type: "run_failed";
