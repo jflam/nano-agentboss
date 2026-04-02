@@ -1,5 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
+import { collectTextSessionUpdates, summarizeAgentOutput } from "./acp-updates.ts";
 import { invokeAgent } from "./call-agent.ts";
 import { resolveDownstreamAgentConfig } from "./config.ts";
 import type { DefaultConversationSession } from "./default-session.ts";
@@ -164,7 +165,7 @@ export class CommandContextImpl implements CommandContext {
         updates: result.updates,
         durationMs: result.durationMs,
         logFile: result.logFile,
-        summary: summarizeAgentResult(result.data, result.raw),
+        summary: summarizeAgentOutput(result.data, result.raw),
         streamText: options?.stream !== false,
         agent: options?.agent,
       });
@@ -353,7 +354,7 @@ export class CommandContextImpl implements CommandContext {
       display: params.raw,
       summary: params.summary,
     }, {
-      stream: params.streamText ? collectStreamText(params.updates) : undefined,
+      stream: params.streamText ? collectTextSessionUpdates(params.updates) : undefined,
       raw: params.raw,
     });
 
@@ -536,24 +537,3 @@ function shouldForwardNestedAgentUpdate(
   return update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update";
 }
 
-function collectStreamText(updates: acp.SessionUpdate[]): string | undefined {
-  let chunks = "";
-
-  for (const update of updates) {
-    if (update.sessionUpdate !== "agent_message_chunk" || update.content.type !== "text") {
-      continue;
-    }
-
-    chunks += update.content.text;
-  }
-
-  return chunks || undefined;
-}
-
-function summarizeAgentResult(data: unknown, raw: string): string | undefined {
-  if (typeof data === "string") {
-    return summarizeText(data);
-  }
-
-  return summarizeText(raw);
-}

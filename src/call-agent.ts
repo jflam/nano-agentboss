@@ -1,5 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
+import { collectTextSessionUpdates, summarizeAgentOutput } from "./acp-updates.ts";
 import {
   applyAcpSessionConfig,
   closeAcpConnection,
@@ -7,7 +8,7 @@ import {
 } from "./acp-runtime.ts";
 import { resolveDownstreamAgentConfig } from "./config.ts";
 import { buildSessionMcpServers } from "./mcp-attachment.ts";
-import { SessionStore, summarizeText } from "./session-store.ts";
+import { SessionStore } from "./session-store.ts";
 import type {
   AgentRunResult,
   CallAgentOptions,
@@ -46,9 +47,9 @@ export async function callAgent<T = string>(
   const finalized = store.finalizeCell(cell, {
     data: result.data as T & KernelValue,
     display: result.raw,
-    summary: summarizeStandaloneResult(result.data, result.raw),
+    summary: summarizeAgentOutput(result.data, result.raw),
   }, {
-    stream: collectStreamText(result.updates),
+    stream: collectTextSessionUpdates(result.updates),
     raw: result.raw,
   });
 
@@ -399,24 +400,3 @@ function serializeNamedRef(value: unknown): string {
   return typeof serialized === "string" ? serialized : "[unserializable]";
 }
 
-function collectStreamText(updates: acp.SessionUpdate[]): string | undefined {
-  let text = "";
-
-  for (const update of updates) {
-    if (update.sessionUpdate !== "agent_message_chunk" || update.content.type !== "text") {
-      continue;
-    }
-
-    text += update.content.text;
-  }
-
-  return text || undefined;
-}
-
-function summarizeStandaloneResult(data: unknown, raw: string): string | undefined {
-  if (typeof data === "string") {
-    return summarizeText(data);
-  }
-
-  return summarizeText(raw);
-}
