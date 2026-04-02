@@ -52,6 +52,15 @@ into disk-loaded commands, set:
 NANOBOSS_LOAD_DISK_COMMANDS=1
 ```
 
+## Architecture
+
+See [`docs/architecture.md`](docs/architecture.md) for a transport-level overview of:
+
+- local CLI over ACP/stdin-stdout
+- HTTP/SSE frontend mode
+- downstream agent ACP sessions
+- session MCP over loopback HTTP
+
 ## Commands
 
 Launch the CLI frontend:
