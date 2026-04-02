@@ -163,7 +163,13 @@ describe("ProcedureRegistry", () => {
 
     expect(registry.get("default")).toBeDefined();
     expect(registry.get("model")).toBeDefined();
+    expect(registry.get("top_level_runs")).toBeDefined();
+    expect(registry.get("cell_get")).toBeDefined();
+    expect(registry.get("ref_read")).toBeDefined();
     expect(registry.toAvailableCommands().some((command) => command.name === "default")).toBe(false);
     expect(registry.toAvailableCommands().some((command) => command.name === "model")).toBe(true);
+    expect(registry.toAvailableCommands().some((command) => command.name === "top_level_runs")).toBe(true);
+    expect(registry.toAvailableCommands().some((command) => command.name === "cell_get")).toBe(true);
+    expect(registry.toAvailableCommands().some((command) => command.name === "ref_read")).toBe(true);
   });
 });

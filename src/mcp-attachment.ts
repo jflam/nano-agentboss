@@ -1,6 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
-import { ensureSessionMcpHttpServer, disposeSessionMcpHttpServer } from "./session-mcp-http.ts";
+import { disposeSessionMcpHttpServer } from "./session-mcp-http.ts";
+import { buildSessionMcpStdioServer } from "./session-mcp-stdio.ts";
 import type { DownstreamAgentConfig } from "./types.ts";
 
 interface SessionMcpAttachmentParams {
@@ -13,7 +14,10 @@ interface SessionMcpAttachmentParams {
 export function buildSessionMcpServers(
   params: SessionMcpAttachmentParams,
 ): acp.NewSessionRequest["mcpServers"] {
-  return [ensureSessionMcpHttpServer(params)];
+  return [
+    // ACP guarantees stdio MCP support for all agents, while HTTP is optional.
+    buildSessionMcpStdioServer(params),
+  ];
 }
 
 export function disposeSessionMcpTransport(sessionId: string): void {

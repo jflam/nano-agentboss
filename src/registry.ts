@@ -14,6 +14,7 @@ import tokensProcedure from "../commands/tokens.ts";
 
 import { getNanobossHome } from "./config.ts";
 import { createCreateProcedure } from "./create.ts";
+import { sessionToolProcedures } from "./session-tool-procedures.ts";
 import type { Procedure, ProcedureRegistryLike } from "./types.ts";
 
 interface ProcedureRegistryOptions {
@@ -65,6 +66,9 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     this.register(modelProcedure);
     this.register(tokensProcedure);
     this.register(secondOpinionProcedure);
+    for (const procedure of sessionToolProcedures) {
+      this.register(procedure);
+    }
   }
 
   async loadFromDisk(): Promise<void> {

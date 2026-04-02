@@ -130,13 +130,13 @@ export function hasTopLevelNonDefaultProcedureHistory(store: SessionStore): bool
 export function renderSessionToolGuidance(): string {
   return [
     "Nanoboss session tool guidance:",
-    "- For prior stored procedure results, prefer the nanoboss session MCP tools over filesystem inspection.",
-    "- Use top_level_runs(...) to find prior chat-visible commands such as /default, /linter, or /second-opinion.",
-    "- Use cell_descendants(...) to inspect nested procedure and agent calls under one run; set maxDepth: 1 when you only want direct children.",
-    "- Use cell_ancestors(...) to identify which top-level run owns a nested cell; set limit: 1 when you only want the direct parent.",
-    "- After you find a candidate cell, use cell_get(...) for exact metadata and ref_read(...) for exact stored values.",
+    "- For prior stored procedure results, prefer the nanoboss session MCP tools or matching host commands over filesystem inspection.",
+    "- Use top_level_runs(...) or /top_level_runs to find prior chat-visible commands such as /default, /linter, or /second-opinion.",
+    "- Use cell_descendants(...) or /cell_descendants to inspect nested procedure and agent calls under one run; set maxDepth=1 when you only want direct children.",
+    "- Use cell_ancestors(...) or /cell_ancestors to identify which top-level run owns a nested cell; set limit=1 when you only want the direct parent.",
+    "- After you find a candidate cell, use cell_get(...) or /cell_get for exact metadata and ref_read(...) or /ref_read for exact stored values.",
     "- If ref_read(...) returns nested refs such as critique or answer, call ref_read(...) on those refs too.",
-    "- Use session_recent(...) only for true global recency scans across the whole session; it is not the primary retrieval path.",
+    "- Use session_recent(...) or /session_recent only for true global recency scans across the whole session; it is not the primary retrieval path.",
     "- Do not treat not-found results from a bounded scan as proof of absence unless the search scope was exhaustive.",
     "- Do not inspect ~/.nanoboss/sessions directly unless the session MCP tools fail.",
   ].join("\n");

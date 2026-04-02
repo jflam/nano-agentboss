@@ -31,6 +31,13 @@ describe("parseNanobossArgs", () => {
     });
   });
 
+  test("parses session-mcp command", () => {
+    expect(parseNanobossArgs(["session-mcp", "--session-id", "abc"])).toEqual({
+      command: "session-mcp",
+      args: ["--session-id", "abc"],
+    });
+  });
+
   test("rejects unknown commands", () => {
     expect(() => parseNanobossArgs(["web"])).toThrow("Unknown nanoboss command: web");
   });

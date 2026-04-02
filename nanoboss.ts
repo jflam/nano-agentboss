@@ -1,9 +1,10 @@
 import { runCliCommand } from "./cli.ts";
 import { DEFAULT_HTTP_SERVER_PORT, DEFAULT_HTTP_SERVER_URL } from "./src/defaults.ts";
 import { runHttpServerCommand } from "./src/http-server.ts";
+import { runSessionMcpStdioCommand } from "./src/session-mcp-stdio.ts";
 import { runAcpServerCommand } from "./src/server.ts";
 
-export type NanobossSubcommand = "cli" | "server" | "acp-server" | "help";
+export type NanobossSubcommand = "cli" | "server" | "acp-server" | "session-mcp" | "help";
 
 export interface NanobossArgs {
   command: NanobossSubcommand;
@@ -23,7 +24,8 @@ export function parseNanobossArgs(argv: string[]): NanobossArgs {
   if (
     first === "cli" ||
     first === "server" ||
-    first === "acp-server"
+    first === "acp-server" ||
+    first === "session-mcp"
   ) {
     return {
       command: first,
@@ -47,6 +49,9 @@ export async function runNanoboss(argv: string[]): Promise<void> {
     case "acp-server":
       await runAcpServerCommand();
       return;
+    case "session-mcp":
+      await runSessionMcpStdioCommand(parsed.args);
+      return;
     case "help":
       printHelp();
       return;
@@ -61,6 +66,7 @@ export function printHelp(): void {
     "  cli                Launch the CLI frontend",
     "  server             Launch the HTTP/SSE server",
     "  acp-server         Launch the internal stdio ACP server",
+    "  session-mcp        Launch the internal stdio MCP server for session refs",
     "  help               Show this help text",
     "",
     "Examples:",
