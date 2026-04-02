@@ -40,7 +40,11 @@ function readStoredMockSession(sessionStoreDir: string): {
 } {
   const files = readdirSync(sessionStoreDir).filter((file) => file.endsWith(".json"));
   expect(files).toHaveLength(1);
-  return JSON.parse(readFileSync(join(sessionStoreDir, files[0]!), "utf8")) as {
+  const fileName = files[0];
+  if (!fileName) {
+    throw new Error("Expected stored mock session file");
+  }
+  return JSON.parse(readFileSync(join(sessionStoreDir, fileName), "utf8")) as {
     turns: Array<{ role: "user" | "assistant"; text: string }>;
   };
 }
@@ -88,6 +92,10 @@ describe("default session memory bridge", () => {
       expect(firstUserPrompt).toContain("procedure: /review");
       expect(firstUserPrompt).toContain("The most important issue for the code was missing edge-case analysis.");
       expect(firstUserPrompt).toContain("critiqueMainIssue");
+      expect(firstUserPrompt).toContain("Use top_level_runs(...) to find prior chat-visible commands");
+      expect(firstUserPrompt).toContain("Use session_recent(...) only for recency-based discovery across the whole session; it is not a structural query.");
+      expect(firstUserPrompt).toContain("If ref_read(...) returns nested refs such as critique or answer, call ref_read(...) on those refs too.");
+      expect(firstUserPrompt).toContain("Do not treat not-found results from a bounded scan as proof of absence unless the search scope was exhaustive.");
       expect(firstUserPrompt).toContain("Do not inspect ~/.nanoboss/sessions directly unless the session MCP tools fail.");
       expect(firstUserPrompt).toContain("User message:\nwhat mattered most?");
       expect(firstUserPrompt).not.toContain("full rendered review output that should stay out of the default prompt");
@@ -97,6 +105,7 @@ describe("default session memory bridge", () => {
       const storedAfterSecondDefault = readStoredMockSession(mockSessionStoreDir);
       const secondUserPrompt = storedAfterSecondDefault.turns[2]?.text;
       expect(secondUserPrompt).toContain("Nanoboss session tool guidance:");
+      expect(secondUserPrompt).toContain("Use cell_children(...) or cell_descendants(...) to inspect nested procedure and agent calls under one run.");
       expect(secondUserPrompt).toContain("User message:\nand now?");
     } finally {
       service.destroySession(session.sessionId);

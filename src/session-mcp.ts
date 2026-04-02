@@ -1,7 +1,14 @@
 import { getBuildLabel } from "./build-info.ts";
 import { inferDataShape } from "./data-shape.ts";
 import { SessionStore } from "./session-store.ts";
-import type { CellRecord, CellRef, ValueRef } from "./types.ts";
+import type {
+  CellDescendantsOptions,
+  CellFilterOptions,
+  CellKind,
+  CellRecord,
+  CellRef,
+  ValueRef,
+} from "./types.ts";
 
 const MCP_PROTOCOL_VERSION = "2024-11-05";
 
@@ -35,8 +42,37 @@ export class SessionMcpApi {
     return this.createStore().recent(args);
   }
 
+  topLevelRuns(args: Omit<CellFilterOptions, "kind"> = {}): ReturnType<SessionStore["topLevelRuns"]> {
+    return this.createStore().topLevelRuns(args);
+  }
+
   cellGet(cellRef: CellRef): CellRecord {
     return this.createStore().readCell(cellRef);
+  }
+
+  cellParent(cellRef: CellRef): ReturnType<SessionStore["parent"]> {
+    return this.createStore().parent(cellRef);
+  }
+
+  cellChildren(
+    cellRef: CellRef,
+    args: CellFilterOptions = {},
+  ): ReturnType<SessionStore["children"]> {
+    return this.createStore().children(cellRef, args);
+  }
+
+  cellAncestors(
+    cellRef: CellRef,
+    args: { includeSelf?: boolean; limit?: number } = {},
+  ): ReturnType<SessionStore["ancestors"]> {
+    return this.createStore().ancestors(cellRef, args);
+  }
+
+  cellDescendants(
+    cellRef: CellRef,
+    args: CellDescendantsOptions = {},
+  ): ReturnType<SessionStore["descendants"]> {
+    return this.createStore().descendants(cellRef, args);
   }
 
   refRead(valueRef: ValueRef): unknown {
@@ -114,9 +150,15 @@ class SessionMcpStdioServer {
 
   constructor(private readonly api: SessionMcpApi) {
     this.closed = new Promise((resolve) => {
-      process.stdin.on("end", () => resolve());
-      process.stdin.on("close", () => resolve());
-      process.stdin.on("error", () => resolve());
+      process.stdin.on("end", () => {
+        resolve();
+      });
+      process.stdin.on("close", () => {
+        resolve();
+      });
+      process.stdin.on("error", () => {
+        resolve();
+      });
     });
   }
 
@@ -131,7 +173,7 @@ class SessionMcpStdioServer {
   }
 
   private async drain(): Promise<void> {
-    while (true) {
+    for (;;) {
       const separatorIndex = this.buffer.indexOf("\r\n\r\n");
       if (separatorIndex < 0) {
         return;
@@ -255,6 +297,10 @@ export function listSessionMcpTools(): Array<{ name: string; description: string
     required: ["cell", "path"],
     additionalProperties: false,
   };
+  const cellKindSchema = {
+    type: "string",
+    enum: ["top_level", "procedure", "agent"],
+  };
 
   return [
     {
@@ -279,12 +325,81 @@ export function listSessionMcpTools(): Array<{ name: string; description: string
       },
     },
     {
+      name: "top_level_runs",
+      description: "Return top-level completed runs in reverse chronological order. Use this for prior chat-visible commands such as /default, /linter, or /second-opinion.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          procedure: { type: "string" },
+          limit: { type: "number" },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
       name: "cell_get",
       description: "Return one exact stored cell record.",
       inputSchema: {
         type: "object",
         properties: {
           cellRef: cellRefSchema,
+        },
+        required: ["cellRef"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "cell_parent",
+      description: "Return the direct parent cell summary for one cell, or undefined when the cell is top-level.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cellRef: cellRefSchema,
+        },
+        required: ["cellRef"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "cell_children",
+      description: "Return direct child cell summaries in creation order. If limit is set, returns only the first matching children.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cellRef: cellRefSchema,
+          kind: cellKindSchema,
+          procedure: { type: "string" },
+          limit: { type: "number" },
+        },
+        required: ["cellRef"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "cell_ancestors",
+      description: "Return ancestor cell summaries nearest-first. Set includeSelf to prepend the starting cell.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cellRef: cellRefSchema,
+          includeSelf: { type: "boolean" },
+          limit: { type: "number" },
+        },
+        required: ["cellRef"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "cell_descendants",
+      description: "Return descendant cell summaries in depth-first pre-order. If limit is set, traversal stops after the first N matching descendants.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          cellRef: cellRefSchema,
+          kind: cellKindSchema,
+          procedure: { type: "string" },
+          maxDepth: { type: "number" },
+          limit: { type: "number" },
         },
         required: ["cellRef"],
         additionalProperties: false,
@@ -349,10 +464,35 @@ export function callSessionMcpTool(api: SessionMcpApi, name: string, args: Recor
     case "session_recent":
       return api.sessionRecent({
         procedure: asOptionalString(args.procedure),
-        limit: asOptionalNumber(args.limit),
+        limit: asOptionalNonNegativeNumber(args.limit, "limit"),
+      });
+    case "top_level_runs":
+      return api.topLevelRuns({
+        procedure: asOptionalString(args.procedure),
+        limit: asOptionalNonNegativeNumber(args.limit, "limit"),
       });
     case "cell_get":
       return api.cellGet(parseCellRef(args.cellRef));
+    case "cell_parent":
+      return api.cellParent(parseCellRef(args.cellRef));
+    case "cell_children":
+      return api.cellChildren(parseCellRef(args.cellRef), {
+        kind: asOptionalCellKind(args.kind),
+        procedure: asOptionalString(args.procedure),
+        limit: asOptionalNonNegativeNumber(args.limit, "limit"),
+      });
+    case "cell_ancestors":
+      return api.cellAncestors(parseCellRef(args.cellRef), {
+        includeSelf: asOptionalBoolean(args.includeSelf),
+        limit: asOptionalNonNegativeNumber(args.limit, "limit"),
+      });
+    case "cell_descendants":
+      return api.cellDescendants(parseCellRef(args.cellRef), {
+        kind: asOptionalCellKind(args.kind),
+        procedure: asOptionalString(args.procedure),
+        maxDepth: asOptionalNonNegativeNumber(args.maxDepth, "maxDepth"),
+        limit: asOptionalNonNegativeNumber(args.limit, "limit"),
+      });
     case "ref_read":
       return api.refRead(parseValueRef(args.valueRef));
     case "ref_stat":
@@ -386,8 +526,11 @@ function serializeToolResult(result: unknown): string {
     return result;
   }
 
-  const serialized = JSON.stringify(result, null, 2);
-  return serialized ?? "null";
+  if (result === undefined) {
+    return "null";
+  }
+
+  return JSON.stringify(result, null, 2);
 }
 
 function parseContentLength(headers: string): number | undefined {
@@ -444,7 +587,30 @@ function asOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function asOptionalNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function asOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
+function asOptionalCellKind(value: unknown): CellKind | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === "top_level" || value === "procedure" || value === "agent") {
+    return value;
+  }
+
+  throw new Error("Expected kind to be one of top_level, procedure, or agent");
+}
+
+function asOptionalNonNegativeNumber(value: unknown, name: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`Expected ${name} to be a non-negative number`);
+  }
+
+  return value;
+}

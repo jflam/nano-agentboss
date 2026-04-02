@@ -132,8 +132,13 @@ export function renderSessionToolGuidance(): string {
   return [
     "Nanoboss session tool guidance:",
     "- For prior stored procedure results, prefer the nanoboss session MCP tools over filesystem inspection.",
-    "- Available tools: session_recent, session_last, cell_get, ref_read, ref_stat, get_schema, ref_write_to_file.",
-    "- Retrieval recipe: call session_recent(...) or session_last(), inspect the summary/dataRef, then call ref_read(result_ref). If that returns nested refs such as critique or answer, call ref_read on those refs too.",
+    "- Use top_level_runs(...) to find prior chat-visible commands such as /default, /linter, or /second-opinion.",
+    "- Use session_recent(...) only for recency-based discovery across the whole session; it is not a structural query.",
+    "- Use cell_children(...) or cell_descendants(...) to inspect nested procedure and agent calls under one run.",
+    "- Use cell_parent(...) or cell_ancestors(...) to identify which top-level run owns a nested cell.",
+    "- After you find a candidate cell, use cell_get(...) for exact metadata and ref_read(...) for exact stored values.",
+    "- If ref_read(...) returns nested refs such as critique or answer, call ref_read(...) on those refs too.",
+    "- Do not treat not-found results from a bounded scan as proof of absence unless the search scope was exhaustive.",
     "- Do not inspect ~/.nanoboss/sessions directly unless the session MCP tools fail.",
   ].join("\n");
 }

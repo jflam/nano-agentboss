@@ -4,6 +4,9 @@ import { dirname, join, resolve } from "node:path";
 import { getSessionDir } from "./config.ts";
 import { inferDataShape } from "./data-shape.ts";
 import type {
+  CellAncestorsOptions,
+  CellDescendantsOptions,
+  CellFilterOptions,
   CellKind,
   CellRecord,
   CellRef,
@@ -79,6 +82,9 @@ export class SessionStore {
   private readonly cells = new Map<string, CellRecord>();
   private readonly cellFilePaths = new Map<string, string>();
   private readonly order: string[] = [];
+  private readonly parentByCellId = new Map<string, string | undefined>();
+  private readonly childrenByCellId = new Map<string, string[]>();
+  private readonly topLevelCellIds: string[] = [];
 
   constructor(params: { sessionId: string; cwd: string; rootDir?: string }) {
     this.sessionId = params.sessionId;
@@ -146,9 +152,7 @@ export class SessionStore {
     const filePath = join(this.cellsDir, `${Date.now()}-${record.cellId}.json`);
     writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
 
-    this.cells.set(record.cellId, record);
-    this.cellFilePaths.set(record.cellId, filePath);
-    this.order.push(record.cellId);
+    this.storeCellRecord(record, filePath);
 
     const dataRef = record.output.data !== undefined
       ? createValueRef(draft.cell, "output.data")
@@ -228,6 +232,119 @@ export class SessionStore {
     return summaries;
   }
 
+  parent(cellRef: CellRef): CellSummary | undefined {
+    const cell = this.readCell(cellRef);
+    const parentCellId = this.parentByCellId.get(cell.cellId);
+    return parentCellId ? this.toSummaryByCellId(parentCellId) : undefined;
+  }
+
+  children(cellRef: CellRef, options: CellFilterOptions = {}): CellSummary[] {
+    this.readCell(cellRef);
+    const childCellIds = this.childrenByCellId.get(cellRef.cellId) ?? [];
+    return this.collectSummaries(childCellIds, options);
+  }
+
+  ancestors(cellRef: CellRef, options: CellAncestorsOptions = {}): CellSummary[] {
+    const cell = this.readCell(cellRef);
+    const limit = normalizeLimit(options.limit);
+    const ancestors: CellSummary[] = [];
+    let currentCellId = options.includeSelf ? cell.cellId : this.parentByCellId.get(cell.cellId);
+
+    while (currentCellId) {
+      ancestors.push(this.toSummaryByCellId(currentCellId));
+      if (limit !== undefined && ancestors.length >= limit) {
+        break;
+      }
+      currentCellId = this.parentByCellId.get(currentCellId);
+    }
+
+    return ancestors;
+  }
+
+  descendants(cellRef: CellRef, options: CellDescendantsOptions = {}): CellSummary[] {
+    this.readCell(cellRef);
+    const limit = normalizeLimit(options.limit);
+    const maxDepth = normalizeLimit(options.maxDepth);
+    if (limit === 0 || maxDepth === 0) {
+      return [];
+    }
+
+    const descendants: CellSummary[] = [];
+    const stack = [...(this.childrenByCellId.get(cellRef.cellId) ?? [])]
+      .reverse()
+      .map((cellId) => ({ cellId, depth: 1 }));
+
+    while (stack.length > 0) {
+      const next = stack.pop();
+      if (!next) {
+        break;
+      }
+
+      if (maxDepth !== undefined && next.depth > maxDepth) {
+        continue;
+      }
+
+      const record = this.cells.get(next.cellId);
+      if (!record) {
+        continue;
+      }
+
+      if (matchesCell(record, options)) {
+        descendants.push(this.toSummary(record));
+        if (limit !== undefined && descendants.length >= limit) {
+          break;
+        }
+      }
+
+      if (maxDepth !== undefined && next.depth >= maxDepth) {
+        continue;
+      }
+
+      const childCellIds = this.childrenByCellId.get(next.cellId) ?? [];
+      for (let index = childCellIds.length - 1; index >= 0; index -= 1) {
+        const childCellId = childCellIds[index];
+        if (!childCellId) {
+          continue;
+        }
+        stack.push({ cellId: childCellId, depth: next.depth + 1 });
+      }
+    }
+
+    return descendants;
+  }
+
+  topLevelRuns(options: Omit<CellFilterOptions, "kind"> = {}): CellSummary[] {
+    const limit = normalizeLimit(options.limit);
+    if (limit === 0) {
+      return [];
+    }
+
+    const summaries: CellSummary[] = [];
+
+    for (let index = this.topLevelCellIds.length - 1; index >= 0; index -= 1) {
+      const cellId = this.topLevelCellIds[index];
+      if (!cellId) {
+        continue;
+      }
+
+      const record = this.cells.get(cellId);
+      if (!record) {
+        continue;
+      }
+
+      if (options.procedure && record.procedure !== options.procedure) {
+        continue;
+      }
+
+      summaries.push(this.toSummary(record));
+      if (limit !== undefined && summaries.length >= limit) {
+        break;
+      }
+    }
+
+    return summaries;
+  }
+
   readCell(cellRef: CellRef): CellRecord {
     if (cellRef.sessionId !== this.sessionId) {
       throw new Error(`Unknown session: ${cellRef.sessionId}`);
@@ -254,6 +371,8 @@ export class SessionStore {
     return {
       cell,
       procedure: record.procedure,
+      kind: record.meta.kind,
+      ...(record.meta.parentCellId ? { parentCellId: record.meta.parentCellId } : {}),
       summary: record.output.summary,
       memory: record.output.memory,
       dataRef: record.output.data !== undefined ? createValueRef(cell, "output.data") : undefined,
@@ -265,6 +384,74 @@ export class SessionStore {
       explicitDataSchema: record.output.explicitDataSchema,
       createdAt: record.meta.createdAt,
     };
+  }
+
+  private toSummaryByCellId(cellId: string): CellSummary {
+    const record = this.cells.get(cellId);
+    if (!record) {
+      throw new Error(`Unknown cell: ${cellId}`);
+    }
+
+    return this.toSummary(record);
+  }
+
+  private collectSummaries(cellIds: string[], options: CellFilterOptions = {}): CellSummary[] {
+    const limit = normalizeLimit(options.limit);
+    if (limit === 0) {
+      return [];
+    }
+
+    const summaries: CellSummary[] = [];
+
+    for (const cellId of cellIds) {
+      const record = this.cells.get(cellId);
+      if (!record || !matchesCell(record, options)) {
+        continue;
+      }
+
+      summaries.push(this.toSummary(record));
+      if (limit !== undefined && summaries.length >= limit) {
+        break;
+      }
+    }
+
+    return summaries;
+  }
+
+  private storeCellRecord(record: CellRecord, filePath: string): void {
+    this.cells.set(record.cellId, record);
+    this.cellFilePaths.set(record.cellId, filePath);
+    this.order.push(record.cellId);
+    this.indexCell(record);
+  }
+
+  private indexCell(record: CellRecord): void {
+    this.parentByCellId.set(record.cellId, record.meta.parentCellId);
+    this.childrenByCellId.set(record.cellId, this.childrenByCellId.get(record.cellId) ?? []);
+
+    if (record.meta.parentCellId) {
+      const childCellIds = this.childrenByCellId.get(record.meta.parentCellId) ?? [];
+      childCellIds.push(record.cellId);
+      this.sortCellIdsByCreationOrder(childCellIds);
+      this.childrenByCellId.set(record.meta.parentCellId, childCellIds);
+    }
+
+    if (record.meta.kind === "top_level") {
+      this.topLevelCellIds.push(record.cellId);
+      this.sortCellIdsByCreationOrder(this.topLevelCellIds);
+    }
+  }
+
+  private sortCellIdsByCreationOrder(cellIds: string[]): void {
+    cellIds.sort((leftId, rightId) => {
+      const left = this.cells.get(leftId);
+      const right = this.cells.get(rightId);
+      if (!left || !right) {
+        return 0;
+      }
+
+      return left.meta.createdAt.localeCompare(right.meta.createdAt);
+    });
   }
 
   private loadExistingCells(): void {
@@ -284,11 +471,33 @@ export class SessionStore {
         throw new Error(`Duplicate cell record: ${record.cellId}`);
       }
 
-      this.cells.set(record.cellId, record);
-      this.cellFilePaths.set(record.cellId, filePath);
-      this.order.push(record.cellId);
+      this.storeCellRecord(record, filePath);
     }
   }
+}
+
+function matchesCell(record: CellRecord, options: Pick<CellFilterOptions, "kind" | "procedure">): boolean {
+  if (options.kind && record.meta.kind !== options.kind) {
+    return false;
+  }
+
+  if (options.procedure && record.procedure !== options.procedure) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeLimit(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.floor(value));
 }
 
 function getValueAtPath(root: unknown, path: string): unknown {

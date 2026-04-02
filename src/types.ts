@@ -44,6 +44,8 @@ export interface CellRecord {
 export interface CellSummary {
   cell: CellRef;
   procedure: string;
+  kind: CellKind;
+  parentCellId?: string;
   summary?: string;
   memory?: string;
   dataRef?: ValueRef;
@@ -60,6 +62,21 @@ export interface RefStat {
   type: string;
   size: number;
   preview?: string;
+}
+
+export interface CellFilterOptions {
+  kind?: CellKind;
+  procedure?: string;
+  limit?: number;
+}
+
+export interface CellAncestorsOptions {
+  includeSelf?: boolean;
+  limit?: number;
+}
+
+export interface CellDescendantsOptions extends CellFilterOptions {
+  maxDepth?: number;
 }
 
 export interface RefsApi {
