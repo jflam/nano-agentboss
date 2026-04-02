@@ -17,6 +17,7 @@ import {
   toFrontendCommands,
   type FrontendCommand,
 } from "./frontend-events.ts";
+import { writeCurrentSessionPointer } from "./current-session.ts";
 import { RunLogger } from "./logger.ts";
 import { ProcedureRegistry } from "./registry.ts";
 import { formatAgentBanner } from "./runtime-banner.ts";
@@ -140,6 +141,11 @@ export class NanobossService {
     };
 
     this.sessions.set(sessionId, state);
+    writeCurrentSessionPointer({
+      sessionId,
+      cwd: params.cwd,
+      rootDir: store.rootDir,
+    });
     state.events.publish(sessionId, {
       type: "commands_updated",
       commands,

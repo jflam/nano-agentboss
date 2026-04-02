@@ -1,4 +1,5 @@
 import { getBuildLabel } from "./build-info.ts";
+import { readCurrentSessionPointer } from "./current-session.ts";
 import { inferDataShape } from "./data-shape.ts";
 import { SessionStore } from "./session-store.ts";
 import type {
@@ -16,7 +17,7 @@ export const SESSION_MCP_SERVER_NAME = "nanoboss-session";
 export const SESSION_MCP_INSTRUCTIONS = "Use these tools to inspect durable nanoboss session cells and refs.";
 
 interface SessionMcpParams {
-  sessionId: string;
+  sessionId?: string;
   cwd: string;
   rootDir?: string;
 }
@@ -41,12 +42,12 @@ export interface SessionSchemaResult {
 export class SessionMcpApi {
   constructor(private readonly params: SessionMcpParams) {}
 
-  sessionRecent(args: SessionRecentOptions = {}): ReturnType<SessionStore["recent"]> {
-    return this.createStore().recent(args);
+  sessionRecent(args: SessionRecentOptions & { sessionId?: string } = {}): ReturnType<SessionStore["recent"]> {
+    return this.createStore(args.sessionId).recent(args);
   }
 
-  topLevelRuns(args: TopLevelRunsOptions = {}): ReturnType<SessionStore["topLevelRuns"]> {
-    return this.createStore().topLevelRuns(args);
+  topLevelRuns(args: TopLevelRunsOptions & { sessionId?: string } = {}): ReturnType<SessionStore["topLevelRuns"]> {
+    return this.createStore(args.sessionId).topLevelRuns(args);
   }
 
   cellGet(cellRef: CellRef): CellRecord {
@@ -103,11 +104,21 @@ export class SessionMcpApi {
     };
   }
 
-  private createStore(): SessionStore {
+  private createStore(sessionId = this.params.sessionId): SessionStore {
+    const current = readCurrentSessionPointer();
+    const resolvedSessionId = sessionId ?? current?.sessionId;
+    const resolvedRootDir = sessionId === undefined && this.params.rootDir === undefined
+      ? current?.rootDir
+      : this.params.rootDir;
+
+    if (!resolvedSessionId) {
+      throw new Error("No active nanoboss session found; provide sessionId explicitly.");
+    }
+
     return new SessionStore({
-      sessionId: this.params.sessionId,
+      sessionId: resolvedSessionId,
       cwd: this.params.cwd,
-      rootDir: this.params.rootDir,
+      rootDir: resolvedRootDir,
     });
   }
 }
@@ -168,6 +179,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
+        sessionId: { type: "string" },
         procedure: { type: "string" },
         limit: { type: "number" },
       },
@@ -175,6 +187,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     },
     parseArgs(args) {
       return {
+        sessionId: asOptionalString(args.sessionId),
         procedure: asOptionalString(args.procedure),
         limit: asOptionalNonNegativeNumber(args.limit, "limit"),
       };
@@ -285,6 +298,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
+        sessionId: { type: "string" },
         procedure: { type: "string" },
         limit: { type: "number" },
       },
@@ -292,6 +306,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     },
     parseArgs(args) {
       return {
+        sessionId: asOptionalString(args.sessionId),
         procedure: asOptionalString(args.procedure),
         limit: asOptionalNonNegativeNumber(args.limit, "limit"),
       };
