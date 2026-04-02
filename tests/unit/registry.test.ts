@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -26,12 +26,97 @@ describe("ProcedureRegistry", () => {
     expect(registry.get("hello")?.description).toBe("hello world");
   });
 
+  test("loads procedures from both repo and profile command directories", async () => {
+    const repoCommandsDir = mkdtempSync(join(tmpdir(), "nab-repo-commands-"));
+    const profileCommandsDir = mkdtempSync(join(tmpdir(), "nab-profile-commands-"));
+
+    writeFileSync(
+      join(repoCommandsDir, "repo-only.ts"),
+      [
+        "export default {",
+        '  name: "repo-only",',
+        '  description: "repo command",',
+        '  async execute() { return "repo"; },',
+        "};",
+      ].join("\n"),
+      "utf8",
+    );
+    writeFileSync(
+      join(profileCommandsDir, "profile-only.ts"),
+      [
+        "export default {",
+        '  name: "profile-only",',
+        '  description: "profile command",',
+        '  async execute() { return "profile"; },',
+        "};",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const registry = new ProcedureRegistry({
+      commandsDir: repoCommandsDir,
+      profileCommandsDir,
+      diskCommandDirs: [repoCommandsDir, profileCommandsDir],
+    });
+    await registry.loadFromDisk();
+
+    expect(registry.get("repo-only")?.description).toBe("repo command");
+    expect(registry.get("profile-only")?.description).toBe("profile command");
+  });
+
   test("loads typia-based procedures through the runtime build pipeline", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-commands-")));
     const procedure = await registry.loadProcedureFromPath(join(process.cwd(), "commands", "second-opinion.ts"));
 
     expect(procedure.name).toBe("second-opinion");
     expect(procedure.description).toContain("Codex");
+  });
+
+  test("persists generated procedures into the profile commands directory outside the repo", async () => {
+    const repoCommandsDir = mkdtempSync(join(tmpdir(), "nab-repo-commands-"));
+    const profileCommandsDir = mkdtempSync(join(tmpdir(), "nab-profile-commands-"));
+    const workspaceDir = mkdtempSync(join(tmpdir(), "nab-workspace-"));
+    const registry = new ProcedureRegistry({
+      commandsDir: repoCommandsDir,
+      profileCommandsDir,
+      diskCommandDirs: [repoCommandsDir, profileCommandsDir],
+    });
+
+    const filePath = await registry.persist({
+      name: "generated-profile",
+      description: "generated",
+      async execute() {
+        return {};
+      },
+    }, "export default { name: \"generated-profile\", description: \"generated\", async execute() { return {}; } };", workspaceDir);
+
+    expect(filePath).toBe(join(profileCommandsDir, "generated-profile.ts"));
+    expect(existsSync(filePath)).toBe(true);
+  });
+
+  test("persists generated procedures into the repo commands directory when running in the nanoboss repo", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "nab-repo-root-"));
+    const repoCommandsDir = join(repoRoot, "commands");
+    const profileCommandsDir = mkdtempSync(join(tmpdir(), "nab-profile-commands-"));
+    mkdirSync(repoCommandsDir, { recursive: true });
+    writeFileSync(join(repoRoot, "nanoboss.ts"), "export {};\n", "utf8");
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "nanoboss", module: "nanoboss.ts" }), "utf8");
+    const registry = new ProcedureRegistry({
+      commandsDir: repoCommandsDir,
+      profileCommandsDir,
+      diskCommandDirs: [repoCommandsDir, profileCommandsDir],
+    });
+
+    const filePath = await registry.persist({
+      name: "generated-repo",
+      description: "generated",
+      async execute() {
+        return {};
+      },
+    }, "export default { name: \"generated-repo\", description: \"generated\", async execute() { return {}; } };", repoRoot);
+
+    expect(filePath).toBe(join(repoCommandsDir, "generated-repo.ts"));
+    expect(readFileSync(filePath, "utf8")).toContain("generated-repo");
   });
 
   test("get returns undefined for unknown procedures", () => {

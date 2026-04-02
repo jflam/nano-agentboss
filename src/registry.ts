@@ -1,6 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import UnpluginTypia from "@ryoppippi/unplugin-typia/bun";
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,15 +11,36 @@ import linterProcedure from "../commands/linter.ts";
 import modelProcedure from "../commands/model.ts";
 import secondOpinionProcedure from "../commands/second-opinion.ts";
 
+import { getNanobossHome } from "./config.ts";
 import { createCreateProcedure } from "./create.ts";
 import type { Procedure, ProcedureRegistryLike } from "./types.ts";
+
+interface ProcedureRegistryOptions {
+  commandsDir?: string;
+  profileCommandsDir?: string;
+  diskCommandDirs?: string[];
+}
 
 export class ProcedureRegistry implements ProcedureRegistryLike {
   private readonly procedures = new Map<string, Procedure>();
   readonly commandsDir: string;
+  readonly profileCommandsDir: string;
+  readonly diskCommandDirs: string[];
 
-  constructor(commandsDir = resolve(process.cwd(), "commands")) {
-    this.commandsDir = commandsDir;
+  constructor(optionsOrCommandsDir: string | ProcedureRegistryOptions = {}) {
+    if (typeof optionsOrCommandsDir === "string") {
+      this.commandsDir = optionsOrCommandsDir;
+      this.profileCommandsDir = join(getNanobossHome(), "commands");
+      this.diskCommandDirs = uniquePaths([optionsOrCommandsDir]);
+      return;
+    }
+
+    const repoCommandsDir = optionsOrCommandsDir.commandsDir ?? resolve(process.cwd(), "commands");
+    const profileCommandsDir = optionsOrCommandsDir.profileCommandsDir ?? join(getNanobossHome(), "commands");
+
+    this.commandsDir = repoCommandsDir;
+    this.profileCommandsDir = profileCommandsDir;
+    this.diskCommandDirs = uniquePaths(optionsOrCommandsDir.diskCommandDirs ?? [repoCommandsDir, profileCommandsDir]);
   }
 
   get(name: string): Procedure | undefined {
@@ -45,19 +66,24 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
   }
 
   async loadFromDisk(): Promise<void> {
-    mkdirSync(this.commandsDir, { recursive: true });
-    const files = readdirSync(this.commandsDir)
-      .filter((entry) => entry.endsWith(".ts"))
-      .sort();
-
-    for (const file of files) {
-      const fileStem = file.replace(/\.ts$/, "");
-      if (this.procedures.has(fileStem)) {
+    for (const commandsDir of this.diskCommandDirs) {
+      if (!existsSync(commandsDir)) {
         continue;
       }
 
-      const procedure = await this.loadProcedureFromPath(join(this.commandsDir, file));
-      this.register(procedure);
+      const files = readdirSync(commandsDir)
+        .filter((entry) => entry.endsWith(".ts"))
+        .sort();
+
+      for (const file of files) {
+        const fileStem = file.replace(/\.ts$/, "");
+        if (this.procedures.has(fileStem)) {
+          continue;
+        }
+
+        const procedure = await this.loadProcedureFromPath(join(commandsDir, file));
+        this.register(procedure);
+      }
     }
   }
 
@@ -69,9 +95,15 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     return procedure;
   }
 
-  async persist(procedure: Procedure, source: string): Promise<string> {
-    mkdirSync(this.commandsDir, { recursive: true });
-    const filePath = join(this.commandsDir, `${procedure.name}.ts`);
+  async persist(procedure: Procedure, source: string, cwd?: string): Promise<string> {
+    const commandsDir = resolvePersistCommandsDir({
+      cwd,
+      fallbackCommandsDir: this.commandsDir,
+      profileCommandsDir: this.profileCommandsDir,
+    });
+
+    mkdirSync(commandsDir, { recursive: true });
+    const filePath = join(commandsDir, `${procedure.name}.ts`);
     writeFileSync(filePath, source, "utf8");
     return filePath;
   }
@@ -159,4 +191,41 @@ function formatBuildLogs(logs: unknown[]): string[] {
 
     return location ? `${location}: ${message}` : message;
   });
+}
+
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths.map((path) => resolve(path)))];
+}
+
+function resolvePersistCommandsDir(params: {
+  cwd?: string;
+  fallbackCommandsDir: string;
+  profileCommandsDir: string;
+}): string {
+  const workingDir = params.cwd ? resolve(params.cwd) : undefined;
+  if (workingDir && isNanobossRepoRoot(workingDir)) {
+    return join(workingDir, "commands");
+  }
+
+  return resolve(params.profileCommandsDir || params.fallbackCommandsDir);
+}
+
+function isNanobossRepoRoot(cwd: string): boolean {
+  const packageJsonPath = join(cwd, "package.json");
+  const commandsDir = join(cwd, "commands");
+  const nanobossEntrypoint = join(cwd, "nanoboss.ts");
+
+  if (!existsSync(packageJsonPath) || !existsSync(commandsDir) || !existsSync(nanobossEntrypoint)) {
+    return false;
+  }
+
+  try {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+      name?: unknown;
+      module?: unknown;
+    };
+    return packageJson.name === "nanoboss" && packageJson.module === "nanoboss.ts";
+  } catch {
+    return false;
+  }
 }

@@ -184,7 +184,7 @@ export interface ProcedureRegistryLike {
   get(name: string): Procedure | undefined;
   register(procedure: Procedure): void;
   loadProcedureFromPath(path: string): Promise<Procedure>;
-  persist(procedure: Procedure, source: string): Promise<string>;
+  persist(procedure: Procedure, source: string, cwd?: string): Promise<string>;
   toAvailableCommands(): acp.AvailableCommand[];
 }
 

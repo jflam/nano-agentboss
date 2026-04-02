@@ -44,12 +44,20 @@ NANOBOSS_INSTALL_DIR=~/bin bun run build
 Each build embeds the current git commit hash. On startup, the server and CLI
 print a banner like `nanoboss-<commit>`.
 
-The compiled binary includes the built-in commands. By default it skips loading
-additional `.ts` commands from `./commands` at runtime. If you want to opt back
-into disk-loaded commands, set:
+At startup, nanoboss loads built-in commands and also loads additional `.ts`
+commands from these locations by default:
+
+- `./commands` relative to the nanoboss process working directory
+- `~/.nanoboss/commands`
+
+The profile directory is the default place for user-defined dynamic commands.
+When `/create` runs inside the nanoboss repo, it writes into the repo's
+`commands/` directory. Otherwise it writes into `~/.nanoboss/commands`.
+
+If you need to disable runtime disk command loading, set:
 
 ```bash
-NANOBOSS_LOAD_DISK_COMMANDS=1
+NANOBOSS_LOAD_DISK_COMMANDS=0
 ```
 
 ## Architecture

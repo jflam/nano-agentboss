@@ -87,6 +87,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           },
         },
         source,
+        ctx.cwd,
       );
 
       const procedure = await registry.loadProcedureFromPath(filePath);
