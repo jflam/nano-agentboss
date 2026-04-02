@@ -79,6 +79,13 @@ export interface CellDescendantsOptions extends CellFilterOptions {
   maxDepth?: number;
 }
 
+export interface SessionRecentOptions {
+  procedure?: string;
+  limit?: number;
+}
+
+export type TopLevelRunsOptions = Omit<CellFilterOptions, "kind">;
+
 export interface RefsApi {
   read<T = KernelValue>(valueRef: ValueRef): Promise<T>;
   stat(valueRef: ValueRef): Promise<RefStat>;
@@ -86,8 +93,8 @@ export interface RefsApi {
 }
 
 export interface SessionApi {
-  recent(options?: { procedure?: string; limit?: number }): Promise<CellSummary[]>;
-  topLevelRuns(options?: { procedure?: string; limit?: number }): Promise<CellSummary[]>;
+  recent(options?: SessionRecentOptions): Promise<CellSummary[]>;
+  topLevelRuns(options?: TopLevelRunsOptions): Promise<CellSummary[]>;
   get(cellRef: CellRef): Promise<CellRecord>;
   ancestors(cellRef: CellRef, options?: CellAncestorsOptions): Promise<CellSummary[]>;
   descendants(cellRef: CellRef, options?: CellDescendantsOptions): Promise<CellSummary[]>;

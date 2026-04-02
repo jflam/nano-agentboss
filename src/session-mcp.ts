@@ -3,10 +3,11 @@ import { inferDataShape } from "./data-shape.ts";
 import { SessionStore } from "./session-store.ts";
 import type {
   CellDescendantsOptions,
-  CellFilterOptions,
   CellKind,
   CellRecord,
   CellRef,
+  SessionRecentOptions,
+  TopLevelRunsOptions,
   ValueRef,
 } from "./types.ts";
 
@@ -40,11 +41,11 @@ export interface SessionSchemaResult {
 export class SessionMcpApi {
   constructor(private readonly params: SessionMcpParams) {}
 
-  sessionRecent(args: { procedure?: string; limit?: number } = {}): ReturnType<SessionStore["recent"]> {
+  sessionRecent(args: SessionRecentOptions = {}): ReturnType<SessionStore["recent"]> {
     return this.createStore().recent(args);
   }
 
-  topLevelRuns(args: Omit<CellFilterOptions, "kind"> = {}): ReturnType<SessionStore["topLevelRuns"]> {
+  topLevelRuns(args: TopLevelRunsOptions = {}): ReturnType<SessionStore["topLevelRuns"]> {
     return this.createStore().topLevelRuns(args);
   }
 

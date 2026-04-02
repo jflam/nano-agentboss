@@ -15,6 +15,7 @@ import type {
   ProcedureResult,
   RefStat,
   RunResult,
+  TopLevelRunsOptions,
   ValueRef,
 } from "./types.ts";
 
@@ -276,7 +277,7 @@ export class SessionStore {
     return descendants;
   }
 
-  topLevelRuns(options: Omit<CellFilterOptions, "kind"> = {}): CellSummary[] {
+  topLevelRuns(options: TopLevelRunsOptions = {}): CellSummary[] {
     return this.collectReverseSummaries(this.topLevelCellIds, options);
   }
 

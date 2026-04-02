@@ -23,6 +23,8 @@ import type {
   RefsApi,
   RunResult,
   SessionApi,
+  SessionRecentOptions,
+  TopLevelRunsOptions,
   TypeDescriptor,
   ValueRef,
 } from "./types.ts";
@@ -459,14 +461,14 @@ class CommandSession implements SessionApi {
     private readonly currentCellId: string,
   ) {}
 
-  async recent(options?: { procedure?: string; limit?: number }) {
+  async recent(options?: SessionRecentOptions) {
     return this.store.recent({
       ...options,
       excludeCellId: this.currentCellId,
     });
   }
 
-  async topLevelRuns(options?: { procedure?: string; limit?: number }) {
+  async topLevelRuns(options?: TopLevelRunsOptions) {
     return this.store.topLevelRuns(options);
   }
 
