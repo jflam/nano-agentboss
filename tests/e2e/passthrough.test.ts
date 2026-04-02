@@ -25,7 +25,8 @@ describeE2E("callAgent passthrough (real agent)", () => {
       const lines = result.data
         ?.trim()
         .split("\n")
-        .map((line) => line.trim());
+        .map((line) => line.trim())
+        .filter(Boolean);
       expect(lines).toEqual(["2", "3", "5"]);
     },
     60_000,

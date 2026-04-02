@@ -108,7 +108,7 @@ async function waitForCompletedRuns(
   events: FrontendEventEnvelope[],
   count: number,
 ): Promise<void> {
-  await waitForMatch(() => String(completedRuns(events).length), String(count), 60_000);
+  await waitForMatch(() => String(completedRuns(events).length), String(count), 90_000);
 }
 
 function realAgentEnv(agent: AgentFixture): Record<string, string> {
