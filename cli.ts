@@ -13,6 +13,16 @@ import {
 const HTTP_RUN_START_TIMEOUT_MS = Number(process.env.NANOBOSS_HTTP_RUN_START_TIMEOUT_MS ?? "10000");
 const HTTP_RUN_IDLE_TIMEOUT_MS = Number(process.env.NANOBOSS_HTTP_RUN_IDLE_TIMEOUT_MS ?? "30000");
 const HTTP_RUN_HARD_TIMEOUT_MS = Number(process.env.NANOBOSS_HTTP_RUN_HARD_TIMEOUT_MS ?? String(30 * 60 * 1000));
+const MULTILINE_PASTE_DEBOUNCE_MS = Number(process.env.NANOBOSS_MULTILINE_PASTE_DEBOUNCE_MS ?? "25");
+
+interface PromptReader {
+  off(event: "line" | "close", listener: (...args: unknown[]) => void): this;
+  on(event: "line", listener: (line: string) => void): this;
+  once(event: "close", listener: () => void): this;
+  prompt(preserveCursor?: boolean): void;
+  question(query: string): Promise<string>;
+  setPrompt(prompt: string): void;
+}
 
 interface TrackedHttpRun {
   done: boolean;
@@ -152,6 +162,7 @@ import {
   startSessionEventStream,
 } from "./src/http-client.ts";
 import { DEFAULT_HTTP_SERVER_URL } from "./src/defaults.ts";
+import { getBuildFreshnessNotice } from "./src/build-freshness.ts";
 import { ensureMatchingHttpServer } from "./src/http-server-supervisor.ts";
 import { StreamingTerminalMarkdownRenderer } from "./src/terminal-markdown.ts";
 import { parseCliOptions } from "./src/cli-options.ts";
@@ -535,8 +546,73 @@ export async function runCliCommand(argv: string[] = []): Promise<void> {
   await runHttpCli(options.serverUrl, options.showToolCalls);
 }
 
+export async function readPromptInput(
+  rl: PromptReader,
+  options: {
+    prompt?: string;
+    debounceMs?: number;
+    useTerminalMultilinePaste?: boolean;
+  } = {},
+): Promise<string> {
+  const prompt = options.prompt ?? "> ";
+  const useTerminalMultilinePaste = options.useTerminalMultilinePaste ?? (process.stdin.isTTY && process.stdout.isTTY);
+
+  if (!useTerminalMultilinePaste) {
+    return await rl.question(prompt);
+  }
+
+  rl.setPrompt(prompt);
+  rl.prompt();
+
+  return await new Promise<string>((resolve, reject) => {
+    const lines: string[] = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      rl.off("line", onLine);
+      rl.off("close", onClose);
+    };
+
+    const finish = () => {
+      cleanup();
+      resolve(lines.join("\n"));
+    };
+
+    const scheduleFinish = () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(finish, options.debounceMs ?? MULTILINE_PASTE_DEBOUNCE_MS);
+    };
+
+    const onLine = (line: string) => {
+      lines.push(line);
+      scheduleFinish();
+    };
+
+    const onClose = () => {
+      cleanup();
+      if (lines.length > 0) {
+        resolve(lines.join("\n"));
+        return;
+      }
+      reject(new Error("readline was closed"));
+    };
+
+    rl.on("line", onLine);
+    rl.once("close", onClose);
+  });
+}
+
 async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<void> {
   const client = new OutputClient({ showToolCalls });
+  const buildFreshnessNotice = getBuildFreshnessNotice(process.cwd());
+  if (buildFreshnessNotice) {
+    client.writeStatusLine(buildFreshnessNotice);
+  }
   await ensureMatchingHttpServer(serverUrl, {
     cwd: process.cwd(),
     onStatus: (text) => client.writeStatusLine(text),
@@ -575,7 +651,7 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
 
   try {
     for (;;) {
-      const line = await rl.question("> ");
+      const line = await readPromptInput(rl);
       const trimmed = line.trim();
       if (trimmed.length === 0) {
         continue;
