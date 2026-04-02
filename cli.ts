@@ -178,7 +178,8 @@ import {
   getDefaultAgentBanner,
 } from "./src/runtime-banner.ts";
 import { resolveSelfCommand } from "./src/self-command.ts";
-import type { DownstreamAgentSelection } from "./src/types.ts";
+import { getAgentTokenUsagePercent } from "./src/token-usage.ts";
+import type { AgentTokenUsage, DownstreamAgentSelection } from "./src/types.ts";
 
 const LOCAL_CLI_COMMANDS = ["/new", "/end", "/quit", "/exit"] as const;
 
@@ -192,6 +193,7 @@ class OutputClient {
   private markdownRenderer?: StreamingTerminalMarkdownRenderer;
   private responseActive = false;
   private outputEndsWithNewline = true;
+  private pendingTurnTokenUsage?: AgentTokenUsage;
   private currentAgentBanner = getDefaultAgentBanner(process.cwd());
   private currentAgentSelection = toDownstreamAgentSelection(
     resolveDownstreamAgentConfig(process.cwd()),
@@ -233,6 +235,13 @@ class OutputClient {
         }
         break;
       case "tool_call_update":
+        if (update.status === "completed") {
+          const usage = extractTokenUsage(update.rawOutput);
+          const toolTitle = this.toolMeta.get(update.toolCallId)?.title;
+          if (usage && toolTitle && toolTitle.startsWith("defaultSession:")) {
+            this.pendingTurnTokenUsage = usage;
+          }
+        }
         if (this.options.showToolCalls && update.status) {
           this.updateToolCall(update.toolCallId, update.status, update.title ?? undefined);
         }
@@ -291,6 +300,9 @@ class OutputClient {
     if (event.type === "run_completed") {
       this.runStartedAt.delete(event.data.runId);
       this.runLastHeartbeatLineAt.delete(event.data.runId);
+      if (event.data.procedure === "default" && event.data.tokenUsage) {
+        this.pendingTurnTokenUsage = event.data.tokenUsage;
+      }
       this.endResponse();
       return;
     }
@@ -338,6 +350,7 @@ class OutputClient {
 
   beginResponse(): void {
     this.endResponse();
+    this.pendingTurnTokenUsage = undefined;
     this.markdownRenderer = new StreamingTerminalMarkdownRenderer();
     this.responseActive = true;
   }
@@ -355,6 +368,11 @@ class OutputClient {
 
     if (!this.responseActive) {
       return;
+    }
+
+    if (this.pendingTurnTokenUsage) {
+      this.writeToolLine(formatTokenUsageLine(this.pendingTurnTokenUsage));
+      this.pendingTurnTokenUsage = undefined;
     }
 
     this.responseActive = false;
@@ -481,6 +499,36 @@ function removeFirstMatch(values: string[], needle: string): void {
   if (index >= 0) {
     values.splice(index, 1);
   }
+}
+
+function extractTokenUsage(rawOutput: unknown): AgentTokenUsage | undefined {
+  if (!rawOutput || typeof rawOutput !== "object" || !("tokenUsage" in rawOutput)) {
+    return undefined;
+  }
+
+  const usage = (rawOutput as { tokenUsage?: unknown }).tokenUsage;
+  if (!usage || typeof usage !== "object" || !("source" in usage) || typeof usage.source !== "string") {
+    return undefined;
+  }
+
+  return usage as AgentTokenUsage;
+}
+
+function formatTokenUsageLine(usage: AgentTokenUsage): string {
+  if (usage.currentContextTokens !== undefined && usage.maxContextTokens !== undefined) {
+    const percent = getAgentTokenUsagePercent(usage) ?? 0;
+    return `[tokens] ${formatInt(usage.currentContextTokens)} / ${formatInt(usage.maxContextTokens)} (${percent.toFixed(1)}%)`;
+  }
+
+  if (usage.currentContextTokens !== undefined) {
+    return `[tokens] ${formatInt(usage.currentContextTokens)}`;
+  }
+
+  return `[tokens] ${usage.source}`;
+}
+
+function formatInt(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
 export async function runCliCommand(argv: string[] = []): Promise<void> {

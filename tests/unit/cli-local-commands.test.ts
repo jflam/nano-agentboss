@@ -119,6 +119,8 @@ test("renders markdown agent output through the terminal markdown renderer", asy
     cli.process.stdin.write("markdown demo\n");
     await waitForContains(cli.stdout, "const x = 1");
 
+    await waitForContains(cli.stderr, "[tokens] 512 / 8,192 (6.3%)");
+
     const stdout = cli.stdout();
     expect(stdout).toContain("Demo");
     expect(stdout).toContain("- one");
@@ -126,6 +128,7 @@ test("renders markdown agent output through the terminal markdown renderer", asy
     expect(stdout).not.toContain("# Demo");
     expect(stdout).not.toContain("```ts");
     expect(stdout).not.toContain("```");
+    expect(cli.stderr()).toContain("[tokens] 512 / 8,192 (6.3%)");
   } finally {
     if (cli.process.exitCode === null) {
       cli.process.kill();

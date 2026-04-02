@@ -101,15 +101,19 @@ class MockAgent implements acp.Agent {
           status: "completed",
           rawOutput: {
             path: "README.md",
-            tokenUsage: {
-              source: "acp_usage_update",
-              currentContextTokens: 512,
-              maxContextTokens: 8192,
-            },
           },
         },
       });
     }
+
+    await this.connection.sessionUpdate({
+      sessionId: params.sessionId,
+      update: {
+        sessionUpdate: "usage_update",
+        size: 8192,
+        used: 512,
+      },
+    });
 
     await this.connection.sessionUpdate({
       sessionId: params.sessionId,
