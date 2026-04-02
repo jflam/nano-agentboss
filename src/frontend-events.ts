@@ -28,7 +28,7 @@ export type FrontendEvent =
       stream: "agent";
     }
   | {
-      type: "token_snapshot";
+      type: "token_usage";
       runId: string;
       usage: AgentTokenUsage;
       sourceUpdate: "usage_update" | "tool_call_update";
@@ -87,7 +87,7 @@ export type CommandsUpdatedEventEnvelope = Extract<FrontendEventEnvelope, { type
 export type TextDeltaEventEnvelope = Extract<FrontendEventEnvelope, { type: "text_delta" }>;
 export type ToolStartedEventEnvelope = Extract<FrontendEventEnvelope, { type: "tool_started" }>;
 export type ToolUpdatedEventEnvelope = Extract<FrontendEventEnvelope, { type: "tool_updated" }>;
-export type TokenSnapshotEventEnvelope = Extract<FrontendEventEnvelope, { type: "token_snapshot" }>;
+export type TokenUsageEventEnvelope = Extract<FrontendEventEnvelope, { type: "token_usage" }>;
 export type RunFailedEventEnvelope = Extract<FrontendEventEnvelope, { type: "run_failed" }>;
 
 export class SessionEventLog {
@@ -147,8 +147,8 @@ export function isToolUpdatedEvent(event: FrontendEventEnvelope): event is ToolU
   return event.type === "tool_updated";
 }
 
-export function isTokenSnapshotEvent(event: FrontendEventEnvelope): event is TokenSnapshotEventEnvelope {
-  return event.type === "token_snapshot";
+export function isTokenUsageEvent(event: FrontendEventEnvelope): event is TokenUsageEventEnvelope {
+  return event.type === "token_usage";
 }
 
 export function isRunFailedEvent(event: FrontendEventEnvelope): event is RunFailedEventEnvelope {
@@ -206,7 +206,7 @@ export function mapSessionUpdateToFrontendEvents(
       const usage = extractTokenUsage(update.rawOutput);
       if (usage) {
         events.push({
-          type: "token_snapshot",
+          type: "token_usage",
           runId,
           usage,
           sourceUpdate: "tool_call_update",
@@ -227,7 +227,7 @@ export function mapSessionUpdateToFrontendEvents(
     case "usage_update":
       return [
         {
-          type: "token_snapshot",
+          type: "token_usage",
           runId,
           usage: normalizeAgentTokenUsage({
             source: "acp_usage_update",

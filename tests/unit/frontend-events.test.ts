@@ -49,7 +49,7 @@ describe("frontend-events", () => {
       }),
     ).toEqual([
       {
-        type: "token_snapshot",
+        type: "token_usage",
         runId: "run-1",
         usage: {
           source: "acp_usage_update",
@@ -82,7 +82,7 @@ describe("frontend-events", () => {
         status: "completed",
       },
       {
-        type: "token_snapshot",
+        type: "token_usage",
         runId: "run-1",
         usage: {
           source: "copilot_log",
