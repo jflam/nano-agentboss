@@ -232,8 +232,7 @@ class OutputClient {
       case "tool_call_update":
         if (update.status === "completed") {
           const usage = extractTokenUsage(update.rawOutput);
-          const toolTitle = this.toolMeta.get(update.toolCallId)?.title;
-          if (usage && toolTitle && toolTitle.startsWith("defaultSession:")) {
+          if (usage) {
             this.pendingTurnTokenUsage = usage;
           }
         }
@@ -295,7 +294,7 @@ class OutputClient {
     if (event.type === "run_completed") {
       this.runStartedAt.delete(event.data.runId);
       this.runLastHeartbeatLineAt.delete(event.data.runId);
-      if (event.data.procedure === "default" && event.data.tokenUsage) {
+      if (event.data.tokenUsage) {
         this.pendingTurnTokenUsage = event.data.tokenUsage;
       }
       this.endResponse();
