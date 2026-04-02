@@ -8,9 +8,11 @@ import { disposeSessionMcpTransport } from "./mcp-attachment.ts";
 import {
   collectUnsyncedProcedureMemoryCards,
   hasTopLevelNonDefaultProcedureHistory,
+  materializeProcedureMemoryCard,
   renderProcedureMemoryPreamble,
   renderSessionToolGuidance,
 } from "./memory-cards.ts";
+import { estimateDefaultPromptDiagnostics, estimateProcedureMemoryCardTokens } from "./prompt-diagnostics.ts";
 import {
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
@@ -200,6 +202,7 @@ export class NanobossService {
   private prepareDefaultPrompt(
     session: SessionState,
     prompt: string,
+    runId: string,
   ): { prompt: string; markSubmitted: () => void } {
     const cards = collectUnsyncedProcedureMemoryCards(
       session.store,
@@ -207,10 +210,37 @@ export class NanobossService {
     );
     const blocks: string[] = [];
     const preamble = renderProcedureMemoryPreamble(cards);
+    const includeGuidance = Boolean(preamble) || hasTopLevelNonDefaultProcedureHistory(session.store);
+
+    const promptDiagnostics = estimateDefaultPromptDiagnostics(session.defaultAgentConfig, {
+      prompt,
+      cards,
+      includeGuidance,
+      promptIncludesUserMessageLabel: includeGuidance,
+    });
+
+    if (cards.length > 0) {
+      session.events.publish(session.store.sessionId, {
+        type: "memory_cards",
+        runId,
+        cards: cards.map((card, index) => ({
+          ...card,
+          estimatedPromptTokens: promptDiagnostics?.cards[index]?.estimatedTokens,
+        })),
+      });
+    }
+
+    if (promptDiagnostics) {
+      session.events.publish(session.store.sessionId, {
+        type: "prompt_diagnostics",
+        runId,
+        diagnostics: promptDiagnostics,
+      });
+    }
 
     if (preamble) {
       blocks.push(preamble);
-    } else if (hasTopLevelNonDefaultProcedureHistory(session.store)) {
+    } else if (includeGuidance) {
       blocks.push(renderSessionToolGuidance());
     }
 
@@ -338,7 +368,7 @@ export class NanobossService {
         session.defaultConversation.updateConfig(nextConfig);
         return nextConfig;
       },
-      prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt),
+      prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId),
     });
 
     logger.write({
@@ -369,6 +399,23 @@ export class NanobossService {
             type: "text",
             text: result.display,
           },
+        });
+      }
+
+      const storedMemoryCard = materializeProcedureMemoryCard(session.store, finalized.cell);
+      const storedMemoryCardEstimate = storedMemoryCard
+        ? estimateProcedureMemoryCardTokens(session.defaultAgentConfig, storedMemoryCard)
+        : undefined;
+      if (storedMemoryCard) {
+        session.events.publish(sessionId, {
+          type: "memory_card_stored",
+          runId,
+          card: {
+            ...storedMemoryCard,
+            estimatedPromptTokens: storedMemoryCardEstimate?.estimatedTokens,
+          },
+          estimateMethod: storedMemoryCardEstimate?.method,
+          estimateEncoding: storedMemoryCardEstimate?.encoding,
         });
       }
 

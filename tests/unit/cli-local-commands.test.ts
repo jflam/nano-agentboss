@@ -158,3 +158,35 @@ test("renders nested tool calls with rails under their parent wrapper", async ()
     await shutdownServer(baseUrl);
   }
 }, 20_000);
+
+test("renders stored and injected memory cards around default turns", async () => {
+  const baseUrl = `http://localhost:${await reservePort()}`;
+  const cli = spawnCli(baseUrl);
+
+  try {
+    await waitForContains(cli.stdout, "> ");
+    cli.process.stdin.write("/tokens\n");
+    await waitForContains(cli.stdout, "No live token metrics yet.");
+    await waitForContains(cli.stderr, "[memory] stored /tokens @ ");
+
+    await waitForContains(cli.stdout, "> ");
+    cli.process.stdin.write("what is 2+2\n");
+    await waitForContains(cli.stderr, "[memory] injecting 1 card");
+    await waitForContains(cli.stderr, "│ /tokens @ ");
+    await waitForContains(cli.stderr, "│   summary: tokens: unavailable");
+    await waitForContains(cli.stderr, "│   memory: tokens: unavailable");
+    await waitForContains(cli.stderr, "[tool] defaultSession: what is 2+2");
+
+    expect(cli.stderr()).toContain("[memory] stored /tokens @ ");
+    expect(cli.stderr()).toContain("[memory] injecting 1 card");
+    expect(cli.stderr()).toContain("│ /tokens @ ");
+    expect(cli.stderr()).toContain("│   summary: tokens: unavailable");
+    expect(cli.stderr()).toContain("│   memory: tokens: unavailable");
+  } finally {
+    if (cli.process.exitCode === null) {
+      cli.process.kill();
+      await once(cli.process, "exit");
+    }
+    await shutdownServer(baseUrl);
+  }
+}, 20_000);

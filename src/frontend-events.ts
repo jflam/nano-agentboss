@@ -1,6 +1,8 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { normalizeAgentTokenUsage } from "./token-usage.ts";
+import type { ProcedureMemoryCard } from "./memory-cards.ts";
+import type { PromptTokenDiagnostics } from "./prompt-diagnostics.ts";
 import type { AgentTokenUsage, CellRef } from "./types.ts";
 
 export interface FrontendCommand {
@@ -20,6 +22,23 @@ export type FrontendEvent =
       procedure: string;
       prompt: string;
       startedAt: string;
+    }
+  | {
+      type: "memory_cards";
+      runId: string;
+      cards: Array<ProcedureMemoryCard & { estimatedPromptTokens?: number }>;
+    }
+  | {
+      type: "memory_card_stored";
+      runId: string;
+      card: ProcedureMemoryCard & { estimatedPromptTokens?: number };
+      estimateMethod?: string;
+      estimateEncoding?: string;
+    }
+  | {
+      type: "prompt_diagnostics";
+      runId: string;
+      diagnostics: PromptTokenDiagnostics;
     }
   | {
       type: "text_delta";

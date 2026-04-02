@@ -1,4 +1,4 @@
-import { stringifyCompactShape } from "./data-shape.ts";
+import { inferDataShape, stringifyCompactShape } from "./data-shape.ts";
 import { createValueRef, summarizeText } from "./session-store.ts";
 import type { SessionStore } from "./session-store.ts";
 import type { CellRef, JsonValue, ValueRef } from "./types.ts";
@@ -34,32 +34,12 @@ export function collectUnsyncedProcedureMemoryCards(
       continue;
     }
 
-    const record = store.readCell(summary.cell);
-    if (record.procedure === "default") {
+    const card = materializeProcedureMemoryCard(store, summary.cell, summary.dataShape);
+    if (!card) {
       continue;
     }
 
-    const memory = deriveProcedureMemory(record.output.memory, record.output.summary, record.output.display);
-    const dataRef = record.output.data !== undefined
-      ? createValueRef(summary.cell, "output.data")
-      : undefined;
-    const displayRef = record.output.display !== undefined
-      ? createValueRef(summary.cell, "output.display")
-      : undefined;
-
-    unsynced.push({
-      cell: summary.cell,
-      procedure: record.procedure,
-      input: record.input,
-      summary: record.output.summary,
-      memory,
-      dataRef,
-      displayRef,
-      dataShape: summary.dataShape,
-      dataPreview: buildDataPreview(record.output.data),
-      explicitDataSchema: record.output.explicitDataSchema,
-      createdAt: record.meta.createdAt,
-    });
+    unsynced.push(card);
 
     if (unsynced.length >= maxCards) {
       break;
@@ -69,7 +49,49 @@ export function collectUnsyncedProcedureMemoryCards(
   return unsynced.reverse();
 }
 
+export function materializeProcedureMemoryCard(
+  store: SessionStore,
+  cell: CellRef,
+  dataShape?: JsonValue,
+): ProcedureMemoryCard | undefined {
+  const record = store.readCell(cell);
+  if (record.procedure === "default") {
+    return undefined;
+  }
+
+  const memory = deriveProcedureMemory(record.output.memory, record.output.summary, record.output.display);
+  const dataRef = record.output.data !== undefined
+    ? createValueRef(cell, "output.data")
+    : undefined;
+  const displayRef = record.output.display !== undefined
+    ? createValueRef(cell, "output.display")
+    : undefined;
+
+  return {
+    cell,
+    procedure: record.procedure,
+    input: record.input,
+    summary: record.output.summary,
+    memory,
+    dataRef,
+    displayRef,
+    dataShape: dataShape ?? (record.output.data !== undefined ? inferDataShape(record.output.data) : undefined),
+    dataPreview: buildDataPreview(record.output.data),
+    explicitDataSchema: record.output.explicitDataSchema,
+    createdAt: record.meta.createdAt,
+  };
+}
+
 export function renderProcedureMemoryPreamble(cards: ProcedureMemoryCard[]): string | undefined {
+  const cardsSection = renderProcedureMemoryCardsSection(cards);
+  if (!cardsSection) {
+    return undefined;
+  }
+
+  return [cardsSection, renderSessionToolGuidance()].join("\n\n").trimEnd();
+}
+
+export function renderProcedureMemoryCardsSection(cards: ProcedureMemoryCard[]): string | undefined {
   if (cards.length === 0) {
     return undefined;
   }
@@ -80,44 +102,49 @@ export function renderProcedureMemoryPreamble(cards: ProcedureMemoryCard[]): str
   ];
 
   for (const card of cards) {
-    lines.push(`- procedure: /${card.procedure}`);
-    lines.push(`- input: ${summarizeText(card.input, 140)}`);
-
-    if (card.summary) {
-      lines.push(`- summary: ${summarizeText(card.summary, 220)}`);
-    }
-
-    if (card.memory) {
-      lines.push(`- memory: ${summarizeText(card.memory, 280)}`);
-    }
-
-    if (card.dataRef) {
-      lines.push(`- result_ref: ${formatValueRef(card.dataRef)}`);
-    }
-
-    if (card.displayRef) {
-      lines.push(`- display_ref: ${formatValueRef(card.displayRef)}`);
-    }
-
-    if (card.dataPreview) {
-      lines.push(`- data_preview: ${card.dataPreview}`);
-    }
-
-    const shape = stringifyCompactShape(card.dataShape, 220);
-    if (shape) {
-      lines.push(`- data_shape: ${shape}`);
-    }
-
-    if (card.explicitDataSchema) {
-      const schema = summarizeText(JSON.stringify(card.explicitDataSchema), 220);
-      lines.push(`- explicit_data_schema: ${schema}`);
-    }
-
-    lines.push("");
+    lines.push(...renderProcedureMemoryCardLines(card), "");
   }
 
-  lines.push(renderSessionToolGuidance());
   return lines.join("\n").trimEnd();
+}
+
+export function renderProcedureMemoryCardLines(card: ProcedureMemoryCard): string[] {
+  const lines = [
+    `- procedure: /${card.procedure}`,
+    `- input: ${summarizeText(card.input, 140)}`,
+  ];
+
+  if (card.summary) {
+    lines.push(`- summary: ${summarizeText(card.summary, 220)}`);
+  }
+
+  if (card.memory) {
+    lines.push(`- memory: ${summarizeText(card.memory, 280)}`);
+  }
+
+  if (card.dataRef) {
+    lines.push(`- result_ref: ${formatValueRef(card.dataRef)}`);
+  }
+
+  if (card.displayRef) {
+    lines.push(`- display_ref: ${formatValueRef(card.displayRef)}`);
+  }
+
+  if (card.dataPreview) {
+    lines.push(`- data_preview: ${card.dataPreview}`);
+  }
+
+  const shape = stringifyCompactShape(card.dataShape, 220);
+  if (shape) {
+    lines.push(`- data_shape: ${shape}`);
+  }
+
+  if (card.explicitDataSchema) {
+    const schema = summarizeText(JSON.stringify(card.explicitDataSchema), 220);
+    lines.push(`- explicit_data_schema: ${schema}`);
+  }
+
+  return lines;
 }
 
 export function hasTopLevelNonDefaultProcedureHistory(store: SessionStore): boolean {

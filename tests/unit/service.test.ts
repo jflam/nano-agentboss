@@ -111,6 +111,57 @@ describe("NanobossService", () => {
     });
   }, 30_000);
 
+  test("publishes prompt diagnostics for openai-compatible default prompts", async () => {
+    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    registry.loadBuiltins();
+    registry.register({
+      name: "review",
+      description: "store a durable review result",
+      async execute(prompt) {
+        return {
+          data: { subject: prompt, verdict: "mixed" },
+          display: "review output",
+          summary: `review summary for ${prompt}`,
+          memory: `Most important issue for ${prompt} was missing edge-case analysis.`,
+        };
+      },
+    });
+
+    const service = new NanobossService(
+      registry,
+      (cwd) => ({
+        provider: "copilot",
+        command: "bun",
+        args: ["run", "tests/fixtures/mock-agent.ts"],
+        cwd,
+      }),
+    );
+    const session = service.createSession({ cwd: process.cwd() });
+
+    try {
+      await service.prompt(session.sessionId, "/review the code");
+      await service.prompt(session.sessionId, "what mattered most?");
+
+      const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const storedCard = events.find((event) => event.type === "memory_card_stored");
+      const memoryCards = events.find((event) => event.type === "memory_cards");
+      const diagnostics = events.find((event) => event.type === "prompt_diagnostics");
+
+      expect(storedCard?.type).toBe("memory_card_stored");
+      expect(storedCard?.data.card.estimatedPromptTokens).toBeGreaterThan(0);
+      expect(memoryCards?.type).toBe("memory_cards");
+      expect(memoryCards?.data.cards[0]?.estimatedPromptTokens).toBeGreaterThan(0);
+      expect(diagnostics?.type).toBe("prompt_diagnostics");
+      expect(diagnostics?.data.diagnostics.method).toBe("tiktoken");
+      expect(diagnostics?.data.diagnostics.encoding).toBe("o200k_base");
+      expect(diagnostics?.data.diagnostics.totalTokens).toBeGreaterThan(0);
+      expect(diagnostics?.data.diagnostics.memoryCardsTokens).toBeGreaterThan(0);
+      expect(diagnostics?.data.diagnostics.userMessageTokens).toBeGreaterThan(0);
+    } finally {
+      service.destroySession(session.sessionId);
+    }
+  }, 30_000);
+
   test("/model updates the session default agent banner", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
     registry.loadBuiltins();
