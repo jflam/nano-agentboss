@@ -1,0 +1,205 @@
+import { mkdir, readdir } from "node:fs/promises";
+import { join } from "node:path";
+
+import typia from "typia";
+
+import { expectData } from "../src/run-result.ts";
+import {
+  jsonType,
+  type CommandContext,
+  type Procedure,
+} from "../src/types.ts";
+
+interface ResearchResult {
+  report: string;
+  abstract: string;
+  descriptionWords: string[];
+}
+
+const ResearchResultType = jsonType<ResearchResult>(
+  typia.json.schema<ResearchResult>(),
+  typia.createValidate<ResearchResult>(),
+);
+
+const DESCRIPTION_WORD_COUNT = 3;
+const WRITE_REPORT_VERB = /\b(write(?:\s+up)?|save|export|persist|store)\b/i;
+
+export default {
+  name: "research",
+  description: "Research a topic with a cited report and abstract",
+  inputHint: "Research question or topic",
+  async execute(prompt, ctx) {
+    const trimmed = prompt.trim();
+    if (!trimmed) {
+      return {
+        display: "Provide a research prompt for /research.\n",
+        summary: "research: missing prompt",
+      };
+    }
+
+    const shouldWriteReport = shouldWriteDetailedReport(trimmed);
+
+    ctx.print("Starting research...\n");
+
+    const result = await ctx.callAgent(
+      buildResearchPrompt(trimmed),
+      ResearchResultType,
+      { stream: false },
+    );
+    const research = expectData(result, "Research returned no data");
+
+    if (!research.report.trim()) {
+      throw new Error("Research report was empty");
+    }
+
+    if (!research.abstract.trim()) {
+      throw new Error("Research abstract was empty");
+    }
+
+    const descriptionWords = normalizeDescriptionWords(research.descriptionWords);
+
+    let reportPath: string | null = null;
+    if (shouldWriteReport) {
+      reportPath = await writeReportToPlans(ctx, research.report, descriptionWords);
+      ctx.print(`Wrote detailed report to ${reportPath}.\n`);
+    }
+
+    ctx.print("Completed research.\n");
+
+    return {
+      data: {
+        report: research.report,
+        abstract: research.abstract,
+      },
+      display: renderDisplay(research.abstract, reportPath),
+      summary: buildSummary(trimmed, reportPath),
+      memory: buildMemory(trimmed, reportPath),
+    };
+  },
+} satisfies Procedure;
+
+function buildResearchPrompt(prompt: string): string {
+  return [
+    "You are a research agent.",
+    "Research the user's request and return a JSON object with exactly three fields: `report`, `abstract`, and `descriptionWords`.",
+    "`report` must be a detailed Markdown research report.",
+    "Every researched factual claim in `report` must have an inline citation immediately adjacent to the claim.",
+    "Do not include any uncited factual claims in `report`; if a fact cannot be sourced, omit it or mark it clearly as uncertainty.",
+    "Include a `## Sources` section at the end of `report` listing every cited source with enough detail to identify it, including URLs when available.",
+    "`abstract` must be a concise executive summary for the calling agent.",
+    "Keep the abstract self-contained and focused on the most important findings and uncertainties.",
+    "`descriptionWords` must be an array of exactly 3 short descriptive lowercase words for a filename slug.",
+    "Choose words that capture the topic of the research rather than generic words like report or research.",
+    "Return no extra keys and no prose outside the JSON object.",
+    "",
+    `User request:\n${prompt}`,
+  ].join("\n");
+}
+
+function shouldWriteDetailedReport(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+
+  if (/\bplans?\b/.test(normalized)) {
+    return true;
+  }
+
+  if (/\b(detailed|full)\s+(research\s+)?report\b/.test(normalized) && WRITE_REPORT_VERB.test(normalized)) {
+    return true;
+  }
+
+  if (WRITE_REPORT_VERB.test(normalized) && /\b(report|research|memo|brief|markdown|file)\b/.test(normalized)) {
+    return true;
+  }
+
+  if (/\bwrite(?:\s+up)?\b/.test(normalized) && /\bout\b/.test(normalized)) {
+    return true;
+  }
+
+  return false;
+}
+
+async function writeReportToPlans(
+  ctx: CommandContext,
+  report: string,
+  descriptionWords: string[],
+): Promise<string> {
+  const plansDir = join(ctx.cwd, "plans");
+  await mkdir(plansDir, { recursive: true });
+
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const serial = await nextPlanSerial(plansDir, datePrefix);
+  const description = descriptionWords.join("-");
+  const relativePath = `plans/${datePrefix}-${serial}-${description}.md`;
+  const absolutePath = join(ctx.cwd, relativePath);
+
+  await Bun.write(absolutePath, ensureTrailingNewline(report));
+
+  return relativePath;
+}
+
+async function nextPlanSerial(plansDir: string, datePrefix: string): Promise<number> {
+  const entries = await readdir(plansDir, { withFileTypes: true });
+  const matcher = new RegExp(`^${escapeRegExp(datePrefix)}-(\\d+)-`);
+
+  let maxSerial = 0;
+  for (const entry of entries) {
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    const match = entry.name.match(matcher);
+    if (!match) {
+      continue;
+    }
+
+    const serial = Number.parseInt(match[1], 10);
+    if (Number.isFinite(serial)) {
+      maxSerial = Math.max(maxSerial, serial);
+    }
+  }
+
+  return maxSerial > 0 ? maxSerial + 1 : 1;
+}
+
+function normalizeDescriptionWords(words: string[]): string[] {
+  const normalized = words
+    .flatMap((word) => word.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .slice(0, DESCRIPTION_WORD_COUNT);
+
+  while (normalized.length < DESCRIPTION_WORD_COUNT) {
+    normalized.push("research");
+  }
+
+  return normalized;
+}
+
+function ensureTrailingNewline(value: string): string {
+  return value.endsWith("\n") ? value : `${value}\n`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+}
+
+function renderDisplay(abstract: string, reportPath: string | null): string {
+  const lines = [abstract.trim()];
+
+  if (reportPath) {
+    lines.push("", `Detailed report written to ${reportPath}.`);
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function buildSummary(prompt: string, reportPath: string | null): string {
+  const compact = prompt.replace(/\s+/g, " ").trim();
+  const subject = compact.length > 60 ? `${compact.slice(0, 57)}...` : compact;
+  return reportPath ? `research: ${subject} -> ${reportPath}` : `research: ${subject}`;
+}
+
+function buildMemory(prompt: string, reportPath: string | null): string {
+  const compact = prompt.replace(/\s+/g, " ").trim();
+  return reportPath
+    ? `Research completed for ${compact}. The cited report was also written to ${reportPath}.`
+    : `Research completed for ${compact}. The detailed cited report is stored in the procedure result data.`;
+}
