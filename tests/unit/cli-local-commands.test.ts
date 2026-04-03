@@ -1,19 +1,22 @@
-import { expect, test } from "bun:test";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
 
 import { reservePort } from "../e2e/helpers.ts";
 
-function spawnCli(baseUrl: string): {
+let baseUrl = "";
+let serverProcess: ReturnType<typeof spawn> | undefined;
+
+function spawnCli(serverUrl: string): {
   process: ChildProcessWithoutNullStreams;
   stdout: () => string;
   stderr: () => string;
 } {
-  const child = spawn("bun", ["run", "nanoboss.ts", "cli"], {
+  const child = spawn("./dist/nanoboss", ["cli"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      NANOBOSS_SERVER_URL: baseUrl,
+      NANOBOSS_SERVER_URL: serverUrl,
       NANOBOSS_AGENT_CMD: "bun",
       NANOBOSS_AGENT_ARGS: JSON.stringify(["run", "tests/fixtures/mock-agent.ts"]),
     },
@@ -51,16 +54,84 @@ async function waitForContains(producer: () => string, text: string, timeoutMs =
   }
 }
 
-async function shutdownServer(baseUrl: string): Promise<void> {
+async function waitForServerHealth(serverUrl: string, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const response = await fetch(new URL("/v1/health", serverUrl));
+      if (response.ok) {
+        return;
+      }
+    } catch {
+      // Keep waiting.
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for server health at ${serverUrl}`);
+    }
+
+    await Bun.sleep(50);
+  }
+}
+
+async function shutdownServer(serverUrl: string): Promise<void> {
   try {
-    await fetch(new URL("/v1/admin/shutdown", baseUrl), { method: "POST" });
+    await fetch(new URL("/v1/admin/shutdown", serverUrl), { method: "POST" });
   } catch {
     // Ignore cleanup failures.
   }
 }
 
+beforeAll(async () => {
+  const build = spawnSync("bun", ["run", "build"], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+
+  if (build.status !== 0) {
+    throw new Error([
+      "Failed to build dist/nanoboss for CLI integration tests.",
+      build.stdout,
+      build.stderr,
+    ].filter(Boolean).join("\n"));
+  }
+
+  baseUrl = `http://localhost:${await reservePort()}`;
+  const port = new URL(baseUrl).port;
+  serverProcess = spawn("./dist/nanoboss", ["server", "--port", port], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NANOBOSS_AGENT_CMD: "bun",
+      NANOBOSS_AGENT_ARGS: JSON.stringify(["run", "tests/fixtures/mock-agent.ts"]),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  await waitForServerHealth(baseUrl);
+}, 30_000);
+
+afterAll(async () => {
+  if (baseUrl) {
+    await shutdownServer(baseUrl);
+  }
+
+  if (serverProcess?.exitCode === null) {
+    await Promise.race([
+      once(serverProcess, "exit"),
+      Bun.sleep(1_000),
+    ]);
+  }
+
+  if (serverProcess?.exitCode === null) {
+    serverProcess.kill();
+    await once(serverProcess, "exit");
+  }
+}, 10_000);
+
 test("/quit exits the local CLI and prints the session id", async () => {
-  const baseUrl = `http://localhost:${await reservePort()}`;
   const cli = spawnCli(baseUrl);
 
   try {
@@ -80,12 +151,10 @@ test("/quit exits the local CLI and prints the session id", async () => {
       cli.process.kill();
       await once(cli.process, "exit");
     }
-    await shutdownServer(baseUrl);
   }
 }, 20_000);
 
 test("/exit is accepted as an exit alias", async () => {
-  const baseUrl = `http://localhost:${await reservePort()}`;
   const cli = spawnCli(baseUrl);
 
   try {
@@ -106,12 +175,10 @@ test("/exit is accepted as an exit alias", async () => {
       cli.process.kill();
       await once(cli.process, "exit");
     }
-    await shutdownServer(baseUrl);
   }
 }, 20_000);
 
 test("renders markdown agent output through the terminal markdown renderer", async () => {
-  const baseUrl = `http://localhost:${await reservePort()}`;
   const cli = spawnCli(baseUrl);
 
   try {
@@ -134,12 +201,10 @@ test("renders markdown agent output through the terminal markdown renderer", asy
       cli.process.kill();
       await once(cli.process, "exit");
     }
-    await shutdownServer(baseUrl);
   }
 }, 20_000);
 
 test("renders nested tool calls with rails under their parent wrapper", async () => {
-  const baseUrl = `http://localhost:${await reservePort()}`;
   const cli = spawnCli(baseUrl);
 
   try {
@@ -155,12 +220,10 @@ test("renders nested tool calls with rails under their parent wrapper", async ()
       cli.process.kill();
       await once(cli.process, "exit");
     }
-    await shutdownServer(baseUrl);
   }
 }, 20_000);
 
 test("renders stored and injected memory cards around default turns", async () => {
-  const baseUrl = `http://localhost:${await reservePort()}`;
   const cli = spawnCli(baseUrl);
 
   try {
@@ -187,6 +250,5 @@ test("renders stored and injected memory cards around default turns", async () =
       cli.process.kill();
       await once(cli.process, "exit");
     }
-    await shutdownServer(baseUrl);
   }
 }, 20_000);
