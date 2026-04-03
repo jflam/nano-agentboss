@@ -79,6 +79,7 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         hiddenToolCallIds: [],
         promptDiagnosticsLine: undefined,
         tokenUsageLine: undefined,
+        assistantParagraphBreakPending: undefined,
         statusLine: "[run] waiting for response",
         inputDisabled: true,
       };
@@ -96,6 +97,7 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         ],
         activeRunId: undefined,
         activeAssistantTurnId: undefined,
+        assistantParagraphBreakPending: undefined,
         runStartedAtMs: undefined,
         toolCalls: [],
         activeWrapperToolCallIds: [],
@@ -150,38 +152,39 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         tokenUsageLine: undefined,
         activeRunId: event.data.runId,
         activeAssistantTurnId: assistantTurnId,
+        assistantParagraphBreakPending: undefined,
         runStartedAtMs: Date.parse(event.data.startedAt) || Date.now(),
         statusLine: `[run] ${event.data.procedure} working…`,
         inputDisabled: true,
       };
     }
     case "memory_cards":
-      return appendRuntimeLines(state, formatMemoryCardsLines(event.data.cards));
+      return markAssistantTextBoundary(appendRuntimeLines(state, formatMemoryCardsLines(event.data.cards)));
     case "memory_card_stored":
-      return appendRuntimeLines(state, formatStoredMemoryCardLines(event.data.card, {
+      return markAssistantTextBoundary(appendRuntimeLines(state, formatStoredMemoryCardLines(event.data.card, {
         method: event.data.estimateMethod,
         encoding: event.data.estimateEncoding,
-      }));
+      })));
     case "prompt_diagnostics":
-      return {
+      return markAssistantTextBoundary({
         ...state,
         promptDiagnosticsLine: formatPromptDiagnosticsLine(event.data.diagnostics),
-      };
+      });
     case "text_delta":
       return appendAssistantText(state, event.data.text);
     case "token_usage":
-      return {
+      return markAssistantTextBoundary({
         ...state,
         tokenUsageLine: formatTokenUsageLine(event.data.usage),
-      };
+      });
     case "run_heartbeat": {
       const now = Date.parse(event.data.at) || Date.now();
       const startedAt = state.runStartedAtMs ?? now;
       const elapsedSeconds = Math.max(1, Math.round((now - startedAt) / 1_000));
-      return {
+      return markAssistantTextBoundary({
         ...state,
         statusLine: `[run] ${event.data.procedure} still working (${elapsedSeconds}s)`,
-      };
+      });
     }
     case "tool_started": {
       const depth = state.activeWrapperToolCallIds.length;
@@ -195,11 +198,11 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         : state.hiddenToolCallIds;
 
       if (!state.showToolCalls || suppressed) {
-        return {
+        return markAssistantTextBoundary({
           ...state,
           activeWrapperToolCallIds,
           hiddenToolCallIds,
-        };
+        });
       }
 
       const existing = state.toolCalls.find((toolCall) => toolCall.id === event.data.toolCallId);
@@ -211,12 +214,12 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         isWrapper: existing?.isWrapper ?? isWrapper,
       };
 
-      return {
+      return markAssistantTextBoundary({
         ...state,
         toolCalls: upsertToolCall(pruneReplacedCompletedToolCalls(state.toolCalls, nextToolCall.depth), nextToolCall),
         activeWrapperToolCallIds,
         hiddenToolCallIds,
-      };
+      });
     }
     case "tool_updated": {
       const existing = state.toolCalls.find((toolCall) => toolCall.id === event.data.toolCallId);
@@ -236,21 +239,21 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
           : state.hiddenToolCallIds;
 
       if (!state.showToolCalls || suppressed) {
-        return {
+        return markAssistantTextBoundary({
           ...state,
           activeWrapperToolCallIds,
           hiddenToolCallIds,
-        };
+        });
       }
 
       if (event.data.status === "completed") {
         if (isWrapper) {
-          return {
+          return markAssistantTextBoundary({
             ...state,
             toolCalls: removeCompletedWrapperBranch(state.toolCalls, event.data.toolCallId, depth),
             activeWrapperToolCallIds,
             hiddenToolCallIds,
-          };
+          });
         }
 
         const nextToolCall: UiToolCall = {
@@ -261,12 +264,12 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
           isWrapper,
         };
 
-        return {
+        return markAssistantTextBoundary({
           ...state,
           toolCalls: upsertToolCall(state.toolCalls, nextToolCall),
           activeWrapperToolCallIds,
           hiddenToolCallIds,
-        };
+        });
       }
 
       const nextToolCall: UiToolCall = {
@@ -277,12 +280,12 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         isWrapper,
       };
 
-      return {
+      return markAssistantTextBoundary({
         ...state,
         toolCalls: upsertToolCall(state.toolCalls, nextToolCall),
         activeWrapperToolCallIds,
         hiddenToolCallIds,
-      };
+      });
     }
     case "run_completed": {
       const tokenUsageLine = event.data.tokenUsage ? formatTokenUsageLine(event.data.tokenUsage) : state.tokenUsageLine;
@@ -295,6 +298,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         ...nextState,
         activeRunId: undefined,
         activeAssistantTurnId: undefined,
+        assistantParagraphBreakPending: undefined,
         runStartedAtMs: undefined,
         toolCalls: [],
         activeWrapperToolCallIds: [],
@@ -314,6 +318,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         }),
         activeRunId: undefined,
         activeAssistantTurnId: undefined,
+        assistantParagraphBreakPending: undefined,
         runStartedAtMs: undefined,
         toolCalls: [],
         activeWrapperToolCallIds: [],
@@ -345,18 +350,62 @@ function appendAssistantText(state: UiState, text: string): UiState {
       ...state,
       turns: [...state.turns, assistantTurn],
       activeAssistantTurnId: assistantTurn.id,
+      assistantParagraphBreakPending: false,
     };
   }
 
   return {
     ...state,
-    turns: state.turns.map((turn) => turn.id === activeAssistantTurnId
-      ? {
-          ...turn,
-          markdown: `${turn.markdown}${text}`,
-        }
-      : turn),
+    turns: state.turns.map((turn) => {
+      if (turn.id !== activeAssistantTurnId) {
+        return turn;
+      }
+
+      const separator = shouldInsertAssistantParagraphBreak(turn.markdown, text, state.assistantParagraphBreakPending)
+        ? "\n\n"
+        : "";
+
+      return {
+        ...turn,
+        markdown: `${turn.markdown}${separator}${text}`,
+      };
+    }),
+    assistantParagraphBreakPending: false,
   };
+}
+
+function markAssistantTextBoundary(state: UiState): UiState {
+  if (!state.activeAssistantTurnId) {
+    return state;
+  }
+
+  const activeTurn = state.turns.find((turn) => turn.id === state.activeAssistantTurnId);
+  if (!activeTurn?.markdown) {
+    return state;
+  }
+
+  return {
+    ...state,
+    assistantParagraphBreakPending: true,
+  };
+}
+
+function shouldInsertAssistantParagraphBreak(previousText: string, nextText: string, pendingBoundary?: boolean): boolean {
+  if (!pendingBoundary) {
+    return false;
+  }
+
+  const previousTrimmed = previousText.trimEnd();
+  const nextTrimmed = nextText.trimStart();
+  if (previousTrimmed.length === 0 || nextTrimmed.length === 0) {
+    return false;
+  }
+
+  if (/\n\s*$/.test(previousText) || /^\s/.test(nextText)) {
+    return false;
+  }
+
+  return /[.!?:]$/.test(previousTrimmed) && /^[A-Z0-9`"'/(\[]/.test(nextTrimmed);
 }
 
 function finalizeAssistantTurn(

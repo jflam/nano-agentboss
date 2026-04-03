@@ -34,6 +34,7 @@ export interface UiState {
   runtimeNotes: string[];
   activeRunId?: string;
   activeAssistantTurnId?: string;
+  assistantParagraphBreakPending?: boolean;
   runStartedAtMs?: number;
   statusLine?: string;
   promptDiagnosticsLine?: string;

@@ -425,6 +425,47 @@ describe("tui reducer", () => {
     });
   });
 
+  test("inserts a paragraph break before new assistant status text after tool activity", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "default",
+        prompt: "hello",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("text_delta", {
+        runId: "run-1",
+        text: "First sentence.",
+        stream: "agent",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_started", {
+        runId: "run-1",
+        toolCallId: "tool-1",
+        title: "Mock read README.md",
+        kind: "read",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("text_delta", {
+        runId: "run-1",
+        text: "Second sentence.",
+        stream: "agent",
+      }),
+    });
+
+    expect(state.turns.at(-1)?.markdown).toBe("First sentence.\n\nSecond sentence.");
+  });
+
   test("session_ready resets transient run state and merges local slash commands with server commands", () => {
     let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
 
