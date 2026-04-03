@@ -106,15 +106,43 @@ export function findStoredSession(sessionId: string): StoredSessionSummary | und
 }
 
 export function resolveMostRecentStoredSession(cwd: string): StoredSessionSummary | undefined {
-  const sessions = listStoredSessions();
-  const matching = sessions.filter((session) => session.cwd === cwd);
-  return matching[0] ?? sessions[0];
+  const sessionsDir = join(getNanobossHome(), "sessions");
+  if (!existsSync(sessionsDir)) {
+    return undefined;
+  }
+
+  let newestMatchingMetadata: { rootDir: string; updatedAt: string } | undefined;
+  let newestOverall: { rootDir: string; updatedAt: string } | undefined;
+
+  for (const entry of readdirSync(sessionsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const rootDir = join(sessionsDir, entry.name);
+    const stored = readStoredSessionRecord(entry.name, rootDir);
+    const stats = statSync(rootDir, { throwIfNoEntry: false });
+    const updatedAt = stored?.updatedAt ?? (
+      stats ? new Date(stats.mtimeMs || Date.now()).toISOString() : new Date().toISOString()
+    );
+
+    if (!newestOverall || updatedAt > newestOverall.updatedAt) {
+      newestOverall = { rootDir, updatedAt };
+    }
+
+    if (stored?.cwd === cwd && (!newestMatchingMetadata || updatedAt > newestMatchingMetadata.updatedAt)) {
+      newestMatchingMetadata = { rootDir, updatedAt };
+    }
+  }
+
+  const selected = newestMatchingMetadata?.rootDir ?? newestOverall?.rootDir;
+  return selected ? readStoredSessionSummary(selected) : undefined;
 }
 
 function readStoredSessionSummary(rootDir: string): StoredSessionSummary | undefined {
   const sessionId = basename(rootDir);
   const stored = readStoredSessionRecord(sessionId, rootDir);
-  const derived = deriveSessionDetails(rootDir);
+  const derived = stored ? undefined : deriveSessionDetails(rootDir);
 
   if (!stored && !derived) {
     return undefined;

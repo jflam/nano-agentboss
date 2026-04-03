@@ -55,6 +55,42 @@ describe("stored sessions", () => {
     }
   });
 
+  test("uses stored metadata without traversing cells", () => {
+    const originalHome = process.env.HOME;
+    tempHome = mkdtempSync(join(tmpdir(), "nanoboss-stored-metadata-fastpath-"));
+    process.env.HOME = tempHome;
+
+    try {
+      const sessionRoot = join(tempHome, ".nanoboss", "sessions", "session-fast");
+      mkdirSync(sessionRoot, { recursive: true });
+      writeStoredSessionRecord({
+        sessionId: "session-fast",
+        cwd: "/repo",
+        rootDir: sessionRoot,
+        createdAt: "2026-04-01T10:00:00.000Z",
+        updatedAt: "2026-04-01T11:00:00.000Z",
+        initialPrompt: "first prompt",
+      });
+      writeFileSync(join(sessionRoot, "cells"), "not-a-directory\n", "utf8");
+
+      const sessions = listStoredSessions();
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({
+        sessionId: "session-fast",
+        cwd: "/repo",
+        initialPrompt: "first prompt",
+        hasMetadata: true,
+      });
+      expect(resolveMostRecentStoredSession("/repo")?.sessionId).toBe("session-fast");
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
   test("falls back to stored cells when metadata is missing", () => {
     const originalHome = process.env.HOME;
     tempHome = mkdtempSync(join(tmpdir(), "nanoboss-stored-fallback-"));
