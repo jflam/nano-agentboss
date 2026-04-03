@@ -131,11 +131,7 @@ export class ProcedureDispatchJobManager {
 
     this.writeJob(job);
     const workerPid = this.spawnWorker(dispatchId);
-    this.writeJob({
-      ...job,
-      workerPid,
-      updatedAt: new Date().toISOString(),
-    });
+    this.writeJobWorkerPid(dispatchId, workerPid);
 
     return {
       dispatchId,
@@ -289,6 +285,18 @@ export class ProcedureDispatchJobManager {
       });
 
     if (!cell) {
+      if (!isTerminalStatus(job.status) && isDeadWorkerJob(job)) {
+        const failed: ProcedureDispatchJob = {
+          ...job,
+          status: "failed",
+          updatedAt: new Date().toISOString(),
+          completedAt: job.completedAt ?? new Date().toISOString(),
+          error: job.error ?? `Procedure dispatch worker exited before completing: pid ${job.workerPid}`,
+        };
+        this.writeJob(failed);
+        return failed;
+      }
+
       return job;
     }
 
@@ -354,6 +362,15 @@ export class ProcedureDispatchJobManager {
     const tempPath = `${filePath}.${process.pid}.tmp`;
     writeFileSync(tempPath, `${JSON.stringify(job, null, 2)}\n`, "utf8");
     renameSync(tempPath, filePath);
+  }
+
+  private writeJobWorkerPid(dispatchId: string, workerPid: number | undefined): void {
+    const latest = this.readJob(dispatchId);
+    this.writeJob({
+      ...latest,
+      workerPid: workerPid ?? latest.workerPid,
+      updatedAt: latest.updatedAt,
+    });
   }
 
   private findReusableJobByCorrelationId(
@@ -489,6 +506,24 @@ function clampWaitMs(value: number | undefined): number {
 
 function isTerminalStatus(status: ProcedureDispatchJobStatus): boolean {
   return status === "completed" || status === "failed" || status === "cancelled";
+}
+
+function isDeadWorkerJob(job: ProcedureDispatchJob): boolean {
+  return (
+    (job.status === "queued" || job.status === "running") &&
+    typeof job.workerPid === "number" &&
+    job.workerPid > 0 &&
+    !isProcessAlive(job.workerPid)
+  );
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function looksLikeProcedureFailureCell(cell: ReturnType<SessionStore["readCell"]>): boolean {
