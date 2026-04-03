@@ -163,6 +163,7 @@ import {
   sendSessionPrompt,
   startSessionEventStream,
 } from "./src/http-client.ts";
+import { canUseNanobossTui, runTuiCli } from "./src/tui/run.ts";
 import { DEFAULT_HTTP_SERVER_URL } from "./src/defaults.ts";
 import { getBuildFreshnessNotice } from "./src/build-freshness.ts";
 import { ensureMatchingHttpServer } from "./src/http-server-supervisor.ts";
@@ -690,6 +691,14 @@ export async function runCliCommand(argv: string[] = []): Promise<void> {
     return;
   }
 
+  if (canUseNanobossTui()) {
+    await runTuiCli({
+      serverUrl: options.serverUrl,
+      showToolCalls: options.showToolCalls,
+    });
+    return;
+  }
+
   await runHttpCli({
     serverUrl: options.serverUrl,
     showToolCalls: options.showToolCalls,
@@ -966,6 +975,8 @@ function writeStartupBanner(text: string): void {
 function printHelp(): void {
   process.stdout.write([
     "Usage: nanoboss cli [--tool-calls|--no-tool-calls] [--server-url <url>]",
+    "",
+    "Interactive TTY sessions use the pi-tui frontend. Non-TTY sessions fall back to the legacy line-based client.",
     "",
     "Options:",
     "  --tool-calls          Show tool call progress lines (default)",

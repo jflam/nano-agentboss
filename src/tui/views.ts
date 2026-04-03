@@ -1,0 +1,205 @@
+import { Container, Markdown, Spacer, Text, TruncatedText, type Component, type Editor } from "./pi-tui.ts";
+import { formatToolTraceLine } from "./format.ts";
+import type { UiState, UiToolCall, UiTurn } from "./state.ts";
+import type { NanobossTuiTheme } from "./theme.ts";
+
+export class NanobossAppView implements Component {
+  private readonly container = new Container();
+  private state: UiState;
+
+  constructor(
+    private readonly editor: Editor,
+    private readonly theme: NanobossTuiTheme,
+    initialState: UiState,
+  ) {
+    this.state = initialState;
+    this.rebuild();
+  }
+
+  setState(state: UiState): void {
+    this.state = state;
+    this.rebuild();
+  }
+
+  render(width: number): string[] {
+    return this.container.render(width);
+  }
+
+  invalidate(): void {
+    this.container.invalidate();
+    this.rebuild();
+  }
+
+  private rebuild(): void {
+    this.container.clear();
+
+    this.container.addChild(new TruncatedText(this.buildHeaderLine()));
+    this.container.addChild(new TruncatedText(this.buildSessionLine()));
+
+    if (this.state.statusLine) {
+      this.container.addChild(new TruncatedText(styleStatusLine(this.theme, this.state.statusLine)));
+    }
+
+    this.container.addChild(new Spacer(1));
+    this.appendTranscript();
+    this.appendPendingActivity();
+    this.container.addChild(this.editor);
+    this.container.addChild(new Spacer(1));
+    this.container.addChild(new TruncatedText(this.buildFooterLine()));
+  }
+
+  private appendTranscript(): void {
+    if (this.state.turns.length === 0) {
+      this.container.addChild(new Text(this.theme.dim("No turns yet. Send a prompt to start.")));
+      this.container.addChild(new Spacer(1));
+      return;
+    }
+
+    for (const turn of this.state.turns) {
+      this.container.addChild(new TruncatedText(renderTurnLabel(this.theme, turn)));
+      this.container.addChild(renderTurnBody(this.theme, turn));
+
+      if (turn.meta?.tokenUsageLine) {
+        this.container.addChild(new TruncatedText(this.theme.dim(turn.meta.tokenUsageLine)));
+      }
+
+      this.container.addChild(new Spacer(1));
+    }
+  }
+
+  private appendPendingActivity(): void {
+    const pendingLines = buildPendingLines(this.state);
+    if (pendingLines.length === 0) {
+      return;
+    }
+
+    this.container.addChild(new TruncatedText(this.theme.accent("activity")));
+    this.container.addChild(new Text(pendingLines.map((line) => styleRuntimeLine(this.theme, line)).join("\n")));
+    this.container.addChild(new Spacer(1));
+  }
+
+  private buildHeaderLine(): string {
+    const agentLabel = this.state.agentLabel || "connecting";
+    const cwd = this.state.cwd || process.cwd();
+    return this.theme.accent(`${this.state.buildLabel} • ${agentLabel} • ${cwd}`);
+  }
+
+  private buildSessionLine(): string {
+    if (!this.state.sessionId) {
+      return this.theme.dim("Connecting to nanoboss…");
+    }
+
+    return this.theme.dim(`session ${this.state.sessionId.slice(0, 8)} • retained transcript + pi-tui editor`);
+  }
+
+  private buildFooterLine(): string {
+    const parts = ["enter send", "shift+enter newline", "/new", "/model", "/quit"];
+    if (this.state.inputDisabled) {
+      parts.push("run active (submit disabled)");
+    }
+    return this.theme.dim(parts.join(" • "));
+  }
+}
+
+function renderTurnLabel(theme: NanobossTuiTheme, turn: UiTurn): string {
+  switch (turn.role) {
+    case "user":
+      return theme.accent("you");
+    case "assistant":
+      return turn.status === "failed"
+        ? theme.error("nanoboss")
+        : theme.success("nanoboss");
+    case "system":
+      return theme.warning("system");
+  }
+}
+
+function renderTurnBody(theme: NanobossTuiTheme, turn: UiTurn): Component {
+  if (turn.role === "assistant") {
+    if (turn.markdown.length === 0) {
+      return new Text(theme.dim("…"));
+    }
+
+    return new Markdown(turn.markdown, 0, 0, theme.markdown, {
+      color: turn.status === "failed" ? theme.error : theme.text,
+    });
+  }
+
+  if (turn.role === "system") {
+    return new Text(turn.status === "failed" ? theme.error(turn.markdown) : theme.warning(turn.markdown));
+  }
+
+  return new Text(turn.markdown);
+}
+
+function buildPendingLines(state: UiState): string[] {
+  const lines: string[] = [];
+
+  for (const toolCall of state.toolCalls) {
+    lines.push(formatToolTraceLine(toolCall.depth, renderToolCallLine(toolCall)));
+  }
+
+  lines.push(...state.runtimeNotes);
+
+  if (state.promptDiagnosticsLine) {
+    lines.push(state.promptDiagnosticsLine);
+  }
+
+  if (state.tokenUsageLine) {
+    lines.push(state.tokenUsageLine);
+  }
+
+  return lines;
+}
+
+function renderToolCallLine(toolCall: UiToolCall): string {
+  if (toolCall.status === "failed") {
+    return `[tool] ${toolCall.title} failed`;
+  }
+
+  if (toolCall.status === "running" || toolCall.status === "in_progress") {
+    return `[tool] ${toolCall.title} running`;
+  }
+
+  if (toolCall.status === "pending") {
+    return `[tool] ${toolCall.title}`;
+  }
+
+  return `[tool] ${toolCall.title} ${toolCall.status}`;
+}
+
+function styleStatusLine(theme: NanobossTuiTheme, line: string): string {
+  if (line.includes("failed") || line.includes("error") || line.startsWith("[stream]")) {
+    return theme.error(line);
+  }
+
+  if (line.startsWith("[server]") || line.startsWith("[run]")) {
+    return theme.accent(line);
+  }
+
+  if (line.startsWith("[build]")) {
+    return theme.warning(line);
+  }
+
+  return theme.dim(line);
+}
+
+function styleRuntimeLine(theme: NanobossTuiTheme, line: string): string {
+  if (line.includes("failed")) {
+    return theme.error(line);
+  }
+
+  if (line.startsWith("[tokens]")) {
+    return theme.success(line);
+  }
+
+  if (line.startsWith("[prompt]") || line.startsWith("[memory]")) {
+    return theme.dim(line);
+  }
+
+  if (line.includes("[tool]")) {
+    return theme.accent(line);
+  }
+
+  return theme.muted(line);
+}

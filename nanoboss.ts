@@ -7,7 +7,7 @@ import { runMcpCommand } from "./src/mcp-proxy.ts";
 import { runSessionMcpStdioCommand } from "./src/session-mcp-stdio.ts";
 import { runAcpServerCommand } from "./src/server.ts";
 
-export type NanobossSubcommand = "cli" | "resume" | "server" | "acp-server" | "session-mcp" | "doctor" | "mcp" | "help";
+export type NanobossSubcommand = "cli" | "tui" | "resume" | "server" | "acp-server" | "session-mcp" | "doctor" | "mcp" | "help";
 
 export interface NanobossArgs {
   command: NanobossSubcommand;
@@ -26,6 +26,7 @@ export function parseNanobossArgs(argv: string[]): NanobossArgs {
 
   if (
     first === "cli" ||
+    first === "tui" ||
     first === "resume" ||
     first === "server" ||
     first === "acp-server" ||
@@ -47,6 +48,7 @@ export async function runNanoboss(argv: string[]): Promise<void> {
 
   switch (parsed.command) {
     case "cli":
+    case "tui":
       await runCliCommand(parsed.args);
       return;
     case "resume":
@@ -78,7 +80,8 @@ export function printHelp(): void {
     "Usage: nanoboss <command> [options]",
     "",
     "Commands:",
-    "  cli                Launch the CLI frontend",
+    "  cli                Launch the interactive frontend",
+    "  tui                Alias for the interactive pi-tui frontend",
     "  resume             Resume a saved CLI session",
     "  server             Launch the HTTP/SSE server",
     "  doctor             Show MCP/agent health and optionally register nanoboss MCP",
@@ -90,6 +93,7 @@ export function printHelp(): void {
     "Examples:",
     `  nanoboss server --port ${DEFAULT_HTTP_SERVER_PORT}`,
     "  nanoboss cli",
+    "  nanoboss tui",
     "  nanoboss resume",
     "  nanoboss doctor --register",
     `  nanoboss cli --server-url ${DEFAULT_HTTP_SERVER_URL}`,

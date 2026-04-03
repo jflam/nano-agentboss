@@ -1,6 +1,9 @@
 import readline from "node:readline/promises";
 
 import { runHttpCli } from "./cli.ts";
+import { promptForStoredSessionSelection } from "./src/tui/overlays/session-picker.ts";
+import { createNanobossTuiTheme } from "./src/tui/theme.ts";
+import { canUseNanobossTui, runTuiCli } from "./src/tui/run.ts";
 import { readCurrentSessionPointer } from "./src/current-session.ts";
 import { DEFAULT_HTTP_SERVER_URL } from "./src/defaults.ts";
 import { parseResumeOptions } from "./src/resume-options.ts";
@@ -26,6 +29,15 @@ export async function runResumeCommand(argv: string[] = []): Promise<void> {
 
   if (!selected) {
     throw new Error(`No saved nanoboss sessions found for ${process.cwd()}`);
+  }
+
+  if (canUseNanobossTui()) {
+    await runTuiCli({
+      serverUrl: options.serverUrl,
+      showToolCalls: options.showToolCalls,
+      sessionId: selected.sessionId,
+    });
+    return;
   }
 
   await runHttpCli({
@@ -70,8 +82,8 @@ async function selectStoredSession(cwd: string): Promise<StoredSessionSummary | 
     return undefined;
   }
 
-  if (process.stdin.isTTY && process.stderr.isTTY) {
-    return await selectStoredSessionWithCursor(sessions, cwd);
+  if (canUseNanobossTui()) {
+    return await promptForStoredSessionSelection(createNanobossTuiTheme(), sessions, cwd);
   }
 
   return await selectStoredSessionByNumber(sessions, cwd);
@@ -141,104 +153,6 @@ async function selectStoredSessionByNumber(
   } finally {
     rl.close();
   }
-}
-
-async function selectStoredSessionWithCursor(
-  sessions: StoredSessionSummary[],
-  cwd: string,
-): Promise<StoredSessionSummary | undefined> {
-  const stdin = process.stdin;
-  const stdout = process.stderr;
-  let selectedIndex = 0;
-
-  return await new Promise<StoredSessionSummary | undefined>((resolve, reject) => {
-    const restoreRawMode = stdin.isTTY ? stdin.isRaw : false;
-    let done = false;
-
-    const cleanup = () => {
-      if (done) {
-        return;
-      }
-
-      done = true;
-      stdin.off("data", onData);
-      if (stdin.isTTY) {
-        stdin.setRawMode(restoreRawMode);
-      }
-      stdin.pause();
-      stdout.write("\u001b[?25h\u001b[?1049l");
-    };
-
-    const finish = (value: StoredSessionSummary | undefined) => {
-      cleanup();
-      resolve(value);
-    };
-
-    const fail = (error: unknown) => {
-      cleanup();
-      reject(error instanceof Error ? error : new Error(String(error)));
-    };
-
-    const render = () => {
-      const windowSize = 10;
-      const startIndex = Math.max(0, Math.min(
-        selectedIndex - Math.floor(windowSize / 2),
-        Math.max(0, sessions.length - windowSize),
-      ));
-      const visible = sessions.slice(startIndex, startIndex + windowSize);
-
-      stdout.write("\u001b[?1049h\u001b[?25l\u001b[H\u001b[J");
-      stdout.write(`Resume nanoboss session — ${cwd}\n`);
-      stdout.write("Use ↑/↓ to choose, Enter to resume, Esc to cancel.\n\n");
-
-      for (const [offset, session] of visible.entries()) {
-        const index = startIndex + offset;
-        const prefix = index === selectedIndex ? "›" : " ";
-        stdout.write(`${prefix} ${formatSessionLine(session, cwd)}\n`);
-        stdout.write(`  ${formatSessionDetailLine(session)}\n`);
-      }
-    };
-
-    const onData = (chunk: Buffer | string) => {
-      const input = chunk.toString("utf8");
-      switch (input) {
-        case "\u0003":
-          finish(undefined);
-          return;
-        case "\u001b":
-        case "q":
-          finish(undefined);
-          return;
-        case "\r":
-        case "\n":
-          finish(sessions[selectedIndex]);
-          return;
-        case "\u001b[A":
-        case "k":
-          selectedIndex = selectedIndex === 0 ? sessions.length - 1 : selectedIndex - 1;
-          render();
-          return;
-        case "\u001b[B":
-        case "j":
-          selectedIndex = (selectedIndex + 1) % sessions.length;
-          render();
-          return;
-        default:
-          return;
-      }
-    };
-
-    try {
-      if (stdin.isTTY) {
-        stdin.setRawMode(true);
-      }
-      stdin.resume();
-      stdin.on("data", onData);
-      render();
-    } catch (error) {
-      fail(error);
-    }
-  });
 }
 
 function formatSessionLine(session: StoredSessionSummary, cwd: string): string {

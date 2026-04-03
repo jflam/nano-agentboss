@@ -8,6 +8,7 @@
     "server": "bun run nanoboss.ts server",
     "http": "bun run nanoboss.ts server",
     "cli": "bun run nanoboss.ts cli",
+    "tui": "bun run nanoboss.ts tui",
     "acp-server": "bun run nanoboss.ts acp-server",
     "build": "bun run build.ts",
     "lint": "eslint . --cache",
@@ -20,6 +21,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.17.1",
+    "@mariozechner/pi-tui": "0.64.0",
     "@ryoppippi/unplugin-typia": "^2.6.5",
     "js-tiktoken": "^1.0.21",
     "markdansi": "^0.2.1",

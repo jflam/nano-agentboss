@@ -17,6 +17,13 @@ describe("parseNanobossArgs", () => {
     });
   });
 
+  test("parses tui command", () => {
+    expect(parseNanobossArgs(["tui", "--server-url", "http://localhost:3000"])).toEqual({
+      command: "tui",
+      args: ["--server-url", "http://localhost:3000"],
+    });
+  });
+
   test("parses resume command", () => {
     expect(parseNanobossArgs(["resume", "session-123"])).toEqual({
       command: "resume",
