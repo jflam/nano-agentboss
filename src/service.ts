@@ -4,6 +4,7 @@ import { getBuildLabel } from "./build-info.ts";
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
 import { DefaultConversationSession } from "./default-session.ts";
+import { inferDataShape } from "./data-shape.ts";
 import { normalizeAgentTokenUsage } from "./token-usage.ts";
 import { disposeSessionMcpTransport } from "./mcp-attachment.ts";
 import {
@@ -28,13 +29,16 @@ import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import { isProcedureDispatchResult, type ProcedureDispatchResult } from "./session-mcp.ts";
 import {
   SessionStore,
+  createValueRef,
   normalizeProcedureResult,
   summarizeText,
 } from "./session-store.ts";
 import type {
   AgentTokenUsage,
+  CellRecord,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
+  ValueRef,
 } from "./types.ts";
 
 interface SessionState {
@@ -279,6 +283,8 @@ export class NanobossService {
     procedurePrompt: string,
     emitter: CompositeSessionUpdateEmitter,
   ): Promise<{ result: ProcedureDispatchResult; tokenUsage?: AgentTokenUsage }> {
+    const bufferedTextUpdates: acp.SessionUpdate[] = [];
+    const dispatchStartedAtMs = Date.now();
     const promptResult = await session.defaultConversation.prompt(
       buildProcedureDispatchPrompt(
         procedureName,
@@ -288,8 +294,12 @@ export class NanobossService {
       {
         signal: session.abortController?.signal,
         onUpdate: async (update) => {
+          if (update.sessionUpdate === "agent_message_chunk") {
+            bufferedTextUpdates.push(update);
+            return;
+          }
+
           if (
-            update.sessionUpdate === "agent_message_chunk" ||
             update.sessionUpdate === "tool_call" ||
             update.sessionUpdate === "tool_call_update" ||
             update.sessionUpdate === "usage_update"
@@ -301,19 +311,80 @@ export class NanobossService {
     );
 
     const result = extractProcedureDispatchResult(promptResult.updates);
-    if (!result) {
-      throw new Error(`Default session did not dispatch /${procedureName} through procedure_dispatch.`);
+    if (result) {
+      session.syncedProcedureMemoryCellIds.add(result.cell.cellId);
+      return {
+        result,
+        tokenUsage: normalizeAgentTokenUsage(
+          promptResult.tokenSnapshot ?? await session.defaultConversation.getCurrentTokenSnapshot(),
+          session.defaultAgentConfig,
+        ),
+      };
     }
 
-    session.syncedProcedureMemoryCellIds.add(result.cell.cellId);
+    const failureMessage = extractProcedureDispatchFailure(promptResult.updates);
+    if (isProcedureDispatchTimeout(failureMessage)) {
+      const recovered = await this.recoverTimedOutProcedureDispatch(
+        session,
+        procedureName,
+        procedurePrompt,
+        dispatchStartedAtMs,
+      );
+      if (recovered) {
+        return recovered;
+      }
+    }
 
+    for (const update of bufferedTextUpdates) {
+      emitter.emit(update);
+    }
+
+    throw new Error(
+      failureMessage
+        ? `Default session did not dispatch /${procedureName} through procedure_dispatch: ${failureMessage}`
+        : `Default session did not dispatch /${procedureName} through procedure_dispatch.`,
+    );
+  }
+
+  private async recoverTimedOutProcedureDispatch(
+    session: SessionState,
+    procedureName: string,
+    procedurePrompt: string,
+    dispatchStartedAtMs: number,
+  ): Promise<{ result: ProcedureDispatchResult; tokenUsage?: AgentTokenUsage } | undefined> {
+    const cell = await waitForProcedureDispatchCell(
+      session.store,
+      procedureName,
+      procedurePrompt,
+      dispatchStartedAtMs,
+    );
+    if (!cell) {
+      return undefined;
+    }
+
+    const tokenUsage = await this.syncProcedureResultIntoDefaultConversation(session, cell);
     return {
-      result,
-      tokenUsage: normalizeAgentTokenUsage(
-        promptResult.tokenSnapshot ?? await session.defaultConversation.getCurrentTokenSnapshot(),
-        session.defaultAgentConfig,
-      ),
+      result: procedureDispatchResultFromCell(session.store.sessionId, cell),
+      tokenUsage,
     };
+  }
+
+  private async syncProcedureResultIntoDefaultConversation(
+    session: SessionState,
+    cell: CellRecord,
+  ): Promise<AgentTokenUsage | undefined> {
+    await session.defaultConversation.prompt(
+      buildProcedureSyncPrompt(session.store.sessionId, cell),
+      {
+        signal: session.abortController?.signal,
+      },
+    );
+    session.syncedProcedureMemoryCellIds.add(cell.cellId);
+
+    return normalizeAgentTokenUsage(
+      await session.defaultConversation.getCurrentTokenSnapshot(),
+      session.defaultAgentConfig,
+    );
   }
 
   async prompt(
@@ -630,6 +701,45 @@ function buildProcedureDispatchPrompt(
   ].join("\n\n");
 }
 
+function buildProcedureSyncPrompt(sessionId: string, cell: CellRecord): string {
+  const cellRef = { sessionId, cellId: cell.cellId };
+  const dataRef = cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined;
+  const displayRef = cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined;
+  const dataShape = cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined;
+
+  return [
+    "Nanoboss internal session synchronization.",
+    "A slash command just completed in the current master conversation after tool-timeout recovery.",
+    "Treat the following as the durable result of that completed slash-command/tool invocation for future turns.",
+    "Do not answer the user. Respond with exactly: OK",
+    "",
+    `Procedure: /${cell.procedure}`,
+    cell.input.trim() ? `Original input: ${summarizeText(cell.input, 500)}` : undefined,
+    cell.output.summary ? `Summary: ${summarizeText(cell.output.summary, 800)}` : undefined,
+    cell.output.memory ? `Memory: ${summarizeText(cell.output.memory, 800)}` : undefined,
+    !cell.output.summary && !cell.output.memory && cell.output.display
+      ? `Display preview: ${summarizeText(cell.output.display, 1200)}`
+      : undefined,
+    `Cell: session=${sessionId} cell=${cell.cellId}`,
+    dataRef ? `Data ref: ${formatValueRef(dataRef)}` : undefined,
+    displayRef ? `Display ref: ${formatValueRef(displayRef)}` : undefined,
+    dataShape !== undefined ? `Data shape: ${JSON.stringify(dataShape)}` : undefined,
+    cell.output.explicitDataSchema
+      ? `Explicit data schema: ${summarizeText(JSON.stringify(cell.output.explicitDataSchema), 800)}`
+      : undefined,
+    "",
+    "Use the attached nanoboss session MCP tools later if you need exact stored values.",
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function formatValueRef(valueRef: ValueRef): string {
+  return [
+    `session=${valueRef.cell.sessionId}`,
+    `cell=${valueRef.cell.cellId}`,
+    `path=${valueRef.path}`,
+  ].join(" ");
+}
+
 export function extractProcedureDispatchResult(updates: acp.SessionUpdate[]): ProcedureDispatchResult | undefined {
   for (const update of [...updates].reverse()) {
     if (update.sessionUpdate !== "tool_call_update" || update.status !== "completed") {
@@ -710,6 +820,102 @@ function parseProcedureDispatchResultCandidate(value: unknown): ProcedureDispatc
   }
 
   return undefined;
+}
+
+function extractProcedureDispatchFailure(updates: acp.SessionUpdate[]): string | undefined {
+  for (const update of [...updates].reverse()) {
+    if (update.sessionUpdate !== "tool_call_update" || update.status !== "failed") {
+      continue;
+    }
+
+    const rawOutput = update.rawOutput;
+    if (!rawOutput || typeof rawOutput !== "object") {
+      continue;
+    }
+
+    const message = (rawOutput as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+
+    const error = (rawOutput as { error?: unknown }).error;
+    if (typeof error === "string" && error.trim()) {
+      return error.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function isProcedureDispatchTimeout(message: string | undefined): boolean {
+  return Boolean(message && /request timed out/i.test(message));
+}
+
+async function waitForProcedureDispatchCell(
+  store: SessionStore,
+  procedureName: string,
+  procedurePrompt: string,
+  dispatchStartedAtMs: number,
+): Promise<CellRecord | undefined> {
+  const deadline = Date.now() + getProcedureDispatchRecoveryWaitMs();
+
+  for (;;) {
+    const found = findProcedureDispatchCell(store, procedureName, procedurePrompt, dispatchStartedAtMs);
+    if (found) {
+      return found;
+    }
+
+    if (Date.now() >= deadline) {
+      return undefined;
+    }
+
+    await Bun.sleep(1_000);
+  }
+}
+
+function findProcedureDispatchCell(
+  store: SessionStore,
+  procedureName: string,
+  procedurePrompt: string,
+  dispatchStartedAtMs: number,
+): CellRecord | undefined {
+  const summaries = store.topLevelRuns({ procedure: procedureName, limit: 50 });
+  for (const summary of summaries) {
+    const cell = store.readCell(summary.cell);
+    if (cell.input !== procedurePrompt) {
+      continue;
+    }
+
+    const createdAtMs = Date.parse(cell.meta.createdAt);
+    if (Number.isFinite(createdAtMs) && createdAtMs + 5_000 < dispatchStartedAtMs) {
+      continue;
+    }
+
+    return cell;
+  }
+
+  return undefined;
+}
+
+function getProcedureDispatchRecoveryWaitMs(): number {
+  const value = Number(process.env.NANOBOSS_PROCEDURE_DISPATCH_RECOVERY_WAIT_MS ?? "30000");
+  return Number.isFinite(value) && value > 0 ? value : 30000;
+}
+
+function procedureDispatchResultFromCell(sessionId: string, cell: CellRecord): ProcedureDispatchResult {
+  const cellRef = { sessionId, cellId: cell.cellId };
+  return {
+    procedure: cell.procedure,
+    cell: cellRef,
+    summary: cell.output.summary,
+    display: cell.output.display,
+    memory: cell.output.memory,
+    dataRef: cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined,
+    displayRef: cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined,
+    streamRef: cell.output.stream !== undefined ? createValueRef(cellRef, "output.stream") : undefined,
+    dataShape: cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined,
+    explicitDataSchema: cell.output.explicitDataSchema,
+  };
 }
 
 function resolveCommand(text: string): { commandName: string; commandPrompt: string } {
