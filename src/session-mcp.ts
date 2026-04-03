@@ -1,6 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
-import { resolve } from "node:path";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 import { getBuildLabel } from "./build-info.ts";
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
@@ -37,6 +38,12 @@ interface SessionMcpParams {
   cwd: string;
   rootDir?: string;
   registry?: ProcedureRegistryLike;
+}
+
+const PROCEDURE_DISPATCH_PROGRESS_DIR = "procedure-dispatch-progress";
+
+export function buildProcedureDispatchProgressPath(rootDir: string, dispatchId: string): string {
+  return join(rootDir, PROCEDURE_DISPATCH_PROGRESS_DIR, `${dispatchId}.jsonl`);
 }
 
 interface SessionMcpToolMetadata {
@@ -175,7 +182,7 @@ export class SessionMcpApi {
     };
   }
 
-  async procedureDispatch(args: { name: string; prompt: string; defaultAgentSelection?: DownstreamAgentSelection }): Promise<ProcedureDispatchResult> {
+  async procedureDispatch(args: { name: string; prompt: string; defaultAgentSelection?: DownstreamAgentSelection; progressDispatchId?: string }): Promise<ProcedureDispatchResult> {
     if (args.name === "default") {
       throw new Error("procedure_dispatch cannot run default; continue the master conversation directly instead.");
     }
@@ -193,7 +200,9 @@ export class SessionMcpApi {
 
     const store = this.createStore();
     const logger = new RunLogger();
-    const emitter = new ProcedureDispatchEmitter();
+    const emitter = new ProcedureDispatchEmitter(
+      args.progressDispatchId ? buildProcedureDispatchProgressPath(store.rootDir, args.progressDispatchId) : undefined,
+    );
     const rootSpanId = logger.newSpan();
     const rootCell = store.startCell({
       procedure: procedure.name,
@@ -420,6 +429,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
           required: ["provider"],
           additionalProperties: false,
         },
+        progressDispatchId: { type: "string" },
       },
       required: ["name", "prompt"],
       additionalProperties: false,
@@ -431,6 +441,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         defaultAgentSelection: args.defaultAgentSelection === undefined
           ? undefined
           : parseDownstreamAgentSelection(args.defaultAgentSelection),
+        progressDispatchId: asOptionalString(args.progressDispatchId),
       };
     },
     async call(api, args) {
@@ -797,7 +808,11 @@ function getProcedureList(
 class ProcedureDispatchEmitter implements SessionUpdateEmitter {
   private latestTokenUsage?: AgentTokenUsage;
 
+  constructor(private readonly progressPath?: string) {}
+
   emit(update: acp.SessionUpdate): void {
+    this.writeProgressUpdate(update);
+
     if (update.sessionUpdate !== "tool_call_update" || update.status !== "completed") {
       return;
     }
@@ -815,6 +830,49 @@ class ProcedureDispatchEmitter implements SessionUpdateEmitter {
   get currentTokenUsage(): AgentTokenUsage | undefined {
     return this.latestTokenUsage;
   }
+
+  private writeProgressUpdate(update: acp.SessionUpdate): void {
+    if (!this.progressPath) {
+      return;
+    }
+
+    const sanitized = sanitizeProcedureDispatchProgressUpdate(update);
+    if (!sanitized) {
+      return;
+    }
+
+    mkdirSync(dirname(this.progressPath), { recursive: true });
+    appendFileSync(this.progressPath, `${JSON.stringify(sanitized)}\n`, "utf8");
+  }
+}
+
+function sanitizeProcedureDispatchProgressUpdate(update: acp.SessionUpdate): acp.SessionUpdate | undefined {
+  if (update.sessionUpdate === "agent_message_chunk") {
+    return update;
+  }
+
+  if (update.sessionUpdate === "tool_call") {
+    return {
+      sessionUpdate: "tool_call",
+      toolCallId: update.toolCallId,
+      title: update.title,
+      kind: update.kind,
+      status: update.status,
+      rawInput: update.rawInput,
+    };
+  }
+
+  if (update.sessionUpdate === "tool_call_update") {
+    return {
+      sessionUpdate: "tool_call_update",
+      toolCallId: update.toolCallId,
+      title: update.title,
+      status: update.status,
+      rawOutput: undefined,
+    };
+  }
+
+  return undefined;
 }
 
 function extractTokenUsage(value: unknown): AgentTokenUsage | undefined {

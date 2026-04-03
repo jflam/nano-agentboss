@@ -521,7 +521,11 @@ class OutputClient {
 }
 
 function isWrapperToolTitle(title: string): boolean {
-  return title.startsWith("callAgent") || title.startsWith("defaultSession:");
+  return (
+    title.startsWith("callAgent") ||
+    title.startsWith("defaultSession:") ||
+    title.includes("procedure_dispatch")
+  );
 }
 
 function formatToolTraceLine(depth: number, text: string): string {

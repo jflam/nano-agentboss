@@ -1,5 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
+import { existsSync, readFileSync } from "node:fs";
+
 import { getBuildLabel } from "./build-info.ts";
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
@@ -26,7 +28,11 @@ import { RunLogger } from "./logger.ts";
 import { ProcedureRegistry } from "./registry.ts";
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
-import { isProcedureDispatchResult, type ProcedureDispatchResult } from "./session-mcp.ts";
+import {
+  buildProcedureDispatchProgressPath,
+  isProcedureDispatchResult,
+  type ProcedureDispatchResult,
+} from "./session-mcp.ts";
 import {
   SessionStore,
   createValueRef,
@@ -285,65 +291,77 @@ export class NanobossService {
   ): Promise<{ result: ProcedureDispatchResult; tokenUsage?: AgentTokenUsage }> {
     const bufferedTextUpdates: acp.SessionUpdate[] = [];
     const dispatchStartedAtMs = Date.now();
-    const promptResult = await session.defaultConversation.prompt(
-      buildProcedureDispatchPrompt(
-        procedureName,
-        procedurePrompt,
-        toDownstreamAgentSelection(session.defaultAgentConfig),
-      ),
-      {
-        signal: session.abortController?.signal,
-        onUpdate: async (update) => {
-          if (update.sessionUpdate === "agent_message_chunk") {
-            bufferedTextUpdates.push(update);
-            return;
-          }
-
-          if (
-            update.sessionUpdate === "tool_call" ||
-            update.sessionUpdate === "tool_call_update" ||
-            update.sessionUpdate === "usage_update"
-          ) {
-            emitter.emit(update);
-          }
-        },
-      },
+    const progressDispatchId = crypto.randomUUID();
+    const stopProgressBridge = startProcedureDispatchProgressBridge(
+      session.store.rootDir,
+      progressDispatchId,
+      emitter,
     );
 
-    const result = extractProcedureDispatchResult(promptResult.updates);
-    if (result) {
-      session.syncedProcedureMemoryCellIds.add(result.cell.cellId);
-      return {
-        result,
-        tokenUsage: normalizeAgentTokenUsage(
-          promptResult.tokenSnapshot ?? await session.defaultConversation.getCurrentTokenSnapshot(),
-          session.defaultAgentConfig,
+    try {
+      const promptResult = await session.defaultConversation.prompt(
+        buildProcedureDispatchPrompt(
+          procedureName,
+          procedurePrompt,
+          toDownstreamAgentSelection(session.defaultAgentConfig),
+          progressDispatchId,
         ),
-      };
-    }
+        {
+          signal: session.abortController?.signal,
+          onUpdate: async (update) => {
+            if (update.sessionUpdate === "agent_message_chunk") {
+              bufferedTextUpdates.push(update);
+              return;
+            }
 
-    const failureMessage = extractProcedureDispatchFailure(promptResult.updates);
-    if (isProcedureDispatchTimeout(failureMessage)) {
-      const recovered = await this.recoverTimedOutProcedureDispatch(
-        session,
-        procedureName,
-        procedurePrompt,
-        dispatchStartedAtMs,
+            if (
+              update.sessionUpdate === "tool_call" ||
+              update.sessionUpdate === "tool_call_update" ||
+              update.sessionUpdate === "usage_update"
+            ) {
+              emitter.emit(update);
+            }
+          },
+        },
       );
-      if (recovered) {
-        return recovered;
+
+      const result = extractProcedureDispatchResult(promptResult.updates);
+      if (result) {
+        session.syncedProcedureMemoryCellIds.add(result.cell.cellId);
+        return {
+          result,
+          tokenUsage: normalizeAgentTokenUsage(
+            promptResult.tokenSnapshot ?? await session.defaultConversation.getCurrentTokenSnapshot(),
+            session.defaultAgentConfig,
+          ),
+        };
       }
-    }
 
-    for (const update of bufferedTextUpdates) {
-      emitter.emit(update);
-    }
+      const failureMessage = extractProcedureDispatchFailure(promptResult.updates);
+      if (isProcedureDispatchTimeout(failureMessage)) {
+        const recovered = await this.recoverTimedOutProcedureDispatch(
+          session,
+          procedureName,
+          procedurePrompt,
+          dispatchStartedAtMs,
+        );
+        if (recovered) {
+          return recovered;
+        }
+      }
 
-    throw new Error(
-      failureMessage
-        ? `Default session did not dispatch /${procedureName} through procedure_dispatch: ${failureMessage}`
-        : `Default session did not dispatch /${procedureName} through procedure_dispatch.`,
-    );
+      for (const update of bufferedTextUpdates) {
+        emitter.emit(update);
+      }
+
+      throw new Error(
+        failureMessage
+          ? `Default session did not dispatch /${procedureName} through procedure_dispatch: ${failureMessage}`
+          : `Default session did not dispatch /${procedureName} through procedure_dispatch.`,
+      );
+    } finally {
+      await stopProgressBridge();
+    }
   }
 
   private async recoverTimedOutProcedureDispatch(
@@ -652,6 +670,60 @@ function getRunHeartbeatMs(): number {
   return Number.isFinite(value) && value > 0 ? value : 5000;
 }
 
+function startProcedureDispatchProgressBridge(
+  rootDir: string,
+  dispatchId: string,
+  emitter: CompositeSessionUpdateEmitter,
+): () => Promise<void> {
+  const progressPath = buildProcedureDispatchProgressPath(rootDir, dispatchId);
+  let byteOffset = 0;
+  let remainder = "";
+  let stopped = false;
+
+  const drain = () => {
+    if (!existsSync(progressPath)) {
+      return;
+    }
+
+    const content = readFileSync(progressPath, "utf8");
+    const nextChunk = content.slice(byteOffset);
+    if (!nextChunk) {
+      return;
+    }
+
+    byteOffset = content.length;
+    const combined = remainder + nextChunk;
+    const lines = combined.split("\n");
+    remainder = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      try {
+        emitter.emit(JSON.parse(trimmed) as acp.SessionUpdate);
+      } catch {
+        // Ignore malformed progress updates.
+      }
+    }
+  };
+
+  const interval = setInterval(() => {
+    if (stopped) {
+      return;
+    }
+    drain();
+  }, 100);
+
+  return async () => {
+    stopped = true;
+    clearInterval(interval);
+    drain();
+  };
+}
+
 function publishStoredMemoryCard(
   session: SessionState,
   sessionId: string,
@@ -686,6 +758,7 @@ function buildProcedureDispatchPrompt(
   procedureName: string,
   procedurePrompt: string,
   defaultAgentSelection?: DownstreamAgentSelection,
+  progressDispatchId?: string,
 ): string {
   return [
     "Nanoboss internal slash-command dispatch.",
@@ -695,6 +768,7 @@ function buildProcedureDispatchPrompt(
       name: procedureName,
       prompt: procedurePrompt,
       defaultAgentSelection,
+      progressDispatchId,
     }),
     "Do not answer from your own knowledge.",
     "After the tool completes, reply with exactly the tool result text and nothing else.",

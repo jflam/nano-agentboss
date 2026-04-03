@@ -22,6 +22,11 @@ interface LiveSession extends StoredSession {
 interface InternalSlashDispatch {
   name: string;
   prompt: string;
+  defaultAgentSelection?: {
+    provider: "claude" | "gemini" | "codex" | "copilot";
+    model?: string;
+  };
+  progressDispatchId?: string;
 }
 
 const SUPPORT_LOAD_SESSION = process.env.MOCK_AGENT_SUPPORT_LOAD_SESSION === "1";
@@ -245,14 +250,31 @@ function parseInternalSlashDispatch(prompt: string): InternalSlashDispatch | und
     return undefined;
   }
 
-  const parsed = JSON.parse(jsonBlock) as { name?: unknown; prompt?: unknown };
+  const parsed = JSON.parse(jsonBlock) as {
+    name?: unknown;
+    prompt?: unknown;
+    defaultAgentSelection?: unknown;
+    progressDispatchId?: unknown;
+  };
   if (typeof parsed.name !== "string" || typeof parsed.prompt !== "string") {
     return undefined;
   }
 
+  const selection = parsed.defaultAgentSelection;
+  const provider = selection && typeof selection === "object"
+    ? (selection as { provider?: unknown }).provider
+    : undefined;
+  const model = selection && typeof selection === "object"
+    ? (selection as { model?: unknown }).model
+    : undefined;
+
   return {
     name: parsed.name,
     prompt: parsed.prompt,
+    defaultAgentSelection: provider === "claude" || provider === "gemini" || provider === "codex" || provider === "copilot"
+      ? { provider, ...(typeof model === "string" ? { model } : {}) }
+      : undefined,
+    progressDispatchId: typeof parsed.progressDispatchId === "string" ? parsed.progressDispatchId : undefined,
   };
 }
 

@@ -177,8 +177,10 @@ describe("NanobossService", () => {
         .map((event) => event.data.text);
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "probe");
 
-      expect(toolTitles).toContain("procedure_dispatch");
-      expect(textEvents).toEqual(["done"]);
+      expect(toolTitles.some((title) => title.includes("procedure_dispatch"))).toBe(true);
+      expect(toolTitles.some((title) => title.startsWith("callAgent:"))).toBe(true);
+      expect(toolTitles).toContain("Mock read README.md");
+      expect(textEvents).toContain("done");
       expect(completed?.type).toBe("run_completed");
       expect(completed?.data.tokenUsage).toMatchObject({
         source: "acp_usage_update",
