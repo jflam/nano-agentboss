@@ -1,4 +1,8 @@
-import { formatSessionDetailLine, formatSessionLine } from "../../session-picker-format.ts";
+import {
+  formatSessionDetailLine,
+  formatSessionInitialPrompt,
+  formatSessionLine,
+} from "../../session-picker-format.ts";
 import type { StoredSessionSummary } from "../../stored-sessions.ts";
 
 import type { NanobossTuiTheme } from "../theme.ts";
@@ -18,6 +22,11 @@ export async function promptForStoredSessionSelection(
     })),
     footer: "↑↓ navigate • enter resume • esc cancel",
     maxVisible: 10,
+    selectedDetailTitle: "First user prompt",
+    renderSelectedDetail: (item) => {
+      const session = sessions.find((candidate) => candidate.sessionId === item.value);
+      return session ? formatSessionInitialPrompt(session) : "(no turns yet)";
+    },
   });
 
   return sessions.find((session) => session.sessionId === selectedId);

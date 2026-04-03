@@ -27,6 +27,12 @@ export function formatSessionDetailLine(session: StoredSessionSummary): string {
   return parts.join(" • ");
 }
 
+export function formatSessionInitialPrompt(session: StoredSessionSummary): string {
+  return session.initialPrompt?.trim().length
+    ? session.initialPrompt.trim()
+    : "(no turns yet)";
+}
+
 export function formatTimestamp(value: string): string {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) {
