@@ -11,26 +11,49 @@ import {
   type StoredSessionSummary,
 } from "./src/stored-sessions.ts";
 
-export async function runResumeCommand(argv: string[] = []): Promise<void> {
+export type StoredSessionSelectionResult =
+  | { kind: "selected"; session: StoredSessionSummary }
+  | { kind: "cancelled" }
+  | { kind: "empty" };
+
+export async function runResumeCommand(
+  argv: string[] = [],
+  deps: {
+    assertInteractiveTty?: typeof assertInteractiveTty;
+    runTuiCli?: typeof runTuiCli;
+    selectStoredSession?: (cwd: string) => Promise<StoredSessionSelectionResult>;
+  } = {},
+): Promise<void> {
   const options = parseResumeOptions(argv);
   if (options.showHelp) {
     printHelp();
     return;
   }
 
-  assertInteractiveTty("resume");
+  const cwd = process.cwd();
+  (deps.assertInteractiveTty ?? assertInteractiveTty)("resume");
 
-  const selected = options.sessionId
-    ? resolveExplicitSession(options.sessionId)
-    : options.list
-      ? await selectStoredSession(process.cwd())
-      : resolveDefaultSession(process.cwd());
-
-  if (!selected) {
-    throw new Error(`No saved nanoboss sessions found for ${process.cwd()}`);
+  let selected: StoredSessionSummary | undefined;
+  if (options.sessionId) {
+    selected = resolveExplicitSession(options.sessionId);
+  } else if (options.list) {
+    const selection = await (deps.selectStoredSession ?? selectStoredSession)(cwd);
+    if (selection.kind === "cancelled") {
+      return;
+    }
+    if (selection.kind === "empty") {
+      throw new Error(`No saved nanoboss sessions found for ${cwd}`);
+    }
+    selected = selection.session;
+  } else {
+    selected = resolveDefaultSession(cwd);
   }
 
-  await runTuiCli({
+  if (!selected) {
+    throw new Error(`No saved nanoboss sessions found for ${cwd}`);
+  }
+
+  await (deps.runTuiCli ?? runTuiCli)({
     serverUrl: options.serverUrl,
     showToolCalls: options.showToolCalls,
     sessionId: selected.sessionId,
@@ -66,13 +89,16 @@ function resolveDefaultSession(cwd: string): StoredSessionSummary | undefined {
   return resolveMostRecentStoredSession(cwd);
 }
 
-async function selectStoredSession(cwd: string): Promise<StoredSessionSummary | undefined> {
+async function selectStoredSession(cwd: string): Promise<StoredSessionSelectionResult> {
   const sessions = orderSessions(cwd, withCurrentPointerSession(cwd, listStoredSessions()));
   if (sessions.length === 0) {
-    return undefined;
+    return { kind: "empty" };
   }
 
-  return await promptForStoredSessionSelection(createNanobossTuiTheme(), sessions, cwd);
+  const selected = await promptForStoredSessionSelection(createNanobossTuiTheme(), sessions, cwd);
+  return selected
+    ? { kind: "selected", session: selected }
+    : { kind: "cancelled" };
 }
 
 function withCurrentPointerSession(cwd: string, sessions: StoredSessionSummary[]): StoredSessionSummary[] {
