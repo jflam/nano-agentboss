@@ -93,6 +93,10 @@ describe("static nanoboss MCP proxy", () => {
       const toolNames = list.result?.tools?.map((tool) => tool.name) ?? [];
       expect(toolNames).toContain("procedure_list");
       expect(toolNames).toContain("top_level_runs");
+      expect(toolNames).not.toContain("procedure_dispatch_start");
+      expect(toolNames).not.toContain("procedure_dispatch_status");
+      expect(toolNames).not.toContain("procedure_dispatch_wait");
+      expect(toolNames).not.toContain("procedure_dispatch");
 
       writeMcpMessage(child.stdin, {
         jsonrpc: "2.0",
@@ -111,6 +115,20 @@ describe("static nanoboss MCP proxy", () => {
         procedure: "second-opinion",
         summary: "review summary",
       });
+
+      writeMcpMessage(child.stdin, {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: {
+          name: "procedure_dispatch_wait",
+          arguments: {
+            dispatchId: "dispatch_test",
+          },
+        },
+      });
+      const blocked = await readMcpMessage(frames);
+      expect(blocked.error?.message).toContain("only available from the attached nanoboss-session MCP server");
     } finally {
       child.kill();
       await new Promise<void>((resolve) => {
@@ -144,6 +162,9 @@ async function readMcpMessage(
       summary?: string;
     }>;
   };
+  error?: {
+    message?: string;
+  };
 }> {
   const body = await frames.read();
   return JSON.parse(body) as {
@@ -155,6 +176,9 @@ async function readMcpMessage(
         procedure: string;
         summary?: string;
       }>;
+    };
+    error?: {
+      message?: string;
     };
   };
 }

@@ -719,6 +719,8 @@ function buildProcedureDispatchPrompt(
   return [
     "Nanoboss internal slash-command dispatch.",
     "This is an internal control message for the current persistent master conversation.",
+    "Use the attached `nanoboss-session` MCP server for this control flow.",
+    "If another MCP server named `nanoboss` is also available, do not use it for procedure dispatch.",
     "Call `procedure_dispatch_start` exactly once with the following JSON arguments.",
     JSON.stringify({
       name: procedureName,
