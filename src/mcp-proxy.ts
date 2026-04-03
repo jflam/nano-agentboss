@@ -1,6 +1,7 @@
 import {
   callSessionMcpTool,
   createSessionMcpApi,
+  formatSessionMcpToolResult,
   listSessionMcpTools,
 } from "./session-mcp.ts";
 import { runStdioJsonRpcServer } from "./stdio-jsonrpc.ts";
@@ -34,11 +35,11 @@ export function printMcpHelp(): void {
 }
 
 
-function dispatchNanobossMcpMethod(
+async function dispatchNanobossMcpMethod(
   api: ReturnType<typeof createSessionMcpApi>,
   method: string,
   params: unknown,
-): unknown {
+): Promise<unknown> {
   switch (method) {
     case "initialize":
       return {
@@ -62,18 +63,7 @@ function dispatchNanobossMcpMethod(
       const record = asObject(params);
       const name = asString(record.name, "name");
       const args = record.arguments === undefined ? {} : asObject(record.arguments);
-      const structuredContent = callSessionMcpTool(api, name, args);
-      return {
-        content: [
-          {
-            type: "text",
-            text: typeof structuredContent === "string"
-              ? structuredContent
-              : JSON.stringify(structuredContent, null, 2),
-          },
-        ],
-        structuredContent,
-      };
+      return formatSessionMcpToolResult(name, await callSessionMcpTool(api, name, args));
     }
     default:
       throw new Error(`Unsupported MCP method: ${method}`);

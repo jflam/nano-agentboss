@@ -86,6 +86,7 @@ describe("session MCP HTTP transport", () => {
         tools?: Array<{ name: string }>;
       };
     };
+    expect(listBody.result?.tools?.map((tool) => tool.name)).toContain("procedure_list");
     expect(listBody.result?.tools?.map((tool) => tool.name)).toContain("top_level_runs");
     expect(listBody.result?.tools?.map((tool) => tool.name)).not.toContain("cell_parent");
 

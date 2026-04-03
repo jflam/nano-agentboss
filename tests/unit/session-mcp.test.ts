@@ -7,6 +7,7 @@ import {
   createSessionMcpApi,
   listSessionMcpTools,
 } from "../../src/session-mcp.ts";
+import { ProcedureRegistry } from "../../src/registry.ts";
 import { SessionStore } from "../../src/session-store.ts";
 
 const tempDirs: string[] = [];
@@ -235,7 +236,7 @@ describe("session MCP API", () => {
     });
   });
 
-  test("registers and dispatches the structural MCP tools", () => {
+  test("registers and dispatches the structural MCP tools", async () => {
     const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-"));
     tempDirs.push(rootDir);
 
@@ -257,8 +258,12 @@ describe("session MCP API", () => {
     expect(toolNames).not.toContain("cell_parent");
     expect(toolNames).not.toContain("cell_children");
 
+    expect(toolNames).toContain("procedure_list");
+    expect(toolNames).toContain("procedure_get");
+    expect(toolNames).toContain("procedure_dispatch");
+
     expect(
-      callSessionMcpTool(api, "cell_ancestors", {
+      await callSessionMcpTool(api, "cell_ancestors", {
         cellRef: critiqueResult.cell,
         limit: 1,
       }),
@@ -267,7 +272,7 @@ describe("session MCP API", () => {
     ]);
 
     expect(
-      callSessionMcpTool(api, "cell_descendants", {
+      await callSessionMcpTool(api, "cell_descendants", {
         cellRef: reviewResult.cell,
         kind: "agent",
       }),
@@ -275,5 +280,93 @@ describe("session MCP API", () => {
       { procedure: "callAgent", kind: "agent" },
       { procedure: "callAgent", kind: "agent" },
     ]);
+  });
+
+  test("lists and dispatches procedures through the generic MCP surface", async () => {
+    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-"));
+    const commandsDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-commands-"));
+    tempDirs.push(rootDir, commandsDir);
+
+    const registry = new ProcedureRegistry(commandsDir);
+    registry.loadBuiltins();
+    registry.register({
+      name: "review",
+      description: "store a durable review result",
+      inputHint: "subject to review",
+      async execute(prompt) {
+        return {
+          data: {
+            subject: prompt,
+            verdict: "mixed",
+          },
+          display: `reviewed: ${prompt}\n`,
+          summary: `review ${prompt}`,
+          memory: `Reviewed ${prompt}.`,
+        };
+      },
+    });
+
+    const api = createSessionMcpApi({
+      sessionId: "session-mcp",
+      cwd: process.cwd(),
+      rootDir,
+      registry,
+    });
+
+    const listed = await callSessionMcpTool(api, "procedure_list", {}) as {
+      procedures: Array<{
+        name: string;
+        description: string;
+        inputHint?: string;
+      }>;
+    };
+    expect(listed.procedures).toContainEqual({
+      name: "review",
+      description: "store a durable review result",
+      inputHint: "subject to review",
+    });
+
+    expect(await callSessionMcpTool(api, "procedure_get", { name: "review" })).toEqual({
+      name: "review",
+      description: "store a durable review result",
+      inputHint: "subject to review",
+    });
+
+    const dispatched = await callSessionMcpTool(api, "procedure_dispatch", {
+      name: "review",
+      prompt: "patch",
+    }) as {
+      procedure: string;
+      cell: { sessionId: string; cellId: string };
+      summary?: string;
+      display?: string;
+      memory?: string;
+      dataRef?: { cell: { sessionId: string; cellId: string }; path: string };
+      dataShape?: { subject: string; verdict: string };
+    };
+
+    expect(dispatched).toMatchObject({
+      procedure: "review",
+      summary: "review patch",
+      display: "reviewed: patch\n",
+      memory: "Reviewed patch.",
+      dataShape: {
+        subject: "patch",
+        verdict: "mixed",
+      },
+    });
+
+    expect(dispatched.dataRef).toBeDefined();
+    expect(api.topLevelRuns({ procedure: "review" })).toMatchObject([
+      {
+        cell: dispatched.cell,
+        procedure: "review",
+        summary: "review patch",
+      },
+    ]);
+    expect(dispatched.dataRef ? api.refRead(dispatched.dataRef) : undefined).toEqual({
+      subject: "patch",
+      verdict: "mixed",
+    });
   });
 });

@@ -107,7 +107,7 @@ async function handleSessionMcpHttpRequest(api: ReturnType<typeof createSessionM
   }
 
   try {
-    const result = dispatchSessionMcpMethod(api, message.method, message.params);
+    const result = await dispatchSessionMcpMethod(api, message.method, message.params);
     return jsonRpcResult(message.id ?? null, result);
   } catch (error) {
     return jsonRpcError(

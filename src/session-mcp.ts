@@ -1,12 +1,27 @@
+import type * as acp from "@agentclientprotocol/sdk";
+
+import { resolve } from "node:path";
+
 import { getBuildLabel } from "./build-info.ts";
+import { resolveDownstreamAgentConfig } from "./config.ts";
+import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
 import { readCurrentSessionPointer } from "./current-session.ts";
 import { inferDataShape } from "./data-shape.ts";
-import { SessionStore } from "./session-store.ts";
+import { RunLogger } from "./logger.ts";
+import { ProcedureRegistry } from "./registry.ts";
+import {
+  SessionStore,
+  normalizeProcedureResult,
+  summarizeText,
+} from "./session-store.ts";
+import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import type {
+  AgentTokenUsage,
   CellDescendantsOptions,
   CellKind,
   CellRecord,
   CellRef,
+  ProcedureRegistryLike,
   SessionRecentOptions,
   TopLevelRunsOptions,
   ValueRef,
@@ -14,12 +29,13 @@ import type {
 
 export const SESSION_MCP_PROTOCOL_VERSION = "2025-11-25";
 export const SESSION_MCP_SERVER_NAME = "nanoboss-session";
-export const SESSION_MCP_INSTRUCTIONS = "Use these tools to inspect durable nanoboss session cells and refs.";
+export const SESSION_MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state for the current master session.";
 
 interface SessionMcpParams {
   sessionId?: string;
   cwd: string;
   rootDir?: string;
+  registry?: ProcedureRegistryLike;
 }
 
 interface SessionMcpToolMetadata {
@@ -30,7 +46,31 @@ interface SessionMcpToolMetadata {
 
 interface SessionMcpToolDefinition extends SessionMcpToolMetadata {
   parseArgs(args: Record<string, unknown>): unknown;
-  call(api: SessionMcpApi, args: unknown): unknown;
+  call(api: SessionMcpApi, args: unknown): Promise<unknown>;
+}
+
+interface ProcedureListResult {
+  procedures: SessionProcedureMetadata[];
+}
+
+interface SessionProcedureMetadata {
+  name: string;
+  description: string;
+  inputHint?: string;
+}
+
+interface ProcedureDispatchResult {
+  procedure: string;
+  cell: CellRef;
+  summary?: string;
+  display?: string;
+  memory?: string;
+  dataRef?: ValueRef;
+  displayRef?: ValueRef;
+  streamRef?: ValueRef;
+  dataShape?: unknown;
+  explicitDataSchema?: object;
+  tokenUsage?: AgentTokenUsage;
 }
 
 export interface SessionSchemaResult {
@@ -40,7 +80,15 @@ export interface SessionSchemaResult {
 }
 
 export class SessionMcpApi {
-  constructor(private readonly params: SessionMcpParams) {}
+  private readonly registryPromise: Promise<ProcedureRegistryLike>;
+  private defaultAgentConfig: ReturnType<typeof resolveDownstreamAgentConfig>;
+
+  constructor(private readonly params: SessionMcpParams) {
+    this.registryPromise = params.registry
+      ? Promise.resolve(params.registry)
+      : loadSessionMcpRegistry(params.cwd);
+    this.defaultAgentConfig = resolveDownstreamAgentConfig(params.cwd);
+  }
 
   sessionRecent(args: SessionRecentOptions & { sessionId?: string } = {}): ReturnType<SessionStore["recent"]> {
     return this.createStore(args.sessionId).recent(args);
@@ -104,6 +152,121 @@ export class SessionMcpApi {
     };
   }
 
+  async procedureList(args: { includeHidden?: boolean } = {}): Promise<ProcedureListResult> {
+    const registry = await this.getRegistry();
+    return {
+      procedures: getProcedureList(registry, args.includeHidden === true),
+    };
+  }
+
+  async procedureGet(args: { name: string }): Promise<SessionProcedureMetadata> {
+    const registry = await this.getRegistry();
+    const procedure = registry.get(args.name);
+    if (!procedure) {
+      throw new Error(`Unknown procedure: ${args.name}`);
+    }
+
+    return {
+      name: procedure.name,
+      description: procedure.description,
+      inputHint: procedure.inputHint,
+    };
+  }
+
+  async procedureDispatch(args: { name: string; prompt: string }): Promise<ProcedureDispatchResult> {
+    if (args.name === "default") {
+      throw new Error("procedure_dispatch cannot run default; continue the master conversation directly instead.");
+    }
+
+    const registry = await this.getRegistry();
+    const procedure = registry.get(args.name);
+    if (!procedure) {
+      throw new Error(`Unknown procedure: ${args.name}`);
+    }
+
+    const store = this.createStore();
+    const logger = new RunLogger();
+    const emitter = new ProcedureDispatchEmitter();
+    const rootSpanId = logger.newSpan();
+    const rootCell = store.startCell({
+      procedure: procedure.name,
+      input: args.prompt,
+      kind: "top_level",
+    });
+
+    const ctx = new CommandContextImpl({
+      cwd: this.params.cwd,
+      sessionId: store.sessionId,
+      logger,
+      registry,
+      procedureName: procedure.name,
+      spanId: rootSpanId,
+      emitter,
+      store,
+      cell: rootCell,
+      getDefaultAgentConfig: () => this.defaultAgentConfig,
+      setDefaultAgentSelection: (selection) => {
+        const nextConfig = resolveDownstreamAgentConfig(this.params.cwd, selection);
+        this.defaultAgentConfig = nextConfig;
+        return nextConfig;
+      },
+    });
+
+    logger.write({
+      spanId: rootSpanId,
+      procedure: procedure.name,
+      kind: "procedure_start",
+      prompt: args.prompt,
+    });
+
+    try {
+      const rawResult = await procedure.execute(args.prompt, ctx);
+      const result = normalizeProcedureResult(rawResult);
+      const finalized = store.finalizeCell(rootCell, result);
+      const record = store.readCell(finalized.cell);
+
+      logger.write({
+        spanId: rootSpanId,
+        procedure: procedure.name,
+        kind: "procedure_end",
+        result: result.data,
+        raw: result.display,
+      });
+
+      return {
+        procedure: procedure.name,
+        cell: finalized.cell,
+        summary: record.output.summary,
+        display: record.output.display,
+        memory: record.output.memory,
+        dataRef: finalized.dataRef,
+        displayRef: finalized.displayRef,
+        streamRef: finalized.streamRef,
+        dataShape: record.output.data !== undefined ? inferDataShape(record.output.data) : undefined,
+        explicitDataSchema: record.output.explicitDataSchema,
+        tokenUsage: emitter.currentTokenUsage,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const errorText = `Error: ${message}\n`;
+
+      logger.write({
+        spanId: rootSpanId,
+        procedure: procedure.name,
+        kind: "procedure_end",
+        error: message,
+      });
+
+      store.finalizeCell(rootCell, {
+        summary: summarizeText(errorText),
+      });
+      throw error;
+    } finally {
+      await emitter.flush();
+      logger.close();
+    }
+  }
+
   private createStore(sessionId = this.params.sessionId): SessionStore {
     const current = readCurrentSessionPointer();
     const resolvedSessionId = sessionId ?? current?.sessionId;
@@ -120,6 +283,10 @@ export class SessionMcpApi {
       cwd: this.params.cwd,
       rootDir: resolvedRootDir,
     });
+  }
+
+  private async getRegistry(): Promise<ProcedureRegistryLike> {
+    return await this.registryPromise;
   }
 }
 
@@ -157,7 +324,7 @@ function defineTool<Args>(definition: {
   description: string;
   inputSchema: object;
   parseArgs(args: Record<string, unknown>): Args;
-  call(api: SessionMcpApi, args: Args): unknown;
+  call(api: SessionMcpApi, args: Args): Promise<unknown>;
 }): SessionMcpToolDefinition {
   return {
     name: definition.name,
@@ -166,13 +333,86 @@ function defineTool<Args>(definition: {
     parseArgs(args) {
       return definition.parseArgs(args);
     },
-    call(api, args) {
-      return definition.call(api, args as Args);
+    async call(api, args) {
+      return await definition.call(api, args as Args);
     },
   };
 }
 
+const SESSION_MCP_DIRECT_TOOL_NAMES = new Set([
+  "top_level_runs",
+  "cell_descendants",
+  "cell_ancestors",
+  "cell_get",
+  "ref_read",
+  "session_recent",
+  "ref_stat",
+  "ref_write_to_file",
+  "get_schema",
+]);
+
 const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
+  defineTool({
+    name: "procedure_list",
+    description: "List nanoboss procedures that can be dispatched into the current master session.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeHidden: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
+    parseArgs(args) {
+      return {
+        includeHidden: asOptionalBoolean(args.includeHidden),
+      };
+    },
+    async call(api, args) {
+      return await api.procedureList(args);
+    },
+  }),
+  defineTool({
+    name: "procedure_get",
+    description: "Return metadata for one nanoboss procedure.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+    parseArgs(args) {
+      return {
+        name: asString(args.name, "name"),
+      };
+    },
+    async call(api, args) {
+      return await api.procedureGet(args);
+    },
+  }),
+  defineTool({
+    name: "procedure_dispatch",
+    description: "Run a nanoboss procedure on behalf of the current persistent master session and return the result into that same conversation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        prompt: { type: "string" },
+      },
+      required: ["name", "prompt"],
+      additionalProperties: false,
+    },
+    parseArgs(args) {
+      return {
+        name: asString(args.name, "name"),
+        prompt: typeof args.prompt === "string" ? args.prompt : "",
+      };
+    },
+    async call(api, args) {
+      return await api.procedureDispatch(args);
+    },
+  }),
   defineTool({
     name: "top_level_runs",
     description: "Return top-level completed runs in reverse chronological order. Use this to find prior chat-visible commands such as /default, /linter, or /second-opinion.",
@@ -192,7 +432,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         limit: asOptionalNonNegativeNumber(args.limit, "limit"),
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.topLevelRuns(args);
     },
   }),
@@ -222,7 +462,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         },
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.cellDescendants(args.cellRef, args.options);
     },
   }),
@@ -248,7 +488,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         },
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.cellAncestors(args.cellRef, args.options);
     },
   }),
@@ -268,7 +508,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         cellRef: parseCellRef(args.cellRef),
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.cellGet(args.cellRef);
     },
   }),
@@ -288,7 +528,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         valueRef: parseValueRef(args.valueRef),
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.refRead(args.valueRef);
     },
   }),
@@ -311,7 +551,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         limit: asOptionalNonNegativeNumber(args.limit, "limit"),
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.sessionRecent(args);
     },
   }),
@@ -331,7 +571,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         valueRef: parseValueRef(args.valueRef),
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.refStat(args.valueRef);
     },
   }),
@@ -353,7 +593,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         path: asString(args.path, "path"),
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.refWriteToFile(args.valueRef, args.path);
     },
   }),
@@ -374,7 +614,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         valueRef: args.valueRef !== undefined ? parseValueRef(args.valueRef) : undefined,
       };
     },
-    call(api, args) {
+    async call(api, args) {
       return api.getSchema(args);
     },
   }),
@@ -388,20 +628,24 @@ export function listSessionMcpTools(): SessionMcpToolMetadata[] {
   }));
 }
 
-export function callSessionMcpTool(api: SessionMcpApi, name: string, args: Record<string, unknown>): unknown {
+export async function callSessionMcpTool(
+  api: SessionMcpApi,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<unknown> {
   const tool = SESSION_MCP_TOOLS.find((candidate) => candidate.name === name);
   if (!tool) {
     throw new Error(`Unknown tool: ${name}`);
   }
 
-  return tool.call(api, tool.parseArgs(args));
+  return await tool.call(api, tool.parseArgs(args));
 }
 
-export function dispatchSessionMcpMethod(
+export async function dispatchSessionMcpMethod(
   api: SessionMcpApi,
   method: string,
   params: unknown,
-): unknown {
+): Promise<unknown> {
   switch (method) {
     case "initialize":
       return {
@@ -425,26 +669,54 @@ export function dispatchSessionMcpMethod(
       const args = asObject(params);
       const name = asString(args.name, "name");
       const toolArgs = asOptionalObject(args.arguments);
-      return formatSessionMcpToolResult(callSessionMcpTool(api, name, toolArgs));
+      return formatSessionMcpToolResult(name, await callSessionMcpTool(api, name, toolArgs));
     }
     default:
       throw new Error(`Unsupported MCP method: ${method}`);
   }
 }
 
-export function formatSessionMcpToolResult(result: unknown): { content: Array<{ type: "text"; text: string }>; structuredContent: unknown } {
+export function formatSessionMcpToolResult(
+  toolName: string,
+  result: unknown,
+): { content: Array<{ type: "text"; text: string }>; structuredContent: unknown } {
   return {
     content: [
       {
         type: "text",
-        text: serializeToolResult(result),
+        text: serializeToolResult(toolName, result),
       },
     ],
     structuredContent: result,
   };
 }
 
-function serializeToolResult(result: unknown): string {
+function serializeToolResult(toolName: string, result: unknown): string {
+  if (toolName === "procedure_list") {
+    const procedures = isProcedureListResult(result) ? result.procedures : [];
+    return procedures.length > 0
+      ? `Available procedures: ${procedures.map((procedure) => procedure.name).join(", ")}`
+      : "No procedures available.";
+  }
+
+  if (toolName === "procedure_get" && isProcedureMetadata(result)) {
+    return result.inputHint
+      ? `${result.name}: ${result.description}\nInput hint: ${result.inputHint}`
+      : `${result.name}: ${result.description}`;
+  }
+
+  if (toolName === "procedure_dispatch" && isProcedureDispatchResult(result)) {
+    if (typeof result.display === "string" && result.display.trim()) {
+      return result.display;
+    }
+
+    if (typeof result.summary === "string" && result.summary.trim()) {
+      return result.summary;
+    }
+
+    return `${result.procedure} completed.`;
+  }
+
   if (typeof result === "string") {
     return result;
   }
@@ -454,6 +726,116 @@ function serializeToolResult(result: unknown): string {
   }
 
   return JSON.stringify(result, null, 2);
+}
+
+async function loadSessionMcpRegistry(cwd: string): Promise<ProcedureRegistryLike> {
+  const registry = new ProcedureRegistry({
+    commandsDir: resolve(cwd, "commands"),
+  });
+  registry.loadBuiltins();
+  if (shouldLoadDiskCommands()) {
+    await registry.loadFromDisk();
+  }
+  return registry;
+}
+
+function getProcedureList(
+  registry: ProcedureRegistryLike,
+  includeHidden: boolean,
+): SessionProcedureMetadata[] {
+  const procedures = registry.toAvailableCommands()
+    .filter((procedure) => !SESSION_MCP_DIRECT_TOOL_NAMES.has(procedure.name))
+    .map((procedure) => ({
+      name: procedure.name,
+      description: procedure.description,
+      inputHint: procedure.input?.hint,
+    }));
+
+  if (!includeHidden) {
+    return procedures;
+  }
+
+  const defaultProcedure = registry.get("default");
+  if (!defaultProcedure) {
+    return procedures;
+  }
+
+  return [
+    {
+      name: defaultProcedure.name,
+      description: defaultProcedure.description,
+      inputHint: defaultProcedure.inputHint,
+    },
+    ...procedures,
+  ];
+}
+
+class ProcedureDispatchEmitter implements SessionUpdateEmitter {
+  private latestTokenUsage?: AgentTokenUsage;
+
+  emit(update: acp.SessionUpdate): void {
+    if (update.sessionUpdate !== "tool_call_update" || update.status !== "completed") {
+      return;
+    }
+
+    const tokenUsage = extractTokenUsage(update.rawOutput);
+    if (tokenUsage) {
+      this.latestTokenUsage = tokenUsage;
+    }
+  }
+
+  flush(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  get currentTokenUsage(): AgentTokenUsage | undefined {
+    return this.latestTokenUsage;
+  }
+}
+
+function extractTokenUsage(value: unknown): AgentTokenUsage | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = (value as { tokenUsage?: unknown }).tokenUsage;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return undefined;
+  }
+
+  const source = (candidate as { source?: unknown }).source;
+  if (typeof source !== "string") {
+    return undefined;
+  }
+
+  return candidate as AgentTokenUsage;
+}
+
+function isProcedureListResult(value: unknown): value is ProcedureListResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { procedures?: unknown }).procedures)
+  );
+}
+
+function isProcedureMetadata(value: unknown): value is SessionProcedureMetadata {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { name?: unknown }).name === "string" &&
+    typeof (value as { description?: unknown }).description === "string"
+  );
+}
+
+function isProcedureDispatchResult(value: unknown): value is ProcedureDispatchResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { procedure?: unknown }).procedure === "string" &&
+    typeof (value as { cell?: unknown }).cell === "object" &&
+    (value as { cell?: unknown }).cell !== null
+  );
 }
 
 function parseCellRef(value: unknown): CellRef {

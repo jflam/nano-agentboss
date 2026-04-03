@@ -91,6 +91,7 @@ describe("static nanoboss MCP proxy", () => {
       });
       const list = await readMcpMessage(frames);
       const toolNames = list.result?.tools?.map((tool) => tool.name) ?? [];
+      expect(toolNames).toContain("procedure_list");
       expect(toolNames).toContain("top_level_runs");
 
       writeMcpMessage(child.stdin, {

@@ -11,7 +11,7 @@ const HEADER_SEPARATOR = "\r\n\r\n";
 export function tryReadStdioJsonRpcMessage(
   buffer: Buffer,
 ): { body: string; rest: Buffer; mode: StdioJsonRpcMode } | undefined {
-  let working = trimLeadingLineBreaks(buffer);
+  const working = trimLeadingLineBreaks(buffer);
   if (working.length === 0) {
     return undefined;
   }
@@ -69,7 +69,7 @@ export function serializeStdioJsonRpcMessage(message: unknown, mode: StdioJsonRp
 }
 
 export async function runStdioJsonRpcServer(
-  dispatch: (method: string, params: unknown) => unknown,
+  dispatch: (method: string, params: unknown) => Promise<unknown>,
 ): Promise<void> {
   let buffer = Buffer.alloc(0);
   let mode: StdioJsonRpcMode = "jsonl";
@@ -77,8 +77,9 @@ export async function runStdioJsonRpcServer(
   const writeJsonRpc = (message: unknown) => {
     process.stdout.write(serializeStdioJsonRpcMessage(message, mode));
   };
+  let queue = Promise.resolve();
 
-  const handleMessageBody = (body: string) => {
+  const handleMessageBody = async (body: string) => {
     let message: JsonRpcMessage;
     try {
       message = JSON.parse(body) as JsonRpcMessage;
@@ -111,7 +112,7 @@ export async function runStdioJsonRpcServer(
     }
 
     try {
-      const result = dispatch(message.method, message.params);
+      const result = await dispatch(message.method, message.params);
       if (message.id === undefined) {
         return;
       }
@@ -148,7 +149,18 @@ export async function runStdioJsonRpcServer(
 
       buffer = parsed.rest;
       mode = parsed.mode;
-      handleMessageBody(parsed.body);
+      queue = queue
+        .then(() => handleMessageBody(parsed.body))
+        .catch((error: unknown) => {
+          writeJsonRpc({
+            jsonrpc: "2.0",
+            id: null,
+            error: {
+              code: -32000,
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        });
     }
   });
   process.stdin.resume();
