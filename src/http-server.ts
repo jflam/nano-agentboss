@@ -91,6 +91,30 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
         return json(session, 201);
       }
 
+      if (request.method === "POST" && path === "/v1/sessions/resume") {
+        const body = await readJson<{
+          sessionId?: string;
+          cwd?: string;
+          defaultAgentSelection?: DownstreamAgentSelection;
+        }>(request);
+        const sessionId = body.sessionId?.trim();
+        if (!sessionId) {
+          return error(400, "sessionId is required");
+        }
+
+        try {
+          const session = service.resumeSession({
+            sessionId,
+            cwd: body.cwd ?? process.cwd(),
+            defaultAgentSelection: body.defaultAgentSelection,
+          });
+          return json(session);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return error(404, message);
+        }
+      }
+
       const sessionMatch = path.match(/^\/v1\/sessions\/([^/]+)$/);
       if (request.method === "GET" && sessionMatch) {
         const sessionId = decodeURIComponent(sessionMatch[1] ?? "");

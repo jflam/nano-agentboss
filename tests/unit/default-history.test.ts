@@ -184,4 +184,60 @@ describe("/default native session continuity", () => {
     },
     30_000,
   );
+
+  test(
+    "service resume restores native default-session continuity after a restart",
+    async () => {
+      const previousHome = process.env.HOME;
+      process.env.HOME = mkdtempSync(join(tmpdir(), "nab-default-resume-home-"));
+
+      try {
+        const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-default-resume-registry-")));
+        registry.loadBuiltins();
+
+        const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-resume-agent-"));
+        const createService = () => new NanobossService(
+          registry,
+          (cwd) => createMockConfig(cwd, {
+            supportLoadSession: true,
+            sessionStoreDir,
+          }),
+        );
+
+        const service = createService();
+        const session = service.createSession({ cwd: process.cwd() });
+
+        try {
+          await service.prompt(session.sessionId, "what is 2+2");
+        } finally {
+          service.destroySession(session.sessionId);
+        }
+
+        const resumedService = createService();
+        const resumed = resumedService.resumeSession({
+          sessionId: session.sessionId,
+          cwd: process.cwd(),
+        });
+
+        try {
+          await resumedService.prompt(resumed.sessionId, "add 3 to result");
+
+          const completed = (resumedService.getSessionEvents(resumed.sessionId)?.after(-1) ?? [])
+            .filter((event) => event.type === "run_completed");
+
+          expect(completed).toHaveLength(1);
+          expect(completed[0]?.data.display).toBe("7");
+        } finally {
+          resumedService.destroySession(resumed.sessionId);
+        }
+      } finally {
+        if (previousHome === undefined) {
+          delete process.env.HOME;
+        } else {
+          process.env.HOME = previousHome;
+        }
+      }
+    },
+    30_000,
+  );
 });

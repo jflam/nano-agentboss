@@ -29,10 +29,15 @@ interface SseMessage {
 
 export interface SessionStreamHandle {
   close(): void;
+  closed: Promise<void>;
 }
 
 export async function getServerHealth(baseUrl: string): Promise<ServerHealthResponse> {
-  const response = await fetch(new URL("/v1/health", baseUrl));
+  const response = await fetch(new URL("/v1/health", baseUrl), {
+    headers: {
+      connection: "close",
+    },
+  });
   if (!response.ok) {
     throw new Error(`Failed to get server health: ${response.status}`);
   }
@@ -43,6 +48,9 @@ export async function getServerHealth(baseUrl: string): Promise<ServerHealthResp
 export async function requestServerShutdown(baseUrl: string): Promise<void> {
   const response = await fetch(new URL("/v1/admin/shutdown", baseUrl), {
     method: "POST",
+    headers: {
+      connection: "close",
+    },
   });
   if (!response.ok) {
     throw new Error(`Failed to request server shutdown: ${response.status}`);
@@ -58,12 +66,35 @@ export async function createHttpSession(
     method: "POST",
     headers: {
       "content-type": "application/json",
+      connection: "close",
     },
     body: JSON.stringify({ cwd, defaultAgentSelection }),
   });
 
   if (!response.ok) {
     throw new Error(`Failed to create session: ${response.status}`);
+  }
+
+  return response.json() as Promise<SessionResponse>;
+}
+
+export async function resumeHttpSession(
+  baseUrl: string,
+  sessionId: string,
+  cwd: string,
+  defaultAgentSelection?: DownstreamAgentSelection,
+): Promise<SessionResponse> {
+  const response = await fetch(new URL("/v1/sessions/resume", baseUrl), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      connection: "close",
+    },
+    body: JSON.stringify({ sessionId, cwd, defaultAgentSelection }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to resume session: ${response.status}`);
   }
 
   return response.json() as Promise<SessionResponse>;
@@ -80,6 +111,7 @@ export async function sendSessionPrompt(
       method: "POST",
       headers: {
         "content-type": "application/json",
+        connection: "close",
       },
       body: JSON.stringify({ prompt }),
     },
@@ -99,7 +131,7 @@ export function startSessionEventStream(params: {
   const controller = new AbortController();
   let afterSeq = -1;
 
-  void (async () => {
+  const closed = (async () => {
     while (!controller.signal.aborted) {
       try {
         const url = new URL(`/v1/sessions/${params.sessionId}/stream`, params.baseUrl);
@@ -110,6 +142,7 @@ export function startSessionEventStream(params: {
         const response = await fetch(url, {
           headers: {
             Accept: "text/event-stream",
+            connection: "close",
           },
           signal: controller.signal,
         });
@@ -126,7 +159,7 @@ export function startSessionEventStream(params: {
           const parsed = JSON.parse(message.data) as FrontendEventEnvelope;
           afterSeq = Math.max(afterSeq, parsed.seq);
           params.onEvent(parsed);
-        });
+        }, controller.signal);
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           return;
@@ -142,21 +175,35 @@ export function startSessionEventStream(params: {
     close() {
       controller.abort();
     },
+    closed,
   };
 }
 
 export async function parseSseStream(
   stream: ReadableStream<Uint8Array>,
   onMessage: (message: SseMessage) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let aborted = signal?.aborted ?? false;
+
+  const handleAbort = () => {
+    aborted = true;
+    void reader.cancel().catch(() => {});
+  };
+
+  signal?.addEventListener("abort", handleAbort, { once: true });
 
   try {
     for (;;) {
+      if (aborted) {
+        return;
+      }
+
       const { done, value } = await reader.read();
-      if (done) {
+      if (done || aborted) {
         break;
       }
 
@@ -177,12 +224,15 @@ export async function parseSseStream(
       }
     }
 
-    buffer += decoder.decode();
-    const parsed = parseSseMessage(buffer.trim());
-    if (parsed) {
-      onMessage(parsed);
+    if (!aborted) {
+      buffer += decoder.decode();
+      const parsed = parseSseMessage(buffer.trim());
+      if (parsed) {
+        onMessage(parsed);
+      }
     }
   } finally {
+    signal?.removeEventListener("abort", handleAbort);
     reader.releaseLock();
   }
 }

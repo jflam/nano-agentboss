@@ -159,6 +159,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
 }
 import {
   createHttpSession,
+  resumeHttpSession,
   sendSessionPrompt,
   startSessionEventStream,
 } from "./src/http-client.ts";
@@ -689,7 +690,10 @@ export async function runCliCommand(argv: string[] = []): Promise<void> {
     return;
   }
 
-  await runHttpCli(options.serverUrl, options.showToolCalls);
+  await runHttpCli({
+    serverUrl: options.serverUrl,
+    showToolCalls: options.showToolCalls,
+  });
 }
 
 export async function readPromptInput(
@@ -760,8 +764,13 @@ export async function readPromptInput(
   });
 }
 
-async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<void> {
-  const client = new OutputClient({ showToolCalls });
+export async function runHttpCli(params: {
+  serverUrl: string;
+  showToolCalls: boolean;
+  sessionId?: string;
+}): Promise<void> {
+  const client = new OutputClient({ showToolCalls: params.showToolCalls });
+  const serverUrl = params.serverUrl;
   const buildFreshnessNotice = getBuildFreshnessNotice(process.cwd());
   if (buildFreshnessNotice) {
     client.writeStatusLine(buildFreshnessNotice);
@@ -772,15 +781,24 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
   });
 
   let tracker = new HttpRunTracker();
-  let session = await createHttpSession(
-    serverUrl,
-    process.cwd(),
-    client.getCurrentAgentSelection(),
-  );
+  let session = params.sessionId
+    ? await resumeHttpSession(
+      serverUrl,
+      params.sessionId,
+      process.cwd(),
+    )
+    : await createHttpSession(
+      serverUrl,
+      process.cwd(),
+      client.getCurrentAgentSelection(),
+    );
   client.setCommands(session.commands);
   client.setCurrentAgentBanner(session.agentLabel);
   client.setCurrentAgentSelection(session.defaultAgentSelection);
   writeStartupBanner(`${session.buildLabel} ${session.agentLabel}`);
+  if (params.sessionId) {
+    client.writeStatusLine(`[session] resumed ${session.sessionId}`);
+  }
 
   let stream = startSessionEventStream({
     baseUrl: serverUrl,
@@ -795,75 +813,81 @@ async function runHttpCli(serverUrl: string, showToolCalls: boolean): Promise<vo
     },
   });
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: true,
-    completer: client.completer,
-  });
-
   try {
     for (;;) {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: true,
+        completer: client.completer,
+      });
+
       let line: string;
       try {
-        line = await readPromptInput(rl);
-      } catch (error) {
-        if (isReadlineClosedError(error)) {
+        try {
+          line = await readPromptInput(rl);
+        } catch (error) {
+          if (isReadlineClosedError(error)) {
+            announceSessionId(client, session.sessionId);
+            break;
+          }
+          throw error;
+        }
+
+        const trimmed = line.trim();
+        if (trimmed.length === 0) {
+          continue;
+        }
+        if (isExitRequest(trimmed)) {
           announceSessionId(client, session.sessionId);
           break;
         }
-        throw error;
-      }
+        if (isNewSessionRequest(trimmed)) {
+          stream.close();
+          await stream.closed;
+          tracker = new HttpRunTracker();
+          session = await createHttpSession(
+            serverUrl,
+            process.cwd(),
+            client.getCurrentAgentSelection(),
+          );
+          client.setCommands(session.commands);
+          client.setCurrentAgentBanner(session.agentLabel);
+          client.setCurrentAgentSelection(session.defaultAgentSelection);
+          stream = startSessionEventStream({
+            baseUrl: serverUrl,
+            sessionId: session.sessionId,
+            onEvent: (event) => {
+              tracker.observe(event);
+              client.handleFrontendEvent(event);
+            },
+            onError: (error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              process.stderr.write(`[stream] ${message}\n`);
+            },
+          });
+          client.writeStatusLine(`[session] new ${session.sessionId}`);
+          continue;
+        }
 
-      const trimmed = line.trim();
-      if (trimmed.length === 0) {
-        continue;
-      }
-      if (isExitRequest(trimmed)) {
-        announceSessionId(client, session.sessionId);
-        break;
-      }
-      if (isNewSessionRequest(trimmed)) {
-        stream.close();
-        tracker = new HttpRunTracker();
-        session = await createHttpSession(
-          serverUrl,
-          process.cwd(),
-          client.getCurrentAgentSelection(),
-        );
-        client.setCommands(session.commands);
-        client.setCurrentAgentBanner(session.agentLabel);
-        client.setCurrentAgentSelection(session.defaultAgentSelection);
-        stream = startSessionEventStream({
-          baseUrl: serverUrl,
-          sessionId: session.sessionId,
-          onEvent: (event) => {
-            tracker.observe(event);
-            client.handleFrontendEvent(event);
-          },
-          onError: (error) => {
-            const message = error instanceof Error ? error.message : String(error);
-            process.stderr.write(`[stream] ${message}\n`);
-          },
-        });
-        client.writeStatusLine(`[session] new ${session.sessionId}`);
-        continue;
-      }
+        const prompt = await maybeResolveInteractiveCommand(line, rl, client);
+        if (!prompt) {
+          continue;
+        }
 
-      const prompt = await maybeResolveInteractiveCommand(line, rl, client);
-      if (!prompt) {
-        continue;
+        rl.close();
+        await sendSessionPrompt(serverUrl, session.sessionId, prompt);
+        const runId = await tracker.waitForNextRunStart();
+        await tracker.waitForRunCompletion(runId);
+        await client.waitForResponseEnd();
+        client.writeLineBreak();
+      } finally {
+        rl.close();
       }
-
-      await sendSessionPrompt(serverUrl, session.sessionId, prompt);
-      const runId = await tracker.waitForNextRunStart();
-      await tracker.waitForRunCompletion(runId);
-      await client.waitForResponseEnd();
-      client.writeLineBreak();
     }
   } finally {
     stream.close();
-    rl.close();
+    await stream.closed;
   }
 }
 

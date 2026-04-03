@@ -20,6 +20,10 @@ import {
   type FrontendCommand,
 } from "./frontend-events.ts";
 import { writeCurrentSessionPointer } from "./current-session.ts";
+import {
+  readStoredSessionRecord,
+  writeStoredSessionRecord,
+} from "./stored-sessions.ts";
 import { startProcedureDispatchProgressBridge } from "./procedure-dispatch-progress.ts";
 import {
   buildRunCompletedEvent,
@@ -140,45 +144,57 @@ export class NanobossService {
     if (this.sessions.has(sessionId)) {
       throw new Error(`Session already exists: ${sessionId}`);
     }
-    const commands = toFrontendCommands(this.registry.toAvailableCommands());
-    const defaultAgentConfig = this.resolveDefaultAgentConfig(params.cwd, params.defaultAgentSelection);
-    const store = new SessionStore({
+
+    const state = this.createSessionState({
       sessionId,
       cwd: params.cwd,
+      defaultAgentSelection: params.defaultAgentSelection,
     });
-    const state: SessionState = {
-      cwd: params.cwd,
-      store,
-      events: new SessionEventLog(),
-      defaultAgentConfig,
-      defaultConversation: new DefaultConversationSession({
-        config: defaultAgentConfig,
-        sessionId,
-        rootDir: store.rootDir,
-      }),
-      syncedProcedureMemoryCellIds: new Set(),
-      commands,
-    };
 
     this.sessions.set(sessionId, state);
-    writeCurrentSessionPointer({
-      sessionId,
-      cwd: params.cwd,
-      rootDir: store.rootDir,
-    });
+    this.touchCurrentSessionPointer(state);
+    this.persistSessionState(state);
     state.events.publish(sessionId, {
       type: "commands_updated",
-      commands,
+      commands: state.commands,
     });
 
-    return {
-      sessionId,
-      cwd: params.cwd,
-      commands,
-      buildLabel: getBuildLabel(),
-      agentLabel: formatAgentBanner(defaultAgentConfig),
-      defaultAgentSelection: toDownstreamAgentSelection(defaultAgentConfig),
-    };
+    return this.buildSessionDescriptor(sessionId, state);
+  }
+
+  resumeSession(params: {
+    sessionId: string;
+    cwd?: string;
+    defaultAgentSelection?: DownstreamAgentSelection;
+  }): SessionDescriptor {
+    const existing = this.sessions.get(params.sessionId);
+    if (existing) {
+      this.touchCurrentSessionPointer(existing);
+      return this.buildSessionDescriptor(params.sessionId, existing);
+    }
+
+    const stored = readStoredSessionRecord(params.sessionId);
+    const cwd = stored?.cwd || params.cwd;
+    if (!cwd) {
+      throw new Error(`Unknown session: ${params.sessionId}`);
+    }
+
+    const state = this.createSessionState({
+      sessionId: params.sessionId,
+      cwd,
+      defaultAgentSelection: params.defaultAgentSelection ?? stored?.defaultAgentSelection,
+      defaultAcpSessionId: stored?.defaultAcpSessionId,
+    });
+
+    this.sessions.set(params.sessionId, state);
+    this.touchCurrentSessionPointer(state);
+    this.persistSessionState(state);
+    state.events.publish(params.sessionId, {
+      type: "commands_updated",
+      commands: state.commands,
+    });
+
+    return this.buildSessionDescriptor(params.sessionId, state);
   }
 
   getSession(sessionId: string): SessionDescriptor | undefined {
@@ -187,6 +203,39 @@ export class NanobossService {
       return undefined;
     }
 
+    return this.buildSessionDescriptor(sessionId, state);
+  }
+
+  private createSessionState(params: {
+    sessionId: string;
+    cwd: string;
+    defaultAgentSelection?: DownstreamAgentSelection;
+    defaultAcpSessionId?: string;
+  }): SessionState {
+    const commands = toFrontendCommands(this.registry.toAvailableCommands());
+    const defaultAgentConfig = this.resolveDefaultAgentConfig(params.cwd, params.defaultAgentSelection);
+    const store = new SessionStore({
+      sessionId: params.sessionId,
+      cwd: params.cwd,
+    });
+
+    return {
+      cwd: params.cwd,
+      store,
+      events: new SessionEventLog(),
+      defaultAgentConfig,
+      defaultConversation: new DefaultConversationSession({
+        config: defaultAgentConfig,
+        sessionId: params.sessionId,
+        rootDir: store.rootDir,
+        persistedSessionId: params.defaultAcpSessionId,
+      }),
+      syncedProcedureMemoryCellIds: new Set(),
+      commands,
+    };
+  }
+
+  private buildSessionDescriptor(sessionId: string, state: SessionState): SessionDescriptor {
     return {
       sessionId,
       cwd: state.cwd,
@@ -195,6 +244,35 @@ export class NanobossService {
       agentLabel: formatAgentBanner(state.defaultAgentConfig),
       defaultAgentSelection: toDownstreamAgentSelection(state.defaultAgentConfig),
     };
+  }
+
+  private persistSessionState(
+    session: SessionState,
+    options: { prompt?: string; preserveDefaultAcpSessionId?: boolean } = {},
+  ): void {
+    const existing = readStoredSessionRecord(session.store.sessionId, session.store.rootDir);
+    const defaultAcpSessionId = session.defaultConversation.currentSessionId
+      ?? (options.preserveDefaultAcpSessionId === false ? undefined : existing?.defaultAcpSessionId);
+
+    writeStoredSessionRecord({
+      sessionId: session.store.sessionId,
+      cwd: session.cwd,
+      rootDir: session.store.rootDir,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      initialPrompt: existing?.initialPrompt ?? options.prompt,
+      lastPrompt: options.prompt ?? existing?.lastPrompt,
+      defaultAgentSelection: toDownstreamAgentSelection(session.defaultAgentConfig),
+      defaultAcpSessionId,
+    });
+  }
+
+  private touchCurrentSessionPointer(session: SessionState): void {
+    writeCurrentSessionPointer({
+      sessionId: session.store.sessionId,
+      cwd: session.cwd,
+      rootDir: session.store.rootDir,
+    });
   }
 
   getSessionEvents(sessionId: string): SessionEventLog | undefined {
@@ -400,9 +478,15 @@ export class NanobossService {
       return;
     }
 
+    const currentSelection = toDownstreamAgentSelection(session.defaultAgentConfig);
+    if (JSON.stringify(currentSelection) === JSON.stringify(selection)) {
+      return;
+    }
+
     const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
     session.defaultAgentConfig = nextConfig;
     session.defaultConversation.updateConfig(nextConfig);
+    this.persistSessionState(session, { preserveDefaultAcpSessionId: false });
   }
 
   async prompt(
@@ -417,9 +501,11 @@ export class NanobossService {
 
     session.abortController?.abort();
     session.abortController = new AbortController();
+    this.touchCurrentSessionPointer(session);
 
     const text = promptText.trim();
     const { commandName, commandPrompt } = resolveCommand(text);
+    this.persistSessionState(session, { prompt: text });
     const procedure = this.registry.get(commandName);
     const procedureName = procedure?.name ?? commandName;
     const runId = crypto.randomUUID();
@@ -615,6 +701,8 @@ export class NanobossService {
         availableCommands: this.registry.toAvailableCommands(),
       });
       await emitter.flush();
+      this.persistSessionState(session);
+      this.touchCurrentSessionPointer(session);
       session.abortController = undefined;
     }
 

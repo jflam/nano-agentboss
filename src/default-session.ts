@@ -33,6 +33,7 @@ interface DefaultConversationSessionParams {
   config: DownstreamAgentConfig;
   sessionId: string;
   rootDir?: string;
+  persistedSessionId?: acp.SessionId;
 }
 
 export class DefaultConversationSession {
@@ -47,6 +48,7 @@ export class DefaultConversationSession {
     this.config = params.config;
     this.sessionId = params.sessionId;
     this.rootDir = params.rootDir;
+    this.persistedSessionId = params.persistedSessionId;
   }
 
   get currentSessionId(): string | undefined {

@@ -17,6 +17,13 @@ describe("parseNanobossArgs", () => {
     });
   });
 
+  test("parses resume command", () => {
+    expect(parseNanobossArgs(["resume", "session-123"])).toEqual({
+      command: "resume",
+      args: ["session-123"],
+    });
+  });
+
   test("parses server command", () => {
     expect(parseNanobossArgs(["server", "--port", "3001"])).toEqual({
       command: "server",

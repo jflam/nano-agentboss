@@ -1,4 +1,5 @@
 import { runCliCommand } from "./cli.ts";
+import { runResumeCommand } from "./resume.ts";
 import { DEFAULT_HTTP_SERVER_PORT, DEFAULT_HTTP_SERVER_URL } from "./src/defaults.ts";
 import { runDoctorCommand } from "./src/doctor.ts";
 import { runHttpServerCommand } from "./src/http-server.ts";
@@ -6,7 +7,7 @@ import { runMcpCommand } from "./src/mcp-proxy.ts";
 import { runSessionMcpStdioCommand } from "./src/session-mcp-stdio.ts";
 import { runAcpServerCommand } from "./src/server.ts";
 
-export type NanobossSubcommand = "cli" | "server" | "acp-server" | "session-mcp" | "doctor" | "mcp" | "help";
+export type NanobossSubcommand = "cli" | "resume" | "server" | "acp-server" | "session-mcp" | "doctor" | "mcp" | "help";
 
 export interface NanobossArgs {
   command: NanobossSubcommand;
@@ -25,6 +26,7 @@ export function parseNanobossArgs(argv: string[]): NanobossArgs {
 
   if (
     first === "cli" ||
+    first === "resume" ||
     first === "server" ||
     first === "acp-server" ||
     first === "doctor" ||
@@ -46,6 +48,9 @@ export async function runNanoboss(argv: string[]): Promise<void> {
   switch (parsed.command) {
     case "cli":
       await runCliCommand(parsed.args);
+      return;
+    case "resume":
+      await runResumeCommand(parsed.args);
       return;
     case "server":
       await runHttpServerCommand(parsed.args);
@@ -74,6 +79,7 @@ export function printHelp(): void {
     "",
     "Commands:",
     "  cli                Launch the CLI frontend",
+    "  resume             Resume a saved CLI session",
     "  server             Launch the HTTP/SSE server",
     "  doctor             Show MCP/agent health and optionally register nanoboss MCP",
     "  mcp                Launch the static nanoboss MCP stdio server",
@@ -84,6 +90,7 @@ export function printHelp(): void {
     "Examples:",
     `  nanoboss server --port ${DEFAULT_HTTP_SERVER_PORT}`,
     "  nanoboss cli",
+    "  nanoboss resume",
     "  nanoboss doctor --register",
     `  nanoboss cli --server-url ${DEFAULT_HTTP_SERVER_URL}`,
     "",
