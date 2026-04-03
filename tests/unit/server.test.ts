@@ -3,15 +3,15 @@ import { describe, expect, test } from "bun:test";
 import {
   buildTopLevelSessionMeta,
   extractNanobossSessionId,
-  hasTopLevelSessionMcp,
+  hasAttachedSessionMcp,
 } from "../../src/server.ts";
 
 describe("top-level ACP session diagnostics", () => {
-  test("reports command-only exposure when top-level MCP is absent", () => {
-    expect(buildTopLevelSessionMeta({ topLevelMcpAttached: false })).toEqual({
+  test("reports command-only exposure when the attached session MCP is absent", () => {
+    expect(buildTopLevelSessionMeta({ attachedSessionMcp: false })).toEqual({
       nanoboss: {
         sessionInspection: {
-          topLevelMcpAttached: false,
+          attachedSessionMcp: false,
           surface: "commands",
           commandNames: [
             "top_level_runs",
@@ -23,18 +23,18 @@ describe("top-level ACP session diagnostics", () => {
             "ref_stat",
             "get_schema",
           ],
-          note: "ACP top-level sessions can advertise availableCommands, but session MCP must be attached by the creating client through mcpServers.",
+          note: "ACP top-level sessions can advertise availableCommands, but exact session inspection depends on the attached session MCP server.",
         },
       },
     });
   });
 
-  test("reports combined MCP and command exposure when top-level MCP is attached", () => {
-    expect(buildTopLevelSessionMeta({ topLevelMcpAttached: true })).toEqual({
+  test("reports attached session MCP plus command exposure when the session MCP is attached", () => {
+    expect(buildTopLevelSessionMeta({ attachedSessionMcp: true })).toEqual({
       nanoboss: {
         sessionInspection: {
-          topLevelMcpAttached: true,
-          surface: "mcp+commands",
+          attachedSessionMcp: true,
+          surface: "attached-mcp+commands",
           commandNames: [
             "top_level_runs",
             "session_recent",
@@ -45,7 +45,7 @@ describe("top-level ACP session diagnostics", () => {
             "ref_stat",
             "get_schema",
           ],
-          note: "Session inspection is available through both top-level MCP tools and slash commands.",
+          note: "Session inspection is available through the attached session MCP server and matching slash commands.",
         },
       },
     });
@@ -61,8 +61,8 @@ describe("top-level ACP session diagnostics", () => {
     })).toBe("session-from-client");
   });
 
-  test("detects when the client attached top-level nanoboss session MCP", () => {
-    expect(hasTopLevelSessionMcp({
+  test("detects when the client attached the session MCP server", () => {
+    expect(hasAttachedSessionMcp({
       cwd: process.cwd(),
       mcpServers: [
         {

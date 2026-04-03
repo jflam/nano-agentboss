@@ -1,49 +1,35 @@
-import {
-  collectDoctorRows,
-  describeMcpStatus,
-  registerMcpClaude,
-  registerMcpCodex,
-  registerMcpCopilot,
-  registerMcpGemini,
-  type AgentDoctorRow,
-  type McpConfigStatus,
-  type McpRegistrationResult,
-} from "./mcp-registration.ts";
-
 interface DoctorOptions {
-  register: boolean;
+  showHelp: boolean;
+}
+
+interface AgentDoctorRow {
+  name: string;
+  installed: boolean;
+  version?: string;
+  acp: string;
+  sessionMcp: string;
 }
 
 export function parseDoctorOptions(argv: string[]): DoctorOptions {
-  let register = false;
+  let showHelp = false;
 
   for (const arg of argv) {
-    if (arg === "--register") {
-      register = true;
-      continue;
-    }
-
     if (arg === "--help" || arg === "-h") {
-      printDoctorHelp();
-      process.exit(0);
+      showHelp = true;
+      continue;
     }
 
     throw new Error(`Unknown doctor option: ${arg}`);
   }
 
-  return { register };
+  return { showHelp };
 }
 
 export async function runDoctorCommand(argv: string[] = []): Promise<void> {
   const options = parseDoctorOptions(argv);
-
-  if (options.register) {
-    process.stdout.write("Registering nanoboss MCP with installed agents\n");
-    printRegistration("Claude Code", registerMcpClaude());
-    printRegistration("Codex", registerMcpCodex());
-    printRegistration("Gemini CLI", registerMcpGemini());
-    printRegistration("Copilot CLI", registerMcpCopilot());
-    process.stdout.write("\n");
+  if (options.showHelp) {
+    printDoctorHelp();
+    return;
   }
 
   printDoctorReport(collectDoctorRows());
@@ -51,58 +37,145 @@ export async function runDoctorCommand(argv: string[] = []): Promise<void> {
 
 export function printDoctorHelp(): void {
   process.stdout.write([
-    "Usage: nanoboss doctor [--register]",
+    "Usage: nanoboss doctor",
+    "",
+    "Shows installed agent status, ACP transport readiness, and whether nanoboss can attach its session-pinned stdio MCP server.",
     "",
     "Options:",
-    "  --register           Register the static nanoboss MCP server with installed agents",
     "  -h, --help           Show this help text",
     "",
   ].join("\n"));
 }
 
-function printRegistration(name: string, result: McpRegistrationResult): void {
-  switch (result.kind) {
-    case "success":
-      process.stdout.write(`  [ok] ${name}\n`);
-      break;
-    case "not_installed":
-      process.stdout.write(`  [skip] ${name}\n`);
-      break;
-    case "failed":
-      process.stdout.write(`  [fail] ${name}: ${result.message}\n`);
-      break;
-  }
+function collectDoctorRows(): AgentDoctorRow[] {
+  return [
+    buildDoctorRow({
+      name: "Claude Code",
+      command: "claude",
+      versionArgs: [["--version"]],
+      acp: describeBroker({
+        brokerCommand: "claude-code-acp",
+        packageName: "@zed-industries/claude-code-acp",
+      }),
+    }),
+    buildDoctorRow({
+      name: "Codex",
+      command: "codex",
+      versionArgs: [["--version"]],
+      acp: describeBroker({
+        brokerCommand: "codex-acp",
+        packageName: "@zed-industries/codex-acp",
+      }),
+    }),
+    buildDoctorRow({
+      name: "Gemini CLI",
+      command: "gemini",
+      versionArgs: [["--version"], ["-v"]],
+      acp: "native ACP",
+    }),
+    buildDoctorRow({
+      name: "Copilot CLI",
+      command: "copilot",
+      versionArgs: [["--version"]],
+      acp: "native ACP",
+    }),
+  ];
+}
+
+function buildDoctorRow(params: {
+  name: string;
+  command: string;
+  versionArgs: string[][];
+  acp: string;
+}): AgentDoctorRow {
+  const installed = commandExists(params.command);
+  const version = installed ? readVersion(params.command, params.versionArgs) : undefined;
+
+  return {
+    name: params.name,
+    installed,
+    version,
+    acp: installed ? formatAcpLabel(params.acp, version) : "-",
+    sessionMcp: installed ? "[ok] attached stdio" : "-",
+  };
 }
 
 function printDoctorReport(rows: AgentDoctorRow[]): void {
-  process.stdout.write("Agents                    ACP                     MCP\n");
+  process.stdout.write("Agents                    ACP                     Session MCP\n");
   for (const row of rows) {
     process.stdout.write(
-      `  ${padRight(row.name, 24)} ${padRight(describeAcp(row), 22)} ${describeMcp(row.mcp)}\n`,
+      `  ${padRight(row.name, 24)} ${padRight(row.acp, 22)} ${row.sessionMcp}\n`,
     );
   }
 }
 
-function describeAcp(row: AgentDoctorRow): string {
-  if (!row.installed) {
-    return "-";
+function formatAcpLabel(acp: string, version?: string): string {
+  if (acp.startsWith("native")) {
+    return version ? `native ${version}` : "native";
   }
 
-  const version = row.version ? ` ${row.version}` : "";
-  return row.acp.startsWith("native")
-    ? `native${version}`
-    : `${row.acp}${version ? ` (${row.version})` : ""}`;
+  return version ? `${acp} (${version})` : acp;
 }
 
-function describeMcp(status: McpConfigStatus): string {
-  switch (status.kind) {
-    case "configured":
-      return status.description === "stdio proxy" ? "[ok]" : `[warn] ${describeMcpStatus(status)}`;
-    case "not_configured":
-      return "[missing]";
-    case "error":
-      return `[error] ${status.message}`;
+function describeBroker(params: { brokerCommand: string; packageName: string }): string {
+  if (!commandExists(params.brokerCommand)) {
+    return "zed ACP broker missing";
   }
+
+  const version = readNpmPackageVersion(params.packageName);
+  return version ? `zed ACP broker ${version}` : "zed ACP broker";
+}
+
+function commandExists(command: string): boolean {
+  return Boolean(Bun.which(command, { PATH: process.env.PATH }));
+}
+
+function readVersion(command: string, candidates: string[][]): string | undefined {
+  for (const args of candidates) {
+    const result = Bun.spawnSync({
+      cmd: [command, ...args],
+      env: process.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const version = parseVersion(readProcessText(result));
+    if (version) {
+      return version;
+    }
+  }
+
+  return undefined;
+}
+
+function readNpmPackageVersion(packageName: string): string | undefined {
+  const result = Bun.spawnSync({
+    cmd: ["npm", "ls", "-g", packageName, "--json", "--depth=0"],
+    env: process.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0 && readProcessText(result).trim().length === 0) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(result.stdout)) as {
+      dependencies?: Record<string, { version?: string }>;
+    };
+    return parsed.dependencies?.[packageName]?.version;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseVersion(text: string): string | undefined {
+  const match = text.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/);
+  return match?.[0];
+}
+
+function readProcessText(result: Bun.SyncSubprocess): string {
+  const decoder = new TextDecoder();
+  return `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`.trim();
 }
 
 function padRight(value: string, width: number): string {

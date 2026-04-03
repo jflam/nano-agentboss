@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +12,7 @@ import { NanobossService } from "../../src/service.ts";
 import type { DownstreamAgentConfig } from "../../src/types.ts";
 
 const tempDirs: string[] = [];
+let originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
 
 beforeAll(() => {
   const build = spawnSync("bun", ["run", "build"], {
@@ -23,6 +24,17 @@ beforeAll(() => {
 
   if (build.status !== 0) {
     throw new Error([build.stdout, build.stderr].filter(Boolean).join("\n"));
+  }
+
+  originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
+  process.env.NANOBOSS_SELF_COMMAND = SELF_COMMAND_PATH;
+});
+
+afterAll(() => {
+  if (originalSelfCommand === undefined) {
+    delete process.env.NANOBOSS_SELF_COMMAND;
+  } else {
+    process.env.NANOBOSS_SELF_COMMAND = originalSelfCommand;
   }
 });
 

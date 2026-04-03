@@ -1,7 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { resolveSelfCommand } from "./self-command.ts";
-import { createSessionMcpApi, dispatchSessionMcpMethod } from "./session-mcp.ts";
+import { SESSION_MCP_SERVER_NAME, createSessionMcpApi, dispatchSessionMcpMethod } from "./session-mcp.ts";
 import { runStdioJsonRpcServer } from "./stdio-jsonrpc.ts";
 
 interface SessionMcpStdioParams {
@@ -23,7 +23,7 @@ export function buildSessionMcpStdioServer(
 
   return {
     type: "stdio",
-    name: "nanoboss-session",
+    name: SESSION_MCP_SERVER_NAME,
     command: command.command,
     args: command.args,
     env: [],

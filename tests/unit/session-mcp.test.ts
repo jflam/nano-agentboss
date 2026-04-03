@@ -263,6 +263,14 @@ describe("session MCP API", () => {
     });
   });
 
+  test("requires an explicit session id", () => {
+    const api = createSessionMcpApi({
+      cwd: process.cwd(),
+    });
+
+    expect(() => api.topLevelRuns()).toThrow("Session MCP requires an explicit sessionId.");
+  });
+
   test("registers and dispatches the structural MCP tools", async () => {
     const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-"));
     tempDirs.push(rootDir);

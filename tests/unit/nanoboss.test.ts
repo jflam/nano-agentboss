@@ -66,11 +66,8 @@ describe("parseNanobossArgs", () => {
     });
   });
 
-  test("parses mcp command", () => {
-    expect(parseNanobossArgs(["mcp", "proxy"])).toEqual({
-      command: "mcp",
-      args: ["proxy"],
-    });
+  test("rejects removed mcp command", () => {
+    expect(() => parseNanobossArgs(["mcp", "proxy"])).toThrow("Unknown nanoboss command: mcp");
   });
 
   test("rejects unknown commands", () => {

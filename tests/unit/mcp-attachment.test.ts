@@ -25,7 +25,13 @@ describe("session MCP attachment", () => {
       });
       expect(server && "command" in server ? server.command : undefined).toBeTruthy();
       expect(Array.isArray(server && "args" in server ? server.args : undefined)).toBe(true);
-      expect(server && "args" in server ? server.args : undefined).toContain("session-mcp");
+      expect(server && "args" in server ? server.args : undefined).toEqual(expect.arrayContaining([
+        "session-mcp",
+        "--session-id",
+        `session-${provider}`,
+        "--cwd",
+        process.cwd(),
+      ]));
     });
   }
 });

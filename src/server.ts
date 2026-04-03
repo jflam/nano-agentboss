@@ -54,7 +54,7 @@ class Nanoboss implements acp.Agent {
 
   async newSession(params: acp.NewSessionRequest): Promise<acp.NewSessionResponse> {
     const requestedSessionId = extractNanobossSessionId(params);
-    const topLevelMcpAttached = hasTopLevelSessionMcp(params);
+    const attachedSessionMcp = hasAttachedSessionMcp(params);
     const session = this.service.createSession({
       cwd: params.cwd,
       defaultAgentSelection: extractDefaultAgentSelection(params),
@@ -71,7 +71,7 @@ class Nanoboss implements acp.Agent {
 
     return {
       sessionId: session.sessionId,
-      _meta: buildTopLevelSessionMeta({ topLevelMcpAttached }),
+      _meta: buildTopLevelSessionMeta({ attachedSessionMcp }),
     };
   }
 
@@ -91,23 +91,23 @@ class Nanoboss implements acp.Agent {
 }
 
 export function buildTopLevelSessionMeta(
-  params: { topLevelMcpAttached: boolean },
+  params: { attachedSessionMcp: boolean },
 ): NonNullable<acp.NewSessionResponse["_meta"]> {
   return {
     nanoboss: {
       sessionInspection: {
-        topLevelMcpAttached: params.topLevelMcpAttached,
-        surface: params.topLevelMcpAttached ? "mcp+commands" : "commands",
+        attachedSessionMcp: params.attachedSessionMcp,
+        surface: params.attachedSessionMcp ? "attached-mcp+commands" : "commands",
         commandNames: sessionToolProcedures.map((procedure) => procedure.name),
-        note: params.topLevelMcpAttached
-          ? "Session inspection is available through both top-level MCP tools and slash commands."
-          : "ACP top-level sessions can advertise availableCommands, but session MCP must be attached by the creating client through mcpServers.",
+        note: params.attachedSessionMcp
+          ? "Session inspection is available through the attached session MCP server and matching slash commands."
+          : "ACP top-level sessions can advertise availableCommands, but exact session inspection depends on the attached session MCP server.",
       },
     },
   };
 }
 
-export function hasTopLevelSessionMcp(params: acp.NewSessionRequest): boolean {
+export function hasAttachedSessionMcp(params: acp.NewSessionRequest): boolean {
   return params.mcpServers.some((server) => server.name === SESSION_MCP_SERVER_NAME);
 }
 
