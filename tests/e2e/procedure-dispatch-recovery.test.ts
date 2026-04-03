@@ -8,18 +8,19 @@ import {
 import type { FrontendEventEnvelope } from "../../src/frontend-events.ts";
 import { reservePort, spawnNanoboss, waitForHealth, waitForMatch } from "./helpers.ts";
 
-const runDispatchRecoveryE2E =
+const runAsyncDispatchE2E =
   process.env.SKIP_E2E !== "1" &&
   process.env.NANOBOSS_RUN_E2E === "1" &&
   process.env.NANOBOSS_RUN_DISPATCH_RECOVERY_E2E === "1";
 
-const describeDispatchRecoveryE2E = runDispatchRecoveryE2E ? describe : describe.skip;
+const describeAsyncDispatchE2E = runAsyncDispatchE2E ? describe : describe.skip;
 
-// Opt-in real-agent regression scenario for the production failure class where
-// the outer procedure_dispatch MCP call times out but the durable session cell
-// still lands and can be recovered.
-describeDispatchRecoveryE2E("procedure_dispatch recovery (real agent opt-in)", () => {
-  test("/research keeps nested visibility, master-session token usage, and optional timeout recovery", async () => {
+// Opt-in real-agent regression scenario for the async slash-command dispatch
+// steady state: long-running procedures should complete via short-lived
+// start/wait polling, while nested visibility and master-session token
+// attribution remain intact.
+describeAsyncDispatchE2E("async procedure dispatch (real agent opt-in)", () => {
+  test("/research keeps nested visibility and master-session token usage with async dispatch polling", async () => {
     const port = await reservePort();
     const baseUrl = `http://127.0.0.1:${port}`;
     const server = spawnNanoboss([
@@ -60,7 +61,8 @@ describeDispatchRecoveryE2E("procedure_dispatch recovery (real agent opt-in)", (
         const toolTitles = events
           .filter((event) => event.type === "tool_started")
           .map((event) => event.data.title);
-        expect(toolTitles.some((title) => title.includes("procedure_dispatch"))).toBe(true);
+        expect(toolTitles).toContain("procedure_dispatch_start");
+        expect(toolTitles).toContain("procedure_dispatch_wait");
         expect(toolTitles.some((title) => title.startsWith("callAgent:"))).toBe(true);
 
         await sendSessionPrompt(
@@ -70,12 +72,11 @@ describeDispatchRecoveryE2E("procedure_dispatch recovery (real agent opt-in)", (
         );
         await waitForCompletedRuns(events, 2);
 
-        if (process.env.NANOBOSS_EXPECT_TIMEOUT_RECOVERY === "1") {
-          const diagnostics = [...events].reverse().find(
-            (event): event is Extract<FrontendEventEnvelope, { type: "prompt_diagnostics" }> => event.type === "prompt_diagnostics",
-          );
-          expect(diagnostics?.type).toBe("prompt_diagnostics");
-          expect(diagnostics?.data.diagnostics.guidanceTokens).toBeGreaterThan(0);
+        const diagnostics = [...events].reverse().find(
+          (event): event is Extract<FrontendEventEnvelope, { type: "prompt_diagnostics" }> => event.type === "prompt_diagnostics",
+        );
+        if (diagnostics) {
+          expect(diagnostics.data.diagnostics.guidanceTokens).toBeUndefined();
         }
 
         expect(errors).toEqual([]);

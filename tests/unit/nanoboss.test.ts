@@ -52,6 +52,13 @@ describe("parseNanobossArgs", () => {
     });
   });
 
+  test("parses procedure-dispatch-worker command", () => {
+    expect(parseNanobossArgs(["procedure-dispatch-worker", "--dispatch-id", "abc"])).toEqual({
+      command: "procedure-dispatch-worker",
+      args: ["--dispatch-id", "abc"],
+    });
+  });
+
   test("parses doctor command", () => {
     expect(parseNanobossArgs(["doctor", "--register"])).toEqual({
       command: "doctor",

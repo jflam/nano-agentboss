@@ -104,19 +104,19 @@ function readStoredMockSession(sessionStoreDir: string): {
 }
 
 describe("NanobossService", () => {
-  test("extracts procedure_dispatch results from copilot-style tool payloads", () => {
+  test("extracts async procedure dispatch results from copilot-style tool payloads", () => {
     const parsed = extractProcedureDispatchResult([
       {
         sessionUpdate: "tool_call_update",
         toolCallId: "call_123",
         status: "completed",
         rawOutput: {
-          content: '{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}',
-          detailedContent: '{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}',
+          content: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
+          detailedContent: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
           contents: [
             {
               type: "text",
-              text: '{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}',
+              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
             },
           ],
         },
@@ -125,7 +125,7 @@ describe("NanobossService", () => {
             type: "content",
             content: {
               type: "text",
-              text: '{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}',
+              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
             },
           },
         ],
@@ -164,7 +164,7 @@ describe("NanobossService", () => {
     expect(textEvents[0]?.data.text).toBe("4");
   });
 
-  test("slash commands dispatch through procedure_dispatch inside the default session", async () => {
+  test("slash commands dispatch through async procedure dispatch tools inside the default session", async () => {
     await withMockAgentEnv(async () => {
       const { cwd, registry } = await createRegistryWithWorkspace({
         probe: [
@@ -193,7 +193,8 @@ describe("NanobossService", () => {
         .map((event) => event.data.text);
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "probe");
 
-      expect(toolTitles.some((title) => title.includes("procedure_dispatch"))).toBe(true);
+      expect(toolTitles).toContain("procedure_dispatch_start");
+      expect(toolTitles).toContain("procedure_dispatch_wait");
       expect(toolTitles.some((title) => title.startsWith("callAgent:"))).toBe(true);
       expect(toolTitles).toContain("Mock read README.md");
       expect(textEvents).toContain("done");
@@ -207,20 +208,20 @@ describe("NanobossService", () => {
     });
   }, 30_000);
 
-  test("recovers slash-command completion from a timed out procedure_dispatch call using the durable correlation id", async () => {
+  test("long-running slash commands survive short per-request MCP deadlines via async dispatch polling", async () => {
     const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-service-recovery-agent-"));
     const { cwd, registry } = await createRegistryWithWorkspace({
       slowreview: [
         "export default {",
         '  name: "slowreview",',
-        '  description: "recoverable slow procedure",',
+        '  description: "slow async procedure",',
         '  async execute(prompt) {',
         '    await Bun.sleep(200);',
         '    return {',
-        '      data: { subject: prompt, verdict: "recovered" },',
-        '      display: `recovered: ${prompt}`,',
-        '      summary: `recovered ${prompt}`,',
-        '      memory: `Recovered durable result for ${prompt}.`,',
+        '      data: { subject: prompt, verdict: "completed" },',
+        '      display: `completed: ${prompt}`,',
+        '      summary: `completed ${prompt}`,',
+        '      memory: `Completed durable result for ${prompt}.`,',
         '    };',
         '  },',
         "};",
@@ -237,8 +238,7 @@ describe("NanobossService", () => {
         env: {
           NANOBOSS_SELF_COMMAND: SELF_COMMAND_PATH,
           MOCK_AGENT_SESSION_STORE_DIR: sessionStoreDir,
-          MOCK_AGENT_PROCEDURE_DISPATCH_TIMEOUT_MS: "50",
-          MOCK_AGENT_KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT: "1",
+          MOCK_AGENT_PROCEDURE_DISPATCH_TIMEOUT_MS: "150",
         },
       }),
     );
@@ -255,15 +255,15 @@ describe("NanobossService", () => {
       const promptTexts = stored.turns.filter((turn) => turn.role === "user").map((turn) => turn.text);
 
       expect(completed?.type).toBe("run_completed");
-      expect(completed?.data.display).toBe("recovered: patch");
+      expect(completed?.data.display).toBe("completed: patch");
       expect(completed?.data.tokenUsage).toMatchObject({
         source: "acp_usage_update",
         currentContextTokens: 512,
         maxContextTokens: 8192,
       });
-      expect(promptTexts.some((text) => text.includes("Nanoboss internal recovered procedure synchronization."))).toBe(true);
+      expect(promptTexts.some((text) => text.includes("Nanoboss internal recovered procedure synchronization."))).toBe(false);
       expect(diagnostics?.type).toBe("prompt_diagnostics");
-      expect(diagnostics?.data.diagnostics.guidanceTokens).toBeGreaterThan(0);
+      expect(diagnostics?.data.diagnostics.guidanceTokens).toBeUndefined();
       expect(diagnostics?.data.diagnostics.memoryCardsTokens).toBeUndefined();
     } finally {
       service.destroySession(session.sessionId);

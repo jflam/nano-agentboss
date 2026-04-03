@@ -5,9 +5,10 @@ import { runDoctorCommand } from "./src/doctor.ts";
 import { runHttpServerCommand } from "./src/http-server.ts";
 import { runMcpCommand } from "./src/mcp-proxy.ts";
 import { runSessionMcpStdioCommand } from "./src/session-mcp-stdio.ts";
+import { runProcedureDispatchWorkerCommand } from "./src/procedure-dispatch-jobs.ts";
 import { runAcpServerCommand } from "./src/server.ts";
 
-export type NanobossSubcommand = "cli" | "tui" | "resume" | "server" | "acp-server" | "session-mcp" | "doctor" | "mcp" | "help";
+export type NanobossSubcommand = "cli" | "tui" | "resume" | "server" | "acp-server" | "session-mcp" | "procedure-dispatch-worker" | "doctor" | "mcp" | "help";
 
 export interface NanobossArgs {
   command: NanobossSubcommand;
@@ -32,7 +33,8 @@ export function parseNanobossArgs(argv: string[]): NanobossArgs {
     first === "acp-server" ||
     first === "doctor" ||
     first === "mcp" ||
-    first === "session-mcp"
+    first === "session-mcp" ||
+    first === "procedure-dispatch-worker"
   ) {
     return {
       command: first,
@@ -63,6 +65,9 @@ export async function runNanoboss(argv: string[]): Promise<void> {
     case "session-mcp":
       await runSessionMcpStdioCommand(parsed.args);
       return;
+    case "procedure-dispatch-worker":
+      await runProcedureDispatchWorkerCommand(parsed.args);
+      return;
     case "doctor":
       await runDoctorCommand(parsed.args);
       return;
@@ -88,6 +93,7 @@ export function printHelp(): void {
     "  mcp                Launch the static nanoboss MCP stdio server",
     "  acp-server         Launch the internal stdio ACP server",
     "  session-mcp        Launch the internal stdio MCP server for session refs",
+    "  procedure-dispatch-worker  Launch the internal async procedure dispatch worker",
     "  help               Show this help text",
     "",
     "Examples:",

@@ -5,8 +5,12 @@ import { resolveDownstreamAgentConfig } from "./config.ts";
 import { readCurrentSessionPointer } from "./current-session.ts";
 import { inferDataShape } from "./data-shape.ts";
 import { dispatchMcpToolsMethod, type JsonRpcToolMetadata } from "./mcp-jsonrpc.ts";
-import { ProcedureDispatchProgressEmitter, buildProcedureDispatchProgressPath } from "./procedure-dispatch-progress.ts";
-import { executeTopLevelProcedure, type ProcedureExecutionResult } from "./procedure-runner.ts";
+import {
+  ProcedureDispatchJobManager,
+  type ProcedureDispatchStartResult,
+  type ProcedureDispatchStatusResult,
+} from "./procedure-dispatch-jobs.ts";
+import { type ProcedureExecutionResult } from "./procedure-runner.ts";
 import { ProcedureRegistry } from "./registry.ts";
 import { SessionStore } from "./session-store.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
@@ -49,6 +53,8 @@ interface SessionProcedureMetadata {
 }
 
 export type ProcedureDispatchResult = ProcedureExecutionResult;
+export type ProcedureDispatchStartToolResult = ProcedureDispatchStartResult;
+export type ProcedureDispatchStatusToolResult = ProcedureDispatchStatusResult;
 
 export interface SessionSchemaResult {
   target: CellRef | ValueRef;
@@ -150,49 +156,58 @@ export class SessionMcpApi {
     };
   }
 
+  async procedureDispatchStart(args: {
+    name: string;
+    prompt: string;
+    defaultAgentSelection?: DownstreamAgentSelection;
+    dispatchCorrelationId?: string;
+  }): Promise<ProcedureDispatchStartToolResult> {
+    if (args.defaultAgentSelection) {
+      this.defaultAgentConfig = resolveDownstreamAgentConfig(this.params.cwd, args.defaultAgentSelection);
+    }
+
+    return await this.createDispatchJobManager().start(args);
+  }
+
+  async procedureDispatchStatus(args: { dispatchId: string }): Promise<ProcedureDispatchStatusToolResult> {
+    return await this.createDispatchJobManager().status(args.dispatchId);
+  }
+
+  async procedureDispatchWait(args: {
+    dispatchId: string;
+    waitMs?: number;
+  }): Promise<ProcedureDispatchStatusToolResult> {
+    return await this.createDispatchJobManager().wait(args.dispatchId, args.waitMs);
+  }
+
   async procedureDispatch(args: {
     name: string;
     prompt: string;
     defaultAgentSelection?: DownstreamAgentSelection;
     dispatchCorrelationId?: string;
   }): Promise<ProcedureDispatchResult> {
-    if (args.name === "default") {
-      throw new Error("procedure_dispatch cannot run default; continue the master conversation directly instead.");
+    const started = await this.procedureDispatchStart(args);
+
+    for (;;) {
+      const status = await this.procedureDispatchWait({
+        dispatchId: started.dispatchId,
+      });
+
+      if (status.status === "completed" && status.result) {
+        if (status.result.defaultAgentSelection) {
+          this.defaultAgentConfig = resolveDownstreamAgentConfig(this.params.cwd, status.result.defaultAgentSelection);
+        }
+        return status.result;
+      }
+
+      if (status.status === "failed") {
+        throw new Error(status.error ?? `Procedure dispatch failed: ${status.dispatchId}`);
+      }
+
+      if (status.status === "cancelled") {
+        throw new Error(`Procedure dispatch cancelled: ${status.dispatchId}`);
+      }
     }
-
-    if (args.defaultAgentSelection) {
-      this.defaultAgentConfig = resolveDownstreamAgentConfig(this.params.cwd, args.defaultAgentSelection);
-    }
-
-    const registry = await this.getRegistry();
-    const procedure = registry.get(args.name);
-    if (!procedure) {
-      throw new Error(`Unknown procedure: ${args.name}`);
-    }
-
-    const store = this.createStore();
-    const emitter = new ProcedureDispatchProgressEmitter(
-      args.dispatchCorrelationId
-        ? buildProcedureDispatchProgressPath(store.rootDir, args.dispatchCorrelationId)
-        : undefined,
-    );
-
-    return await executeTopLevelProcedure({
-      cwd: this.params.cwd,
-      sessionId: store.sessionId,
-      store,
-      registry,
-      procedure,
-      prompt: args.prompt,
-      emitter,
-      getDefaultAgentConfig: () => this.defaultAgentConfig,
-      setDefaultAgentSelection: (selection) => {
-        const nextConfig = resolveDownstreamAgentConfig(this.params.cwd, selection);
-        this.defaultAgentConfig = nextConfig;
-        return nextConfig;
-      },
-      dispatchCorrelationId: args.dispatchCorrelationId,
-    });
   }
 
   private createStore(sessionId = this.params.sessionId): SessionStore {
@@ -210,6 +225,16 @@ export class SessionMcpApi {
       sessionId: resolvedSessionId,
       cwd: this.params.cwd,
       rootDir: resolvedRootDir,
+    });
+  }
+
+  private createDispatchJobManager(): ProcedureDispatchJobManager {
+    const store = this.createStore();
+    return new ProcedureDispatchJobManager({
+      cwd: this.params.cwd,
+      sessionId: store.sessionId,
+      rootDir: store.rootDir,
+      getRegistry: async () => await this.getRegistry(),
     });
   }
 
@@ -320,8 +345,86 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     },
   }),
   defineTool({
+    name: "procedure_dispatch_start",
+    description: "Start a nanoboss procedure asynchronously on behalf of the current persistent master session and return a dispatch id quickly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        prompt: { type: "string" },
+        defaultAgentSelection: {
+          type: "object",
+          properties: {
+            provider: { type: "string" },
+            model: { type: "string" },
+          },
+          required: ["provider"],
+          additionalProperties: false,
+        },
+        dispatchCorrelationId: { type: "string" },
+      },
+      required: ["name", "prompt"],
+      additionalProperties: false,
+    },
+    parseArgs(args) {
+      return {
+        name: asString(args.name, "name"),
+        prompt: typeof args.prompt === "string" ? args.prompt : "",
+        defaultAgentSelection: args.defaultAgentSelection === undefined
+          ? undefined
+          : parseDownstreamAgentSelection(args.defaultAgentSelection),
+        dispatchCorrelationId: asOptionalString(args.dispatchCorrelationId),
+      };
+    },
+    async call(api, args) {
+      return await api.procedureDispatchStart(args);
+    },
+  }),
+  defineTool({
+    name: "procedure_dispatch_status",
+    description: "Return the current durable status for an async nanoboss procedure dispatch.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dispatchId: { type: "string" },
+      },
+      required: ["dispatchId"],
+      additionalProperties: false,
+    },
+    parseArgs(args) {
+      return {
+        dispatchId: asString(args.dispatchId, "dispatchId"),
+      };
+    },
+    async call(api, args) {
+      return await api.procedureDispatchStatus(args);
+    },
+  }),
+  defineTool({
+    name: "procedure_dispatch_wait",
+    description: "Wait for a short bounded interval for an async nanoboss procedure dispatch, then return either the final result or the latest running status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dispatchId: { type: "string" },
+        waitMs: { type: "number" },
+      },
+      required: ["dispatchId"],
+      additionalProperties: false,
+    },
+    parseArgs(args) {
+      return {
+        dispatchId: asString(args.dispatchId, "dispatchId"),
+        waitMs: asOptionalNonNegativeNumber(args.waitMs, "waitMs"),
+      };
+    },
+    async call(api, args) {
+      return await api.procedureDispatchWait(args);
+    },
+  }),
+  defineTool({
     name: "procedure_dispatch",
-    description: "Run a nanoboss procedure on behalf of the current persistent master session and return the result into that same conversation.",
+    description: "Compatibility wrapper that runs a nanoboss procedure on behalf of the current persistent master session and waits for the final result.",
     inputSchema: {
       type: "object",
       properties: {
@@ -632,15 +735,20 @@ function serializeToolResult(toolName: string, result: unknown): string {
   }
 
   if (toolName === "procedure_dispatch" && isProcedureDispatchResult(result)) {
-    if (typeof result.display === "string" && result.display.trim()) {
-      return result.display;
-    }
+    return serializeProcedureDispatchResult(result);
+  }
 
-    if (typeof result.summary === "string" && result.summary.trim()) {
-      return result.summary;
-    }
+  if (
+    (toolName === "procedure_dispatch_start" ||
+      toolName === "procedure_dispatch_status" ||
+      toolName === "procedure_dispatch_wait") &&
+    isProcedureDispatchStatusResult(result)
+  ) {
+    return serializeProcedureDispatchStatus(result);
+  }
 
-    return `${result.procedure} completed.`;
+  if (toolName === "procedure_dispatch_start" && isProcedureDispatchStartResult(result)) {
+    return `Dispatch queued: ${result.dispatchId}`;
   }
 
   if (typeof result === "string") {
@@ -713,13 +821,72 @@ function isProcedureMetadata(value: unknown): value is SessionProcedureMetadata 
   );
 }
 
+function isProcedureDispatchStartResult(value: unknown): value is ProcedureDispatchStartToolResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { dispatchId?: unknown }).dispatchId === "string" &&
+    ((value as { status?: unknown }).status === "queued" ||
+      (value as { status?: unknown }).status === "running" ||
+      (value as { status?: unknown }).status === "completed")
+  );
+}
+
+export function isProcedureDispatchStatusResult(value: unknown): value is ProcedureDispatchStatusToolResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { dispatchId?: unknown }).dispatchId === "string" &&
+    typeof (value as { procedure?: unknown }).procedure === "string" &&
+    typeof (value as { status?: unknown }).status === "string"
+  );
+}
+
 export function isProcedureDispatchResult(value: unknown): value is ProcedureDispatchResult {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { procedure?: unknown }).procedure === "string" &&
-    typeof (value as { cell?: unknown }).cell === "object" &&
-    (value as { cell?: unknown }).cell !== null
+    isCellRefLike((value as { cell?: unknown }).cell) &&
+    typeof (value as { status?: unknown }).status !== "string" &&
+    typeof (value as { dispatchId?: unknown }).dispatchId !== "string"
+  );
+}
+
+function serializeProcedureDispatchResult(result: ProcedureDispatchResult): string {
+  if (typeof result.display === "string" && result.display.trim()) {
+    return result.display;
+  }
+
+  if (typeof result.summary === "string" && result.summary.trim()) {
+    return result.summary;
+  }
+
+  return `${result.procedure} completed.`;
+}
+
+function serializeProcedureDispatchStatus(result: ProcedureDispatchStatusToolResult): string {
+  if (result.status === "completed" && result.result) {
+    return serializeProcedureDispatchResult(result.result);
+  }
+
+  if (result.status === "failed") {
+    return result.error ? `Error: ${result.error}` : `Error: ${result.procedure} failed.`;
+  }
+
+  if (result.status === "cancelled") {
+    return `${result.procedure} cancelled.`;
+  }
+
+  return `${result.procedure} ${result.status}. dispatchId=${result.dispatchId}`;
+}
+
+function isCellRefLike(value: unknown): value is CellRef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { sessionId?: unknown }).sessionId === "string" &&
+    typeof (value as { cellId?: unknown }).cellId === "string"
   );
 }
 

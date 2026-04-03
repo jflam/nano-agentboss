@@ -189,7 +189,9 @@ async function answerForPrompt(
 ): Promise<string> {
   const dispatch = parseInternalSlashDispatch(prompt);
   if (dispatch) {
-    const result = await callProcedureDispatch(session, connection, sessionId, dispatch);
+    const result = prompt.includes("procedure_dispatch_start")
+      ? await callProcedureDispatchAsync(session, connection, sessionId, dispatch)
+      : await callProcedureDispatch(session, connection, sessionId, dispatch);
     return extractToolResultText(result);
   }
 
@@ -286,10 +288,7 @@ async function callProcedureDispatch(
   sessionId: string,
   dispatch: InternalSlashDispatch,
 ): Promise<unknown> {
-  const server = session.mcpServers?.find((candidate) => candidate.name === "nanoboss-session");
-  if (!server || server.type !== "stdio") {
-    throw new Error("Missing stdio nanoboss-session MCP server");
-  }
+  const server = getSessionMcpServer(session);
 
   const toolCallId = crypto.randomUUID();
   await connection.sessionUpdate({
@@ -306,6 +305,97 @@ async function callProcedureDispatch(
 
   try {
     const result = await callStdioMcpTool(server, "procedure_dispatch", dispatch, {
+      timeoutMs: PROCEDURE_DISPATCH_TIMEOUT_MS > 0 ? PROCEDURE_DISPATCH_TIMEOUT_MS : undefined,
+      keepAliveOnTimeout: KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT,
+    });
+    await connection.sessionUpdate({
+      sessionId,
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId,
+        status: "completed",
+        rawOutput: result,
+      },
+    });
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await connection.sessionUpdate({
+      sessionId,
+      update: {
+        sessionUpdate: "tool_call_update",
+        toolCallId,
+        status: "failed",
+        rawOutput: { error: message },
+      },
+    });
+    throw error;
+  }
+}
+
+async function callProcedureDispatchAsync(
+  session: LiveSession,
+  connection: acp.AgentSideConnection,
+  sessionId: string,
+  dispatch: InternalSlashDispatch,
+): Promise<unknown> {
+  const server = getSessionMcpServer(session);
+  const startResult = await callNamedProcedureDispatchTool(connection, sessionId, server, {
+    name: "procedure_dispatch_start",
+    args: dispatch,
+  });
+
+  const dispatchId = extractDispatchId(startResult);
+  if (!dispatchId) {
+    throw new Error("Missing dispatch id from procedure_dispatch_start");
+  }
+
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const waitResult = await callNamedProcedureDispatchTool(connection, sessionId, server, {
+      name: "procedure_dispatch_wait",
+      args: {
+        dispatchId,
+        waitMs: getProcedureDispatchWaitMs(),
+      },
+    });
+
+    const status = extractDispatchStatus(waitResult);
+    if (status === "completed") {
+      return waitResult;
+    }
+
+    if (status === "failed" || status === "cancelled") {
+      throw new Error(extractDispatchError(waitResult) ?? `procedure dispatch ${status}`);
+    }
+  }
+
+  throw new Error(`procedure dispatch did not complete: ${dispatchId}`);
+}
+
+async function callNamedProcedureDispatchTool(
+  connection: acp.AgentSideConnection,
+  sessionId: string,
+  server: Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }>,
+  params: {
+    name: string;
+    args: Record<string, unknown>;
+  },
+): Promise<unknown> {
+  const toolCallId = crypto.randomUUID();
+  await connection.sessionUpdate({
+    sessionId,
+    update: {
+      sessionUpdate: "tool_call",
+      toolCallId,
+      title: params.name,
+      kind: "other",
+      status: "pending",
+      rawInput: params.args,
+    },
+  });
+
+  try {
+    const result = await callStdioMcpTool(server, params.name, params.args, {
       timeoutMs: PROCEDURE_DISPATCH_TIMEOUT_MS > 0 ? PROCEDURE_DISPATCH_TIMEOUT_MS : undefined,
       keepAliveOnTimeout: KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT,
     });
@@ -361,12 +451,10 @@ async function callStdioMcpTool(
   child.once("error", (error) => {
     rejectPending(error instanceof Error ? error : new Error(String(error)));
   });
-  child.once("exit", (code, signal) => {
-    if (pending.size === 0) {
-      return;
-    }
-
-    rejectPending(new Error(`session-mcp exited before responding (code=${String(code)} signal=${String(signal)})`));
+  child.once("exit", (_code, _signal) => {
+    // Allow the per-call timeout below to report missing responses. Some fast
+    // one-shot session-mcp invocations can exit before readline has drained the
+    // final JSON-RPC response line.
   });
 
   rl.on("line", (line) => {
@@ -450,14 +538,123 @@ async function callStdioMcpTool(
   }
 }
 
+function getSessionMcpServer(
+  session: LiveSession,
+): Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }> {
+  const server = session.mcpServers?.find((candidate) => candidate.name === "nanoboss-session");
+  if (!server || server.type !== "stdio") {
+    throw new Error("Missing stdio nanoboss-session MCP server");
+  }
+
+  return server;
+}
+
+function extractDispatchId(value: unknown): string | undefined {
+  return extractDispatchField(value, "dispatchId");
+}
+
+function extractDispatchStatus(value: unknown): string | undefined {
+  return extractDispatchField(value, "status");
+}
+
+function extractDispatchError(value: unknown): string | undefined {
+  return extractDispatchField(value, "error");
+}
+
+function extractDispatchField(value: unknown, field: "dispatchId" | "status" | "error"): string | undefined {
+  if (typeof value === "string") {
+    try {
+      return extractDispatchField(JSON.parse(value) as unknown, field);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const extracted = extractDispatchField(item, field);
+      if (extracted) {
+        return extracted;
+      }
+    }
+    return undefined;
+  }
+
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const direct = (value as Record<string, unknown>)[field];
+  if (typeof direct === "string") {
+    return direct;
+  }
+
+  for (const nested of [
+    (value as { structuredContent?: unknown }).structuredContent,
+    (value as { content?: unknown }).content,
+    (value as { contents?: unknown }).contents,
+    (value as { detailedContent?: unknown }).detailedContent,
+    (value as { result?: unknown }).result,
+    (value as { text?: unknown }).text,
+  ]) {
+    if (nested === undefined) {
+      continue;
+    }
+
+    const extracted = extractDispatchField(nested, field);
+    if (extracted) {
+      return extracted;
+    }
+  }
+
+  return undefined;
+}
+
+function getProcedureDispatchWaitMs(): number {
+  const configured = Number(process.env.MOCK_AGENT_PROCEDURE_DISPATCH_WAIT_MS ?? "0");
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.floor(configured);
+  }
+
+  if (PROCEDURE_DISPATCH_TIMEOUT_MS > 0) {
+    return Math.max(1, Math.min(10, Math.floor(PROCEDURE_DISPATCH_TIMEOUT_MS / 5)));
+  }
+
+  return 100;
+}
+
 function extractToolResultText(result: unknown): string {
   if (!result || typeof result !== "object") {
     return "tool completed";
   }
 
+  const asyncResult = (result as { result?: unknown }).result;
+  if (asyncResult !== undefined) {
+    return extractToolResultText(asyncResult);
+  }
+
+  const error = (result as { error?: unknown }).error;
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
   const content = (result as { content?: Array<{ type?: string; text?: string }> }).content;
   const firstText = content?.find((item) => item.type === "text" && typeof item.text === "string")?.text;
-  return firstText ?? "tool completed";
+  if (firstText) {
+    return firstText;
+  }
+
+  const display = (result as { display?: unknown }).display;
+  if (typeof display === "string") {
+    return display;
+  }
+
+  const summary = (result as { summary?: unknown }).summary;
+  if (typeof summary === "string") {
+    return summary;
+  }
+
+  return "tool completed";
 }
 
 function lastAssistantNumber(session: StoredSession): number | undefined {

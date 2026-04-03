@@ -1,5 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
 import {
@@ -11,6 +12,32 @@ import { ProcedureRegistry } from "../../src/registry.ts";
 import { SessionStore } from "../../src/session-store.ts";
 
 const tempDirs: string[] = [];
+const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
+let originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
+
+beforeAll(() => {
+  const build = spawnSync("bun", ["run", "build"], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+
+  if (build.status !== 0) {
+    throw new Error([build.stdout, build.stderr].filter(Boolean).join("\n"));
+  }
+
+  originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
+  process.env.NANOBOSS_SELF_COMMAND = SELF_COMMAND_PATH;
+});
+
+afterAll(() => {
+  if (originalSelfCommand === undefined) {
+    delete process.env.NANOBOSS_SELF_COMMAND;
+  } else {
+    process.env.NANOBOSS_SELF_COMMAND = originalSelfCommand;
+  }
+});
 
 afterEach(() => {
   while (tempDirs.length > 0) {
@@ -260,6 +287,9 @@ describe("session MCP API", () => {
 
     expect(toolNames).toContain("procedure_list");
     expect(toolNames).toContain("procedure_get");
+    expect(toolNames).toContain("procedure_dispatch_start");
+    expect(toolNames).toContain("procedure_dispatch_status");
+    expect(toolNames).toContain("procedure_dispatch_wait");
     expect(toolNames).toContain("procedure_dispatch");
 
     expect(
@@ -282,33 +312,38 @@ describe("session MCP API", () => {
     ]);
   });
 
-  test("lists and dispatches procedures through the generic MCP surface", async () => {
+  test("lists and dispatches procedures through the async MCP surface", async () => {
     const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-"));
-    const commandsDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-commands-"));
-    tempDirs.push(rootDir, commandsDir);
+    const cwd = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-workspace-"));
+    const commandsDir = join(cwd, "commands");
+    mkdirSync(commandsDir, { recursive: true });
+    tempDirs.push(rootDir, cwd);
 
     const registry = new ProcedureRegistry(commandsDir);
     registry.loadBuiltins();
-    registry.register({
-      name: "review",
-      description: "store a durable review result",
-      inputHint: "subject to review",
-      async execute(prompt) {
-        return {
-          data: {
-            subject: prompt,
-            verdict: "mixed",
-          },
-          display: `reviewed: ${prompt}\n`,
-          summary: `review ${prompt}`,
-          memory: `Reviewed ${prompt}.`,
-        };
-      },
-    });
+    await Bun.write(join(commandsDir, "review.ts"), [
+      "export default {",
+      '  name: "review",',
+      '  description: "store a durable review result",',
+      '  inputHint: "subject to review",',
+      '  async execute(prompt) {',
+      '    return {',
+      '      data: {',
+      '        subject: prompt,',
+      '        verdict: "mixed",',
+      '      },',
+      '      display: `reviewed: ${prompt}\\n`,',
+      '      summary: `review ${prompt}`,',
+      '      memory: `Reviewed ${prompt}.`,',
+      '    };',
+      '  },',
+      "};",
+    ].join("\n"));
+    await registry.loadFromDisk();
 
     const api = createSessionMcpApi({
       sessionId: "session-mcp",
-      cwd: process.cwd(),
+      cwd,
       rootDir,
       registry,
     });
@@ -333,21 +368,61 @@ describe("session MCP API", () => {
     });
 
     const dispatchCorrelationId = crypto.randomUUID();
-    const dispatched = await callSessionMcpTool(api, "procedure_dispatch", {
+    const started = await callSessionMcpTool(api, "procedure_dispatch_start", {
       name: "review",
       prompt: "patch",
       dispatchCorrelationId,
     }) as {
-      procedure: string;
-      cell: { sessionId: string; cellId: string };
-      summary?: string;
-      display?: string;
-      memory?: string;
-      dataRef?: { cell: { sessionId: string; cellId: string }; path: string };
-      dataShape?: { subject: string; verdict: string };
+      dispatchId: string;
+      status: string;
     };
 
-    expect(dispatched).toMatchObject({
+    expect(started.dispatchId).toEqual(expect.stringContaining("dispatch_"));
+    expect(started.status).toBe("queued");
+
+    const reloadedApi = createSessionMcpApi({
+      sessionId: "session-mcp",
+      cwd,
+      rootDir,
+      registry,
+    });
+
+    const initialStatus = await callSessionMcpTool(reloadedApi, "procedure_dispatch_status", {
+      dispatchId: started.dispatchId,
+    }) as {
+      dispatchId: string;
+      status: string;
+      procedure: string;
+    };
+    expect(initialStatus.dispatchId).toBe(started.dispatchId);
+    expect(initialStatus.procedure).toBe("review");
+    expect(["queued", "running", "completed"]).toContain(initialStatus.status);
+
+    let completed = await callSessionMcpTool(reloadedApi, "procedure_dispatch_wait", {
+      dispatchId: started.dispatchId,
+      waitMs: 10,
+    }) as {
+      dispatchId: string;
+      status: string;
+      result?: {
+        procedure: string;
+        cell: { sessionId: string; cellId: string };
+        summary?: string;
+        display?: string;
+        memory?: string;
+        dataRef?: { cell: { sessionId: string; cellId: string }; path: string };
+        dataShape?: { subject: string; verdict: string };
+      };
+    };
+
+    while (completed.status !== "completed") {
+      completed = await callSessionMcpTool(reloadedApi, "procedure_dispatch_wait", {
+        dispatchId: started.dispatchId,
+        waitMs: 50,
+      }) as typeof completed;
+    }
+
+    expect(completed.result).toMatchObject({
       procedure: "review",
       summary: "review patch",
       display: "reviewed: patch\n",
@@ -358,6 +433,7 @@ describe("session MCP API", () => {
       },
     });
 
+    const dispatched = expectDefined(completed.result, "Expected completed async dispatch result");
     expect(dispatched.dataRef).toBeDefined();
     expect(api.topLevelRuns({ procedure: "review" })).toMatchObject([
       {
@@ -371,5 +447,5 @@ describe("session MCP API", () => {
       subject: "patch",
       verdict: "mixed",
     });
-  });
+  }, 30_000);
 });

@@ -73,10 +73,14 @@ export function startProcedureDispatchProgressBridge(
 export class ProcedureDispatchProgressEmitter implements SessionUpdateEmitter {
   private latestTokenUsage?: AgentTokenUsage;
 
-  constructor(private readonly progressPath?: string) {}
+  constructor(
+    private readonly progressPath?: string,
+    private readonly onActivity?: () => void,
+  ) {}
 
   emit(update: acp.SessionUpdate): void {
     this.writeProgressUpdate(update);
+    this.onActivity?.();
 
     if (update.sessionUpdate !== "tool_call_update" || update.status !== "completed") {
       return;

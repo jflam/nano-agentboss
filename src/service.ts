@@ -31,16 +31,10 @@ import {
   TopLevelProcedureExecutionError,
   type ProcedureExecutionResult,
 } from "./procedure-runner.ts";
-import {
-  isProcedureDispatchTimeout,
-  procedureDispatchResultFromRecoveredCell,
-  syncRecoveredProcedureResultIntoDefaultConversation,
-  waitForRecoveredProcedureDispatchCell,
-} from "./procedure-dispatch-recovery.ts";
 import { ProcedureRegistry } from "./registry.ts";
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
-import { isProcedureDispatchResult } from "./session-mcp.ts";
+import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "./session-mcp.ts";
 import { SessionStore } from "./session-store.ts";
 import type {
   AgentTokenUsage,
@@ -413,61 +407,19 @@ export class NanobossService {
         };
       }
 
-      const failureMessage = extractProcedureDispatchFailure(promptResult.updates);
-      if (isProcedureDispatchTimeout(failureMessage)) {
-        const recovered = await this.recoverTimedOutProcedureDispatch(
-          session,
-          procedureName,
-          dispatchCorrelationId,
-        );
-        if (recovered) {
-          return recovered;
-        }
-      }
-
       for (const update of bufferedTextUpdates) {
         emitter.emit(update);
       }
 
+      const failureMessage = extractProcedureDispatchFailure(promptResult.updates);
       throw new Error(
         failureMessage
-          ? `Default session did not dispatch /${procedureName} through procedure_dispatch: ${failureMessage}`
-          : `Default session did not dispatch /${procedureName} through procedure_dispatch.`,
+          ? `Default session did not complete async dispatch for /${procedureName}: ${failureMessage}`
+          : `Default session did not complete async dispatch for /${procedureName}.`,
       );
     } finally {
       await stopProgressBridge();
     }
-  }
-
-  private async recoverTimedOutProcedureDispatch(
-    session: SessionState,
-    procedureName: string,
-    dispatchCorrelationId: string,
-  ): Promise<{ result: ProcedureExecutionResult; tokenUsage?: AgentTokenUsage } | undefined> {
-    const cell = await waitForRecoveredProcedureDispatchCell(
-      session.store,
-      {
-        procedureName,
-        dispatchCorrelationId,
-      },
-    );
-    if (!cell) {
-      return undefined;
-    }
-
-    const tokenUsage = await syncRecoveredProcedureResultIntoDefaultConversation({
-      defaultConversation: session.defaultConversation,
-      sessionId: session.store.sessionId,
-      cell,
-      signal: session.abortController?.signal,
-      defaultAgentConfig: session.defaultAgentConfig,
-    });
-    session.syncedProcedureMemoryCellIds.add(cell.cellId);
-    session.recentRecoverySyncAtMs = Date.now();
-    return {
-      result: procedureDispatchResultFromRecoveredCell(session.store.sessionId, cell),
-      tokenUsage,
-    };
   }
 
   private applyDefaultAgentSelection(
@@ -767,15 +719,18 @@ function buildProcedureDispatchPrompt(
   return [
     "Nanoboss internal slash-command dispatch.",
     "This is an internal control message for the current persistent master conversation.",
-    "Use the attached `procedure_dispatch` tool exactly once with the following JSON arguments.",
+    "Call `procedure_dispatch_start` exactly once with the following JSON arguments.",
     JSON.stringify({
       name: procedureName,
       prompt: procedurePrompt,
       defaultAgentSelection,
       dispatchCorrelationId,
     }),
+    "After start returns a dispatch id, repeatedly call `procedure_dispatch_wait` with that dispatch id until the returned status is `completed` or `failed`.",
+    "Use a short bounded wait on each poll. Do not use `procedure_dispatch`.",
     "Do not answer from your own knowledge.",
-    "After the tool completes, reply with exactly the tool result text and nothing else.",
+    "If the final status is `completed`, reply with exactly the final tool result text and nothing else.",
+    "If the final status is `failed`, reply with exactly the tool error text and nothing else.",
   ].join("\n\n");
 }
 
@@ -819,10 +774,14 @@ function parseProcedureDispatchResultCandidate(value: unknown): ProcedureExecuti
     return value;
   }
 
+  if (isProcedureDispatchStatusResult(value) && value.status === "completed" && value.result) {
+    return value.result;
+  }
+
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value) as unknown;
-      return isProcedureDispatchResult(parsed) ? parsed : undefined;
+      return parseProcedureDispatchResultCandidate(parsed);
     } catch {
       return undefined;
     }
@@ -858,12 +817,29 @@ function parseProcedureDispatchResultCandidate(value: unknown): ProcedureExecuti
     }
   }
 
+  const nestedResult = (value as { result?: unknown }).result;
+  if (nestedResult !== undefined) {
+    const parsed = parseProcedureDispatchResultCandidate(nestedResult);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
   return undefined;
 }
 
 function extractProcedureDispatchFailure(updates: acp.SessionUpdate[]): string | undefined {
   for (const update of [...updates].reverse()) {
-    if (update.sessionUpdate !== "tool_call_update" || update.status !== "failed") {
+    if (update.sessionUpdate !== "tool_call_update") {
+      continue;
+    }
+
+    const asyncFailure = parseProcedureDispatchFailureCandidate(update.rawOutput);
+    if (asyncFailure) {
+      return asyncFailure;
+    }
+
+    if (update.status !== "failed") {
       continue;
     }
 
@@ -880,6 +856,60 @@ function extractProcedureDispatchFailure(updates: acp.SessionUpdate[]): string |
     const error = (rawOutput as { error?: unknown }).error;
     if (typeof error === "string" && error.trim()) {
       return error.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function parseProcedureDispatchFailureCandidate(value: unknown): string | undefined {
+  if (isProcedureDispatchStatusResult(value) && (value.status === "failed" || value.status === "cancelled")) {
+    return value.error?.trim() || `${value.procedure} ${value.status}`;
+  }
+
+  if (typeof value === "string") {
+    try {
+      return parseProcedureDispatchFailureCandidate(JSON.parse(value) as unknown);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const parsed = parseProcedureDispatchFailureCandidate(item);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const nestedContent = (value as { content?: unknown }).content;
+  if (nestedContent !== undefined) {
+    const parsed = parseProcedureDispatchFailureCandidate(nestedContent);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  const nestedText = (value as { text?: unknown }).text;
+  if (typeof nestedText === "string") {
+    const parsed = parseProcedureDispatchFailureCandidate(nestedText);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  const nestedResult = (value as { result?: unknown }).result;
+  if (nestedResult !== undefined) {
+    const parsed = parseProcedureDispatchFailureCandidate(nestedResult);
+    if (parsed) {
+      return parsed;
     }
   }
 
