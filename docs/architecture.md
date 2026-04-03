@@ -42,14 +42,14 @@ Relevant files:
   - `src/call-agent.ts`
   - `src/default-session.ts`
 
-### 3. Session MCP over HTTP
+### 3. Session MCP over stdio
 Used so downstream agents can inspect durable nanoboss session cells and refs.
 
-This is **not** ACP. It is an MCP server exposed over loopback HTTP and attached to downstream ACP sessions as an MCP server.
+This is **not** ACP. It is an MCP server attached to downstream ACP sessions over stdio.
 
 Relevant files:
 - `src/session-mcp.ts`
-- `src/session-mcp-http.ts`
+- `src/session-mcp-stdio.ts`
 - `src/mcp-attachment.ts`
 - `src/session-store.ts`
 
@@ -72,7 +72,7 @@ flowchart TD
   Context --> AgentRuntime[ACP runtime\nsrc/acp-runtime.ts]
 
   AgentRuntime -->|stdio ACP| Downstream[Downstream agent\nclaude / gemini / codex / copilot]
-  Downstream -->|HTTP MCP tool calls| SessionMcp[Session MCP HTTP server\nsrc/session-mcp-http.ts]
+  Downstream -->|stdio MCP tool calls| SessionMcp[Session MCP stdio server\nsrc/session-mcp-stdio.ts]
   SessionMcp --> SessionStore[SessionStore\nsrc/session-store.ts]
 ```
 
@@ -168,24 +168,24 @@ Relevant files:
 
 ## Session MCP attachment path
 
-When nanoboss launches a downstream ACP session, it also attaches a **loopback HTTP MCP server** so the downstream agent can inspect stored session state.
+When nanoboss launches a downstream ACP session, it also attaches a **stdio MCP server** so the downstream agent can inspect stored session state.
 
 This is the current shape:
 
 - downstream agent connection to nanoboss: **ACP over stdio**
-- downstream agent connection to session tools: **MCP over HTTP**
+- downstream agent connection to session tools: **MCP over stdio**
 
 ```mermaid
 sequenceDiagram
   participant Ctx as CommandContext / default session
   participant ACP as ACP runtime
   participant Agent as Downstream agent
-  participant MCP as Session MCP HTTP server
+  participant MCP as Session MCP stdio server
   participant Store as SessionStore
 
   Ctx->>ACP: create/load downstream ACP session
   ACP->>Agent: stdio ACP session
-  ACP->>Agent: attach MCP server config { type: http, url: http://127.0.0.1:.../mcp }
+  ACP->>Agent: attach MCP server config { type: stdio, command: nanoboss, args: [session-mcp, ...] }
 
   Agent->>MCP: tools/list
   MCP-->>Agent: session MCP tool definitions
@@ -198,7 +198,7 @@ sequenceDiagram
 
 Relevant files:
 - `src/mcp-attachment.ts`
-- `src/session-mcp-http.ts`
+- `src/session-mcp-stdio.ts`
 - `src/session-mcp.ts`
 - `src/session-store.ts`
 
@@ -215,9 +215,9 @@ ACP is currently **stdio-only** in nanoboss.
 There is no parallel HTTP ACP implementation in nanoboss.
 
 ### Session MCP is not stdio + HTTP anymore
-Session MCP is currently **HTTP-only**.
+Session MCP is currently **stdio-only**.
 
-The old stdio session MCP path was removed during the simplification pass.
+The unused HTTP session MCP transport was removed during the simplification pass.
 
 ---
 
@@ -229,7 +229,7 @@ The old stdio session MCP path was removed during the simplification pass.
 | HTTP client ↔ nanoboss | nanoboss frontend API | HTTP | request/response |
 | HTTP client ↔ nanoboss | frontend events | SSE | server → client |
 | nanoboss ↔ downstream agent | ACP | stdio | bidirectional |
-| downstream agent ↔ session tools | MCP | HTTP | request/response |
+| downstream agent ↔ session tools | MCP | stdio | bidirectional |
 
 ---
 
@@ -241,10 +241,10 @@ A useful way to think about the stack is:
    - local CLI over **ACP/stdin-stdout**, or
    - remote HTTP API over **HTTP + SSE**
 2. **Nanoboss talks to downstream agents** over **ACP/stdin-stdout**
-3. **Downstream agents inspect nanoboss session state** through **MCP over loopback HTTP**
+3. **Downstream agents inspect nanoboss session state** through **MCP over stdio**
 
 So the current architecture is intentionally mixed:
 
 - **ACP for agent orchestration**
 - **HTTP/SSE for frontend integration**
-- **HTTP MCP for session-state inspection**
+- **stdio MCP for session-state inspection**

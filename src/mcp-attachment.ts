@@ -1,6 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
-import { disposeSessionMcpHttpServer } from "./session-mcp-http.ts";
 import { buildSessionMcpStdioServer } from "./session-mcp-stdio.ts";
 import type { DownstreamAgentConfig } from "./types.ts";
 
@@ -20,6 +19,4 @@ export function buildSessionMcpServers(
   ];
 }
 
-export function disposeSessionMcpTransport(sessionId: string): void {
-  disposeSessionMcpHttpServer(sessionId);
-}
+export function disposeSessionMcpTransport(_sessionId: string): void {}

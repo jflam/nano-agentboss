@@ -1,23 +1,16 @@
-import type * as acp from "@agentclientprotocol/sdk";
-
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { getBuildLabel } from "./build-info.ts";
-import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
-import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
+import { resolveDownstreamAgentConfig } from "./config.ts";
 import { readCurrentSessionPointer } from "./current-session.ts";
 import { inferDataShape } from "./data-shape.ts";
-import { RunLogger } from "./logger.ts";
+import { dispatchMcpToolsMethod, type JsonRpcToolMetadata } from "./mcp-jsonrpc.ts";
+import { ProcedureDispatchProgressEmitter, buildProcedureDispatchProgressPath } from "./procedure-dispatch-progress.ts";
+import { executeTopLevelProcedure, type ProcedureExecutionResult } from "./procedure-runner.ts";
 import { ProcedureRegistry } from "./registry.ts";
-import {
-  SessionStore,
-  normalizeProcedureResult,
-  summarizeText,
-} from "./session-store.ts";
+import { SessionStore } from "./session-store.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import type {
-  AgentTokenUsage,
   CellDescendantsOptions,
   CellKind,
   CellRecord,
@@ -40,19 +33,7 @@ interface SessionMcpParams {
   registry?: ProcedureRegistryLike;
 }
 
-const PROCEDURE_DISPATCH_PROGRESS_DIR = "procedure-dispatch-progress";
-
-export function buildProcedureDispatchProgressPath(rootDir: string, dispatchId: string): string {
-  return join(rootDir, PROCEDURE_DISPATCH_PROGRESS_DIR, `${dispatchId}.jsonl`);
-}
-
-interface SessionMcpToolMetadata {
-  name: string;
-  description: string;
-  inputSchema: object;
-}
-
-interface SessionMcpToolDefinition extends SessionMcpToolMetadata {
+interface SessionMcpToolDefinition extends JsonRpcToolMetadata {
   parseArgs(args: Record<string, unknown>): unknown;
   call(api: SessionMcpApi, args: unknown): Promise<unknown>;
 }
@@ -67,20 +48,7 @@ interface SessionProcedureMetadata {
   inputHint?: string;
 }
 
-export interface ProcedureDispatchResult {
-  procedure: string;
-  cell: CellRef;
-  summary?: string;
-  display?: string;
-  memory?: string;
-  dataRef?: ValueRef;
-  displayRef?: ValueRef;
-  streamRef?: ValueRef;
-  dataShape?: unknown;
-  explicitDataSchema?: object;
-  tokenUsage?: AgentTokenUsage;
-  defaultAgentSelection?: DownstreamAgentSelection;
-}
+export type ProcedureDispatchResult = ProcedureExecutionResult;
 
 export interface SessionSchemaResult {
   target: CellRef | ValueRef;
@@ -182,7 +150,12 @@ export class SessionMcpApi {
     };
   }
 
-  async procedureDispatch(args: { name: string; prompt: string; defaultAgentSelection?: DownstreamAgentSelection; progressDispatchId?: string }): Promise<ProcedureDispatchResult> {
+  async procedureDispatch(args: {
+    name: string;
+    prompt: string;
+    defaultAgentSelection?: DownstreamAgentSelection;
+    dispatchCorrelationId?: string;
+  }): Promise<ProcedureDispatchResult> {
     if (args.name === "default") {
       throw new Error("procedure_dispatch cannot run default; continue the master conversation directly instead.");
     }
@@ -191,7 +164,6 @@ export class SessionMcpApi {
       this.defaultAgentConfig = resolveDownstreamAgentConfig(this.params.cwd, args.defaultAgentSelection);
     }
 
-    const beforeSelection = toDownstreamAgentSelection(this.defaultAgentConfig);
     const registry = await this.getRegistry();
     const procedure = registry.get(args.name);
     if (!procedure) {
@@ -199,93 +171,28 @@ export class SessionMcpApi {
     }
 
     const store = this.createStore();
-    const logger = new RunLogger();
-    const emitter = new ProcedureDispatchEmitter(
-      args.progressDispatchId ? buildProcedureDispatchProgressPath(store.rootDir, args.progressDispatchId) : undefined,
+    const emitter = new ProcedureDispatchProgressEmitter(
+      args.dispatchCorrelationId
+        ? buildProcedureDispatchProgressPath(store.rootDir, args.dispatchCorrelationId)
+        : undefined,
     );
-    const rootSpanId = logger.newSpan();
-    const rootCell = store.startCell({
-      procedure: procedure.name,
-      input: args.prompt,
-      kind: "top_level",
-    });
 
-    const ctx = new CommandContextImpl({
+    return await executeTopLevelProcedure({
       cwd: this.params.cwd,
       sessionId: store.sessionId,
-      logger,
-      registry,
-      procedureName: procedure.name,
-      spanId: rootSpanId,
-      emitter,
       store,
-      cell: rootCell,
+      registry,
+      procedure,
+      prompt: args.prompt,
+      emitter,
       getDefaultAgentConfig: () => this.defaultAgentConfig,
       setDefaultAgentSelection: (selection) => {
         const nextConfig = resolveDownstreamAgentConfig(this.params.cwd, selection);
         this.defaultAgentConfig = nextConfig;
         return nextConfig;
       },
+      dispatchCorrelationId: args.dispatchCorrelationId,
     });
-
-    logger.write({
-      spanId: rootSpanId,
-      procedure: procedure.name,
-      kind: "procedure_start",
-      prompt: args.prompt,
-    });
-
-    try {
-      const rawResult = await procedure.execute(args.prompt, ctx);
-      const result = normalizeProcedureResult(rawResult);
-      const finalized = store.finalizeCell(rootCell, result);
-      const record = store.readCell(finalized.cell);
-
-      logger.write({
-        spanId: rootSpanId,
-        procedure: procedure.name,
-        kind: "procedure_end",
-        result: result.data,
-        raw: result.display,
-      });
-
-      const afterSelection = toDownstreamAgentSelection(this.defaultAgentConfig);
-
-      return {
-        procedure: procedure.name,
-        cell: finalized.cell,
-        summary: record.output.summary,
-        display: record.output.display,
-        memory: record.output.memory,
-        dataRef: finalized.dataRef,
-        displayRef: finalized.displayRef,
-        streamRef: finalized.streamRef,
-        dataShape: record.output.data !== undefined ? inferDataShape(record.output.data) : undefined,
-        explicitDataSchema: record.output.explicitDataSchema,
-        tokenUsage: emitter.currentTokenUsage,
-        defaultAgentSelection: JSON.stringify(afterSelection) === JSON.stringify(beforeSelection)
-          ? undefined
-          : afterSelection,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const errorText = `Error: ${message}\n`;
-
-      logger.write({
-        spanId: rootSpanId,
-        procedure: procedure.name,
-        kind: "procedure_end",
-        error: message,
-      });
-
-      store.finalizeCell(rootCell, {
-        summary: summarizeText(errorText),
-      });
-      throw error;
-    } finally {
-      await emitter.flush();
-      logger.close();
-    }
   }
 
   private createStore(sessionId = this.params.sessionId): SessionStore {
@@ -429,7 +336,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
           required: ["provider"],
           additionalProperties: false,
         },
-        progressDispatchId: { type: "string" },
+        dispatchCorrelationId: { type: "string" },
       },
       required: ["name", "prompt"],
       additionalProperties: false,
@@ -441,7 +348,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
         defaultAgentSelection: args.defaultAgentSelection === undefined
           ? undefined
           : parseDownstreamAgentSelection(args.defaultAgentSelection),
-        progressDispatchId: asOptionalString(args.progressDispatchId),
+        dispatchCorrelationId: asOptionalString(args.dispatchCorrelationId),
       };
     },
     async call(api, args) {
@@ -655,7 +562,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
   }),
 ];
 
-export function listSessionMcpTools(): SessionMcpToolMetadata[] {
+export function listSessionMcpTools(): JsonRpcToolMetadata[] {
   return SESSION_MCP_TOOLS.map(({ name, description, inputSchema }) => ({
     name,
     description,
@@ -681,34 +588,18 @@ export async function dispatchSessionMcpMethod(
   method: string,
   params: unknown,
 ): Promise<unknown> {
-  switch (method) {
-    case "initialize":
-      return {
-        protocolVersion: SESSION_MCP_PROTOCOL_VERSION,
-        capabilities: {
-          tools: {},
-        },
-        serverInfo: {
-          name: SESSION_MCP_SERVER_NAME,
-          version: getBuildLabel(),
-        },
-        instructions: SESSION_MCP_INSTRUCTIONS,
-      };
-    case "ping":
-      return {};
-    case "tools/list":
-      return {
-        tools: listSessionMcpTools(),
-      };
-    case "tools/call": {
-      const args = asObject(params);
-      const name = asString(args.name, "name");
-      const toolArgs = asOptionalObject(args.arguments);
-      return formatSessionMcpToolResult(name, await callSessionMcpTool(api, name, toolArgs));
-    }
-    default:
-      throw new Error(`Unsupported MCP method: ${method}`);
-  }
+  return await dispatchMcpToolsMethod({
+    api,
+    method,
+    messageParams: params,
+    protocolVersion: SESSION_MCP_PROTOCOL_VERSION,
+    serverName: SESSION_MCP_SERVER_NAME,
+    serverVersion: getBuildLabel(),
+    instructions: SESSION_MCP_INSTRUCTIONS,
+    listTools: listSessionMcpTools,
+    callTool: callSessionMcpTool,
+    formatToolResult: formatSessionMcpToolResult,
+  });
 }
 
 export function formatSessionMcpToolResult(
@@ -805,94 +696,6 @@ function getProcedureList(
   ];
 }
 
-class ProcedureDispatchEmitter implements SessionUpdateEmitter {
-  private latestTokenUsage?: AgentTokenUsage;
-
-  constructor(private readonly progressPath?: string) {}
-
-  emit(update: acp.SessionUpdate): void {
-    this.writeProgressUpdate(update);
-
-    if (update.sessionUpdate !== "tool_call_update" || update.status !== "completed") {
-      return;
-    }
-
-    const tokenUsage = extractTokenUsage(update.rawOutput);
-    if (tokenUsage) {
-      this.latestTokenUsage = tokenUsage;
-    }
-  }
-
-  flush(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  get currentTokenUsage(): AgentTokenUsage | undefined {
-    return this.latestTokenUsage;
-  }
-
-  private writeProgressUpdate(update: acp.SessionUpdate): void {
-    if (!this.progressPath) {
-      return;
-    }
-
-    const sanitized = sanitizeProcedureDispatchProgressUpdate(update);
-    if (!sanitized) {
-      return;
-    }
-
-    mkdirSync(dirname(this.progressPath), { recursive: true });
-    appendFileSync(this.progressPath, `${JSON.stringify(sanitized)}\n`, "utf8");
-  }
-}
-
-function sanitizeProcedureDispatchProgressUpdate(update: acp.SessionUpdate): acp.SessionUpdate | undefined {
-  if (update.sessionUpdate === "agent_message_chunk") {
-    return update;
-  }
-
-  if (update.sessionUpdate === "tool_call") {
-    return {
-      sessionUpdate: "tool_call",
-      toolCallId: update.toolCallId,
-      title: update.title,
-      kind: update.kind,
-      status: update.status,
-      rawInput: update.rawInput,
-    };
-  }
-
-  if (update.sessionUpdate === "tool_call_update") {
-    return {
-      sessionUpdate: "tool_call_update",
-      toolCallId: update.toolCallId,
-      title: update.title,
-      status: update.status,
-      rawOutput: undefined,
-    };
-  }
-
-  return undefined;
-}
-
-function extractTokenUsage(value: unknown): AgentTokenUsage | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const candidate = (value as { tokenUsage?: unknown }).tokenUsage;
-  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-    return undefined;
-  }
-
-  const source = (candidate as { source?: unknown }).source;
-  if (typeof source !== "string") {
-    return undefined;
-  }
-
-  return candidate as AgentTokenUsage;
-}
-
 function isProcedureListResult(value: unknown): value is ProcedureListResult {
   return (
     typeof value === "object" &&
@@ -942,14 +745,6 @@ function asObject(value: unknown): Record<string, unknown> {
   }
 
   return value as Record<string, unknown>;
-}
-
-function asOptionalObject(value: unknown): Record<string, unknown> {
-  if (value === undefined) {
-    return {};
-  }
-
-  return asObject(value);
 }
 
 function asString(value: unknown, name: string): string {

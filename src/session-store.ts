@@ -11,6 +11,7 @@ import type {
   CellRecord,
   CellRef,
   CellSummary,
+  DownstreamAgentSelection,
   KernelValue,
   ProcedureResult,
   RefStat,
@@ -27,6 +28,8 @@ interface CellDraft {
     createdAt: string;
     parentCellId?: string;
     kind: CellKind;
+    dispatchCorrelationId?: string;
+    defaultAgentSelection?: DownstreamAgentSelection;
   };
   streamChunks: string[];
 }
@@ -42,6 +45,7 @@ interface FinalizeCellOptions {
   stream?: string;
   summary?: string;
   raw?: string;
+  meta?: Partial<CellRecord["meta"]>;
 }
 
 export function createCellRef(sessionId: string, cellId: string): CellRef {
@@ -101,6 +105,7 @@ export class SessionStore {
     input: string;
     kind: CellKind;
     parentCellId?: string;
+    dispatchCorrelationId?: string;
   }): CellDraft {
     return {
       cell: createCellRef(this.sessionId, crypto.randomUUID()),
@@ -110,6 +115,7 @@ export class SessionStore {
         createdAt: new Date().toISOString(),
         parentCellId: params.parentCellId,
         kind: params.kind,
+        dispatchCorrelationId: params.dispatchCorrelationId,
       },
       streamChunks: [],
     };
@@ -147,7 +153,10 @@ export class SessionStore {
           ? { explicitDataSchema: result.explicitDataSchema }
           : {}),
       },
-      meta: draft.meta,
+      meta: {
+        ...draft.meta,
+        ...options.meta,
+      },
     };
 
     const filePath = join(this.cellsDir, `${Date.now()}-${record.cellId}.json`);

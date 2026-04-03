@@ -38,6 +38,8 @@ export interface CellRecord {
     createdAt: string;
     parentCellId?: string;
     kind: CellKind;
+    dispatchCorrelationId?: string;
+    defaultAgentSelection?: DownstreamAgentSelection;
   };
 }
 

@@ -26,11 +26,13 @@ interface InternalSlashDispatch {
     provider: "claude" | "gemini" | "codex" | "copilot";
     model?: string;
   };
-  progressDispatchId?: string;
+  dispatchCorrelationId?: string;
 }
 
 const SUPPORT_LOAD_SESSION = process.env.MOCK_AGENT_SUPPORT_LOAD_SESSION === "1";
 const SESSION_STORE_DIR = process.env.MOCK_AGENT_SESSION_STORE_DIR?.trim() || undefined;
+const PROCEDURE_DISPATCH_TIMEOUT_MS = Number(process.env.MOCK_AGENT_PROCEDURE_DISPATCH_TIMEOUT_MS ?? "0");
+const KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT = process.env.MOCK_AGENT_KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT === "1";
 
 class MockAgent implements acp.Agent {
   private readonly sessions = new Map<string, LiveSession>();
@@ -254,7 +256,7 @@ function parseInternalSlashDispatch(prompt: string): InternalSlashDispatch | und
     name?: unknown;
     prompt?: unknown;
     defaultAgentSelection?: unknown;
-    progressDispatchId?: unknown;
+    dispatchCorrelationId?: unknown;
   };
   if (typeof parsed.name !== "string" || typeof parsed.prompt !== "string") {
     return undefined;
@@ -274,7 +276,7 @@ function parseInternalSlashDispatch(prompt: string): InternalSlashDispatch | und
     defaultAgentSelection: provider === "claude" || provider === "gemini" || provider === "codex" || provider === "copilot"
       ? { provider, ...(typeof model === "string" ? { model } : {}) }
       : undefined,
-    progressDispatchId: typeof parsed.progressDispatchId === "string" ? parsed.progressDispatchId : undefined,
+    dispatchCorrelationId: typeof parsed.dispatchCorrelationId === "string" ? parsed.dispatchCorrelationId : undefined,
   };
 }
 
@@ -303,7 +305,10 @@ async function callProcedureDispatch(
   });
 
   try {
-    const result = await callStdioMcpTool(server, "procedure_dispatch", dispatch);
+    const result = await callStdioMcpTool(server, "procedure_dispatch", dispatch, {
+      timeoutMs: PROCEDURE_DISPATCH_TIMEOUT_MS > 0 ? PROCEDURE_DISPATCH_TIMEOUT_MS : undefined,
+      keepAliveOnTimeout: KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT,
+    });
     await connection.sessionUpdate({
       sessionId,
       update: {
@@ -333,6 +338,10 @@ async function callStdioMcpTool(
   server: Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }>,
   toolName: string,
   args: Record<string, unknown>,
+  options: {
+    timeoutMs?: number;
+    keepAliveOnTimeout?: boolean;
+  } = {},
 ): Promise<unknown> {
   const child = spawn(server.command, server.args ?? [], {
     env: process.env,
@@ -388,7 +397,9 @@ async function callStdioMcpTool(
     waiter.resolve(message.result);
   });
 
-  const call = (method: string, params?: unknown) => {
+  let preserveChild = false;
+
+  const call = (method: string, params?: unknown, timeoutMs = 10_000) => {
     const id = nextId;
     nextId += 1;
 
@@ -399,8 +410,12 @@ async function callStdioMcpTool(
     child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
     return Promise.race([
       promise,
-      Bun.sleep(10_000).then(() => {
-        throw new Error(`Timed out waiting for session-mcp ${method}`);
+      Bun.sleep(timeoutMs).then(() => {
+        pending.delete(id);
+        if (options.keepAliveOnTimeout) {
+          preserveChild = true;
+        }
+        throw new Error(`Request timed out waiting for session-mcp ${method}`);
       }),
     ]);
   };
@@ -419,12 +434,19 @@ async function callStdioMcpTool(
     const result = await call("tools/call", {
       name: toolName,
       arguments: args,
-    });
+    }, options.timeoutMs ?? 10_000);
 
     return result;
   } finally {
-    rl.close();
-    child.kill();
+    if (!preserveChild) {
+      rl.close();
+      child.kill();
+    } else {
+      setTimeout(() => {
+      rl.close();
+      child.kill();
+      }, 30_000).unref?.();
+    }
   }
 }
 

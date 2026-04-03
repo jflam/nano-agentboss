@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -29,42 +29,43 @@ afterAll(() => {
   delete process.env.NANOBOSS_SELF_COMMAND;
 });
 
-async function withMockAgentEnv(run: () => Promise<void>): Promise<void> {
-  const originalCommand = process.env.NANOBOSS_AGENT_CMD;
-  const originalArgs = process.env.NANOBOSS_AGENT_ARGS;
-  const originalModel = process.env.NANOBOSS_AGENT_MODEL;
-  const originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
+async function withMockAgentEnv(
+  run: () => Promise<void>,
+  extraEnv: Record<string, string | undefined> = {},
+): Promise<void> {
+  const trackedKeys = [
+    "NANOBOSS_AGENT_CMD",
+    "NANOBOSS_AGENT_ARGS",
+    "NANOBOSS_AGENT_MODEL",
+    "NANOBOSS_SELF_COMMAND",
+    ...Object.keys(extraEnv),
+  ];
+  const originalEnv = new Map<string, string | undefined>(
+    trackedKeys.map((key) => [key, process.env[key]]),
+  );
 
   process.env.NANOBOSS_AGENT_CMD = "bun";
   process.env.NANOBOSS_AGENT_ARGS = JSON.stringify(["run", MOCK_AGENT_PATH]);
   delete process.env.NANOBOSS_AGENT_MODEL;
   process.env.NANOBOSS_SELF_COMMAND = SELF_COMMAND_PATH;
 
+  for (const [key, value] of Object.entries(extraEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
   try {
     await run();
   } finally {
-    if (originalCommand === undefined) {
-      delete process.env.NANOBOSS_AGENT_CMD;
-    } else {
-      process.env.NANOBOSS_AGENT_CMD = originalCommand;
-    }
-
-    if (originalArgs === undefined) {
-      delete process.env.NANOBOSS_AGENT_ARGS;
-    } else {
-      process.env.NANOBOSS_AGENT_ARGS = originalArgs;
-    }
-
-    if (originalModel === undefined) {
-      delete process.env.NANOBOSS_AGENT_MODEL;
-    } else {
-      process.env.NANOBOSS_AGENT_MODEL = originalModel;
-    }
-
-    if (originalSelfCommand === undefined) {
-      delete process.env.NANOBOSS_SELF_COMMAND;
-    } else {
-      process.env.NANOBOSS_SELF_COMMAND = originalSelfCommand;
+    for (const [key, value] of originalEnv) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
     }
   }
 }
@@ -85,6 +86,21 @@ async function createRegistryWithWorkspace(commandFiles: Record<string, string> 
   registry.loadBuiltins();
   await registry.loadFromDisk();
   return { cwd, registry };
+}
+
+function readStoredMockSession(sessionStoreDir: string): {
+  turns: Array<{ role: "user" | "assistant"; text: string }>;
+} {
+  const files = readdirSync(sessionStoreDir).filter((file) => file.endsWith(".json"));
+  expect(files).toHaveLength(1);
+  const fileName = files[0];
+  if (!fileName) {
+    throw new Error("Expected stored mock session file");
+  }
+
+  return JSON.parse(readFileSync(join(sessionStoreDir, fileName), "utf8")) as {
+    turns: Array<{ role: "user" | "assistant"; text: string }>;
+  };
 }
 
 describe("NanobossService", () => {
@@ -191,7 +207,70 @@ describe("NanobossService", () => {
     });
   }, 30_000);
 
-  test("publishes prompt diagnostics for openai-compatible default prompts after immediate slash-command sync", async () => {
+  test("recovers slash-command completion from a timed out procedure_dispatch call using the durable correlation id", async () => {
+    const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-service-recovery-agent-"));
+    const { cwd, registry } = await createRegistryWithWorkspace({
+      slowreview: [
+        "export default {",
+        '  name: "slowreview",',
+        '  description: "recoverable slow procedure",',
+        '  async execute(prompt) {',
+        '    await Bun.sleep(200);',
+        '    return {',
+        '      data: { subject: prompt, verdict: "recovered" },',
+        '      display: `recovered: ${prompt}`,',
+        '      summary: `recovered ${prompt}`,',
+        '      memory: `Recovered durable result for ${prompt}.`,',
+        '    };',
+        '  },',
+        "};",
+      ].join("\n"),
+    });
+
+    const service = new NanobossService(
+      registry,
+      (workspaceCwd) => ({
+        provider: "copilot",
+        command: "bun",
+        args: ["run", MOCK_AGENT_PATH],
+        cwd: workspaceCwd,
+        env: {
+          NANOBOSS_SELF_COMMAND: SELF_COMMAND_PATH,
+          MOCK_AGENT_SESSION_STORE_DIR: sessionStoreDir,
+          MOCK_AGENT_PROCEDURE_DISPATCH_TIMEOUT_MS: "50",
+          MOCK_AGENT_KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT: "1",
+        },
+      }),
+    );
+    const session = service.createSession({ cwd });
+
+    try {
+      await service.prompt(session.sessionId, "/slowreview patch");
+      await service.prompt(session.sessionId, "what mattered most?");
+
+      const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "slowreview");
+      const diagnostics = events.findLast((event) => event.type === "prompt_diagnostics");
+      const stored = readStoredMockSession(sessionStoreDir);
+      const promptTexts = stored.turns.filter((turn) => turn.role === "user").map((turn) => turn.text);
+
+      expect(completed?.type).toBe("run_completed");
+      expect(completed?.data.display).toBe("recovered: patch");
+      expect(completed?.data.tokenUsage).toMatchObject({
+        source: "acp_usage_update",
+        currentContextTokens: 512,
+        maxContextTokens: 8192,
+      });
+      expect(promptTexts.some((text) => text.includes("Nanoboss internal recovered procedure synchronization."))).toBe(true);
+      expect(diagnostics?.type).toBe("prompt_diagnostics");
+      expect(diagnostics?.data.diagnostics.guidanceTokens).toBeGreaterThan(0);
+      expect(diagnostics?.data.diagnostics.memoryCardsTokens).toBeUndefined();
+    } finally {
+      service.destroySession(session.sessionId);
+    }
+  }, 30_000);
+
+  test("publishes prompt diagnostics for openai-compatible default prompts without steady-state retrieval guidance after slash dispatch", async () => {
     const { cwd, registry } = await createRegistryWithWorkspace({
       review: [
         "export default {",
@@ -237,7 +316,7 @@ describe("NanobossService", () => {
       expect(diagnostics?.data.diagnostics.encoding).toBe("o200k_base");
       expect(diagnostics?.data.diagnostics.totalTokens).toBeGreaterThan(0);
       expect(diagnostics?.data.diagnostics.memoryCardsTokens).toBeUndefined();
-      expect(diagnostics?.data.diagnostics.guidanceTokens).toBeGreaterThan(0);
+      expect(diagnostics?.data.diagnostics.guidanceTokens).toBeUndefined();
       expect(diagnostics?.data.diagnostics.userMessageTokens).toBeGreaterThan(0);
     } finally {
       service.destroySession(session.sessionId);

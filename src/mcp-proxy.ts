@@ -1,3 +1,5 @@
+import { getBuildLabel } from "./build-info.ts";
+import { dispatchMcpToolsMethod } from "./mcp-jsonrpc.ts";
 import {
   callSessionMcpTool,
   createSessionMcpApi,
@@ -40,49 +42,17 @@ async function dispatchNanobossMcpMethod(
   method: string,
   params: unknown,
 ): Promise<unknown> {
-  switch (method) {
-    case "initialize":
-      return {
-        protocolVersion: NANOBOSS_MCP_PROTOCOL_VERSION,
-        capabilities: {
-          tools: {},
-        },
-        serverInfo: {
-          name: "nanoboss",
-          version: "0.1.0",
-        },
-        instructions: "Use these tools to inspect nanoboss session cells and refs, defaulting to the current session when possible.",
-      };
-    case "ping":
-      return {};
-    case "tools/list":
-      return {
-        tools: listSessionMcpTools(),
-      };
-    case "tools/call": {
-      const record = asObject(params);
-      const name = asString(record.name, "name");
-      const args = record.arguments === undefined ? {} : asObject(record.arguments);
-      return formatSessionMcpToolResult(name, await callSessionMcpTool(api, name, args));
-    }
-    default:
-      throw new Error(`Unsupported MCP method: ${method}`);
-  }
-}
-
-function asObject(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Expected object");
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function asString(value: unknown, name: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Expected ${name} to be a non-empty string`);
-  }
-
-  return value;
+  return await dispatchMcpToolsMethod({
+    api,
+    method,
+    messageParams: params,
+    protocolVersion: NANOBOSS_MCP_PROTOCOL_VERSION,
+    serverName: "nanoboss",
+    serverVersion: getBuildLabel(),
+    instructions: "Use these tools to inspect nanoboss session cells and refs, defaulting to the current session when possible.",
+    listTools: listSessionMcpTools,
+    callTool: callSessionMcpTool,
+    formatToolResult: formatSessionMcpToolResult,
+  });
 }
 

@@ -1,17 +1,13 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
-import { existsSync, readFileSync } from "node:fs";
-
 import { getBuildLabel } from "./build-info.ts";
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
-import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
+import { type SessionUpdateEmitter } from "./context.ts";
 import { DefaultConversationSession } from "./default-session.ts";
-import { inferDataShape } from "./data-shape.ts";
 import { normalizeAgentTokenUsage } from "./token-usage.ts";
 import { disposeSessionMcpTransport } from "./mcp-attachment.ts";
 import {
   collectUnsyncedProcedureMemoryCards,
-  hasTopLevelNonDefaultProcedureHistory,
   materializeProcedureMemoryCard,
   renderProcedureMemoryPreamble,
   renderSessionToolGuidance,
@@ -24,27 +20,28 @@ import {
   type FrontendCommand,
 } from "./frontend-events.ts";
 import { writeCurrentSessionPointer } from "./current-session.ts";
-import { RunLogger } from "./logger.ts";
+import { startProcedureDispatchProgressBridge } from "./procedure-dispatch-progress.ts";
+import {
+  buildRunCompletedEvent,
+  executeTopLevelProcedure,
+  TopLevelProcedureExecutionError,
+  type ProcedureExecutionResult,
+} from "./procedure-runner.ts";
+import {
+  isProcedureDispatchTimeout,
+  procedureDispatchResultFromRecoveredCell,
+  syncRecoveredProcedureResultIntoDefaultConversation,
+  waitForRecoveredProcedureDispatchCell,
+} from "./procedure-dispatch-recovery.ts";
 import { ProcedureRegistry } from "./registry.ts";
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
-import {
-  buildProcedureDispatchProgressPath,
-  isProcedureDispatchResult,
-  type ProcedureDispatchResult,
-} from "./session-mcp.ts";
-import {
-  SessionStore,
-  createValueRef,
-  normalizeProcedureResult,
-  summarizeText,
-} from "./session-store.ts";
+import { isProcedureDispatchResult } from "./session-mcp.ts";
+import { SessionStore } from "./session-store.ts";
 import type {
   AgentTokenUsage,
-  CellRecord,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
-  ValueRef,
 } from "./types.ts";
 
 interface SessionState {
@@ -54,6 +51,7 @@ interface SessionState {
   defaultAgentConfig: DownstreamAgentConfig;
   defaultConversation: DefaultConversationSession;
   syncedProcedureMemoryCellIds: Set<string>;
+  recentRecoverySyncAtMs?: number;
   abortController?: AbortController;
   commands: FrontendCommand[];
 }
@@ -230,7 +228,8 @@ export class NanobossService {
     );
     const blocks: string[] = [];
     const preamble = renderProcedureMemoryPreamble(cards);
-    const includeGuidance = Boolean(preamble) || hasTopLevelNonDefaultProcedureHistory(session.store);
+    const includeRecoveryGuidance = shouldIncludeRecoveredProcedureGuidance(session);
+    const includeGuidance = Boolean(preamble) || includeRecoveryGuidance;
 
     const promptDiagnostics = estimateDefaultPromptDiagnostics(session.defaultAgentConfig, {
       prompt,
@@ -260,7 +259,7 @@ export class NanobossService {
 
     if (preamble) {
       blocks.push(preamble);
-    } else if (includeGuidance) {
+    } else if (includeRecoveryGuidance) {
       blocks.push(renderSessionToolGuidance());
     }
 
@@ -288,13 +287,12 @@ export class NanobossService {
     procedureName: string,
     procedurePrompt: string,
     emitter: CompositeSessionUpdateEmitter,
-  ): Promise<{ result: ProcedureDispatchResult; tokenUsage?: AgentTokenUsage }> {
+  ): Promise<{ result: ProcedureExecutionResult; tokenUsage?: AgentTokenUsage }> {
     const bufferedTextUpdates: acp.SessionUpdate[] = [];
-    const dispatchStartedAtMs = Date.now();
-    const progressDispatchId = crypto.randomUUID();
+    const dispatchCorrelationId = crypto.randomUUID();
     const stopProgressBridge = startProcedureDispatchProgressBridge(
       session.store.rootDir,
-      progressDispatchId,
+      dispatchCorrelationId,
       emitter,
     );
 
@@ -304,7 +302,7 @@ export class NanobossService {
           procedureName,
           procedurePrompt,
           toDownstreamAgentSelection(session.defaultAgentConfig),
-          progressDispatchId,
+          dispatchCorrelationId,
         ),
         {
           signal: session.abortController?.signal,
@@ -342,8 +340,7 @@ export class NanobossService {
         const recovered = await this.recoverTimedOutProcedureDispatch(
           session,
           procedureName,
-          procedurePrompt,
-          dispatchStartedAtMs,
+          dispatchCorrelationId,
         );
         if (recovered) {
           return recovered;
@@ -367,42 +364,45 @@ export class NanobossService {
   private async recoverTimedOutProcedureDispatch(
     session: SessionState,
     procedureName: string,
-    procedurePrompt: string,
-    dispatchStartedAtMs: number,
-  ): Promise<{ result: ProcedureDispatchResult; tokenUsage?: AgentTokenUsage } | undefined> {
-    const cell = await waitForProcedureDispatchCell(
+    dispatchCorrelationId: string,
+  ): Promise<{ result: ProcedureExecutionResult; tokenUsage?: AgentTokenUsage } | undefined> {
+    const cell = await waitForRecoveredProcedureDispatchCell(
       session.store,
-      procedureName,
-      procedurePrompt,
-      dispatchStartedAtMs,
+      {
+        procedureName,
+        dispatchCorrelationId,
+      },
     );
     if (!cell) {
       return undefined;
     }
 
-    const tokenUsage = await this.syncProcedureResultIntoDefaultConversation(session, cell);
+    const tokenUsage = await syncRecoveredProcedureResultIntoDefaultConversation({
+      defaultConversation: session.defaultConversation,
+      sessionId: session.store.sessionId,
+      cell,
+      signal: session.abortController?.signal,
+      defaultAgentConfig: session.defaultAgentConfig,
+    });
+    session.syncedProcedureMemoryCellIds.add(cell.cellId);
+    session.recentRecoverySyncAtMs = Date.now();
     return {
-      result: procedureDispatchResultFromCell(session.store.sessionId, cell),
+      result: procedureDispatchResultFromRecoveredCell(session.store.sessionId, cell),
       tokenUsage,
     };
   }
 
-  private async syncProcedureResultIntoDefaultConversation(
+  private applyDefaultAgentSelection(
     session: SessionState,
-    cell: CellRecord,
-  ): Promise<AgentTokenUsage | undefined> {
-    await session.defaultConversation.prompt(
-      buildProcedureSyncPrompt(session.store.sessionId, cell),
-      {
-        signal: session.abortController?.signal,
-      },
-    );
-    session.syncedProcedureMemoryCellIds.add(cell.cellId);
+    selection: DownstreamAgentSelection | undefined,
+  ): void {
+    if (!selection) {
+      return;
+    }
 
-    return normalizeAgentTokenUsage(
-      await session.defaultConversation.getCurrentTokenSnapshot(),
-      session.defaultAgentConfig,
-    );
+    const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
+    session.defaultAgentConfig = nextConfig;
+    session.defaultConversation.updateConfig(nextConfig);
   }
 
   async prompt(
@@ -494,11 +494,7 @@ export class NanobossService {
           emitter,
         );
 
-        if (dispatched.result.defaultAgentSelection) {
-          const nextConfig = this.resolveDefaultAgentConfig(session.cwd, dispatched.result.defaultAgentSelection);
-          session.defaultAgentConfig = nextConfig;
-          session.defaultConversation.updateConfig(nextConfig);
-        }
+        this.applyDefaultAgentSelection(session, dispatched.result.defaultAgentSelection);
 
         if (dispatched.result.display && !emitter.hasStreamedText(dispatched.result.display)) {
           emitter.emit({
@@ -511,67 +507,42 @@ export class NanobossService {
         }
 
         publishStoredMemoryCard(session, sessionId, runId, dispatched.result.cell);
-        session.events.publish(sessionId, {
-          type: "run_completed",
-          runId,
-          procedure: procedure.name,
-          completedAt: new Date().toISOString(),
-          cell: dispatched.result.cell,
-          summary: dispatched.result.summary,
-          display: dispatched.result.display,
-          tokenUsage: dispatched.tokenUsage,
-        });
+        session.events.publish(
+          sessionId,
+          buildRunCompletedEvent({
+            runId,
+            procedure: procedure.name,
+            result: dispatched.result,
+            tokenUsage: dispatched.tokenUsage,
+          }),
+        );
         markRunActivity();
       } else {
-        const logger = new RunLogger();
-        const rootSpanId = logger.newSpan();
-        const rootCell = session.store.startCell({
-          procedure: procedure.name,
-          input: commandPrompt,
-          kind: "top_level",
-        });
-        const ctx = new CommandContextImpl({
-          cwd: session.cwd,
-          sessionId,
-          logger,
-          registry: this.registry,
-          procedureName: procedure.name,
-          spanId: rootSpanId,
-          emitter,
-          store: session.store,
-          cell: rootCell,
-          signal: session.abortController.signal,
-          defaultConversation: session.defaultConversation,
-          getDefaultAgentConfig: () => session.defaultAgentConfig,
-          setDefaultAgentSelection: (selection) => {
-            const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
-            session.defaultAgentConfig = nextConfig;
-            session.defaultConversation.updateConfig(nextConfig);
-            return nextConfig;
-          },
-          prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId),
-        });
-
-        logger.write({
-          spanId: rootSpanId,
-          procedure: procedure.name,
-          kind: "procedure_start",
-          prompt: commandPrompt,
-        });
-
         try {
-          const rawResult = await procedure.execute(commandPrompt, ctx);
-          const result = normalizeProcedureResult(rawResult);
-          const finalized = session.store.finalizeCell(rootCell, result);
-
-          logger.write({
-            spanId: rootSpanId,
-            procedure: procedure.name,
-            kind: "procedure_end",
-            durationMs: Date.now() - startedAt,
-            result: result.data,
-            raw: result.display,
+          const result = await executeTopLevelProcedure({
+            cwd: session.cwd,
+            sessionId,
+            store: session.store,
+            registry: this.registry,
+            procedure,
+            prompt: commandPrompt,
+            emitter,
+            signal: session.abortController.signal,
+            defaultConversation: session.defaultConversation,
+            getDefaultAgentConfig: () => session.defaultAgentConfig,
+            setDefaultAgentSelection: (selection) => {
+              const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
+              session.defaultAgentConfig = nextConfig;
+              session.defaultConversation.updateConfig(nextConfig);
+              return nextConfig;
+            },
+            prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId),
+            onError: (ctx, errorText) => {
+              ctx.print(errorText);
+            },
           });
+
+          this.applyDefaultAgentSelection(session, result.defaultAgentSelection);
 
           if (result.display && !emitter.hasStreamedText(result.display)) {
             emitter.emit({
@@ -583,46 +554,30 @@ export class NanobossService {
             });
           }
 
-          publishStoredMemoryCard(session, sessionId, runId, finalized.cell);
-          session.events.publish(sessionId, {
-            type: "run_completed",
-            runId,
-            procedure: procedure.name,
-            completedAt: new Date().toISOString(),
-            cell: finalized.cell,
-            summary: finalized.summary,
-            display: result.display,
-            tokenUsage: emitter.currentTokenUsage,
-          });
+          publishStoredMemoryCard(session, sessionId, runId, result.cell);
+          session.events.publish(
+            sessionId,
+            buildRunCompletedEvent({
+              runId,
+              procedure: procedure.name,
+              result,
+              tokenUsage: result.tokenUsage,
+            }),
+          );
           markRunActivity();
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          const errorText = `Error: ${message}\n`;
-
-          logger.write({
-            spanId: rootSpanId,
-            procedure: procedure.name,
-            kind: "procedure_end",
-            durationMs: Date.now() - startedAt,
-            error: message,
-          });
-
-          ctx.print(errorText);
-          const finalized = session.store.finalizeCell(rootCell, {
-            summary: summarizeText(errorText),
-          });
-
-          session.events.publish(sessionId, {
-            type: "run_failed",
-            runId,
-            procedure: procedure.name,
-            completedAt: new Date().toISOString(),
-            error: message,
-            cell: finalized.cell,
-          });
-          markRunActivity();
-        } finally {
-          logger.close();
+          if (error instanceof TopLevelProcedureExecutionError) {
+            session.events.publish(sessionId, {
+              type: "run_failed",
+              runId,
+              procedure: procedure.name,
+              completedAt: new Date().toISOString(),
+              error: error.message,
+              cell: error.cell,
+            });
+            markRunActivity();
+          }
+          throw error;
         }
       }
     } catch (error) {
@@ -637,14 +592,16 @@ export class NanobossService {
         });
       }
 
-      session.events.publish(sessionId, {
-        type: "run_failed",
-        runId,
-        procedure: procedure.name,
-        completedAt: new Date().toISOString(),
-        error: message,
-      });
-      markRunActivity();
+      if (!(error instanceof TopLevelProcedureExecutionError)) {
+        session.events.publish(sessionId, {
+          type: "run_failed",
+          runId,
+          procedure: procedure.name,
+          completedAt: new Date().toISOString(),
+          error: message,
+        });
+        markRunActivity();
+      }
     } finally {
       clearInterval(heartbeatTimer);
       const commands = toFrontendCommands(this.registry.toAvailableCommands());
@@ -668,60 +625,6 @@ export class NanobossService {
 function getRunHeartbeatMs(): number {
   const value = Number(process.env.NANOBOSS_RUN_HEARTBEAT_MS ?? "5000");
   return Number.isFinite(value) && value > 0 ? value : 5000;
-}
-
-function startProcedureDispatchProgressBridge(
-  rootDir: string,
-  dispatchId: string,
-  emitter: CompositeSessionUpdateEmitter,
-): () => Promise<void> {
-  const progressPath = buildProcedureDispatchProgressPath(rootDir, dispatchId);
-  let byteOffset = 0;
-  let remainder = "";
-  let stopped = false;
-
-  const drain = () => {
-    if (!existsSync(progressPath)) {
-      return;
-    }
-
-    const content = readFileSync(progressPath, "utf8");
-    const nextChunk = content.slice(byteOffset);
-    if (!nextChunk) {
-      return;
-    }
-
-    byteOffset = content.length;
-    const combined = remainder + nextChunk;
-    const lines = combined.split("\n");
-    remainder = lines.pop() ?? "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-
-      try {
-        emitter.emit(JSON.parse(trimmed) as acp.SessionUpdate);
-      } catch {
-        // Ignore malformed progress updates.
-      }
-    }
-  };
-
-  const interval = setInterval(() => {
-    if (stopped) {
-      return;
-    }
-    drain();
-  }, 100);
-
-  return async () => {
-    stopped = true;
-    clearInterval(interval);
-    drain();
-  };
 }
 
 function publishStoredMemoryCard(
@@ -754,11 +657,24 @@ function publishStoredMemoryCard(
   });
 }
 
+function shouldIncludeRecoveredProcedureGuidance(session: SessionState): boolean {
+  if (!session.recentRecoverySyncAtMs) {
+    return false;
+  }
+
+  return Date.now() - session.recentRecoverySyncAtMs <= getRecoveredProcedureGuidanceWindowMs();
+}
+
+function getRecoveredProcedureGuidanceWindowMs(): number {
+  const value = Number(process.env.NANOBOSS_RECOVERED_PROCEDURE_GUIDANCE_WINDOW_MS ?? "300000");
+  return Number.isFinite(value) && value > 0 ? value : 300000;
+}
+
 function buildProcedureDispatchPrompt(
   procedureName: string,
   procedurePrompt: string,
   defaultAgentSelection?: DownstreamAgentSelection,
-  progressDispatchId?: string,
+  dispatchCorrelationId?: string,
 ): string {
   return [
     "Nanoboss internal slash-command dispatch.",
@@ -768,53 +684,14 @@ function buildProcedureDispatchPrompt(
       name: procedureName,
       prompt: procedurePrompt,
       defaultAgentSelection,
-      progressDispatchId,
+      dispatchCorrelationId,
     }),
     "Do not answer from your own knowledge.",
     "After the tool completes, reply with exactly the tool result text and nothing else.",
   ].join("\n\n");
 }
 
-function buildProcedureSyncPrompt(sessionId: string, cell: CellRecord): string {
-  const cellRef = { sessionId, cellId: cell.cellId };
-  const dataRef = cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined;
-  const displayRef = cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined;
-  const dataShape = cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined;
-
-  return [
-    "Nanoboss internal session synchronization.",
-    "A slash command just completed in the current master conversation after tool-timeout recovery.",
-    "Treat the following as the durable result of that completed slash-command/tool invocation for future turns.",
-    "Do not answer the user. Respond with exactly: OK",
-    "",
-    `Procedure: /${cell.procedure}`,
-    cell.input.trim() ? `Original input: ${summarizeText(cell.input, 500)}` : undefined,
-    cell.output.summary ? `Summary: ${summarizeText(cell.output.summary, 800)}` : undefined,
-    cell.output.memory ? `Memory: ${summarizeText(cell.output.memory, 800)}` : undefined,
-    !cell.output.summary && !cell.output.memory && cell.output.display
-      ? `Display preview: ${summarizeText(cell.output.display, 1200)}`
-      : undefined,
-    `Cell: session=${sessionId} cell=${cell.cellId}`,
-    dataRef ? `Data ref: ${formatValueRef(dataRef)}` : undefined,
-    displayRef ? `Display ref: ${formatValueRef(displayRef)}` : undefined,
-    dataShape !== undefined ? `Data shape: ${JSON.stringify(dataShape)}` : undefined,
-    cell.output.explicitDataSchema
-      ? `Explicit data schema: ${summarizeText(JSON.stringify(cell.output.explicitDataSchema), 800)}`
-      : undefined,
-    "",
-    "Use the attached nanoboss session MCP tools later if you need exact stored values.",
-  ].filter((line): line is string => Boolean(line)).join("\n");
-}
-
-function formatValueRef(valueRef: ValueRef): string {
-  return [
-    `session=${valueRef.cell.sessionId}`,
-    `cell=${valueRef.cell.cellId}`,
-    `path=${valueRef.path}`,
-  ].join(" ");
-}
-
-export function extractProcedureDispatchResult(updates: acp.SessionUpdate[]): ProcedureDispatchResult | undefined {
+export function extractProcedureDispatchResult(updates: acp.SessionUpdate[]): ProcedureExecutionResult | undefined {
   for (const update of [...updates].reverse()) {
     if (update.sessionUpdate !== "tool_call_update" || update.status !== "completed") {
       continue;
@@ -849,7 +726,7 @@ function collectProcedureDispatchCandidates(update: Extract<acp.SessionUpdate, {
   return candidates;
 }
 
-function parseProcedureDispatchResultCandidate(value: unknown): ProcedureDispatchResult | undefined {
+function parseProcedureDispatchResultCandidate(value: unknown): ProcedureExecutionResult | undefined {
   if (isProcedureDispatchResult(value)) {
     return value;
   }
@@ -919,77 +796,6 @@ function extractProcedureDispatchFailure(updates: acp.SessionUpdate[]): string |
   }
 
   return undefined;
-}
-
-function isProcedureDispatchTimeout(message: string | undefined): boolean {
-  return Boolean(message && /request timed out/i.test(message));
-}
-
-async function waitForProcedureDispatchCell(
-  store: SessionStore,
-  procedureName: string,
-  procedurePrompt: string,
-  dispatchStartedAtMs: number,
-): Promise<CellRecord | undefined> {
-  const deadline = Date.now() + getProcedureDispatchRecoveryWaitMs();
-
-  for (;;) {
-    const found = findProcedureDispatchCell(store, procedureName, procedurePrompt, dispatchStartedAtMs);
-    if (found) {
-      return found;
-    }
-
-    if (Date.now() >= deadline) {
-      return undefined;
-    }
-
-    await Bun.sleep(1_000);
-  }
-}
-
-function findProcedureDispatchCell(
-  store: SessionStore,
-  procedureName: string,
-  procedurePrompt: string,
-  dispatchStartedAtMs: number,
-): CellRecord | undefined {
-  const summaries = store.topLevelRuns({ procedure: procedureName, limit: 50 });
-  for (const summary of summaries) {
-    const cell = store.readCell(summary.cell);
-    if (cell.input !== procedurePrompt) {
-      continue;
-    }
-
-    const createdAtMs = Date.parse(cell.meta.createdAt);
-    if (Number.isFinite(createdAtMs) && createdAtMs + 5_000 < dispatchStartedAtMs) {
-      continue;
-    }
-
-    return cell;
-  }
-
-  return undefined;
-}
-
-function getProcedureDispatchRecoveryWaitMs(): number {
-  const value = Number(process.env.NANOBOSS_PROCEDURE_DISPATCH_RECOVERY_WAIT_MS ?? "30000");
-  return Number.isFinite(value) && value > 0 ? value : 30000;
-}
-
-function procedureDispatchResultFromCell(sessionId: string, cell: CellRecord): ProcedureDispatchResult {
-  const cellRef = { sessionId, cellId: cell.cellId };
-  return {
-    procedure: cell.procedure,
-    cell: cellRef,
-    summary: cell.output.summary,
-    display: cell.output.display,
-    memory: cell.output.memory,
-    dataRef: cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined,
-    displayRef: cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined,
-    streamRef: cell.output.stream !== undefined ? createValueRef(cellRef, "output.stream") : undefined,
-    dataShape: cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined,
-    explicitDataSchema: cell.output.explicitDataSchema,
-  };
 }
 
 function resolveCommand(text: string): { commandName: string; commandPrompt: string } {

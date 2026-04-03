@@ -332,9 +332,11 @@ describe("session MCP API", () => {
       inputHint: "subject to review",
     });
 
+    const dispatchCorrelationId = crypto.randomUUID();
     const dispatched = await callSessionMcpTool(api, "procedure_dispatch", {
       name: "review",
       prompt: "patch",
+      dispatchCorrelationId,
     }) as {
       procedure: string;
       cell: { sessionId: string; cellId: string };
@@ -364,6 +366,7 @@ describe("session MCP API", () => {
         summary: "review patch",
       },
     ]);
+    expect(api.cellGet(dispatched.cell).meta.dispatchCorrelationId).toBe(dispatchCorrelationId);
     expect(dispatched.dataRef ? api.refRead(dispatched.dataRef) : undefined).toEqual({
       subject: "patch",
       verdict: "mixed",

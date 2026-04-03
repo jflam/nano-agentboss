@@ -67,7 +67,7 @@ See [`docs/architecture.md`](docs/architecture.md) for a transport-level overvie
 - local CLI over ACP/stdin-stdout
 - HTTP/SSE frontend mode
 - downstream agent ACP sessions
-- session MCP over loopback HTTP
+- session MCP over stdio
 
 ## Commands
 
