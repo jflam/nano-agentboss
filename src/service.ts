@@ -4,6 +4,7 @@ import { getBuildLabel } from "./build-info.ts";
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
 import { DefaultConversationSession } from "./default-session.ts";
+import { inferDataShape } from "./data-shape.ts";
 import { disposeSessionMcpTransport } from "./mcp-attachment.ts";
 import {
   collectUnsyncedProcedureMemoryCards,
@@ -26,10 +27,17 @@ import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import {
   SessionStore,
+  createValueRef,
   normalizeProcedureResult,
   summarizeText,
 } from "./session-store.ts";
-import type { AgentTokenUsage, DownstreamAgentConfig, DownstreamAgentSelection } from "./types.ts";
+import type {
+  AgentTokenUsage,
+  CellRecord,
+  DownstreamAgentConfig,
+  DownstreamAgentSelection,
+  ValueRef,
+} from "./types.ts";
 
 interface SessionState {
   cwd: string;
@@ -263,6 +271,28 @@ export class NanobossService {
     };
   }
 
+  private async syncProcedureResultIntoDefaultConversation(
+    session: SessionState,
+    cellId: string,
+  ): Promise<void> {
+    const cell = session.store.readCell({
+      sessionId: session.store.sessionId,
+      cellId,
+    });
+
+    if (cell.procedure === "default") {
+      return;
+    }
+
+    await session.defaultConversation.prompt(
+      buildProcedureSyncPrompt(session.store.sessionId, cell),
+      {
+        signal: session.abortController?.signal,
+      },
+    );
+    session.syncedProcedureMemoryCellIds.add(cell.cellId);
+  }
+
   async prompt(
     sessionId: string,
     promptText: string,
@@ -419,6 +449,14 @@ export class NanobossService {
         });
       }
 
+      if (procedure.name !== "default") {
+        try {
+          await this.syncProcedureResultIntoDefaultConversation(session, finalized.cell.cellId);
+        } catch {
+          // Leave the procedure unsynced so the next default turn can still bridge it via memory cards.
+        }
+      }
+
       session.events.publish(sessionId, {
         type: "run_completed",
         runId,
@@ -446,6 +484,14 @@ export class NanobossService {
       const finalized = session.store.finalizeCell(rootCell, {
         summary: summarizeText(errorText),
       });
+
+      if (procedure.name !== "default") {
+        try {
+          await this.syncProcedureResultIntoDefaultConversation(session, finalized.cell.cellId);
+        } catch {
+          // Leave the failed procedure unsynced so the next default turn can still bridge it via memory cards.
+        }
+      }
 
       session.events.publish(sessionId, {
         type: "run_failed",
@@ -480,6 +526,45 @@ export class NanobossService {
 function getRunHeartbeatMs(): number {
   const value = Number(process.env.NANOBOSS_RUN_HEARTBEAT_MS ?? "5000");
   return Number.isFinite(value) && value > 0 ? value : 5000;
+}
+
+function buildProcedureSyncPrompt(sessionId: string, cell: CellRecord): string {
+  const cellRef = { sessionId, cellId: cell.cellId };
+  const dataRef = cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined;
+  const displayRef = cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined;
+  const dataShape = cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined;
+
+  return [
+    "Nanoboss internal session synchronization.",
+    "A slash command just completed in the current master conversation.",
+    "Treat the following as the durable result of that completed slash-command/tool invocation for future turns.",
+    "Do not answer the user. Respond with exactly: OK",
+    "",
+    `Procedure: /${cell.procedure}`,
+    cell.input.trim() ? `Original input: ${summarizeText(cell.input, 500)}` : undefined,
+    cell.output.summary ? `Summary: ${summarizeText(cell.output.summary, 800)}` : undefined,
+    cell.output.memory ? `Memory: ${summarizeText(cell.output.memory, 800)}` : undefined,
+    !cell.output.summary && !cell.output.memory && cell.output.display
+      ? `Display preview: ${summarizeText(cell.output.display, 1200)}`
+      : undefined,
+    `Cell: session=${sessionId} cell=${cell.cellId}`,
+    dataRef ? `Data ref: ${formatValueRef(dataRef)}` : undefined,
+    displayRef ? `Display ref: ${formatValueRef(displayRef)}` : undefined,
+    dataShape !== undefined ? `Data shape: ${JSON.stringify(dataShape)}` : undefined,
+    cell.output.explicitDataSchema
+      ? `Explicit data schema: ${summarizeText(JSON.stringify(cell.output.explicitDataSchema), 800)}`
+      : undefined,
+    "",
+    "Use the attached nanoboss session MCP tools later if you need exact stored values.",
+  ].filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function formatValueRef(valueRef: ValueRef): string {
+  return [
+    `session=${valueRef.cell.sessionId}`,
+    `cell=${valueRef.cell.cellId}`,
+    `path=${valueRef.path}`,
+  ].join(" ");
 }
 
 function resolveCommand(text: string): { commandName: string; commandPrompt: string } {

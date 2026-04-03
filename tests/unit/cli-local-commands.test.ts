@@ -54,6 +54,19 @@ async function waitForContains(producer: () => string, text: string, timeoutMs =
   }
 }
 
+async function waitForPromptCount(producer: () => string, expectedCount: number, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (countOccurrences(producer(), "> ") >= expectedCount) {
+      return;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for prompt count ${String(expectedCount)} in output:\n${producer()}`);
+    }
+    await Bun.sleep(50);
+  }
+}
+
 async function waitForServerHealth(serverUrl: string, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -71,6 +84,20 @@ async function waitForServerHealth(serverUrl: string, timeoutMs = 10_000): Promi
     }
 
     await Bun.sleep(50);
+  }
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  let count = 0;
+  let offset = 0;
+
+  for (;;) {
+    const index = haystack.indexOf(needle, offset);
+    if (index < 0) {
+      return count;
+    }
+    count += 1;
+    offset = index + needle.length;
   }
 }
 
@@ -228,23 +255,17 @@ test("renders stored and injected memory cards around default turns", async () =
 
   try {
     await waitForContains(cli.stdout, "> ");
+    const initialPromptCount = countOccurrences(cli.stdout(), "> ");
     cli.process.stdin.write("/tokens\n");
     await waitForContains(cli.stdout, "No live token metrics yet.");
     await waitForContains(cli.stderr, "[memory] stored /tokens @ ");
+    await waitForPromptCount(cli.stdout, initialPromptCount + 1);
 
-    await waitForContains(cli.stdout, "> ");
     cli.process.stdin.write("what is 2+2\n");
-    await waitForContains(cli.stderr, "[memory] injecting 1 card");
-    await waitForContains(cli.stderr, "│ /tokens @ ");
-    await waitForContains(cli.stderr, "│   summary: tokens: unavailable");
-    await waitForContains(cli.stderr, "│   memory: tokens: unavailable");
     await waitForContains(cli.stderr, "[tool] defaultSession: what is 2+2");
 
     expect(cli.stderr()).toContain("[memory] stored /tokens @ ");
-    expect(cli.stderr()).toContain("[memory] injecting 1 card");
-    expect(cli.stderr()).toContain("│ /tokens @ ");
-    expect(cli.stderr()).toContain("│   summary: tokens: unavailable");
-    expect(cli.stderr()).toContain("│   memory: tokens: unavailable");
+    expect(cli.stderr()).not.toContain("[memory] injecting 1 card");
   } finally {
     if (cli.process.exitCode === null) {
       cli.process.kill();

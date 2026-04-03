@@ -111,7 +111,7 @@ describe("NanobossService", () => {
     });
   }, 30_000);
 
-  test("publishes prompt diagnostics for openai-compatible default prompts", async () => {
+  test("publishes prompt diagnostics for openai-compatible default prompts after immediate slash-command sync", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
     registry.loadBuiltins();
     registry.register({
@@ -149,13 +149,13 @@ describe("NanobossService", () => {
 
       expect(storedCard?.type).toBe("memory_card_stored");
       expect(storedCard?.data.card.estimatedPromptTokens).toBeGreaterThan(0);
-      expect(memoryCards?.type).toBe("memory_cards");
-      expect(memoryCards?.data.cards[0]?.estimatedPromptTokens).toBeGreaterThan(0);
+      expect(memoryCards).toBeUndefined();
       expect(diagnostics?.type).toBe("prompt_diagnostics");
       expect(diagnostics?.data.diagnostics.method).toBe("tiktoken");
       expect(diagnostics?.data.diagnostics.encoding).toBe("o200k_base");
       expect(diagnostics?.data.diagnostics.totalTokens).toBeGreaterThan(0);
-      expect(diagnostics?.data.diagnostics.memoryCardsTokens).toBeGreaterThan(0);
+      expect(diagnostics?.data.diagnostics.memoryCardsTokens).toBeUndefined();
+      expect(diagnostics?.data.diagnostics.guidanceTokens).toBeGreaterThan(0);
       expect(diagnostics?.data.diagnostics.userMessageTokens).toBeGreaterThan(0);
     } finally {
       service.destroySession(session.sessionId);
@@ -163,16 +163,18 @@ describe("NanobossService", () => {
   }, 30_000);
 
   test("/model updates the session default agent banner", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
-    registry.loadBuiltins();
+    await withMockAgentEnv(async () => {
+      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+      registry.loadBuiltins();
 
-    const service = new NanobossService(registry);
-    const session = service.createSession({ cwd: process.cwd() });
+      const service = new NanobossService(registry);
+      const session = service.createSession({ cwd: process.cwd() });
 
-    await service.prompt(session.sessionId, "/model copilot gpt-5.4/xhigh");
+      await service.prompt(session.sessionId, "/model copilot gpt-5.4/xhigh");
 
-    expect(service.getSession(session.sessionId)?.agentLabel).toBe("copilot/gpt-5.4/x-high");
-  });
+      expect(service.getSession(session.sessionId)?.agentLabel).toBe("copilot/gpt-5.4/x-high");
+    });
+  }, 30_000);
 
   test("createSession accepts an inherited default agent selection", () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
@@ -221,43 +223,45 @@ describe("NanobossService", () => {
   });
 
   test("session inspection commands can read current-session results", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
-    registry.loadBuiltins();
-    registry.register({
-      name: "review",
-      description: "store a durable review result",
-      async execute(prompt) {
-        return {
-          data: {
-            subject: prompt,
-            verdict: "mixed",
-          },
-          display: "review stored",
-          summary: `review ${prompt}`,
-        };
-      },
+    await withMockAgentEnv(async () => {
+      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+      registry.loadBuiltins();
+      registry.register({
+        name: "review",
+        description: "store a durable review result",
+        async execute(prompt) {
+          return {
+            data: {
+              subject: prompt,
+              verdict: "mixed",
+            },
+            display: "review stored",
+            summary: `review ${prompt}`,
+          };
+        },
+      });
+
+      const service = new NanobossService(registry);
+      const session = service.createSession({ cwd: process.cwd() });
+
+      await service.prompt(session.sessionId, "/review patch");
+
+      const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const runCompleted = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "review");
+      const cell = runCompleted?.type === "run_completed" ? runCompleted.data.cell : undefined;
+
+      expect(cell).toBeDefined();
+
+      await service.prompt(session.sessionId, `/ref_read session=${session.sessionId} cell=${cell?.cellId} path=output.data`);
+
+      const afterRefRead = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const text = afterRefRead
+        .filter((event) => event.type === "text_delta")
+        .map((event) => event.data.text)
+        .join("");
+
+      expect(text).toContain("\"subject\": \"patch\"");
+      expect(text).toContain("\"verdict\": \"mixed\"");
     });
-
-    const service = new NanobossService(registry);
-    const session = service.createSession({ cwd: process.cwd() });
-
-    await service.prompt(session.sessionId, "/review patch");
-
-    const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
-    const runCompleted = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "review");
-    const cell = runCompleted?.type === "run_completed" ? runCompleted.data.cell : undefined;
-
-    expect(cell).toBeDefined();
-
-    await service.prompt(session.sessionId, `/ref_read session=${session.sessionId} cell=${cell?.cellId} path=output.data`);
-
-    const afterRefRead = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
-    const text = afterRefRead
-      .filter((event) => event.type === "text_delta")
-      .map((event) => event.data.text)
-      .join("");
-
-    expect(text).toContain("\"subject\": \"patch\"");
-    expect(text).toContain("\"verdict\": \"mixed\"");
-  });
+  }, 30_000);
 });

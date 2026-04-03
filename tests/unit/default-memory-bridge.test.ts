@@ -50,7 +50,7 @@ function readStoredMockSession(sessionStoreDir: string): {
 }
 
 describe("default session memory bridge", () => {
-  test("injects unsynced procedure memory once before the next default turn", async () => {
+  test("syncs procedure results into the default session immediately and skips delayed memory injection", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-memory-registry-")));
     tempDirs.push(registry.commandsDir);
     registry.loadBuiltins();
@@ -84,29 +84,41 @@ describe("default session memory bridge", () => {
 
     try {
       await service.prompt(session.sessionId, "/review the code");
+
+      const storedAfterReview = readStoredMockSession(mockSessionStoreDir);
+      const syncPrompt = storedAfterReview.turns[0]?.text;
+      expect(syncPrompt).toContain("Nanoboss internal session synchronization.");
+      expect(syncPrompt).toContain("Procedure: /review");
+      expect(syncPrompt).toContain("Original input: the code");
+      expect(syncPrompt).toContain("Summary: review summary for the code");
+      expect(syncPrompt).toContain("Memory: The most important issue for the code was missing edge-case analysis.");
+      expect(syncPrompt).toContain("Data shape:");
+      expect(syncPrompt).toContain("critiqueMainIssue");
+      expect(syncPrompt).toContain("Use the attached nanoboss session MCP tools later if you need exact stored values.");
+      expect(syncPrompt).not.toContain("full rendered review output that should stay out of the default prompt");
+
       await service.prompt(session.sessionId, "what mattered most?");
 
       const storedAfterFirstDefault = readStoredMockSession(mockSessionStoreDir);
-      const firstUserPrompt = storedAfterFirstDefault.turns[0]?.text;
-      expect(firstUserPrompt).toContain("Nanoboss session memory update:");
-      expect(firstUserPrompt).toContain("procedure: /review");
-      expect(firstUserPrompt).toContain("The most important issue for the code was missing edge-case analysis.");
-      expect(firstUserPrompt).toContain("critiqueMainIssue");
+      const firstUserPrompt = storedAfterFirstDefault.turns[2]?.text;
+      expect(firstUserPrompt).toContain("Nanoboss session tool guidance:");
       expect(firstUserPrompt).toContain("Use top_level_runs(...) or /top_level_runs to find prior chat-visible commands");
       expect(firstUserPrompt).toContain("Use session_recent(...) or /session_recent only for true global recency scans across the whole session; it is not the primary retrieval path.");
       expect(firstUserPrompt).toContain("If ref_read(...) returns nested refs such as critique or answer, call ref_read(...) on those refs too.");
       expect(firstUserPrompt).toContain("Do not treat not-found results from a bounded scan as proof of absence unless the search scope was exhaustive.");
       expect(firstUserPrompt).toContain("Do not inspect ~/.nanoboss/sessions directly unless the session MCP tools fail.");
       expect(firstUserPrompt).toContain("User message:\nwhat mattered most?");
-      expect(firstUserPrompt).not.toContain("full rendered review output that should stay out of the default prompt");
+      expect(firstUserPrompt).not.toContain("Nanoboss session memory update:");
+      expect(firstUserPrompt).not.toContain("procedure: /review");
 
       await service.prompt(session.sessionId, "and now?");
 
       const storedAfterSecondDefault = readStoredMockSession(mockSessionStoreDir);
-      const secondUserPrompt = storedAfterSecondDefault.turns[2]?.text;
+      const secondUserPrompt = storedAfterSecondDefault.turns[4]?.text;
       expect(secondUserPrompt).toContain("Nanoboss session tool guidance:");
       expect(secondUserPrompt).toContain("Use cell_descendants(...) or /cell_descendants to inspect nested procedure and agent calls under one run; set maxDepth=1 when you only want direct children.");
       expect(secondUserPrompt).toContain("User message:\nand now?");
+      expect(secondUserPrompt).not.toContain("Nanoboss session memory update:");
     } finally {
       service.destroySession(session.sessionId);
     }

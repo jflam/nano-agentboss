@@ -151,6 +151,10 @@ async function answerForPrompt(prompt: string, session: StoredSession): Promise<
     await Bun.sleep(3_500);
   }
 
+  if (prompt.includes("Nanoboss internal session synchronization.")) {
+    return "OK";
+  }
+
   if (normalized.includes("what is 2+2") || normalized.includes("what is 2 + 2")) {
     return "4";
   }
