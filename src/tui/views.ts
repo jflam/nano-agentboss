@@ -107,16 +107,23 @@ export class NanobossAppView implements Component {
 }
 
 function buildActivityBarParts(theme: NanobossTuiTheme, state: UiState): string[] {
+  const parts: string[] = [];
+  if (state.inputDisabled) {
+    parts.push(theme.warning("● busy"));
+  }
+
   const selection = state.defaultAgentSelection;
   if (!selection) {
-    return [theme.accent(`agent/model ${state.agentLabel || "connecting"}`)];
+    parts.push(theme.accent(`agent/model ${state.agentLabel || "connecting"}`));
+    return parts;
   }
 
   const modelLabel = getActivityBarModelLabel(state);
-  return [
+  parts.push(
     theme.accent(`agent ${selection.provider}`),
     theme.accent(`model ${modelLabel}`),
-  ];
+  );
+  return parts;
 }
 
 function getActivityBarModelLabel(state: UiState): string {

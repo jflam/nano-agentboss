@@ -9,6 +9,33 @@ function stripAnsi(text: string): string {
 }
 
 describe("NanobossAppView", () => {
+  test("shows a busy indicator while a run is active", () => {
+    const state = {
+      ...createInitialUiState({ cwd: "/repo" }),
+      sessionId: "session-1",
+      inputDisabled: true,
+      defaultAgentSelection: {
+        provider: "copilot" as const,
+        model: "gpt-5.4/xhigh",
+      },
+      agentLabel: "copilot/gpt-5.4/x-high",
+    };
+
+    const view = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      state,
+    );
+
+    const plain = stripAnsi(view.render(120).join("\n"));
+
+    expect(plain).toContain("● busy");
+    expect(plain).toContain("agent copilot");
+  });
+
   test("does not paint streamed assistant content red after a failed run", () => {
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),
