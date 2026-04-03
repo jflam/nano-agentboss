@@ -17,29 +17,30 @@ export async function collectTokenSnapshot(
   params: CollectTokenSnapshotParams,
 ): Promise<AgentTokenSnapshot | undefined> {
   const { config } = params;
+  const usageSnapshot = snapshotFromUsageUpdate(config, params.sessionId, params.updates);
+  const promptResponseSnapshot = snapshotFromPromptResponse(config, params.sessionId, params.promptResponse);
 
   if (config.provider === "codex") {
-    const codex = snapshotFromUsageUpdate(config, params.sessionId, params.updates);
-    if (codex) {
-      return codex;
-    }
+    return mergeTokenSnapshots(usageSnapshot, promptResponseSnapshot);
   }
 
   if (config.provider === "copilot") {
-    const copilot = await collectCopilotTokenSnapshot(params);
-    if (copilot) {
-      return copilot;
-    }
+    return mergeTokenSnapshots(
+      await collectCopilotTokenSnapshot(params),
+      usageSnapshot,
+      promptResponseSnapshot,
+    );
   }
 
   if (config.provider === "claude") {
-    const claude = await collectClaudeTokenSnapshot(params);
-    if (claude) {
-      return claude;
-    }
+    return mergeTokenSnapshots(
+      await collectClaudeTokenSnapshot(params),
+      usageSnapshot,
+      promptResponseSnapshot,
+    );
   }
 
-  return snapshotFromPromptResponse(config, params.sessionId, params.promptResponse);
+  return mergeTokenSnapshots(usageSnapshot, promptResponseSnapshot);
 }
 
 function snapshotFromUsageUpdate(
@@ -87,6 +88,51 @@ function snapshotFromPromptResponse(
     cacheWriteTokens,
     totalTokens: usage.totalTokens,
   };
+}
+
+function mergeTokenSnapshots(
+  ...snapshots: Array<AgentTokenSnapshot | undefined>
+): AgentTokenSnapshot | undefined {
+  const primary = snapshots.find((snapshot) => snapshot !== undefined);
+  if (!primary) {
+    return undefined;
+  }
+
+  return {
+    provider: pickSnapshotField(snapshots, (snapshot) => snapshot.provider),
+    model: pickSnapshotField(snapshots, (snapshot) => snapshot.model),
+    sessionId: pickSnapshotField(snapshots, (snapshot) => snapshot.sessionId),
+    source: primary.source,
+    capturedAt: pickSnapshotField(snapshots, (snapshot) => snapshot.capturedAt),
+    contextWindowTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.contextWindowTokens),
+    usedContextTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.usedContextTokens),
+    systemTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.systemTokens),
+    conversationTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.conversationTokens),
+    toolDefinitionsTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.toolDefinitionsTokens),
+    inputTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.inputTokens),
+    outputTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.outputTokens),
+    cacheReadTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.cacheReadTokens),
+    cacheWriteTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.cacheWriteTokens),
+    totalTokens: pickSnapshotField(snapshots, (snapshot) => snapshot.totalTokens),
+  };
+}
+
+function pickSnapshotField<T>(
+  snapshots: Array<AgentTokenSnapshot | undefined>,
+  picker: (snapshot: AgentTokenSnapshot) => T | undefined,
+): T | undefined {
+  for (const snapshot of snapshots) {
+    if (!snapshot) {
+      continue;
+    }
+
+    const value = picker(snapshot);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 async function collectClaudeTokenSnapshot(

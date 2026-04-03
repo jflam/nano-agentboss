@@ -15,11 +15,11 @@ export async function ensureMatchingHttpServer(
     onStatus?: (text: string) => void;
   } = {},
 ): Promise<void> {
-  const desiredCommit = normalizeBuildCommit(getBuildCommit());
+  const desiredCommit = getBuildCommit();
   const desiredLabel = getBuildLabel();
   const initialHealth = await tryGetServerHealth(baseUrl);
 
-  if (matchesBuild(initialHealth, desiredCommit)) {
+  if (matchesServerBuild(initialHealth, desiredCommit)) {
     return;
   }
 
@@ -53,7 +53,7 @@ export async function ensureMatchingHttpServer(
 
   const ready = await waitForServerState(
     baseUrl,
-    (health) => matchesBuild(health, desiredCommit),
+    (health) => matchesServerBuild(health, desiredCommit),
     SERVER_START_TIMEOUT_MS,
   );
   if (!ready) {
@@ -110,12 +110,11 @@ async function waitForServerState(
   }
 }
 
-function matchesBuild(health: ServerHealthResponse | null, desiredCommit: string): boolean {
-  return normalizeBuildCommit(health?.buildCommit) === desiredCommit;
-}
-
-function normalizeBuildCommit(commit: string | undefined): string | undefined {
-  return commit?.replace(/-dirty$/, "");
+export function matchesServerBuild(
+  health: ServerHealthResponse | null,
+  desiredCommit: string,
+): boolean {
+  return health?.buildCommit === desiredCommit;
 }
 
 function isLoopbackServerUrl(url: URL): boolean {

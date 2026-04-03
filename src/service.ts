@@ -5,6 +5,7 @@ import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./conf
 import { CommandContextImpl, type SessionUpdateEmitter } from "./context.ts";
 import { DefaultConversationSession } from "./default-session.ts";
 import { inferDataShape } from "./data-shape.ts";
+import { normalizeAgentTokenUsage } from "./token-usage.ts";
 import { disposeSessionMcpTransport } from "./mcp-attachment.ts";
 import {
   collectUnsyncedProcedureMemoryCards,
@@ -274,23 +275,28 @@ export class NanobossService {
   private async syncProcedureResultIntoDefaultConversation(
     session: SessionState,
     cellId: string,
-  ): Promise<void> {
+  ): Promise<AgentTokenUsage | undefined> {
     const cell = session.store.readCell({
       sessionId: session.store.sessionId,
       cellId,
     });
 
     if (cell.procedure === "default") {
-      return;
+      return undefined;
     }
 
-    await session.defaultConversation.prompt(
+    const result = await session.defaultConversation.prompt(
       buildProcedureSyncPrompt(session.store.sessionId, cell),
       {
         signal: session.abortController?.signal,
       },
     );
     session.syncedProcedureMemoryCellIds.add(cell.cellId);
+
+    return normalizeAgentTokenUsage(
+      result.tokenSnapshot ?? await session.defaultConversation.getCurrentTokenSnapshot(),
+      session.defaultAgentConfig,
+    );
   }
 
   async prompt(
@@ -449,9 +455,13 @@ export class NanobossService {
         });
       }
 
+      let completedTokenUsage = procedure.name === "default"
+        ? emitter.currentTokenUsage
+        : undefined;
+
       if (procedure.name !== "default") {
         try {
-          await this.syncProcedureResultIntoDefaultConversation(session, finalized.cell.cellId);
+          completedTokenUsage = await this.syncProcedureResultIntoDefaultConversation(session, finalized.cell.cellId);
         } catch {
           // Leave the procedure unsynced so the next default turn can still bridge it via memory cards.
         }
@@ -465,7 +475,7 @@ export class NanobossService {
         cell: finalized.cell,
         summary: finalized.summary,
         display: result.display,
-        tokenUsage: emitter.currentTokenUsage,
+        tokenUsage: completedTokenUsage,
       });
       markRunActivity();
     } catch (error) {

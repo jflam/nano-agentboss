@@ -42,6 +42,34 @@ test("collectTokenSnapshot uses ACP usage_update for codex", async () => {
   });
 });
 
+
+test("collectTokenSnapshot falls back to ACP usage_update for generic agents", async () => {
+  const snapshot = await collectTokenSnapshot({
+    childPid: 123,
+    config: {
+      command: "bun",
+      args: ["run", "tests/fixtures/mock-agent.ts"],
+    },
+    sessionId: "generic-session",
+    updates: [
+      {
+        sessionUpdate: "usage_update",
+        size: 8192,
+        used: 512,
+      },
+    ],
+  });
+
+  expect(snapshot).toEqual({
+    provider: undefined,
+    model: undefined,
+    sessionId: "generic-session",
+    source: "acp_usage_update",
+    contextWindowTokens: 8192,
+    usedContextTokens: 512,
+  });
+});
+
 test("parseClaudeDebugMetrics extracts the latest autocompact line", () => {
   const snapshot = parseClaudeDebugMetrics(
     [

@@ -96,18 +96,25 @@ describe("NanobossService", () => {
       expect(toolTitles).toContain("Mock read README.md");
       expect(toolTitles.some((title) => title.startsWith("callAgent:"))).toBe(true);
       expect(textEvents).toEqual(["done"]);
-      expect(tokenUsageEvents).toHaveLength(1);
+      expect(tokenUsageEvents).toHaveLength(2);
       expect(tokenUsageEvents[0]?.data.usage).toEqual({
         source: "acp_usage_update",
         currentContextTokens: 512,
         maxContextTokens: 8192,
       });
-      expect(completed?.type).toBe("run_completed");
-      expect(completed?.data.tokenUsage).toEqual({
+      expect(tokenUsageEvents[1]?.data.usage).toMatchObject({
         source: "acp_usage_update",
         currentContextTokens: 512,
         maxContextTokens: 8192,
       });
+      expect(tokenUsageEvents[1]?.data.usage.sessionId).toEqual(expect.any(String));
+      expect(completed?.type).toBe("run_completed");
+      expect(completed?.data.tokenUsage).toMatchObject({
+        source: "acp_usage_update",
+        currentContextTokens: 512,
+        maxContextTokens: 8192,
+      });
+      expect(completed?.data.tokenUsage?.sessionId).toEqual(expect.any(String));
     });
   }, 30_000);
 
