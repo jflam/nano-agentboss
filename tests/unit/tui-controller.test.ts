@@ -72,10 +72,11 @@ describe("NanobossTuiController", () => {
     expect(streams[1]?.closeCount).toBe(1);
   });
 
-  test("/model picker selection sends the generated /model command", async () => {
+  test("/model picker selection can persist the chosen default before sending the generated command", async () => {
     const sendCalls: string[] = [];
     const history: string[] = [];
     const clears: string[] = [];
+    const persisted: DownstreamAgentSelection[] = [];
     const streams: FakeStreamRecord[] = [];
     const controller = new NanobossTuiController(
       {
@@ -93,6 +94,10 @@ describe("NanobossTuiController", () => {
           provider: "copilot",
           model: "gpt-5.4/xhigh",
         }),
+        confirmPersistDefaultAgentSelection: async () => true,
+        persistDefaultAgentSelection: async (selection) => {
+          persisted.push(selection);
+        },
         onAddHistory: (text) => {
           history.push(text);
         },
@@ -107,6 +112,7 @@ describe("NanobossTuiController", () => {
 
     await controller.handleSubmit("/model");
 
+    expect(persisted).toEqual([{ provider: "copilot", model: "gpt-5.4/xhigh" }]);
     expect(sendCalls).toEqual(["/model copilot gpt-5.4/xhigh"]);
     expect(history).toEqual(["/model copilot gpt-5.4/xhigh"]);
     expect(clears).toEqual(["clear"]);
@@ -120,8 +126,9 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
-  test("inline /model updates local banner state before forwarding the command", async () => {
+  test("inline /model updates local banner state, defaults persistence prompt to no, and forwards the command", async () => {
     const sendCalls: string[] = [];
+    const persisted: DownstreamAgentSelection[] = [];
     const controller = new NanobossTuiController(
       {
         serverUrl: "http://localhost:3000",
@@ -134,6 +141,10 @@ describe("NanobossTuiController", () => {
           sendCalls.push(prompt);
         },
         startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
+        confirmPersistDefaultAgentSelection: async () => false,
+        persistDefaultAgentSelection: async (selection) => {
+          persisted.push(selection);
+        },
       },
     );
 
@@ -147,6 +158,7 @@ describe("NanobossTuiController", () => {
       provider: "copilot",
       model: "gpt-5.4/xhigh",
     });
+    expect(persisted).toEqual([]);
     expect(sendCalls).toEqual(["/model copilot gpt-5.4/xhigh"]);
     expect(controller.getState().turns[0]).toMatchObject({
       role: "user",

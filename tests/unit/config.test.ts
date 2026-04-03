@@ -1,6 +1,20 @@
-import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, expect, test } from "bun:test";
 
 import { parseAgentModelSelection, resolveDownstreamAgentConfig } from "../../src/config.ts";
+import { writePersistedDefaultAgentSelection } from "../../src/settings.ts";
+
+let tempHome: string | undefined;
+
+afterEach(() => {
+  if (tempHome) {
+    rmSync(tempHome, { recursive: true, force: true });
+    tempHome = undefined;
+  }
+});
 
 test("resolveDownstreamAgentConfig maps claude selections to the ACP adapter", () => {
   const config = resolveDownstreamAgentConfig("/repo", {
@@ -112,3 +126,74 @@ test("resolveDownstreamAgentConfig reads default model from env for known provid
     }
   }
 });
+
+test("resolveDownstreamAgentConfig uses the persisted default agent selection when no env override is present", () => {
+  const originalHome = process.env.HOME;
+  const originalCommand = process.env.NANOBOSS_AGENT_CMD;
+  const originalArgs = process.env.NANOBOSS_AGENT_ARGS;
+  const originalModel = process.env.NANOBOSS_AGENT_MODEL;
+
+  tempHome = mkdtempSync(join(tmpdir(), "nanoboss-config-"));
+  process.env.HOME = tempHome;
+  delete process.env.NANOBOSS_AGENT_CMD;
+  delete process.env.NANOBOSS_AGENT_ARGS;
+  delete process.env.NANOBOSS_AGENT_MODEL;
+  writePersistedDefaultAgentSelection({
+    provider: "codex",
+    model: "gpt-5.2/high",
+  });
+
+  try {
+    const config = resolveDownstreamAgentConfig("/repo");
+
+    expect(config.provider).toBe("codex");
+    expect(config.command).toBe("codex-acp");
+    expect(config.model).toBe("gpt-5.2/high");
+    expect(config.reasoningEffort).toBeUndefined();
+  } finally {
+    restoreEnv("HOME", originalHome);
+    restoreEnv("NANOBOSS_AGENT_CMD", originalCommand);
+    restoreEnv("NANOBOSS_AGENT_ARGS", originalArgs);
+    restoreEnv("NANOBOSS_AGENT_MODEL", originalModel);
+  }
+});
+
+test("explicit env overrides beat the persisted default agent selection", () => {
+  const originalHome = process.env.HOME;
+  const originalCommand = process.env.NANOBOSS_AGENT_CMD;
+  const originalArgs = process.env.NANOBOSS_AGENT_ARGS;
+  const originalModel = process.env.NANOBOSS_AGENT_MODEL;
+
+  tempHome = mkdtempSync(join(tmpdir(), "nanoboss-config-"));
+  process.env.HOME = tempHome;
+  writePersistedDefaultAgentSelection({
+    provider: "codex",
+    model: "gpt-5.2/high",
+  });
+  process.env.NANOBOSS_AGENT_CMD = "copilot";
+  process.env.NANOBOSS_AGENT_ARGS = "[\"--acp\",\"--allow-all-tools\"]";
+  process.env.NANOBOSS_AGENT_MODEL = "gpt-5.4/xhigh";
+
+  try {
+    const config = resolveDownstreamAgentConfig("/repo");
+
+    expect(config.provider).toBe("copilot");
+    expect(config.command).toBe("copilot");
+    expect(config.model).toBe("gpt-5.4");
+    expect(config.reasoningEffort).toBe("xhigh");
+  } finally {
+    restoreEnv("HOME", originalHome);
+    restoreEnv("NANOBOSS_AGENT_CMD", originalCommand);
+    restoreEnv("NANOBOSS_AGENT_ARGS", originalArgs);
+    restoreEnv("NANOBOSS_AGENT_MODEL", originalModel);
+  }
+});
+
+function restoreEnv(key: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[key];
+    return;
+  }
+
+  process.env[key] = value;
+}

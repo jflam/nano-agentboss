@@ -31,7 +31,7 @@ export default {
           contextLine ? "" : undefined,
           "Use `/model <agent>` to list models.",
           "Use `/model <agent> <model>` to switch.",
-          "In the TTY CLI, plain `/model` opens an interactive picker.",
+          "In the TTY CLI, plain `/model` opens an interactive picker and can save the choice for future runs.",
           "",
           "Available agents:",
           ...listKnownProviders().map((provider) => `- ${provider} (${getProviderLabel(provider)})`),

@@ -45,6 +45,7 @@ export class NanobossAppView implements Component {
     this.appendPendingActivity();
     this.container.addChild(this.editor);
     this.container.addChild(new Spacer(1));
+    this.container.addChild(new TruncatedText(this.buildActivityBarLine()));
     this.container.addChild(new TruncatedText(this.buildFooterLine()));
   }
 
@@ -58,10 +59,6 @@ export class NanobossAppView implements Component {
     for (const turn of this.state.turns) {
       this.container.addChild(new TruncatedText(renderTurnLabel(this.theme, turn)));
       this.container.addChild(renderTurnBody(this.theme, turn));
-
-      if (turn.meta?.tokenUsageLine) {
-        this.container.addChild(new TruncatedText(this.theme.dim(turn.meta.tokenUsageLine)));
-      }
 
       this.container.addChild(new Spacer(1));
     }
@@ -79,9 +76,8 @@ export class NanobossAppView implements Component {
   }
 
   private buildHeaderLine(): string {
-    const agentLabel = this.state.agentLabel || "connecting";
     const cwd = this.state.cwd || process.cwd();
-    return this.theme.accent(`${this.state.buildLabel} • ${agentLabel} • ${cwd}`);
+    return this.theme.accent(`${this.state.buildLabel} • ${cwd}`);
   }
 
   private buildSessionLine(): string {
@@ -92,6 +88,15 @@ export class NanobossAppView implements Component {
     return this.theme.dim(`session ${this.state.sessionId.slice(0, 8)} • retained transcript + pi-tui editor`);
   }
 
+  private buildActivityBarLine(): string {
+    const separator = this.theme.dim(" • ");
+    const parts = buildActivityBarParts(this.theme, this.state);
+    if (this.state.tokenUsageLine) {
+      parts.push(this.theme.success(this.state.tokenUsageLine));
+    }
+    return parts.join(separator);
+  }
+
   private buildFooterLine(): string {
     const parts = ["enter send", "shift+enter newline", "/new", "/model", "/quit"];
     if (this.state.inputDisabled) {
@@ -99,6 +104,33 @@ export class NanobossAppView implements Component {
     }
     return this.theme.dim(parts.join(" • "));
   }
+}
+
+function buildActivityBarParts(theme: NanobossTuiTheme, state: UiState): string[] {
+  const selection = state.defaultAgentSelection;
+  if (!selection) {
+    return [theme.accent(`agent/model ${state.agentLabel || "connecting"}`)];
+  }
+
+  const modelLabel = getActivityBarModelLabel(state);
+  return [
+    theme.accent(`agent ${selection.provider}`),
+    theme.accent(`model ${modelLabel}`),
+  ];
+}
+
+function getActivityBarModelLabel(state: UiState): string {
+  const selection = state.defaultAgentSelection;
+  if (!selection) {
+    return state.agentLabel || "connecting";
+  }
+
+  const prefix = `${selection.provider}/`;
+  if (state.agentLabel.startsWith(prefix)) {
+    return state.agentLabel.slice(prefix.length) || "default";
+  }
+
+  return selection.model || "default";
 }
 
 function renderTurnLabel(theme: NanobossTuiTheme, turn: UiTurn): string {
@@ -143,10 +175,6 @@ function buildPendingLines(state: UiState): string[] {
 
   if (state.promptDiagnosticsLine) {
     lines.push(state.promptDiagnosticsLine);
-  }
-
-  if (state.tokenUsageLine) {
-    lines.push(state.tokenUsageLine);
   }
 
   return lines;

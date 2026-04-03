@@ -1,3 +1,5 @@
+import { writePersistedDefaultAgentSelection } from "../settings.ts";
+
 import { NanobossTuiController } from "./controller.ts";
 
 import {
@@ -7,7 +9,7 @@ import {
   TUI,
   matchesKey,
 } from "./pi-tui.ts";
-import { promptForModelSelection } from "./overlays/model-picker.ts";
+import { promptForModelSelection, promptToPersistModelSelection } from "./overlays/model-picker.ts";
 import type { UiState } from "./state.ts";
 import { createNanobossTuiTheme } from "./theme.ts";
 import { NanobossAppView } from "./views.ts";
@@ -42,6 +44,15 @@ export class NanobossTuiApp {
         this.tui.setFocus(this.editor);
         this.tui.requestRender(true);
         return selection;
+      },
+      confirmPersistDefaultAgentSelection: async (selection) => {
+        const shouldPersist = await promptToPersistModelSelection(this.tui, this.theme, selection);
+        this.tui.setFocus(this.editor);
+        this.tui.requestRender(true);
+        return shouldPersist;
+      },
+      persistDefaultAgentSelection: (selection) => {
+        writePersistedDefaultAgentSelection(selection);
       },
       onStateChange: (state) => {
         this.syncState(state);

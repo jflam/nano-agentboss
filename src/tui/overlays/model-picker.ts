@@ -3,6 +3,9 @@ import {
   listKnownProviders,
   listSelectableModelOptions,
 } from "../../model-catalog.ts";
+import { resolveDownstreamAgentConfig } from "../../config.ts";
+import { getNanobossSettingsPath } from "../../settings.ts";
+import { formatAgentBanner } from "../../runtime-banner.ts";
 import type { DownstreamAgentSelection, DownstreamAgentProvider } from "../../types.ts";
 
 import { type TUI } from "../pi-tui.ts";
@@ -47,4 +50,32 @@ export async function promptForModelSelection(
     provider,
     model,
   };
+}
+
+export async function promptToPersistModelSelection(
+  tui: TUI,
+  theme: NanobossTuiTheme,
+  selection: DownstreamAgentSelection,
+): Promise<boolean> {
+  const banner = formatAgentBanner(resolveDownstreamAgentConfig(undefined, selection));
+  const decision = await showSelectOverlay<"no" | "yes">(tui, theme, {
+    title: `Make ${banner} the default for future runs?`,
+    items: [
+      {
+        value: "no",
+        label: "No",
+        description: "Keep this model change in the current session only",
+      },
+      {
+        value: "yes",
+        label: "Yes",
+        description: `Persist under ${getNanobossSettingsPath()}`,
+      },
+    ],
+    initialValue: "no",
+    footer: "↑↓ choose • enter confirm • esc keep No",
+    maxVisible: 4,
+  });
+
+  return decision === "yes";
 }

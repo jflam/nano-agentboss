@@ -53,6 +53,10 @@ export interface NanobossTuiControllerDeps {
   promptForModelSelection?: (
     currentSelection?: DownstreamAgentSelection,
   ) => Promise<DownstreamAgentSelection | undefined>;
+  confirmPersistDefaultAgentSelection?: (
+    selection: DownstreamAgentSelection,
+  ) => Promise<boolean>;
+  persistDefaultAgentSelection?: (selection: DownstreamAgentSelection) => Promise<void> | void;
   onStateChange?: (state: UiState) => void;
   onExit?: () => void;
   onClearInput?: () => void;
@@ -149,6 +153,7 @@ export class NanobossTuiController {
     const inlineSelection = parseModelSelectionCommand(trimmed);
     if (inlineSelection) {
       this.applyLocalSelection(inlineSelection);
+      await this.maybePersistDefaultSelection(inlineSelection);
     }
 
     this.deps.onAddHistory?.(text);
@@ -235,6 +240,7 @@ export class NanobossTuiController {
     }
 
     this.applyLocalSelection(selection);
+    await this.maybePersistDefaultSelection(selection);
     const command = buildModelCommand(selection.provider, selection.model ?? "default");
     this.deps.onAddHistory?.(command);
     this.deps.onClearInput?.();
@@ -248,6 +254,28 @@ export class NanobossTuiController {
       agentLabel,
       selection,
     });
+  }
+
+  private async maybePersistDefaultSelection(selection: DownstreamAgentSelection): Promise<void> {
+    const confirm = this.deps.confirmPersistDefaultAgentSelection;
+    const persist = this.deps.persistDefaultAgentSelection;
+    if (!confirm || !persist) {
+      return;
+    }
+
+    try {
+      const shouldPersist = await confirm(selection);
+      if (!shouldPersist) {
+        return;
+      }
+
+      await persist(selection);
+      const banner = formatAgentBanner(resolveDownstreamAgentConfig(this.cwd, selection));
+      this.dispatch({ type: "local_status", text: `[model] saved ${banner} as the default for future runs` });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.dispatch({ type: "local_status", text: `[model] failed to save default: ${message}` });
+    }
   }
 
   private async forwardPrompt(prompt: string): Promise<void> {

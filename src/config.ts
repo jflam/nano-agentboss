@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { readPersistedDefaultAgentSelection } from "./settings.ts";
 import type { DownstreamAgentConfig, DownstreamAgentProvider, DownstreamAgentSelection } from "./types.ts";
 
 const DEFAULT_AGENT_COMMAND = "copilot";
@@ -35,6 +36,13 @@ export function resolveDownstreamAgentConfig(
 ): DownstreamAgentConfig {
   if (selection) {
     return resolveAgentSelection(selection, cwd);
+  }
+
+  if (!hasExplicitEnvOverride()) {
+    const persistedSelection = readPersistedDefaultAgentSelection();
+    if (persistedSelection) {
+      return resolveAgentSelection(persistedSelection, cwd);
+    }
   }
 
   const command = process.env.NANOBOSS_AGENT_CMD?.trim() || DEFAULT_AGENT_COMMAND;
@@ -165,6 +173,14 @@ function baseAgentConfig(provider: DownstreamAgentProvider): DownstreamAgentConf
         args: ["--acp", "--allow-all-tools"],
       };
   }
+}
+
+function hasExplicitEnvOverride(): boolean {
+  return Boolean(
+    process.env.NANOBOSS_AGENT_CMD?.trim() ||
+      process.env.NANOBOSS_AGENT_ARGS?.trim() ||
+      process.env.NANOBOSS_AGENT_MODEL?.trim(),
+  );
 }
 
 function parseArgs(value: string | undefined): string[] | undefined {
