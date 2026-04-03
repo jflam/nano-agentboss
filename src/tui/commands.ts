@@ -26,6 +26,10 @@ export function isExitRequest(trimmed: string): boolean {
   return trimmed === "exit" || trimmed === "quit" || trimmed === "/end" || trimmed === "/quit" || trimmed === "/exit";
 }
 
+export function shouldDisableEditorSubmit(inputDisabled: boolean, text: string): boolean {
+  return inputDisabled && !isExitRequest(text.trim());
+}
+
 export function isNewSessionRequest(trimmed: string): boolean {
   return trimmed === "/new";
 }

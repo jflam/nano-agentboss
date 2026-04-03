@@ -129,13 +129,17 @@ export class NanobossTuiController {
 
   async handleSubmit(text: string): Promise<void> {
     const trimmed = text.trim();
-    if (trimmed.length === 0 || this.state.inputDisabled) {
+    if (trimmed.length === 0) {
       return;
     }
 
     if (isExitRequest(trimmed)) {
       this.deps.onClearInput?.();
       this.requestExit();
+      return;
+    }
+
+    if (this.state.inputDisabled) {
       return;
     }
 

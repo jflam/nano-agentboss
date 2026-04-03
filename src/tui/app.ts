@@ -1,6 +1,10 @@
 import { writePersistedDefaultAgentSelection } from "../settings.ts";
 
-import { NanobossTuiController } from "./controller.ts";
+import {
+  NanobossTuiController,
+  type NanobossTuiControllerDeps,
+} from "./controller.ts";
+import { shouldDisableEditorSubmit } from "./commands.ts";
 
 import {
   CombinedAutocompleteProvider,
@@ -11,7 +15,7 @@ import {
 } from "./pi-tui.ts";
 import { promptForModelSelection, promptToPersistModelSelection } from "./overlays/model-picker.ts";
 import type { UiState } from "./state.ts";
-import { createNanobossTuiTheme } from "./theme.ts";
+import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
 import { NanobossAppView } from "./views.ts";
 
 export interface NanobossTuiAppParams {
@@ -21,24 +25,80 @@ export interface NanobossTuiAppParams {
   sessionId?: string;
 }
 
+interface EditorLike {
+  onSubmit?: (text: string) => void;
+  onChange?: (text: string) => void;
+  disableSubmit: boolean;
+  addToHistory(text: string): void;
+  setText(text: string): void;
+  getText(): string;
+  setAutocompleteProvider(provider: unknown): void;
+}
+
+interface TerminalLike {
+  setTitle(title: string): void;
+  drainInput(timeoutMs: number, rounds: number): Promise<void>;
+}
+
+interface TuiLike {
+  addInputListener(listener: (data: string) => unknown): void;
+  addChild(child: unknown): void;
+  setFocus(component: unknown): void;
+  start(): void;
+  requestRender(force?: boolean): void;
+  stop(): void;
+}
+
+interface ViewLike {
+  setState(state: UiState): void;
+}
+
+interface ControllerLike {
+  getState(): UiState;
+  handleSubmit(text: string): Promise<void>;
+  requestExit(): void;
+  run(): Promise<string | undefined>;
+  stop(): Promise<void>;
+}
+
+export interface NanobossTuiAppDeps {
+  createTheme?: () => NanobossTuiTheme;
+  createTerminal?: () => TerminalLike;
+  createTui?: (terminal: TerminalLike) => TuiLike;
+  createEditor?: (tui: TuiLike, theme: NanobossTuiTheme) => EditorLike;
+  createController?: (
+    params: NanobossTuiAppParams,
+    deps: NanobossTuiControllerDeps,
+  ) => ControllerLike;
+  createView?: (editor: EditorLike, theme: NanobossTuiTheme, state: UiState) => ViewLike;
+}
+
 export class NanobossTuiApp {
   private readonly cwd: string;
-  private readonly theme = createNanobossTuiTheme();
-  private readonly terminal = new ProcessTerminal();
-  private readonly tui = new TUI(this.terminal, true);
-  private readonly editor = new Editor(this.tui, this.theme.editor, {
-    paddingX: 1,
-    autocompleteMaxVisible: 8,
-  });
-  private readonly view: NanobossAppView;
-  private readonly controller: NanobossTuiController;
+  private readonly theme: NanobossTuiTheme;
+  private readonly terminal: TerminalLike;
+  private readonly tui: TuiLike;
+  private readonly editor: EditorLike;
+  private readonly view: ViewLike;
+  private readonly controller: ControllerLike;
   private state: UiState;
   private autocompleteSignature = "";
   private stopped = false;
 
-  constructor(private readonly params: NanobossTuiAppParams) {
+  constructor(
+    private readonly params: NanobossTuiAppParams,
+    private readonly deps: NanobossTuiAppDeps = {},
+  ) {
     this.cwd = params.cwd ?? process.cwd();
-    this.controller = new NanobossTuiController(params, {
+    this.theme = deps.createTheme?.() ?? createNanobossTuiTheme();
+    this.terminal = deps.createTerminal?.() ?? new ProcessTerminal();
+    this.tui = deps.createTui?.(this.terminal) ?? new TUI(this.terminal as ProcessTerminal, true);
+    this.editor = deps.createEditor?.(this.tui, this.theme) ?? new Editor(this.tui as TUI, this.theme.editor, {
+      paddingX: 1,
+      autocompleteMaxVisible: 8,
+    });
+
+    const controllerDeps: NanobossTuiControllerDeps = {
       promptForModelSelection: async (currentSelection) => {
         const selection = await promptForModelSelection(this.tui, this.theme, currentSelection);
         this.tui.setFocus(this.editor);
@@ -63,12 +123,16 @@ export class NanobossTuiApp {
       onClearInput: () => {
         this.editor.setText("");
       },
-    });
+    };
+    this.controller = deps.createController?.(params, controllerDeps) ?? new NanobossTuiController(params, controllerDeps);
     this.state = this.controller.getState();
-    this.view = new NanobossAppView(this.editor, this.theme, this.state);
+    this.view = deps.createView?.(this.editor, this.theme, this.state) ?? new NanobossAppView(this.editor as Editor, this.theme, this.state);
 
     this.editor.onSubmit = (text) => {
       void this.controller.handleSubmit(text);
+    };
+    this.editor.onChange = () => {
+      this.updateEditorSubmitState();
     };
 
     this.tui.addInputListener((data) => {
@@ -100,10 +164,14 @@ export class NanobossTuiApp {
 
   private syncState(state: UiState): void {
     this.state = state;
-    this.editor.disableSubmit = this.state.inputDisabled;
+    this.updateEditorSubmitState();
     this.refreshAutocompleteProvider();
     this.view.setState(this.state);
     this.tui.requestRender();
+  }
+
+  private updateEditorSubmitState(): void {
+    this.editor.disableSubmit = shouldDisableEditorSubmit(this.state.inputDisabled, this.editor.getText());
   }
 
   private refreshAutocompleteProvider(): void {

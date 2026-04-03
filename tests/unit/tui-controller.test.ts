@@ -33,6 +33,41 @@ describe("NanobossTuiController", () => {
     expect(exits).toEqual(["exit", "exit"]);
   });
 
+  test("/quit still exits while a run is active and normal submissions are disabled", async () => {
+    const exits: string[] = [];
+    const sendCalls: string[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
+          sendCalls.push(prompt);
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
+        onExit: () => {
+          exits.push("exit");
+        },
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    await controller.handleSubmit("hello");
+    expect(controller.getState().inputDisabled).toBe(true);
+
+    await controller.handleSubmit("/quit");
+
+    expect(sendCalls).toEqual(["hello"]);
+    expect(exits).toEqual(["exit"]);
+
+    await expect(runPromise).resolves.toBe("session-1");
+  });
+
   test("/new creates a new session and reconnects the event stream", async () => {
     const createCalls: Array<DownstreamAgentSelection | undefined> = [];
     const streams: FakeStreamRecord[] = [];
