@@ -628,13 +628,16 @@ export class NanobossService {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const cancelled = session.abortController?.signal.aborted || isAbortError(error);
+      const message = cancelled
+        ? "Cancelled"
+        : error instanceof Error ? error.message : String(error);
       if (!emitter.hasAnyStreamedText) {
         emitter.emit({
           sessionUpdate: "agent_message_chunk",
           content: {
             type: "text",
-            text: `Error: ${message}\n`,
+            text: cancelled ? `${message}\n` : `Error: ${message}\n`,
           },
         });
       }
@@ -674,6 +677,14 @@ export class NanobossService {
 function getRunHeartbeatMs(): number {
   const value = Number(process.env.NANOBOSS_RUN_HEARTBEAT_MS ?? "5000");
   return Number.isFinite(value) && value > 0 ? value : 5000;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.name === "AbortError" || /aborted|cancelled|canceled/i.test(error.message);
 }
 
 function publishStoredMemoryCard(

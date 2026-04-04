@@ -71,6 +71,7 @@ describe("NanobossTuiApp", () => {
             async handleSubmit(text: string) {
               handledSubmissions.push(text);
             },
+            async cancelActiveRun() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -97,5 +98,65 @@ describe("NanobossTuiApp", () => {
 
     editor.submit();
     expect(handledSubmissions).toEqual(["/quit"]);
+  });
+
+  test("pressing escape while a run is active cancels the current run", async () => {
+    const editor = new FakeEditor();
+    const cancellations: string[] = [];
+    let currentState: UiState = {
+      ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
+      inputDisabled: true,
+    };
+    let capturedOnStateChange: ((state: UiState) => void) | undefined;
+    let inputListener: ((data: string) => unknown) | undefined;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener(listener) {
+            inputListener = listener;
+          },
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: (_params, deps) => {
+          capturedOnStateChange = deps.onStateChange;
+          return {
+            getState: () => currentState,
+            async handleSubmit() {},
+            async cancelActiveRun() {
+              cancellations.push("cancel");
+            },
+            requestExit() {},
+            async run() {
+              return undefined;
+            },
+            async stop() {},
+          };
+        },
+        createView: () => ({
+          setState() {},
+        }),
+      },
+    );
+
+    capturedOnStateChange?.(currentState);
+    const result = inputListener?.("\u001b");
+    await Promise.resolve();
+
+    expect(result).toEqual({ consume: true });
+    expect(cancellations).toEqual(["cancel"]);
   });
 });

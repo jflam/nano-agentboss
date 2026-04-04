@@ -116,7 +116,7 @@ export class NanobossAppView implements Component {
   private buildFooterLine(): string {
     const parts = ["enter send", "shift+enter newline", "/new", "/model", "/quit"];
     if (this.state.inputDisabled) {
-      parts.push("run active (other submit blocked; /quit exits)");
+      parts.push("esc stop", "run active (other submit blocked; /quit exits)");
     }
     return this.theme.dim(parts.join(" • "));
   }

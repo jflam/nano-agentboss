@@ -122,6 +122,25 @@ export async function sendSessionPrompt(
   }
 }
 
+export async function cancelSessionRun(
+  baseUrl: string,
+  sessionId: string,
+): Promise<void> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${sessionId}/cancel`, baseUrl),
+    {
+      method: "POST",
+      headers: {
+        connection: "close",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to cancel run: ${response.status}`);
+  }
+}
+
 export function startSessionEventStream(params: {
   baseUrl: string;
   sessionId: string;

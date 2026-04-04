@@ -4,6 +4,7 @@ import { getBuildLabel } from "../build-info.ts";
 import { getBuildFreshnessNotice } from "../build-freshness.ts";
 import { ensureMatchingHttpServer } from "../http-server-supervisor.ts";
 import {
+  cancelSessionRun,
   createHttpSession,
   resumeHttpSession,
   sendSessionPrompt,
@@ -44,6 +45,7 @@ export interface NanobossTuiControllerDeps {
   createHttpSession?: typeof createHttpSession;
   resumeHttpSession?: typeof resumeHttpSession;
   sendSessionPrompt?: typeof sendSessionPrompt;
+  cancelSessionRun?: typeof cancelSessionRun;
   startSessionEventStream?: (params: {
     baseUrl: string;
     sessionId: string;
@@ -163,6 +165,24 @@ export class NanobossTuiController {
     this.deps.onAddHistory?.(text);
     this.deps.onClearInput?.();
     await this.forwardPrompt(text);
+  }
+
+  async cancelActiveRun(): Promise<void> {
+    if (!this.state.inputDisabled || !this.state.sessionId) {
+      return;
+    }
+
+    this.dispatch({ type: "local_status", text: "[run] cancelling…" });
+
+    try {
+      await (this.deps.cancelSessionRun ?? cancelSessionRun)(
+        this.params.serverUrl,
+        this.state.sessionId,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.dispatch({ type: "local_status", text: `[run] cancel failed: ${message}` });
+    }
   }
 
   requestExit(): void {

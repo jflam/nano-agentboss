@@ -283,6 +283,39 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
+  test("escape-triggered cancel forwards a cancel request for the active session", async () => {
+    const cancelCalls: string[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async () => {},
+        cancelSessionRun: async (_baseUrl, sessionId) => {
+          cancelCalls.push(sessionId);
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    await controller.handleSubmit("hello");
+    expect(controller.getState().inputDisabled).toBe(true);
+
+    await controller.cancelActiveRun();
+
+    expect(cancelCalls).toEqual(["session-1"]);
+    expect(controller.getState().statusLine).toBe("[run] cancelling…");
+
+    controller.requestExit();
+    await expect(runPromise).resolves.toBe("session-1");
+  });
+
   test("resume path restores session state and reports the resumed session id", async () => {
     const resumed = createSession("session-resume", {
       agentLabel: "copilot/gpt-5.4/x-high",
