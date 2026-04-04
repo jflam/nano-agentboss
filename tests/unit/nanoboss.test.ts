@@ -53,16 +53,9 @@ describe("parseNanobossArgs", () => {
   });
 
   test("parses doctor command", () => {
-    expect(parseNanobossArgs(["doctor", "--register"])).toEqual({
+    expect(parseNanobossArgs(["doctor"])).toEqual({
       command: "doctor",
-      args: ["--register"],
-    });
-  });
-
-  test("parses mcp command", () => {
-    expect(parseNanobossArgs(["mcp", "proxy"])).toEqual({
-      command: "mcp",
-      args: ["proxy"],
+      args: [],
     });
   });
 
@@ -73,5 +66,6 @@ describe("parseNanobossArgs", () => {
   test("rejects removed alias commands", () => {
     expect(() => parseNanobossArgs(["tui"])).toThrow("Unknown nanoboss command: tui");
     expect(() => parseNanobossArgs(["server"])).toThrow("Unknown nanoboss command: server");
+    expect(() => parseNanobossArgs(["mcp"])).toThrow("Unknown nanoboss command: mcp");
   });
 });

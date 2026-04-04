@@ -96,16 +96,10 @@ Override the server URL if needed:
 bun run nanoboss cli --server-url http://localhost:6503
 ```
 
-Inspect agent health and attached/global nanoboss MCP readiness:
+Inspect agent health and attached nanoboss session-MCP readiness:
 
 ```bash
 bun run nanoboss doctor
-```
-
-Register or repair the global `nanoboss` MCP stdio server for Claude, Codex, Gemini, and Copilot:
-
-```bash
-bun run nanoboss doctor --register
 ```
 
 The internal stdio ACP server is still available for local CLI mode:
@@ -114,7 +108,7 @@ The internal stdio ACP server is still available for local CLI mode:
 bun run nanoboss acp-server
 ```
 
-Nanoboss attaches a session-pinned MCP stdio server automatically to downstream ACP sessions, and it can also expose a global `nanoboss` MCP stdio server for agents that need registered MCP config.
+Nanoboss attaches a session-pinned MCP stdio server automatically to downstream ACP sessions.
 
 Tool call progress lines are shown by default. Hide them with:
 
