@@ -25,6 +25,13 @@ export function parseNanobossArgs(argv: string[]): NanobossArgs {
     };
   }
 
+  if (first === "server") {
+    return {
+      command: "http",
+      args: rest,
+    };
+  }
+
   if (
     first === "cli" ||
     first === "resume" ||
@@ -86,6 +93,7 @@ export function printHelp(): void {
     "  cli                Launch the interactive frontend",
     "  resume             Resume a saved CLI session",
     "  http               Launch the HTTP/SSE server",
+    "  server             Deprecated alias for `http`",
     "  doctor             Show agent/session-MCP health and optionally register nanoboss MCP",
     "  mcp                Launch the global nanoboss MCP stdio server",
     "  acp-server         Launch the internal stdio ACP server",

@@ -70,8 +70,14 @@ describe("parseNanobossArgs", () => {
     expect(() => parseNanobossArgs(["web"])).toThrow("Unknown nanoboss command: web");
   });
 
+  test("keeps the legacy server alias mapped to http", () => {
+    expect(parseNanobossArgs(["server", "--port", "3001"])).toEqual({
+      command: "http",
+      args: ["--port", "3001"],
+    });
+  });
+
   test("rejects removed alias commands", () => {
     expect(() => parseNanobossArgs(["tui"])).toThrow("Unknown nanoboss command: tui");
-    expect(() => parseNanobossArgs(["server"])).toThrow("Unknown nanoboss command: server");
   });
 });
