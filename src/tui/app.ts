@@ -94,7 +94,7 @@ export class NanobossTuiApp {
     this.cwd = params.cwd ?? process.cwd();
     this.theme = deps.createTheme?.() ?? createNanobossTuiTheme();
     this.terminal = deps.createTerminal?.() ?? new ProcessTerminal();
-    this.tui = deps.createTui?.(this.terminal) ?? new TUI(this.terminal as ProcessTerminal, true);
+    this.tui = deps.createTui?.(this.terminal) ?? new TUI(this.terminal as ProcessTerminal, false);
     this.editor = deps.createEditor?.(this.tui, this.theme) ?? new Editor(this.tui as TUI, this.theme.editor, {
       paddingX: 1,
       autocompleteMaxVisible: 8,
