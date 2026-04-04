@@ -74,7 +74,7 @@ See [`docs/architecture.md`](docs/architecture.md) for a transport-level overvie
 Launch the HTTP/SSE server:
 
 ```bash
-bun run nanoboss http
+bun run nanoboss server
 ```
 
 Launch the CLI frontend. By default it connects to `http://localhost:6502`.
@@ -126,7 +126,7 @@ The package scripts mirror the canonical entrypoints:
 
 ```bash
 bun run cli
-bun run http
+bun run server
 ```
 
 By default the local REPL path spawns `copilot --acp --allow-all-tools`. In that default path,

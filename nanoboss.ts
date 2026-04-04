@@ -8,7 +8,7 @@ import { runSessionMcpStdioCommand } from "./src/session-mcp-stdio.ts";
 import { runProcedureDispatchWorkerCommand } from "./src/procedure-dispatch-jobs.ts";
 import { runAcpServerCommand } from "./src/server.ts";
 
-export type NanobossSubcommand = "cli" | "resume" | "http" | "acp-server" | "session-mcp" | "procedure-dispatch-worker" | "doctor" | "mcp" | "help";
+export type NanobossSubcommand = "cli" | "resume" | "server" | "acp-server" | "session-mcp" | "procedure-dispatch-worker" | "doctor" | "mcp" | "help";
 
 export interface NanobossArgs {
   command: NanobossSubcommand;
@@ -25,17 +25,10 @@ export function parseNanobossArgs(argv: string[]): NanobossArgs {
     };
   }
 
-  if (first === "server") {
-    return {
-      command: "http",
-      args: rest,
-    };
-  }
-
   if (
     first === "cli" ||
     first === "resume" ||
-    first === "http" ||
+    first === "server" ||
     first === "acp-server" ||
     first === "doctor" ||
     first === "mcp" ||
@@ -61,7 +54,7 @@ export async function runNanoboss(argv: string[]): Promise<void> {
     case "resume":
       await runResumeCommand(parsed.args);
       return;
-    case "http":
+    case "server":
       await runHttpServerCommand(parsed.args);
       return;
     case "acp-server":
@@ -92,8 +85,7 @@ export function printHelp(): void {
     "Commands:",
     "  cli                Launch the interactive frontend",
     "  resume             Resume a saved CLI session",
-    "  http               Launch the HTTP/SSE server",
-    "  server             Deprecated alias for `http`",
+    "  server             Launch the HTTP/SSE server",
     "  doctor             Show agent/session-MCP health and optionally register nanoboss MCP",
     "  mcp                Launch the global nanoboss MCP stdio server",
     "  acp-server         Launch the internal stdio ACP server",
@@ -102,7 +94,7 @@ export function printHelp(): void {
     "  help               Show this help text",
     "",
     "Examples:",
-    `  nanoboss http --port ${DEFAULT_HTTP_SERVER_PORT}`,
+    `  nanoboss server --port ${DEFAULT_HTTP_SERVER_PORT}`,
     "  nanoboss cli",
     "  nanoboss resume",
     "  nanoboss doctor --register",

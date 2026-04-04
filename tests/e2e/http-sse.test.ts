@@ -19,7 +19,7 @@ describe("HTTP/SSE frontend integration", () => {
     const port = await reservePort();
     const baseUrl = `http://127.0.0.1:${port}`;
     const server = spawnNanoboss([
-      "http",
+      "server",
       "--port",
       String(port),
     ], mockAgentEnv({

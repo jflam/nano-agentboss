@@ -17,9 +17,9 @@ describe("parseNanobossArgs", () => {
     });
   });
 
-  test("parses http command", () => {
-    expect(parseNanobossArgs(["http", "--port", "3001"])).toEqual({
-      command: "http",
+  test("parses server command", () => {
+    expect(parseNanobossArgs(["server", "--port", "3001"])).toEqual({
+      command: "server",
       args: ["--port", "3001"],
     });
   });
@@ -70,14 +70,8 @@ describe("parseNanobossArgs", () => {
     expect(() => parseNanobossArgs(["web"])).toThrow("Unknown nanoboss command: web");
   });
 
-  test("keeps the legacy server alias mapped to http", () => {
-    expect(parseNanobossArgs(["server", "--port", "3001"])).toEqual({
-      command: "http",
-      args: ["--port", "3001"],
-    });
-  });
-
   test("rejects removed alias commands", () => {
     expect(() => parseNanobossArgs(["tui"])).toThrow("Unknown nanoboss command: tui");
+    expect(() => parseNanobossArgs(["http"])).toThrow("Unknown nanoboss command: http");
   });
 });
