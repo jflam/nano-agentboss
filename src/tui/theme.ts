@@ -23,28 +23,40 @@ export interface NanobossTuiTheme {
   markdown: MarkdownTheme;
 }
 
-function style(text: string, ...codes: number[]): string {
+function style(text: string, codes: number[], resetCodes: number[]): string {
   if (text.length === 0) {
     return text;
   }
 
-  return `\u001b[${codes.join(";")}m${text}\u001b[0m`;
+  return `\u001b[${codes.join(";")}m${text}\u001b[${resetCodes.join(";")}m`;
+}
+
+function fgStyle(text: string, ...codes: number[]): string {
+  return style(text, codes, [39]);
+}
+
+function bgStyle(text: string, ...codes: number[]): string {
+  return style(text, codes, [49]);
+}
+
+function attrStyle(text: string, code: number, resetCode: number): string {
+  return style(text, [code], [resetCode]);
 }
 
 export function createNanobossTuiTheme(): NanobossTuiTheme {
   const text = (value: string) => value;
-  const accent = (value: string) => style(value, 36);
-  const muted = (value: string) => style(value, 90);
-  const dim = (value: string) => style(value, 2);
-  const success = (value: string) => style(value, 32);
-  const error = (value: string) => style(value, 31);
-  const warning = (value: string) => style(value, 33);
-  const bold = (value: string) => style(value, 1);
-  const italic = (value: string) => style(value, 3);
-  const underline = (value: string) => style(value, 4);
-  const toolCardPendingBg = (value: string) => style(value, 48, 5, 236);
-  const toolCardSuccessBg = (value: string) => style(value, 48, 5, 22);
-  const toolCardErrorBg = (value: string) => style(value, 48, 5, 52);
+  const accent = (value: string) => fgStyle(value, 36);
+  const muted = (value: string) => fgStyle(value, 90);
+  const dim = (value: string) => attrStyle(value, 2, 22);
+  const success = (value: string) => fgStyle(value, 32);
+  const error = (value: string) => fgStyle(value, 31);
+  const warning = (value: string) => fgStyle(value, 33);
+  const bold = (value: string) => attrStyle(value, 1, 22);
+  const italic = (value: string) => attrStyle(value, 3, 23);
+  const underline = (value: string) => attrStyle(value, 4, 24);
+  const toolCardPendingBg = (value: string) => bgStyle(value, 48, 5, 236);
+  const toolCardSuccessBg = (value: string) => bgStyle(value, 48, 5, 22);
+  const toolCardErrorBg = (value: string) => bgStyle(value, 48, 5, 52);
   const toolCardBorder = muted;
   const toolCardTitle = bold;
   const toolCardMeta = dim;
@@ -71,7 +83,7 @@ export function createNanobossTuiTheme(): NanobossTuiTheme {
     listBullet: accent,
     bold,
     italic,
-    strikethrough: (value) => style(value, 9),
+    strikethrough: (value) => attrStyle(value, 9, 29),
     underline,
   };
 

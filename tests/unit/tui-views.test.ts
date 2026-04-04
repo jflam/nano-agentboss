@@ -165,6 +165,43 @@ describe("NanobossAppView", () => {
     expect(errorLine).toContain("\u001b[48;5;52m");
   });
 
+  test("styled tool header spans preserve the card background", () => {
+    const state = {
+      ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
+      sessionId: "session-1",
+      toolCalls: [
+        {
+          id: "tool-1",
+          runId: "run-1",
+          title: "find",
+          kind: "find",
+          status: "completed",
+          depth: 0,
+          isWrapper: false,
+          callPreview: {
+            header: "find /Users/jflam/agentboss/workspaces/nanoboss @ /repo",
+          },
+        },
+      ],
+      transcriptItems: [{ type: "tool_call" as const, id: "tool-1" }],
+    };
+
+    const view = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      state,
+    );
+
+    const headerLine = view.render(160).find((line) => stripAnsi(line).includes("find /Users/jflam/agentboss/workspaces/nanoboss @ /repo"));
+
+    expect(headerLine).toBeDefined();
+    expect(headerLine).toContain("\u001b[48;5;22m");
+    expect(headerLine).not.toContain("\u001b[0m");
+  });
+
   test("collapsed tool output can be expanded globally", () => {
     const lines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
     const collapsedView = new NanobossAppView(
