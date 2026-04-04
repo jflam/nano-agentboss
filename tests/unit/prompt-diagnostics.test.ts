@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { estimateDefaultPromptDiagnostics } from "../../src/prompt-diagnostics.ts";
+import { estimateDefaultPromptDiagnostics } from "../../src/core/prompt-diagnostics.ts";
 
 describe("prompt diagnostics", () => {
   test("estimates visible prompt tokens for copilot default prompts", () => {

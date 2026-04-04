@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { resolveSelfCommand } from "../../src/self-command.ts";
-import { SessionStore } from "../../src/session-store.ts";
+import { resolveSelfCommand } from "../../src/core/self-command.ts";
+import { SessionStore } from "../../src/session/store.ts";
 
 const tempDirs: string[] = [];
 

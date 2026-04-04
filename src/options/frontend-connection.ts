@@ -1,4 +1,4 @@
-import { DEFAULT_HTTP_SERVER_URL } from "../defaults.ts";
+import { DEFAULT_HTTP_SERVER_URL } from "../core/defaults.ts";
 import { requireValue } from "../util/argv.ts";
 
 export interface FrontendConnectionOptions {

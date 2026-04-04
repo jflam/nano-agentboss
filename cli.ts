@@ -1,5 +1,5 @@
-import { parseCliOptions } from "./src/cli-options.ts";
-import { DEFAULT_HTTP_SERVER_URL } from "./src/defaults.ts";
+import { parseCliOptions } from "./src/options/cli.ts";
+import { DEFAULT_HTTP_SERVER_URL } from "./src/core/defaults.ts";
 import { assertInteractiveTty, runTuiCli } from "./src/tui/run.ts";
 
 export async function runCliCommand(argv: string[] = []): Promise<void> {

@@ -4,7 +4,7 @@ import {
   buildTopLevelSessionMeta,
   extractNanobossSessionId,
   hasAttachedSessionMcp,
-} from "../../src/server.ts";
+} from "../../src/core/acp-server.ts";
 
 describe("top-level ACP session diagnostics", () => {
   test("reports command-only exposure when the attached session MCP is absent", () => {

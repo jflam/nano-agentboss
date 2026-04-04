@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import typia from "typia";
 
-import { callAgent } from "../../src/call-agent.ts";
-import { jsonType } from "../../src/types.ts";
+import { callAgent } from "../../src/agent/call-agent.ts";
+import { jsonType } from "../../src/core/types.ts";
 import { describeE2E } from "./helpers.ts";
 
 interface MathResult {

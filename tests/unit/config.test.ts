@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, expect, test } from "bun:test";
 
-import { parseAgentModelSelection, resolveDownstreamAgentConfig } from "../../src/config.ts";
-import { writePersistedDefaultAgentSelection } from "../../src/settings.ts";
+import { parseAgentModelSelection, resolveDownstreamAgentConfig } from "../../src/core/config.ts";
+import { writePersistedDefaultAgentSelection } from "../../src/core/settings.ts";
 
 let tempHome: string | undefined;
 

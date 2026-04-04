@@ -4,7 +4,7 @@ import {
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
   toFrontendCommands,
-} from "../../src/frontend-events.ts";
+} from "../../src/http/frontend-events.ts";
 
 describe("frontend-events", () => {
   test("maps commands, chunks, token snapshots, and compact tool previews into render events", () => {

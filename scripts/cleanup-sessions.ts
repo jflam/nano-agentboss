@@ -6,7 +6,7 @@ import {
   selectCleanupCandidates,
   summarizeCleanupCandidates,
   type SessionCleanupReason,
-} from "../src/session-cleanup.ts";
+} from "../src/session/cleanup.ts";
 import { requireValue } from "../src/util/argv.ts";
 
 const ALL_REASONS: SessionCleanupReason[] = [

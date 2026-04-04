@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { resolveSelfCommandWithRuntime } from "../../src/self-command.ts";
+import { resolveSelfCommandWithRuntime } from "../../src/core/self-command.ts";
 
 describe("resolveSelfCommandWithRuntime", () => {
   test("uses the source entrypoint when running from a real script on disk", () => {

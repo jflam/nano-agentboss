@@ -3,8 +3,8 @@ import type { AutocompleteItem } from "./pi-tui.ts";
 import {
   isKnownAgentProvider,
   isKnownModelSelection,
-} from "../model-catalog.ts";
-import type { DownstreamAgentSelection } from "../types.ts";
+} from "../agent/model-catalog.ts";
+import type { DownstreamAgentSelection } from "../core/types.ts";
 
 export const LOCAL_TUI_COMMANDS = [
   { name: "/new", description: "Start a new session" },

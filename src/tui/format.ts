@@ -1,5 +1,5 @@
-import { getAgentTokenUsagePercent } from "../token-usage.ts";
-import type { AgentTokenUsage, ValueRef } from "../types.ts";
+import { getAgentTokenUsagePercent } from "../agent/token-usage.ts";
+import type { AgentTokenUsage, ValueRef } from "../core/types.ts";
 import { summarizeText } from "../util/text.ts";
 
 export function isWrapperToolTitle(title: string): boolean {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildSessionMcpServers } from "../../src/mcp-attachment.ts";
+import { buildSessionMcpServers } from "../../src/mcp/attachment.ts";
 
 describe("session MCP attachment", () => {
   for (const provider of ["claude", "codex", "gemini", "copilot"] as const) {

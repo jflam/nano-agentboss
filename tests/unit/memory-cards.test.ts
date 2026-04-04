@@ -5,8 +5,8 @@ import { join } from "node:path";
 import {
   collectUnsyncedProcedureMemoryCards,
   renderProcedureMemoryPreamble,
-} from "../../src/memory-cards.ts";
-import { SessionStore } from "../../src/session-store.ts";
+} from "../../src/core/memory-cards.ts";
+import { SessionStore } from "../../src/session/store.ts";
 
 const tempDirs: string[] = [];
 

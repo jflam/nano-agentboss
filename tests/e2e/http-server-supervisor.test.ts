@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { getServerHealth, requestServerShutdown } from "../../src/http-client.ts";
-import { ensureMatchingHttpServer } from "../../src/http-server-supervisor.ts";
+import { getServerHealth, requestServerShutdown } from "../../src/http/client.ts";
+import { ensureMatchingHttpServer } from "../../src/http/server-supervisor.ts";
 import { reservePort } from "./helpers.ts";
 
 describe("HTTP server supervisor", () => {

@@ -7,7 +7,7 @@ import {
   listKnownProviders,
   listSelectableModelOptions,
   parseReasoningModelSelection,
-} from "../../src/model-catalog.ts";
+} from "../../src/agent/model-catalog.ts";
 
 test("lists the known downstream agents", () => {
   expect(listKnownProviders()).toEqual(["claude", "gemini", "codex", "copilot"]);

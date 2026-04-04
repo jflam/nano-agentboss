@@ -9,8 +9,8 @@ import {
   registerMcpCodex,
   registerMcpCopilot,
   registerMcpGemini,
-} from "../../src/mcp-registration.ts";
-import { resolveSelfCommandWithRuntime } from "../../src/self-command.ts";
+} from "../../src/mcp/registration.ts";
+import { resolveSelfCommandWithRuntime } from "../../src/core/self-command.ts";
 
 const tempDirs: string[] = [];
 

@@ -1,4 +1,4 @@
-import { writePersistedDefaultAgentSelection } from "../settings.ts";
+import { writePersistedDefaultAgentSelection } from "../core/settings.ts";
 
 import {
   NanobossTuiController,

@@ -2,11 +2,11 @@ import {
   getProviderLabel,
   listKnownProviders,
   listSelectableModelOptions,
-} from "../../model-catalog.ts";
-import { resolveDownstreamAgentConfig } from "../../config.ts";
-import { getNanobossSettingsPath } from "../../settings.ts";
-import { formatAgentBanner } from "../../runtime-banner.ts";
-import type { DownstreamAgentSelection, DownstreamAgentProvider } from "../../types.ts";
+} from "../../agent/model-catalog.ts";
+import { resolveDownstreamAgentConfig } from "../../core/config.ts";
+import { getNanobossSettingsPath } from "../../core/settings.ts";
+import { formatAgentBanner } from "../../core/runtime-banner.ts";
+import type { DownstreamAgentSelection, DownstreamAgentProvider } from "../../core/types.ts";
 
 import { type TUI } from "../pi-tui.ts";
 import type { NanobossTuiTheme } from "../theme.ts";

@@ -1,11 +1,11 @@
 import typia from "typia";
 
-import { formatAgentBanner } from "../src/runtime-banner.ts";
-import { expectData, expectDataRef } from "../src/run-result.ts";
+import { formatAgentBanner } from "../src/core/runtime-banner.ts";
+import { expectData, expectDataRef } from "../src/core/run-result.ts";
 import {
   jsonType,
   type Procedure,
-} from "../src/types.ts";
+} from "../src/core/types.ts";
 
 interface CritiqueResult {
   verdict: "sound" | "mixed" | "flawed";

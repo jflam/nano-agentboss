@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { matchesServerBuild } from "../../src/http-server-supervisor.ts";
+import { matchesServerBuild } from "../../src/http/server-supervisor.ts";
 
 describe("http server supervisor", () => {
   test("treats dirty and clean builds as different", () => {

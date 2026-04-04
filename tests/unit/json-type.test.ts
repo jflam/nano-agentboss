@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import typia from "typia";
 
-import { jsonType } from "../../src/types.ts";
+import { jsonType } from "../../src/core/types.ts";
 
 describe("jsonType", () => {
   interface Answer {

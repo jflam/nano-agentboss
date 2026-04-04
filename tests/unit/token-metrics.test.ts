@@ -11,7 +11,7 @@ import {
   parseCopilotLogMetrics,
   parseCopilotSessionState,
   parseDescendantPidsFromPsOutput,
-} from "../../src/token-metrics.ts";
+} from "../../src/agent/token-metrics.ts";
 
 test("collectTokenSnapshot uses ACP usage_update for codex", async () => {
   const snapshot = await collectTokenSnapshot({

@@ -1,4 +1,4 @@
-import type { DownstreamAgentSelection } from "../types.ts";
+import type { DownstreamAgentSelection } from "../core/types.ts";
 
 export interface UiTurn {
   id: string;

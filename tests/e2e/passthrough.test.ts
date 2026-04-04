@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { callAgent } from "../../src/call-agent.ts";
+import { callAgent } from "../../src/agent/call-agent.ts";
 import { describeE2E } from "./helpers.ts";
 
 describeE2E("callAgent passthrough (real agent)", () => {

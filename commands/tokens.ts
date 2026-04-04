@@ -1,6 +1,6 @@
-import { formatAgentBanner } from "../src/runtime-banner.ts";
-import { getAgentTokenUsagePercent } from "../src/token-usage.ts";
-import type { AgentTokenUsage, Procedure } from "../src/types.ts";
+import { formatAgentBanner } from "../src/core/runtime-banner.ts";
+import { getAgentTokenUsagePercent } from "../src/agent/token-usage.ts";
+import type { AgentTokenUsage, Procedure } from "../src/core/types.ts";
 
 export default {
   name: "tokens",

@@ -4,8 +4,8 @@ import {
   createHttpSession,
   sendSessionPrompt,
   startSessionEventStream,
-} from "../../src/http-client.ts";
-import type { FrontendEventEnvelope } from "../../src/frontend-events.ts";
+} from "../../src/http/client.ts";
+import type { FrontendEventEnvelope } from "../../src/http/frontend-events.ts";
 import {
   mockAgentEnv,
   reservePort,

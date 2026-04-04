@@ -1,8 +1,8 @@
 import { promptForStoredSessionSelection } from "./src/tui/overlays/session-picker.ts";
 import { createNanobossTuiTheme } from "./src/tui/theme.ts";
 import { assertInteractiveTty, runTuiCli } from "./src/tui/run.ts";
-import { DEFAULT_HTTP_SERVER_URL } from "./src/defaults.ts";
-import { parseResumeOptions } from "./src/resume-options.ts";
+import { DEFAULT_HTTP_SERVER_URL } from "./src/core/defaults.ts";
+import { parseResumeOptions } from "./src/options/resume.ts";
 import {
   findSessionSummary,
   listSessionSummaries,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FrontendEventEnvelope } from "../../src/frontend-events.ts";
+import type { FrontendEventEnvelope } from "../../src/http/frontend-events.ts";
 import { reduceUiState } from "../../src/tui/reducer.ts";
 import { createInitialUiState } from "../../src/tui/state.ts";
 

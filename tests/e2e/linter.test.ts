@@ -3,10 +3,10 @@ import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, test } from "bun:test";
 
-import { CommandContextImpl, type SessionUpdateEmitter } from "../../src/context.ts";
-import { RunLogger } from "../../src/logger.ts";
-import { ProcedureRegistry } from "../../src/registry.ts";
-import { SessionStore } from "../../src/session-store.ts";
+import { CommandContextImpl, type SessionUpdateEmitter } from "../../src/core/context.ts";
+import { RunLogger } from "../../src/core/logger.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { SessionStore } from "../../src/session/store.ts";
 import { describeE2E } from "./helpers.ts";
 
 const repoRoot = process.cwd();

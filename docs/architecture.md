@@ -22,10 +22,10 @@ Used when nanoboss runs as an HTTP server.
   - `GET /v1/sessions/:id/stream` via **SSE**
 
 Relevant files:
-- `src/http-server.ts`
-- `src/http-client.ts`
-- `src/frontend-events.ts`
-- `src/service.ts`
+- `src/http/server.ts`
+- `src/http/client.ts`
+- `src/http/frontend-events.ts`
+- `src/core/service.ts`
 
 ### 2. ACP over stdio
 Used in two places:
@@ -35,12 +35,12 @@ Used in two places:
 
 Relevant files:
 - nanoboss ACP server:
-  - `src/server.ts`
+  - `src/core/acp-server.ts`
   - `cli.ts`
 - downstream ACP client/runtime:
-  - `src/acp-runtime.ts`
-  - `src/call-agent.ts`
-  - `src/default-session.ts`
+  - `src/agent/acp-runtime.ts`
+  - `src/agent/call-agent.ts`
+  - `src/agent/default-session.ts`
 
 ### 3. Session MCP over stdio
 Used so downstream agents can inspect durable nanoboss session cells and refs.
@@ -48,10 +48,10 @@ Used so downstream agents can inspect durable nanoboss session cells and refs.
 This is **not** ACP. It is an MCP server attached to downstream ACP sessions over stdio.
 
 Relevant files:
-- `src/session-mcp.ts`
-- `src/session-mcp-stdio.ts`
-- `src/mcp-attachment.ts`
-- `src/session-store.ts`
+- `src/mcp/session.ts`
+- `src/mcp/session-stdio.ts`
+- `src/mcp/attachment.ts`
+- `src/session/store.ts`
 
 ---
 
@@ -60,20 +60,20 @@ Relevant files:
 ```mermaid
 flowchart TD
   U[User] -->|local terminal| CLI[CLI\ncli.ts]
-  U -->|HTTP requests| HTTPClient[HTTP client / UI\nsrc/http-client.ts]
+  U -->|HTTP requests| HTTPClient[HTTP client / UI\nsrc/http/client.ts]
 
-  CLI -->|stdio ACP| ACPServer[nanoboss ACP server\nsrc/server.ts]
-  HTTPClient -->|HTTP + SSE| HTTPServer[nanoboss HTTP/SSE server\nsrc/http-server.ts]
+  CLI -->|stdio ACP| ACPServer[nanoboss ACP server\nsrc/core/acp-server.ts]
+  HTTPClient -->|HTTP + SSE| HTTPServer[nanoboss HTTP/SSE server\nsrc/http/server.ts]
 
-  ACPServer --> Service[NanobossService\nsrc/service.ts]
+  ACPServer --> Service[NanobossService\nsrc/core/service.ts]
   HTTPServer --> Service
 
-  Service --> Context[CommandContext / procedures\nsrc/context.ts]
-  Context --> AgentRuntime[ACP runtime\nsrc/acp-runtime.ts]
+  Service --> Context[CommandContext / procedures\nsrc/core/context.ts]
+  Context --> AgentRuntime[ACP runtime\nsrc/agent/acp-runtime.ts]
 
   AgentRuntime -->|stdio ACP| Downstream[Downstream agent\nclaude / gemini / codex / copilot]
-  Downstream -->|stdio MCP tool calls| SessionMcp[Session MCP stdio server\nsrc/session-mcp-stdio.ts]
-  SessionMcp --> SessionStore[SessionStore\nsrc/session-store.ts]
+  Downstream -->|stdio MCP tool calls| SessionMcp[Session MCP stdio server\nsrc/mcp/session-stdio.ts]
+  SessionMcp --> SessionStore[SessionStore\nsrc/session/store.ts]
 ```
 
 ---
@@ -108,8 +108,8 @@ sequenceDiagram
 
 Relevant files:
 - `cli.ts`
-- `src/server.ts`
-- `src/service.ts`
+- `src/core/acp-server.ts`
+- `src/core/service.ts`
 
 ---
 
@@ -137,10 +137,10 @@ sequenceDiagram
 ```
 
 Relevant files:
-- `src/http-server.ts`
-- `src/http-client.ts`
-- `src/frontend-events.ts`
-- `src/service.ts`
+- `src/http/server.ts`
+- `src/http/client.ts`
+- `src/http/frontend-events.ts`
+- `src/core/service.ts`
 
 ---
 
@@ -154,15 +154,15 @@ This path is used by:
 
 ```mermaid
 flowchart LR
-  Service[NanobossService / CommandContext] --> Runtime[ACP runtime\nsrc/acp-runtime.ts]
+  Service[NanobossService / CommandContext] --> Runtime[ACP runtime\nsrc/agent/acp-runtime.ts]
   Runtime -->|spawn + stdio ACP| Agent[Downstream agent]
 ```
 
 Relevant files:
-- `src/acp-runtime.ts`
-- `src/call-agent.ts`
-- `src/default-session.ts`
-- `src/context.ts`
+- `src/agent/acp-runtime.ts`
+- `src/agent/call-agent.ts`
+- `src/agent/default-session.ts`
+- `src/core/context.ts`
 
 ---
 
@@ -197,10 +197,10 @@ sequenceDiagram
 ```
 
 Relevant files:
-- `src/mcp-attachment.ts`
-- `src/session-mcp-stdio.ts`
-- `src/session-mcp.ts`
-- `src/session-store.ts`
+- `src/mcp/attachment.ts`
+- `src/mcp/session-stdio.ts`
+- `src/mcp/session.ts`
+- `src/session/store.ts`
 
 ---
 

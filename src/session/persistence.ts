@@ -7,8 +7,8 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import { getNanobossHome, getSessionDir } from "../config.ts";
-import type { DownstreamAgentProvider, DownstreamAgentSelection } from "../types.ts";
+import { getNanobossHome, getSessionDir } from "../core/config.ts";
+import type { DownstreamAgentProvider, DownstreamAgentSelection } from "../core/types.ts";
 
 const SESSION_METADATA_FILE = "session.json";
 const CURRENT_SESSION_FILE = "current-session.json";

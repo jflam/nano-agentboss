@@ -5,10 +5,10 @@ import {
   isKnownModelSelection,
   listKnownProviders,
   listSelectableModelOptions,
-} from "../src/model-catalog.ts";
-import { formatAgentBanner } from "../src/runtime-banner.ts";
-import { getAgentTokenUsagePercent } from "../src/token-usage.ts";
-import type { AgentTokenUsage, Procedure } from "../src/types.ts";
+} from "../src/agent/model-catalog.ts";
+import { formatAgentBanner } from "../src/core/runtime-banner.ts";
+import { getAgentTokenUsagePercent } from "../src/agent/token-usage.ts";
+import type { AgentTokenUsage, Procedure } from "../src/core/types.ts";
 
 export default {
   name: "model",

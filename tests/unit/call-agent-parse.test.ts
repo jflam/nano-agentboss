@@ -7,8 +7,8 @@ import {
   callAgent,
   parseAgentResponse,
   sanitizeJsonResponse,
-} from "../../src/call-agent.ts";
-import { jsonType, type CallAgentTransport } from "../../src/types.ts";
+} from "../../src/agent/call-agent.ts";
+import { jsonType, type CallAgentTransport } from "../../src/core/types.ts";
 
 interface MathResult {
   result: number;

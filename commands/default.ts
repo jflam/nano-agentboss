@@ -1,4 +1,4 @@
-import type { Procedure } from "../src/types.ts";
+import type { Procedure } from "../src/core/types.ts";
 
 export default {
   name: "default",

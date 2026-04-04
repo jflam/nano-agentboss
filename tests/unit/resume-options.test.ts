@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { DEFAULT_HTTP_SERVER_URL } from "../../src/defaults.ts";
-import { parseResumeOptions } from "../../src/resume-options.ts";
+import { DEFAULT_HTTP_SERVER_URL } from "../../src/core/defaults.ts";
+import { parseResumeOptions } from "../../src/options/resume.ts";
 
 describe("parseResumeOptions", () => {
   test("resumes the most recent session by default", () => {

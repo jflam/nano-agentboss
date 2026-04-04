@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseDoctorOptions } from "../../src/doctor.ts";
+import { parseDoctorOptions } from "../../src/core/doctor.ts";
 
 describe("doctor command", () => {
   test("accepts no options", () => {

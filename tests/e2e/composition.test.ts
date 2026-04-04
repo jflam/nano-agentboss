@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import typia from "typia";
 
-import { CommandContextImpl } from "../../src/context.ts";
-import { RunLogger } from "../../src/logger.ts";
-import { ProcedureRegistry } from "../../src/registry.ts";
-import { SessionStore } from "../../src/session-store.ts";
-import { jsonType, type Procedure } from "../../src/types.ts";
+import { CommandContextImpl } from "../../src/core/context.ts";
+import { RunLogger } from "../../src/core/logger.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { SessionStore } from "../../src/session/store.ts";
+import { jsonType, type Procedure } from "../../src/core/types.ts";
 import { describeE2E } from "./helpers.ts";
 
 interface MathResult {

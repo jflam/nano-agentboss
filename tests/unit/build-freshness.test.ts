@@ -4,7 +4,7 @@ import {
   evaluateBuildFreshness,
   isBuildRelevantRepoPath,
   parseGitStatusPaths,
-} from "../../src/build-freshness.ts";
+} from "../../src/core/build-freshness.ts";
 
 describe("build freshness", () => {
   test("detects commit mismatch between working tree and installed CLI", () => {
@@ -27,7 +27,7 @@ describe("build freshness", () => {
     const status = evaluateBuildFreshness(
       {
         commit: "abcdef1",
-        dirtyPaths: ["cli.ts", "src/token-metrics.ts"],
+        dirtyPaths: ["cli.ts", "src/agent/token-metrics.ts"],
       },
       {
         commit: "abcdef1",
@@ -36,7 +36,7 @@ describe("build freshness", () => {
     );
 
     expect(status.outOfDate).toBe(true);
-    expect(status.reason).toContain("cli.ts, src/token-metrics.ts");
+    expect(status.reason).toContain("cli.ts, src/agent/token-metrics.ts");
   });
 
   test("detects dirty files newer than a dirty installed binary", () => {

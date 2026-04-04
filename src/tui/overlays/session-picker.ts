@@ -2,7 +2,7 @@ import {
   formatSessionDetailLine,
   formatSessionInitialPrompt,
   formatSessionLine,
-} from "../../session-picker-format.ts";
+} from "../../session/picker-format.ts";
 import type { SessionSummary } from "../../session/persistence.ts";
 
 import type { NanobossTuiTheme } from "../theme.ts";

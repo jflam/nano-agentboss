@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   formatSessionInitialPrompt,
   formatSessionLine,
-} from "../../src/session-picker-format.ts";
+} from "../../src/session/picker-format.ts";
 import type { SessionSummary } from "../../src/session/persistence.ts";
 
 function session(overrides: Partial<SessionSummary> = {}): SessionSummary {

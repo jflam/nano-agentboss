@@ -1,8 +1,8 @@
-import { buildModelCommand } from "../model-command.ts";
-import { resolveDownstreamAgentConfig } from "../config.ts";
-import { getBuildLabel } from "../build-info.ts";
-import { getBuildFreshnessNotice } from "../build-freshness.ts";
-import { ensureMatchingHttpServer } from "../http-server-supervisor.ts";
+import { buildModelCommand } from "../core/model-command.ts";
+import { resolveDownstreamAgentConfig } from "../core/config.ts";
+import { getBuildLabel } from "../core/build-info.ts";
+import { getBuildFreshnessNotice } from "../core/build-freshness.ts";
+import { ensureMatchingHttpServer } from "../http/server-supervisor.ts";
 import {
   cancelSessionRun,
   createHttpSession,
@@ -10,10 +10,10 @@ import {
   sendSessionPrompt,
   startSessionEventStream,
   type SessionStreamHandle,
-} from "../http-client.ts";
-import type { FrontendCommand, FrontendEventEnvelope } from "../frontend-events.ts";
-import { formatAgentBanner } from "../runtime-banner.ts";
-import type { DownstreamAgentSelection } from "../types.ts";
+} from "../http/client.ts";
+import type { FrontendCommand, FrontendEventEnvelope } from "../http/frontend-events.ts";
+import { formatAgentBanner } from "../core/runtime-banner.ts";
+import type { DownstreamAgentSelection } from "../core/types.ts";
 
 import {
   isExitRequest,

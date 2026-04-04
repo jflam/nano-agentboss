@@ -3,12 +3,12 @@ import { join } from "node:path";
 
 import typia from "typia";
 
-import { expectData } from "../src/run-result.ts";
+import { expectData } from "../src/core/run-result.ts";
 import {
   jsonType,
   type CommandContext,
   type Procedure,
-} from "../src/types.ts";
+} from "../src/core/types.ts";
 
 interface ResearchResult {
   report: string;

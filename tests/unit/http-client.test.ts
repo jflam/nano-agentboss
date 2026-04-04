@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseSseStream } from "../../src/http-client.ts";
+import { parseSseStream } from "../../src/http/client.ts";
 
 describe("parseSseStream", () => {
   test("parses id, event, and multi-line data", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { formatSessionMcpToolResult } from "../../src/session-mcp.ts";
+import { formatSessionMcpToolResult } from "../../src/mcp/session.ts";
 
 describe("session MCP formatting", () => {
   test("wraps array results in an items record for structuredContent", () => {

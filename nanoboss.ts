@@ -1,12 +1,12 @@
 import { runCliCommand } from "./cli.ts";
 import { runResumeCommand } from "./resume.ts";
-import { DEFAULT_HTTP_SERVER_PORT, DEFAULT_HTTP_SERVER_URL } from "./src/defaults.ts";
-import { runDoctorCommand } from "./src/doctor.ts";
-import { runHttpServerCommand } from "./src/http-server.ts";
-import { runMcpCommand } from "./src/mcp-proxy.ts";
-import { runSessionMcpStdioCommand } from "./src/session-mcp-stdio.ts";
-import { runProcedureDispatchWorkerCommand } from "./src/procedure-dispatch-jobs.ts";
-import { runAcpServerCommand } from "./src/server.ts";
+import { DEFAULT_HTTP_SERVER_PORT, DEFAULT_HTTP_SERVER_URL } from "./src/core/defaults.ts";
+import { runDoctorCommand } from "./src/core/doctor.ts";
+import { runHttpServerCommand } from "./src/http/server.ts";
+import { runMcpCommand } from "./src/mcp/proxy.ts";
+import { runSessionMcpStdioCommand } from "./src/mcp/session-stdio.ts";
+import { runProcedureDispatchWorkerCommand } from "./src/procedure/dispatch-jobs.ts";
+import { runAcpServerCommand } from "./src/core/acp-server.ts";
 
 export type NanobossSubcommand = "cli" | "resume" | "server" | "acp-server" | "session-mcp" | "procedure-dispatch-worker" | "doctor" | "mcp" | "help";
 

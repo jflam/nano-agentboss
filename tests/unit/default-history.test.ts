@@ -3,10 +3,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DefaultConversationSession } from "../../src/default-session.ts";
-import { ProcedureRegistry } from "../../src/registry.ts";
-import { NanobossService } from "../../src/service.ts";
-import type { DownstreamAgentConfig } from "../../src/types.ts";
+import { DefaultConversationSession } from "../../src/agent/default-session.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { NanobossService } from "../../src/core/service.ts";
+import type { DownstreamAgentConfig } from "../../src/core/types.ts";
 
 function createMockConfig(
   cwd: string,

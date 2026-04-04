@@ -208,7 +208,7 @@ NANOBOSS_RUN_E2E=1 bun test tests/e2e/default-history-agents.test.ts --test-name
 
 Replace `claude` with `gemini`, `codex`, or `copilot` as needed.
 
-Typed downstream agent outputs should use `jsonType(...)` from `src/types.ts` with concrete `typia`
+Typed downstream agent outputs should use `jsonType(...)` from `src/core/types.ts` with concrete `typia`
 inputs, for example `jsonType<Result>(typia.json.schema<Result>(), typia.createValidate<Result>())`,
 instead of handwritten schema/validator descriptors. Bun preload for the typia transform is configured
 in `bunfig.toml`.

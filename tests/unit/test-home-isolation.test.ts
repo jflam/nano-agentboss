@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 
 import { expect, test } from "bun:test";
 
-import { getNanobossHome } from "../../src/config.ts";
+import { getNanobossHome } from "../../src/core/config.ts";
 
 test("bun test isolates nanoboss state from the real home directory", () => {
   expect(process.env.NANOBOSS_TEST_HOME).toBeDefined();

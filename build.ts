@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { accessSync, chmodSync, constants, copyFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { resolveNanobossInstallDir } from "./src/install-path.ts";
+import { resolveNanobossInstallDir } from "./src/core/install-path.ts";
 
 const outfile = "./dist/nanoboss";
 const buildCommit = resolveBuildCommit();

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import {
   ProcedureDispatchJobManager,
   buildProcedureDispatchJobPath,
-} from "../../src/procedure-dispatch-jobs.ts";
+} from "../../src/procedure/dispatch-jobs.ts";
 
 function createManager(rootDir: string): ProcedureDispatchJobManager {
   return new ProcedureDispatchJobManager({

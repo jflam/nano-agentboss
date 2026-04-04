@@ -7,8 +7,8 @@ import { join } from "node:path";
 const MOCK_AGENT_PATH = join(process.cwd(), "tests/fixtures/mock-agent.ts");
 const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
 
-import { ProcedureRegistry } from "../../src/registry.ts";
-import { extractProcedureDispatchResult, NanobossService } from "../../src/service.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { extractProcedureDispatchResult, NanobossService } from "../../src/core/service.ts";
 
 beforeAll(() => {
   const build = spawnSync("bun", ["run", "build"], {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { inspectSessionCleanupCandidates, selectCleanupCandidates } from "../../src/session-cleanup.ts";
+import { inspectSessionCleanupCandidates, selectCleanupCandidates } from "../../src/session/cleanup.ts";
 
 describe("session cleanup inspection", () => {
   test("classifies empty directories, temp cwd sessions, and fixture prompts", () => {

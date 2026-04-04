@@ -7,9 +7,9 @@ import { join } from "node:path";
 const MOCK_AGENT_PATH = join(process.cwd(), "tests/fixtures/mock-agent.ts");
 const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
 
-import { ProcedureRegistry } from "../../src/registry.ts";
-import { NanobossService } from "../../src/service.ts";
-import type { DownstreamAgentConfig } from "../../src/types.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { NanobossService } from "../../src/core/service.ts";
+import type { DownstreamAgentConfig } from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];
 let originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;

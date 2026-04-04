@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseCliOptions } from "../../src/cli-options.ts";
-import { DEFAULT_HTTP_SERVER_URL } from "../../src/defaults.ts";
+import { parseCliOptions } from "../../src/options/cli.ts";
+import { DEFAULT_HTTP_SERVER_URL } from "../../src/core/defaults.ts";
 
 describe("parseCliOptions", () => {
   test("shows tool calls by default", () => {

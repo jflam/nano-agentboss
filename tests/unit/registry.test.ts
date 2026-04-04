@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ProcedureRegistry } from "../../src/registry.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 
 describe("ProcedureRegistry", () => {
   test("loads procedures from the commands directory", async () => {

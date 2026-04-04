@@ -7,9 +7,9 @@ import {
   callSessionMcpTool,
   createSessionMcpApi,
   listSessionMcpTools,
-} from "../../src/session-mcp.ts";
-import { ProcedureRegistry } from "../../src/registry.ts";
-import { SessionStore } from "../../src/session-store.ts";
+} from "../../src/mcp/session.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { SessionStore } from "../../src/session/store.ts";
 
 const tempDirs: string[] = [];
 const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");

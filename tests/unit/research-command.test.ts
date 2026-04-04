@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import researchProcedure from "../../commands/research.ts";
-import type { CommandContext, DownstreamAgentConfig, RunResult } from "../../src/types.ts";
+import type { CommandContext, DownstreamAgentConfig, RunResult } from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];
 

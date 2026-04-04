@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { CommandContextImpl } from "../../src/context.ts";
-import { RunLogger } from "../../src/logger.ts";
-import { ProcedureRegistry } from "../../src/registry.ts";
-import { SessionStore } from "../../src/session-store.ts";
-import type { DownstreamAgentConfig } from "../../src/types.ts";
+import { CommandContextImpl } from "../../src/core/context.ts";
+import { RunLogger } from "../../src/core/logger.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { SessionStore } from "../../src/session/store.ts";
+import type { DownstreamAgentConfig } from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];
 

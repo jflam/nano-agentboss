@@ -1,5 +1,5 @@
-import type { FrontendCommand, FrontendEventEnvelope } from "../frontend-events.ts";
-import type { DownstreamAgentSelection } from "../types.ts";
+import type { FrontendCommand, FrontendEventEnvelope } from "../http/frontend-events.ts";
+import type { DownstreamAgentSelection } from "../core/types.ts";
 
 import {
   formatMemoryCardsLines,
