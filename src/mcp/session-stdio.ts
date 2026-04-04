@@ -1,8 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { resolveSelfCommand } from "../core/self-command.ts";
-import { SESSION_MCP_SERVER_NAME, createSessionMcpApi, dispatchSessionMcpMethod } from "./session.ts";
-import { runStdioJsonRpcServer } from "./stdio-jsonrpc.ts";
+import { SESSION_MCP_SERVER_NAME, createSessionMcpApi, runSessionMcpServer } from "./session.ts";
 import { requireValue } from "../util/argv.ts";
 
 interface SessionMcpStdioParams {
@@ -34,7 +33,7 @@ export function buildSessionMcpStdioServer(
 export async function runSessionMcpStdioCommand(argv: string[]): Promise<void> {
   const params = parseSessionMcpCommandArgs(argv);
   const api = createSessionMcpApi(params);
-  await runStdioJsonRpcServer((method, messageParams) => dispatchSessionMcpMethod(api, method, messageParams));
+  await runSessionMcpServer(api);
 }
 
 function parseSessionMcpCommandArgs(argv: string[]): SessionMcpStdioParams {

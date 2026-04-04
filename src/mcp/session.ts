@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { getBuildLabel } from "../core/build-info.ts";
 import { inferDataShape } from "../core/data-shape.ts";
 import { dispatchMcpToolsMethod, type JsonRpcToolMetadata } from "./jsonrpc.ts";
+import { runStdioJsonRpcServer } from "./stdio-jsonrpc.ts";
 import {
   ProcedureDispatchJobManager,
   type ProcedureDispatchStartResult,
@@ -27,6 +28,14 @@ import type {
 export const SESSION_MCP_PROTOCOL_VERSION = "2025-11-25";
 export const SESSION_MCP_SERVER_NAME = "nanoboss-session";
 export const SESSION_MCP_INSTRUCTIONS = "These tools are already attached to the current nanoboss master session. Do not discover or pass a session id. Do not inspect repo files or ~/.nanoboss to figure out dispatch. For slash commands, first call procedure_dispatch_start once, then call procedure_dispatch_wait with the returned dispatch id until terminal status. The client may expose these tools under namespaced handles for the attached nanoboss-session server.";
+export const GLOBAL_MCP_SERVER_NAME = "nanoboss";
+export const GLOBAL_MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state for the current session. If a current-session pointer exists, it is used automatically. Prefer procedure_dispatch_start plus procedure_dispatch_wait for slash-command execution.";
+
+export interface SessionMcpServerOptions {
+  instructions?: string;
+  protocolVersion?: string;
+  serverName?: string;
+}
 
 interface SessionMcpParams {
   sessionId?: string;
@@ -228,6 +237,13 @@ export class SessionMcpApi {
 
 export function createSessionMcpApi(params: SessionMcpParams): SessionMcpApi {
   return new SessionMcpApi(params);
+}
+
+export function createCurrentSessionBackedSessionMcpApi(cwd = process.cwd()): SessionMcpApi {
+  return createSessionMcpApi({
+    cwd,
+    allowCurrentSessionFallback: true,
+  });
 }
 
 const CELL_REF_SCHEMA = {
@@ -633,19 +649,27 @@ export async function dispatchSessionMcpMethod(
   api: SessionMcpApi,
   method: string,
   params: unknown,
+  options: SessionMcpServerOptions = {},
 ): Promise<unknown> {
   return await dispatchMcpToolsMethod({
     api,
     method,
     messageParams: params,
-    protocolVersion: SESSION_MCP_PROTOCOL_VERSION,
-    serverName: SESSION_MCP_SERVER_NAME,
+    protocolVersion: options.protocolVersion ?? SESSION_MCP_PROTOCOL_VERSION,
+    serverName: options.serverName ?? SESSION_MCP_SERVER_NAME,
     serverVersion: getBuildLabel(),
-    instructions: SESSION_MCP_INSTRUCTIONS,
+    instructions: options.instructions ?? SESSION_MCP_INSTRUCTIONS,
     listTools: listSessionMcpTools,
     callTool: callSessionMcpTool,
     formatToolResult: formatSessionMcpToolResult,
   });
+}
+
+export async function runSessionMcpServer(
+  api: SessionMcpApi,
+  options: SessionMcpServerOptions = {},
+): Promise<void> {
+  await runStdioJsonRpcServer((method, messageParams) => dispatchSessionMcpMethod(api, method, messageParams, options));
 }
 
 export function formatSessionMcpToolResult(
