@@ -6,7 +6,12 @@ import {
   startSessionEventStream,
 } from "../../src/http/client.ts";
 import type { FrontendEventEnvelope } from "../../src/http/frontend-events.ts";
-import { reservePort, spawnNanoboss, waitForHealth, waitForMatch } from "./helpers.ts";
+import {
+  reservePort,
+  spawnNanoboss,
+  waitForCountWithActivity,
+  waitForHealth,
+} from "./helpers.ts";
 
 const runAsyncDispatchE2E =
   process.env.SKIP_E2E !== "1" &&
@@ -99,7 +104,14 @@ async function waitForCompletedRuns(
   events: FrontendEventEnvelope[],
   count: number,
 ): Promise<void> {
-  await waitForMatch(() => String(completedRuns(events).length), String(count), 180_000);
+  await waitForCountWithActivity({
+    events,
+    countMatches: (currentEvents) => completedRuns(currentEvents).length,
+    targetCount: count,
+    idleTimeoutMs: 30_000,
+    maxTotalTimeoutMs: 3_600_000,
+    label: `completed runs >= ${count}`,
+  });
 }
 
 function realAgentEnv(): Record<string, string> {

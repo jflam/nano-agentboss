@@ -136,3 +136,59 @@ export async function waitForMatch(
     await Bun.sleep(50);
   }
 }
+
+export async function waitForCountWithActivity<T extends { seq: number; type: string }>(params: {
+  events: T[];
+  countMatches: (events: T[]) => number;
+  targetCount: number;
+  idleTimeoutMs?: number;
+  maxTotalTimeoutMs?: number;
+  label?: string;
+}): Promise<void> {
+  const idleTimeoutMs = params.idleTimeoutMs ?? 30_000;
+  const maxTotalTimeoutMs = params.maxTotalTimeoutMs ?? 3_600_000;
+  const startedAt = Date.now();
+  let lastActivityAt = startedAt;
+  let lastSeenSeq = params.events.at(-1)?.seq ?? -1;
+
+  for (;;) {
+    const currentCount = params.countMatches(params.events);
+    if (currentCount >= params.targetCount) {
+      return;
+    }
+
+    const currentSeq = params.events.at(-1)?.seq ?? -1;
+    if (currentSeq !== lastSeenSeq) {
+      lastSeenSeq = currentSeq;
+      lastActivityAt = Date.now();
+    }
+
+    const now = Date.now();
+    if (now - lastActivityAt >= idleTimeoutMs) {
+      throw new Error([
+        `Timed out waiting for ${params.label ?? "target event count"}: matched ${currentCount}/${params.targetCount}.`,
+        `No frontend activity for ${idleTimeoutMs}ms.`,
+        `Recent events: ${summarizeRecentEvents(params.events)}`,
+      ].join("\n"));
+    }
+
+    if (now - startedAt >= maxTotalTimeoutMs) {
+      throw new Error([
+        `Timed out waiting for ${params.label ?? "target event count"}: matched ${currentCount}/${params.targetCount}.`,
+        `Exceeded safety cap of ${maxTotalTimeoutMs}ms despite continued activity.`,
+        `Recent events: ${summarizeRecentEvents(params.events)}`,
+      ].join("\n"));
+    }
+
+    await Bun.sleep(50);
+  }
+}
+
+function summarizeRecentEvents(events: Array<{ seq: number; type: string }>): string {
+  const tail = events.slice(-20);
+  if (tail.length === 0) {
+    return "<none>";
+  }
+
+  return tail.map((event) => `${event.seq}:${event.type}`).join(", ");
+}
