@@ -72,6 +72,7 @@ describe("NanobossTuiApp", () => {
               handledSubmissions.push(text);
             },
             async cancelActiveRun() {},
+            toggleToolOutput() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -98,6 +99,59 @@ describe("NanobossTuiApp", () => {
 
     editor.submit();
     expect(handledSubmissions).toEqual(["/quit"]);
+  });
+
+  test("pressing ctrl+o toggles expanded tool output", async () => {
+    const editor = new FakeEditor();
+    const toggles: string[] = [];
+    let currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    let inputListener: ((data: string) => unknown) | undefined;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener(listener) {
+            inputListener = listener;
+          },
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async cancelActiveRun() {},
+          toggleToolOutput() {
+            toggles.push("toggle");
+          },
+          requestExit() {},
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => ({
+          setState() {},
+        }),
+      },
+    );
+
+    const result = inputListener?.("\u000f");
+    await Promise.resolve();
+
+    expect(result).toEqual({ consume: true });
+    expect(toggles).toEqual(["toggle"]);
   });
 
   test("pressing escape while a run is active cancels the current run", async () => {
@@ -139,6 +193,7 @@ describe("NanobossTuiApp", () => {
             async cancelActiveRun() {
               cancellations.push("cancel");
             },
+            toggleToolOutput() {},
             requestExit() {},
             async run() {
               return undefined;

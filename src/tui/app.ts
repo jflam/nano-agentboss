@@ -57,6 +57,7 @@ interface ControllerLike {
   getState(): UiState;
   handleSubmit(text: string): Promise<void>;
   cancelActiveRun(): Promise<void>;
+  toggleToolOutput(): void;
   requestExit(): void;
   run(): Promise<string | undefined>;
   stop(): Promise<void>;
@@ -139,6 +140,11 @@ export class NanobossTuiApp {
     this.tui.addInputListener((data) => {
       if (matchesKey(data, "escape") && this.state.inputDisabled) {
         void this.controller.cancelActiveRun();
+        return { consume: true };
+      }
+
+      if (matchesKey(data, "ctrl+o")) {
+        this.controller.toggleToolOutput();
         return { consume: true };
       }
 

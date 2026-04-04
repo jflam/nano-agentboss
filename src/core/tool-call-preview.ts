@@ -1,8 +1,17 @@
 import { summarizeText } from "../util/text.ts";
 
-const MAX_INPUT_SUMMARY_LENGTH = 140;
-const MAX_OUTPUT_SUMMARY_LENGTH = 220;
-const MAX_ERROR_SUMMARY_LENGTH = 180;
+const MAX_HEADER_LENGTH = 140;
+const MAX_WARNING_LENGTH = 180;
+const MAX_PREVIEW_LINES = 16;
+const MAX_PREVIEW_LINE_LENGTH = 160;
+const MAX_BODY_CHARS = 4_000;
+
+export interface ToolPreviewBlock {
+  header?: string;
+  bodyLines?: string[];
+  warnings?: string[];
+  truncated?: boolean;
+}
 
 interface ToolIdentity {
   title?: string;
@@ -10,55 +19,55 @@ interface ToolIdentity {
 }
 
 interface ToolPreviewFields {
-  inputSummary?: string;
-  outputSummary?: string;
-  errorSummary?: string;
+  callPreview?: ToolPreviewBlock;
+  resultPreview?: ToolPreviewBlock;
+  errorPreview?: ToolPreviewBlock;
   durationMs?: number;
 }
 
 export function summarizeToolCallStart(
   identity: ToolIdentity,
   rawInput: unknown,
-): Pick<ToolPreviewFields, "inputSummary"> {
+): Pick<ToolPreviewFields, "callPreview"> {
   return {
-    inputSummary: summarizeToolInput(identity, rawInput),
+    callPreview: summarizeToolInput(identity, rawInput),
   };
 }
 
 export function summarizeToolCallUpdate(
   identity: ToolIdentity,
   rawOutput: unknown,
-): Pick<ToolPreviewFields, "outputSummary" | "errorSummary" | "durationMs"> {
+): Pick<ToolPreviewFields, "resultPreview" | "errorPreview" | "durationMs"> {
   const record = asRecord(rawOutput);
   const durationMs = typeof record?.durationMs === "number" ? record.durationMs : undefined;
-  const explicitErrorSummary = summarizeBounded(record?.errorSummary, MAX_ERROR_SUMMARY_LENGTH);
-  const explicitOutputSummary = summarizeBounded(record?.outputSummary, MAX_OUTPUT_SUMMARY_LENGTH);
 
-  if (explicitErrorSummary || explicitOutputSummary) {
+  const explicitErrorPreview = normalizeToolPreviewBlock(record?.errorPreview);
+  const explicitResultPreview = normalizeToolPreviewBlock(record?.resultPreview);
+  if (explicitErrorPreview || explicitResultPreview) {
     return {
-      outputSummary: explicitOutputSummary,
-      errorSummary: explicitErrorSummary,
+      resultPreview: explicitResultPreview,
+      errorPreview: explicitErrorPreview,
       durationMs,
     };
   }
 
-  const errorSummary = summarizeToolError(rawOutput);
-  if (errorSummary) {
+  const errorPreview = summarizeToolError(rawOutput);
+  if (errorPreview) {
     return {
-      errorSummary,
+      errorPreview,
       durationMs,
     };
   }
 
   return {
-    outputSummary: summarizeToolOutput(identity, rawOutput),
+    resultPreview: summarizeToolOutput(identity, rawOutput),
     durationMs,
   };
 }
 
 export function compactToolCallInput(identity: ToolIdentity, rawInput: unknown): unknown {
-  const inputSummary = summarizeToolInput(identity, rawInput);
-  return inputSummary ? { inputSummary } : undefined;
+  const callPreview = summarizeToolInput(identity, rawInput);
+  return callPreview ? { callPreview } : undefined;
 }
 
 export function compactToolCallOutput(identity: ToolIdentity, rawOutput: unknown): unknown {
@@ -70,17 +79,20 @@ export function compactToolCallOutput(identity: ToolIdentity, rawOutput: unknown
   const record = asRecord(rawOutput);
 
   return cleanObject({
-    ...(preview.outputSummary ? { outputSummary: preview.outputSummary } : {}),
-    ...(preview.errorSummary ? { errorSummary: preview.errorSummary } : {}),
+    ...(preview.resultPreview ? { resultPreview: preview.resultPreview } : {}),
+    ...(preview.errorPreview ? { errorPreview: preview.errorPreview } : {}),
     ...(preview.durationMs !== undefined ? { durationMs: preview.durationMs } : {}),
     ...(record && typeof record.tokenUsage === "object" ? { tokenUsage: record.tokenUsage } : {}),
     ...(record && typeof record.tokenSnapshot === "object" ? { tokenSnapshot: record.tokenSnapshot } : {}),
   });
 }
 
-function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): string | undefined {
+function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): ToolPreviewBlock | undefined {
   const record = asRecord(rawInput);
-  const explicit = summarizeBounded(record?.inputSummary ?? record?.preview, MAX_INPUT_SUMMARY_LENGTH);
+  const explicit = normalizeToolPreviewBlock(
+    record?.callPreview,
+    buildSummaryPreviewBlock(record?.inputSummary ?? record?.preview),
+  );
   if (explicit) {
     return explicit;
   }
@@ -89,83 +101,148 @@ function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): string |
   switch (toolName) {
     case "bash": {
       const command = firstString(record?.command, record?.cmd, rawInput);
-      return summarizeBounded(command, MAX_INPUT_SUMMARY_LENGTH);
+      return command ? { header: summarizeInline(`$ ${command}`, MAX_HEADER_LENGTH) } : undefined;
     }
-    case "read":
-    case "write":
-    case "find":
-    case "ls": {
-      const path = firstString(record?.path, record?.filePath, record?.dir, record?.cwd);
-      if (path) {
-        return summarizeBounded(path, MAX_INPUT_SUMMARY_LENGTH);
-      }
-      break;
+    case "read": {
+      const path = firstString(record?.path, record?.filePath);
+      const header = path ? summarizeInline(`read ${path}${formatLineRange(record)}`, MAX_HEADER_LENGTH) : undefined;
+      return cleanPreviewBlock({
+        header,
+        warnings: summarizeWarnings(extractWarnings(record)),
+      });
+    }
+    case "write": {
+      const path = firstString(record?.path, record?.filePath);
+      return cleanPreviewBlock({
+        header: path ? summarizeInline(`write ${path}`, MAX_HEADER_LENGTH) : undefined,
+        bodyLines: boundedPreviewLines(extractTextLikeContent(record?.content ?? record?.text ?? rawInput), "start").lines,
+        warnings: summarizeWarnings(extractWarnings(record)),
+      });
     }
     case "edit": {
       const path = firstString(record?.path, record?.filePath);
       const edits = Array.isArray(record?.edits) ? record.edits.length : undefined;
-      if (path && edits !== undefined) {
-        return summarizeBounded(`${path} (${edits} edit${edits === 1 ? "" : "s"})`, MAX_INPUT_SUMMARY_LENGTH);
-      }
-      if (path) {
-        return summarizeBounded(path, MAX_INPUT_SUMMARY_LENGTH);
-      }
-      break;
+      const bodyLines = edits !== undefined ? [`${edits} edit${edits === 1 ? "" : "s"}`] : undefined;
+      return cleanPreviewBlock({
+        header: path ? summarizeInline(`edit ${path}`, MAX_HEADER_LENGTH) : undefined,
+        bodyLines,
+        warnings: summarizeWarnings(extractWarnings(record)),
+      });
     }
     case "grep": {
       const pattern = firstString(record?.pattern, record?.query);
       const path = firstString(record?.path, record?.cwd);
-      if (pattern && path) {
-        return summarizeBounded(`${pattern} @ ${path}`, MAX_INPUT_SUMMARY_LENGTH);
+      if (!pattern && !path) {
+        break;
       }
-      if (pattern) {
-        return summarizeBounded(pattern, MAX_INPUT_SUMMARY_LENGTH);
+
+      return cleanPreviewBlock({
+        header: summarizeInline(path ? `grep ${pattern ?? ""} @ ${path}` : `grep ${pattern ?? path}`, MAX_HEADER_LENGTH),
+        warnings: summarizeWarnings(extractWarnings(record)),
+      });
+    }
+    case "find": {
+      const query = firstString(record?.query, record?.pattern, record?.name);
+      const path = firstString(record?.path, record?.cwd, record?.dir);
+      if (!query && !path) {
+        break;
       }
-      break;
+
+      return cleanPreviewBlock({
+        header: summarizeInline(path && query ? `find ${query} @ ${path}` : `find ${query ?? path}`, MAX_HEADER_LENGTH),
+        warnings: summarizeWarnings(extractWarnings(record)),
+      });
+    }
+    case "ls": {
+      const path = firstString(record?.path, record?.filePath, record?.dir, record?.cwd);
+      return cleanPreviewBlock({
+        header: path ? summarizeInline(`ls ${path}`, MAX_HEADER_LENGTH) : undefined,
+        warnings: summarizeWarnings(extractWarnings(record)),
+      });
     }
   }
 
   const prompt = firstString(record?.prompt, record?.text, rawInput);
   if (prompt) {
-    return summarizeBounded(prompt, MAX_INPUT_SUMMARY_LENGTH);
+    return buildSummaryPreviewBlock(prompt);
   }
 
   const path = firstString(record?.path, record?.filePath);
   if (path) {
-    return summarizeBounded(path, MAX_INPUT_SUMMARY_LENGTH);
+    return buildSummaryPreviewBlock(path);
   }
 
-  return summarizeUnknown(rawInput, MAX_INPUT_SUMMARY_LENGTH);
+  return buildSummaryPreviewBlock(summarizeUnknown(rawInput, MAX_HEADER_LENGTH));
 }
 
-function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): string | undefined {
+function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): ToolPreviewBlock | undefined {
   const record = asRecord(rawOutput);
-  const explicit = summarizeBounded(record?.preview, MAX_OUTPUT_SUMMARY_LENGTH);
+  const explicit = normalizeToolPreviewBlock(
+    record?.resultPreview,
+    buildSummaryPreviewBlock(record?.outputSummary ?? record?.preview),
+  );
   if (explicit) {
     return explicit;
   }
 
   const toolName = normalizeToolName(identity);
   switch (toolName) {
-    case "bash": {
-      const output = firstString(record?.stdout, record?.stderr, record?.text, record?.content);
-      if (output) {
-        return summarizeBounded(output, MAX_OUTPUT_SUMMARY_LENGTH);
-      }
-      break;
-    }
+    case "bash":
+      return cleanPreviewBlock({
+        bodyLines: boundedPreviewLines(
+          firstString(record?.stdout, record?.stderr, record?.text, record?.content),
+          "end",
+        ).lines,
+        warnings: summarizeWarnings(extractWarnings(record)),
+        truncated: hasPreviewTruncation(firstString(record?.stdout, record?.stderr, record?.text, record?.content), record),
+      });
     case "read": {
       const contents = extractTextLikeContent(rawOutput);
-      if (contents) {
-        return summarizeBounded(contents, MAX_OUTPUT_SUMMARY_LENGTH);
-      }
-      break;
+      const preview = boundedPreviewLines(contents, "start");
+      return cleanPreviewBlock({
+        bodyLines: preview.lines,
+        warnings: summarizeWarnings(extractWarnings(record)),
+        truncated: preview.truncated || hasExplicitTruncation(record),
+      });
     }
-    case "write":
     case "edit": {
+      const diffText = firstString(record?.diff, record?.patch, record?.text, record?.content);
+      const diffPreview = boundedPreviewLines(diffText, "start");
       const path = firstString(record?.path, record?.filePath);
-      if (path) {
-        return summarizeBounded(path, MAX_OUTPUT_SUMMARY_LENGTH);
+      return cleanPreviewBlock({
+        bodyLines: diffPreview.lines.length > 0
+          ? diffPreview.lines
+          : path
+            ? [`updated ${path}`]
+            : undefined,
+        warnings: summarizeWarnings(extractWarnings(record)),
+        truncated: diffPreview.truncated || hasExplicitTruncation(record),
+      });
+    }
+    case "write": {
+      const outputText = extractTextLikeContent(rawOutput);
+      const preview = boundedPreviewLines(outputText, "start");
+      const path = firstString(record?.path, record?.filePath);
+      return cleanPreviewBlock({
+        bodyLines: preview.lines.length > 0
+          ? preview.lines
+          : path
+            ? [`wrote ${path}`]
+            : undefined,
+        warnings: summarizeWarnings(extractWarnings(record)),
+        truncated: preview.truncated || hasExplicitTruncation(record),
+      });
+    }
+    case "grep":
+    case "find":
+    case "ls": {
+      const preview = summarizeListLikeResult(rawOutput);
+      if (preview) {
+        return cleanPreviewBlock({
+          bodyLines: preview.lines,
+          warnings: summarizeWarnings(extractWarnings(record)),
+          truncated: preview.truncated || hasExplicitTruncation(record),
+        });
       }
       break;
     }
@@ -173,31 +250,151 @@ function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): string
 
   const textLike = extractTextLikeContent(rawOutput);
   if (textLike) {
-    return summarizeBounded(textLike, MAX_OUTPUT_SUMMARY_LENGTH);
+    const preview = boundedPreviewLines(textLike, "start");
+    return cleanPreviewBlock({
+      bodyLines: preview.lines,
+      warnings: summarizeWarnings(extractWarnings(record)),
+      truncated: preview.truncated || hasExplicitTruncation(record),
+    });
+  }
+
+  const listPreview = summarizeListLikeResult(rawOutput);
+  if (listPreview) {
+    return cleanPreviewBlock({
+      bodyLines: listPreview.lines,
+      warnings: summarizeWarnings(extractWarnings(record)),
+      truncated: listPreview.truncated || hasExplicitTruncation(record),
+    });
   }
 
   const cell = record?.cell;
   if (isCellRef(cell)) {
-    return `stored result in ${cell.cellId}`;
+    return { bodyLines: [`stored result in ${cell.cellId}`] };
   }
 
   const dataRef = asRecord(record?.dataRef);
   if (isCellRef(dataRef?.cell) && typeof dataRef?.path === "string") {
-    return summarizeBounded(`stored ref ${dataRef.path}`, MAX_OUTPUT_SUMMARY_LENGTH);
+    return { bodyLines: [summarizeInline(`stored ref ${dataRef.path}`, MAX_PREVIEW_LINE_LENGTH)] };
   }
 
   const path = firstString(record?.path, record?.filePath);
   if (path) {
-    return summarizeBounded(path, MAX_OUTPUT_SUMMARY_LENGTH);
+    return { bodyLines: [summarizeInline(path, MAX_PREVIEW_LINE_LENGTH)] };
   }
 
-  return summarizeUnknown(rawOutput, MAX_OUTPUT_SUMMARY_LENGTH);
+  return buildSummaryPreviewBlock(summarizeUnknown(rawOutput, MAX_HEADER_LENGTH));
 }
 
-function summarizeToolError(rawOutput: unknown): string | undefined {
+function summarizeToolError(rawOutput: unknown): ToolPreviewBlock | undefined {
   const record = asRecord(rawOutput);
-  const error = firstString(record?.error, record?.message, record?.stderr);
-  return summarizeBounded(error, MAX_ERROR_SUMMARY_LENGTH);
+  const explicit = normalizeToolPreviewBlock(
+    record?.errorPreview,
+    buildSummaryPreviewBlock(record?.errorSummary),
+  );
+  if (explicit) {
+    return explicit;
+  }
+
+  const errorText = firstString(record?.error, record?.message, record?.stderr);
+  if (!errorText) {
+    return undefined;
+  }
+
+  const preview = boundedPreviewLines(errorText, "start");
+  return cleanPreviewBlock({
+    bodyLines: preview.lines,
+    warnings: summarizeWarnings(extractWarnings(record)),
+    truncated: preview.truncated || hasExplicitTruncation(record),
+  });
+}
+
+function normalizeToolPreviewBlock(value: unknown, fallback?: ToolPreviewBlock): ToolPreviewBlock | undefined {
+  const record = asRecord(value);
+  if (!record) {
+    return fallback ? cleanPreviewBlock(fallback) : undefined;
+  }
+
+  const header = summarizeInline(firstString(record.header), MAX_HEADER_LENGTH);
+  const bodyText = firstString(record.body, record.text, record.content);
+  const bodyLines = Array.isArray(record.bodyLines)
+    ? normalizePreviewLines(record.bodyLines)
+    : bodyText
+      ? boundedPreviewLines(bodyText, "start").lines
+      : undefined;
+  const warnings = Array.isArray(record.warnings)
+    ? normalizePreviewLines(record.warnings, MAX_WARNING_LENGTH)
+    : summarizeWarnings(extractWarnings(record));
+  const truncated = record.truncated === true;
+
+  return cleanPreviewBlock({
+    header,
+    bodyLines,
+    warnings,
+    truncated,
+  }) ?? fallback;
+}
+
+function summarizeListLikeResult(value: unknown): { lines: string[]; truncated: boolean } | undefined {
+  const record = asRecord(value);
+  const candidates: unknown[] = [
+    record?.matches,
+    record?.items,
+    record?.entries,
+    record?.files,
+    record?.paths,
+    record?.results,
+    record?.lines,
+  ];
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate) || candidate.length === 0) {
+      continue;
+    }
+
+    const lines = candidate
+      .map((entry) => summarizeListEntry(entry))
+      .filter((entry): entry is string => Boolean(entry));
+    if (lines.length === 0) {
+      continue;
+    }
+
+    return {
+      lines: normalizePreviewLines(lines),
+      truncated: candidate.length > lines.length || candidate.length > MAX_PREVIEW_LINES,
+    };
+  }
+
+  return undefined;
+}
+
+function summarizeListEntry(entry: unknown): string | undefined {
+  if (typeof entry === "string") {
+    return summarizeInline(entry, MAX_PREVIEW_LINE_LENGTH);
+  }
+
+  const record = asRecord(entry);
+  if (!record) {
+    return summarizeUnknown(entry, MAX_PREVIEW_LINE_LENGTH);
+  }
+
+  const path = firstString(record.path, record.file, record.filePath, record.name);
+  const line = typeof record.line === "number" ? record.line : undefined;
+  const text = firstString(record.text, record.content, record.preview, record.match);
+
+  if (path && line !== undefined && text) {
+    return summarizeInline(`${path}:${line} ${text}`, MAX_PREVIEW_LINE_LENGTH);
+  }
+  if (path && text) {
+    return summarizeInline(`${path} ${text}`, MAX_PREVIEW_LINE_LENGTH);
+  }
+  if (path) {
+    return summarizeInline(path, MAX_PREVIEW_LINE_LENGTH);
+  }
+  if (text) {
+    return summarizeInline(text, MAX_PREVIEW_LINE_LENGTH);
+  }
+
+  return summarizeUnknown(entry, MAX_PREVIEW_LINE_LENGTH);
 }
 
 function extractTextLikeContent(value: unknown): string | undefined {
@@ -239,10 +436,145 @@ function extractTextLikeContent(value: unknown): string | undefined {
 
   const structuredContent = record?.structuredContent;
   if (structuredContent !== undefined) {
-    return summarizeUnknown(structuredContent, MAX_OUTPUT_SUMMARY_LENGTH);
+    return summarizeUnknown(structuredContent, MAX_BODY_CHARS);
   }
 
   return undefined;
+}
+
+function buildSummaryPreviewBlock(value: unknown): ToolPreviewBlock | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const summary = summarizeInline(value, MAX_HEADER_LENGTH);
+  return summary ? { bodyLines: [summary] } : undefined;
+}
+
+function boundedPreviewLines(
+  value: unknown,
+  mode: "start" | "end",
+): { lines: string[]; truncated: boolean } {
+  if (typeof value !== "string") {
+    return { lines: [], truncated: false };
+  }
+
+  const normalized = normalizeMultilineText(value);
+  if (!normalized) {
+    return { lines: [], truncated: false };
+  }
+
+  const rawLines = normalized.split("\n");
+  const limitedByChars = normalized.length > MAX_BODY_CHARS;
+  const sourceLines = limitedByChars
+    ? normalizeMultilineText(normalized.slice(0, MAX_BODY_CHARS))?.split("\n") ?? rawLines
+    : rawLines;
+  const trimmed = mode === "end" ? sourceLines.slice(-MAX_PREVIEW_LINES) : sourceLines.slice(0, MAX_PREVIEW_LINES);
+  return {
+    lines: normalizePreviewLines(trimmed),
+    truncated: limitedByChars || rawLines.length > MAX_PREVIEW_LINES,
+  };
+}
+
+function normalizePreviewLines(lines: unknown[], maxLength = MAX_PREVIEW_LINE_LENGTH): string[] {
+  return lines
+    .map((line) => typeof line === "string" ? summarizeLine(line, maxLength) : undefined)
+    .filter((line): line is string => Boolean(line));
+}
+
+function summarizeWarnings(values: string[]): string[] | undefined {
+  const warnings = normalizePreviewLines(values, MAX_WARNING_LENGTH);
+  return warnings.length > 0 ? warnings : undefined;
+}
+
+function summarizeInline(value: string, maxLength: number): string {
+  return summarizeText(stripAnsi(value).replace(/\s+/g, " ").trim(), maxLength);
+}
+
+function summarizeLine(value: string, maxLength: number): string | undefined {
+  const normalized = stripAnsi(value).replace(/\t/g, "  ").replace(/\s+$/g, "");
+  if (!normalized.trim()) {
+    return undefined;
+  }
+
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trimEnd()}...` : normalized;
+}
+
+function normalizeMultilineText(value: string): string {
+  return stripAnsi(value)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, "  ")
+    .trim();
+}
+
+function extractWarnings(record: Record<string, unknown> | undefined): string[] {
+  if (!record) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+  const explicitWarnings = Array.isArray(record.warnings) ? normalizePreviewLines(record.warnings) : [];
+  warnings.push(...explicitWarnings);
+
+  if (record.truncated === true || record.isTruncated === true) {
+    warnings.push("output truncated");
+  }
+
+  const fullOutputPath = firstString(
+    record.fullOutputPath,
+    record.truncatedOutputPath,
+    record.outputPath,
+    record.savedPath,
+    record.savedTo,
+    record.logFile,
+  );
+  if (fullOutputPath) {
+    warnings.push(`full output: ${fullOutputPath}`);
+  }
+
+  const notice = firstString(record.notice, record.warning, record.warningMessage, record.truncationNotice);
+  if (notice) {
+    warnings.push(notice);
+  }
+
+  return warnings;
+}
+
+function formatLineRange(record: Record<string, unknown> | undefined): string {
+  if (!record) {
+    return "";
+  }
+
+  const offset = typeof record.offset === "number"
+    ? record.offset
+    : typeof record.line === "number"
+      ? record.line
+      : typeof record.startLine === "number"
+        ? record.startLine
+        : undefined;
+  const limit = typeof record.limit === "number"
+    ? record.limit
+    : typeof record.count === "number"
+      ? record.count
+      : undefined;
+  if (offset === undefined && limit === undefined) {
+    return "";
+  }
+
+  if (offset !== undefined && limit !== undefined) {
+    return `:${offset}-${offset + Math.max(0, limit - 1)}`;
+  }
+
+  return offset !== undefined ? `:${offset}` : "";
+}
+
+function hasPreviewTruncation(text: string | undefined, record: Record<string, unknown> | undefined): boolean {
+  return boundedPreviewLines(text, "end").truncated || hasExplicitTruncation(record);
+}
+
+function hasExplicitTruncation(record: Record<string, unknown> | undefined): boolean {
+  return record?.truncated === true || record?.isTruncated === true;
 }
 
 function summarizeUnknown(value: unknown, maxLength: number): string | undefined {
@@ -251,7 +583,7 @@ function summarizeUnknown(value: unknown, maxLength: number): string | undefined
   }
 
   if (typeof value === "string") {
-    return summarizeBounded(value, maxLength);
+    return summarizeInline(value, maxLength);
   }
 
   if (typeof value === "number" || typeof value === "boolean") {
@@ -259,23 +591,10 @@ function summarizeUnknown(value: unknown, maxLength: number): string | undefined
   }
 
   try {
-    return summarizeBounded(JSON.stringify(value), maxLength);
+    return summarizeInline(JSON.stringify(value), maxLength);
   } catch {
-    return summarizeBounded(String(value), maxLength);
+    return summarizeInline(String(value), maxLength);
   }
-}
-
-function summarizeBounded(value: unknown, maxLength: number): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const compact = stripAnsi(value).replace(/\s+/g, " ").trim();
-  if (!compact) {
-    return undefined;
-  }
-
-  return summarizeText(compact, maxLength);
 }
 
 function normalizeToolName(identity: ToolIdentity): string | undefined {
@@ -324,6 +643,28 @@ function firstString(...values: unknown[]): string | undefined {
 function cleanObject(value: Record<string, unknown>): Record<string, unknown> | undefined {
   const entries = Object.entries(value).filter(([, entry]) => entry !== undefined);
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function cleanPreviewBlock(block: ToolPreviewBlock | undefined): ToolPreviewBlock | undefined {
+  if (!block) {
+    return undefined;
+  }
+
+  const header = typeof block.header === "string" && block.header.trim() ? block.header : undefined;
+  const bodyLines = Array.isArray(block.bodyLines) && block.bodyLines.length > 0 ? block.bodyLines : undefined;
+  const warnings = Array.isArray(block.warnings) && block.warnings.length > 0 ? block.warnings : undefined;
+  const truncated = block.truncated === true ? true : undefined;
+
+  if (!header && !bodyLines && !warnings && !truncated) {
+    return undefined;
+  }
+
+  return {
+    ...(header ? { header } : {}),
+    ...(bodyLines ? { bodyLines } : {}),
+    ...(warnings ? { warnings } : {}),
+    ...(truncated ? { truncated } : {}),
+  };
 }
 
 function isCellRef(value: unknown): value is { sessionId: string; cellId: string } {

@@ -44,7 +44,7 @@ describe("tui reducer", () => {
         title: "Mock read README.md",
         kind: "read",
         status: "pending",
-        inputSummary: "README.md",
+        callPreview: { header: "read README.md" },
       }),
     });
     state = reduceUiState(state, {
@@ -53,7 +53,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         toolCallId: "tool-1",
         status: "completed",
-        outputSummary: "hello from read",
+        resultPreview: { bodyLines: ["hello from read"] },
         durationMs: 17,
       }),
     });
@@ -100,9 +100,9 @@ describe("tui reducer", () => {
         status: "completed",
         depth: 0,
         isWrapper: false,
-        inputSummary: "README.md",
-        outputSummary: "hello from read",
-        errorSummary: undefined,
+        callPreview: { header: "read README.md" },
+        resultPreview: { bodyLines: ["hello from read"] },
+        errorPreview: undefined,
         durationMs: 17,
       },
     ]);
@@ -130,7 +130,7 @@ describe("tui reducer", () => {
         toolCallId: "tool-1",
         title: "Running tests",
         kind: "bash",
-        inputSummary: "bun test",
+        callPreview: { header: "$ bun test" },
       }),
     });
     state = reduceUiState(state, {
@@ -139,7 +139,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         toolCallId: "tool-1",
         status: "completed",
-        outputSummary: "12 passed",
+        resultPreview: { bodyLines: ["12 passed"] },
       }),
     });
     state = reduceUiState(state, {
@@ -156,7 +156,7 @@ describe("tui reducer", () => {
     expect(state.toolCalls[0]).toMatchObject({
       id: "tool-1",
       status: "completed",
-      outputSummary: "12 passed",
+      resultPreview: { bodyLines: ["12 passed"] },
     });
     expect(state.transcriptItems).toContainEqual({ type: "tool_call", id: "tool-1" });
   });
@@ -201,9 +201,9 @@ describe("tui reducer", () => {
         status: "pending",
         depth: 1,
         isWrapper: false,
-        inputSummary: undefined,
-        outputSummary: undefined,
-        errorSummary: undefined,
+        callPreview: undefined,
+        resultPreview: undefined,
+        errorPreview: undefined,
         durationMs: undefined,
       },
     ]);
@@ -279,7 +279,7 @@ describe("tui reducer", () => {
         toolCallId: "tool-missing",
         title: "write",
         status: "failed",
-        errorSummary: "permission denied",
+        errorPreview: { bodyLines: ["permission denied"] },
       }),
     });
 
@@ -292,9 +292,9 @@ describe("tui reducer", () => {
         status: "failed",
         depth: 0,
         isWrapper: false,
-        inputSummary: undefined,
-        outputSummary: undefined,
-        errorSummary: "permission denied",
+        callPreview: undefined,
+        resultPreview: undefined,
+        errorPreview: { bodyLines: ["permission denied"] },
         durationMs: undefined,
       },
     ]);
@@ -344,8 +344,8 @@ describe("tui reducer", () => {
     expect(state.transcriptItems).toEqual([{ type: "turn", id: "assistant-1" }]);
   });
 
-  test("session_ready resets retained transcript state and merges local slash commands with server commands", () => {
-    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+  test("session_ready resets retained transcript state, keeps tool expansion preference, and merges local slash commands", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true, expandedToolOutput: true });
 
     state = reduceUiState(state, {
       type: "local_user_submitted",
@@ -377,6 +377,7 @@ describe("tui reducer", () => {
     expect(state.toolCalls).toEqual([]);
     expect(state.transcriptItems).toEqual([]);
     expect(state.statusLine).toBeUndefined();
+    expect(state.expandedToolOutput).toBe(true);
     expect(state.availableCommands).toEqual([
       "/tokens",
       "/new",
@@ -385,6 +386,16 @@ describe("tui reducer", () => {
       "/exit",
       "/model",
     ]);
+  });
+
+  test("toggle_tool_output flips the global expansion flag", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, { type: "toggle_tool_output" });
+    expect(state.expandedToolOutput).toBe(true);
+
+    state = reduceUiState(state, { type: "toggle_tool_output" });
+    expect(state.expandedToolOutput).toBe(false);
   });
 });
 

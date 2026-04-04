@@ -42,9 +42,9 @@ export function createNanobossTuiTheme(): NanobossTuiTheme {
   const bold = (value: string) => style(value, 1);
   const italic = (value: string) => style(value, 3);
   const underline = (value: string) => style(value, 4);
-  const toolCardPendingBg = (value: string) => value;
-  const toolCardSuccessBg = (value: string) => value;
-  const toolCardErrorBg = (value: string) => value;
+  const toolCardPendingBg = (value: string) => style(value, 48, 5, 236);
+  const toolCardSuccessBg = (value: string) => style(value, 48, 5, 22);
+  const toolCardErrorBg = (value: string) => style(value, 48, 5, 52);
   const toolCardBorder = muted;
   const toolCardTitle = bold;
   const toolCardMeta = dim;

@@ -75,7 +75,7 @@ export class NanobossAppView implements Component {
         continue;
       }
 
-      this.container.addChild(new ToolCardComponent(this.theme, toolCall));
+      this.container.addChild(new ToolCardComponent(this.theme, toolCall, this.state.expandedToolOutput));
       this.container.addChild(new Spacer(1));
     }
   }
@@ -114,7 +114,15 @@ export class NanobossAppView implements Component {
   }
 
   private buildFooterLine(): string {
-    const parts = ["enter send", "shift+enter newline", "/new", "/model", "/quit"];
+    const parts = [
+      "enter send",
+      "shift+enter newline",
+      "ctrl+o tools",
+      this.state.expandedToolOutput ? "expanded" : "collapsed",
+      "/new",
+      "/model",
+      "/quit",
+    ];
     if (this.state.inputDisabled) {
       parts.push("esc stop", "run active (other submit blocked; /quit exits)");
     }

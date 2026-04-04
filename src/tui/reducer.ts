@@ -47,6 +47,9 @@ export type UiAction =
       selection: DownstreamAgentSelection;
     }
   | {
+      type: "toggle_tool_output";
+    }
+  | {
       type: "frontend_event";
       event: FrontendEventEnvelope;
     };
@@ -60,6 +63,7 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
           buildLabel: action.buildLabel,
           agentLabel: action.agentLabel,
           showToolCalls: state.showToolCalls,
+          expandedToolOutput: state.expandedToolOutput,
         }),
         sessionId: action.sessionId,
         buildLabel: action.buildLabel,
@@ -125,6 +129,11 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         ...state,
         agentLabel: action.agentLabel,
         defaultAgentSelection: action.selection,
+      };
+    case "toggle_tool_output":
+      return {
+        ...state,
+        expandedToolOutput: !state.expandedToolOutput,
       };
     case "frontend_event":
       return reduceFrontendEvent(state, action.event);
@@ -210,9 +219,9 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         status: event.data.status ?? existing?.status ?? "pending",
         depth: existing?.depth ?? depth,
         isWrapper: existing?.isWrapper ?? isWrapper,
-        inputSummary: event.data.inputSummary ?? existing?.inputSummary,
-        outputSummary: existing?.outputSummary,
-        errorSummary: existing?.errorSummary,
+        callPreview: mergeToolPreview(existing?.callPreview, event.data.callPreview),
+        resultPreview: existing?.resultPreview,
+        errorPreview: existing?.errorPreview,
         durationMs: existing?.durationMs,
       };
 
@@ -265,9 +274,9 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         status: event.data.status,
         depth,
         isWrapper,
-        inputSummary: existing?.inputSummary,
-        outputSummary: event.data.outputSummary ?? existing?.outputSummary,
-        errorSummary: event.data.errorSummary ?? existing?.errorSummary,
+        callPreview: existing?.callPreview,
+        resultPreview: mergeToolPreview(existing?.resultPreview, event.data.resultPreview),
+        errorPreview: mergeToolPreview(existing?.errorPreview, event.data.errorPreview),
         durationMs: event.data.durationMs ?? existing?.durationMs,
       };
 
@@ -467,6 +476,22 @@ function buildAssistantTurnMeta(params: {
   };
 
   return meta.procedure || meta.tokenUsageLine || meta.failureMessage ? meta : undefined;
+}
+
+function mergeToolPreview(
+  existing: UiToolCall["callPreview"],
+  incoming: UiToolCall["callPreview"],
+): UiToolCall["callPreview"] {
+  if (!incoming) {
+    return existing;
+  }
+
+  return {
+    header: incoming.header ?? existing?.header,
+    bodyLines: incoming.bodyLines ?? existing?.bodyLines,
+    warnings: incoming.warnings ?? existing?.warnings,
+    truncated: incoming.truncated ?? existing?.truncated,
+  };
 }
 
 function collapseToolCallBranch(toolCalls: UiToolCall[], depth: number): UiToolCall[] {

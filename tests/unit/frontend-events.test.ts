@@ -79,7 +79,9 @@ describe("frontend-events", () => {
         title: "Mock read README.md",
         kind: "read",
         status: "in_progress",
-        inputSummary: "README.md",
+        callPreview: {
+          header: "read README.md",
+        },
       },
     ]);
 
@@ -105,8 +107,10 @@ describe("frontend-events", () => {
         toolCallId: "tool-1",
         title: undefined,
         status: "completed",
-        outputSummary: "The quick brown fox jumps over the lazy dog.",
-        errorSummary: undefined,
+        resultPreview: {
+          bodyLines: ["The quick brown fox jumps over the lazy dog."],
+        },
+        errorPreview: undefined,
         durationMs: 37,
       },
       {
@@ -124,7 +128,7 @@ describe("frontend-events", () => {
     ]);
   });
 
-  test("tool previews are truncated and failed tool updates surface compact errors", () => {
+  test("tool previews are bounded and failed tool updates surface compact errors", () => {
     const [started] = mapSessionUpdateToFrontendEvents("run-1", {
       sessionUpdate: "tool_call",
       toolCallId: "tool-bash",
@@ -146,11 +150,11 @@ describe("frontend-events", () => {
     });
 
     expect(started?.type).toBe("tool_started");
-    expect(started?.type === "tool_started" && started.inputSummary?.length).toBeLessThanOrEqual(140);
+    expect(started?.type === "tool_started" && started.callPreview?.header?.length).toBeLessThanOrEqual(140);
 
     expect(updated?.type).toBe("tool_updated");
-    expect(updated?.type === "tool_updated" && updated.errorSummary).toContain("stderr:");
-    expect(updated?.type === "tool_updated" && updated.errorSummary?.length).toBeLessThanOrEqual(180);
+    expect(updated?.type === "tool_updated" && updated.errorPreview?.bodyLines?.[0]).toContain("stderr:");
+    expect(updated?.type === "tool_updated" && updated.errorPreview?.bodyLines?.[0]?.length).toBeLessThanOrEqual(160);
   });
 
   test("stores replayable session events with increasing sequence numbers", () => {

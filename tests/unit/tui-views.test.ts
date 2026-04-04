@@ -63,9 +63,9 @@ describe("NanobossAppView", () => {
           status: "completed",
           depth: 0,
           isWrapper: false,
-          inputSummary: "README.md",
-          outputSummary: "Project instructions",
-          errorSummary: undefined,
+          callPreview: { header: "read README.md" },
+          resultPreview: { bodyLines: ["Project instructions"] },
+          errorPreview: undefined,
           durationMs: 12,
         },
       ],
@@ -89,19 +89,19 @@ describe("NanobossAppView", () => {
     const plainLines = view.render(120).map(stripAnsi);
     const joined = plainLines.join("\n");
     const userIndex = plainLines.findIndex((line) => line.trim() === "you");
-    const toolIndex = plainLines.findIndex((line) => line.includes("Mock read README.md"));
+    const toolIndex = plainLines.findIndex((line) => line.includes("read README.md"));
     const assistantIndex = plainLines.findIndex((line) => line.includes("I checked the code."));
     const activityIndex = plainLines.findIndex((line) => line.trim() === "activity");
 
     expect(toolIndex).toBeGreaterThan(userIndex);
     expect(assistantIndex).toBeGreaterThan(toolIndex);
-    expect(joined).toContain("path: README.md");
-    expect(joined).toContain("contents: Project instructions");
+    expect(joined).toContain("contents");
+    expect(joined).toContain("Project instructions");
     expect(activityIndex).toBeGreaterThan(assistantIndex);
     expect(joined).not.toContain("[tool]");
   });
 
-  test("renders pending, success, and error tool cards as bordered rectangles with distinct status markers", () => {
+  test("renders pending, success, and error tool cards with distinct status markers and backgrounds", () => {
     const baseState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
     const state = {
       ...baseState,
@@ -115,7 +115,7 @@ describe("NanobossAppView", () => {
           status: "pending",
           depth: 0,
           isWrapper: false,
-          inputSummary: "bun test",
+          callPreview: { header: "$ bun test" },
         },
         {
           id: "success",
@@ -125,8 +125,8 @@ describe("NanobossAppView", () => {
           status: "completed",
           depth: 0,
           isWrapper: false,
-          inputSummary: "README.md",
-          outputSummary: "done",
+          callPreview: { header: "read README.md" },
+          resultPreview: { bodyLines: ["done"] },
         },
         {
           id: "error",
@@ -136,8 +136,8 @@ describe("NanobossAppView", () => {
           status: "failed",
           depth: 0,
           isWrapper: false,
-          inputSummary: "notes.txt",
-          errorSummary: "permission denied",
+          callPreview: { header: "write notes.txt" },
+          errorPreview: { bodyLines: ["permission denied"] },
         },
       ],
       transcriptItems: [
@@ -157,18 +157,79 @@ describe("NanobossAppView", () => {
     );
 
     const rendered = view.render(120);
-    const pendingLine = rendered.find((line) => stripAnsi(line).includes("bash"));
-    const successLine = rendered.find((line) => stripAnsi(line).includes("read"));
-    const errorLine = rendered.find((line) => stripAnsi(line).includes("write"));
+    const pendingLine = rendered.find((line) => stripAnsi(line).includes("$ bun test"));
+    const successLine = rendered.find((line) => stripAnsi(line).includes("read README.md"));
+    const errorLine = rendered.find((line) => stripAnsi(line).includes("write notes.txt"));
 
-    const topBorder = rendered.find((line) => stripAnsi(line).includes("┌"));
-    const bottomBorder = rendered.find((line) => stripAnsi(line).includes("└"));
-
-    expect(topBorder).toBeDefined();
-    expect(bottomBorder).toBeDefined();
     expect(pendingLine).toContain("\u001b[33m●\u001b[0m");
     expect(successLine).toContain("\u001b[32m●\u001b[0m");
     expect(errorLine).toContain("\u001b[31m●\u001b[0m");
+    expect(pendingLine).toContain("\u001b[48;5;236m");
+    expect(successLine).toContain("\u001b[48;5;22m");
+    expect(errorLine).toContain("\u001b[48;5;52m");
+  });
+
+  test("collapsed tool output can be expanded globally", () => {
+    const lines = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
+    const collapsedView = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo", showToolCalls: true, expandedToolOutput: false }),
+        sessionId: "session-1",
+        toolCalls: [
+          {
+            id: "tool-1",
+            runId: "run-1",
+            title: "read",
+            kind: "read",
+            status: "completed",
+            depth: 0,
+            isWrapper: false,
+            callPreview: { header: "read README.md" },
+            resultPreview: { bodyLines: lines, truncated: true },
+          },
+        ],
+        transcriptItems: [{ type: "tool_call" as const, id: "tool-1" }],
+      },
+    );
+    const expandedView = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo", showToolCalls: true, expandedToolOutput: true }),
+        sessionId: "session-1",
+        toolCalls: [
+          {
+            id: "tool-1",
+            runId: "run-1",
+            title: "read",
+            kind: "read",
+            status: "completed",
+            depth: 0,
+            isWrapper: false,
+            callPreview: { header: "read README.md" },
+            resultPreview: { bodyLines: lines, truncated: true },
+          },
+        ],
+        transcriptItems: [{ type: "tool_call" as const, id: "tool-1" }],
+      },
+    );
+
+    const collapsed = stripAnsi(collapsedView.render(120).join("\n"));
+    const expanded = stripAnsi(expandedView.render(120).join("\n"));
+
+    expect(collapsed).toContain("line 1");
+    expect(collapsed).toContain("… 2 more lines");
+    expect(collapsed).not.toContain("line 12");
+    expect(expanded).toContain("line 12");
+    expect(expanded).not.toContain("… 2 more lines");
   });
 
   test("does not paint streamed assistant content red after a failed run", () => {

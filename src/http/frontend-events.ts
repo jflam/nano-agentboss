@@ -3,7 +3,11 @@ import type * as acp from "@agentclientprotocol/sdk";
 import type { ProcedureMemoryCard } from "../core/memory-cards.ts";
 import type { PromptTokenDiagnostics } from "../core/prompt-diagnostics.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
-import { summarizeToolCallStart, summarizeToolCallUpdate } from "../core/tool-call-preview.ts";
+import {
+  summarizeToolCallStart,
+  summarizeToolCallUpdate,
+  type ToolPreviewBlock,
+} from "../core/tool-call-preview.ts";
 import type { AgentTokenUsage, CellRef } from "../core/types.ts";
 
 export interface FrontendCommand {
@@ -68,7 +72,7 @@ export type FrontendEvent =
       title: string;
       kind: string;
       status?: string;
-      inputSummary?: string;
+      callPreview?: ToolPreviewBlock;
     }
   | {
       type: "tool_updated";
@@ -76,8 +80,8 @@ export type FrontendEvent =
       toolCallId: string;
       title?: string;
       status: string;
-      outputSummary?: string;
-      errorSummary?: string;
+      resultPreview?: ToolPreviewBlock;
+      errorPreview?: ToolPreviewBlock;
       durationMs?: number;
     }
   | {
@@ -220,7 +224,7 @@ export function mapSessionUpdateToFrontendEvents(
           title: update.title,
           kind: String(update.kind),
           status: update.status ?? undefined,
-          inputSummary: preview.inputSummary,
+          callPreview: preview.callPreview,
         },
       ];
     }
@@ -235,8 +239,8 @@ export function mapSessionUpdateToFrontendEvents(
           toolCallId: update.toolCallId,
           title: update.title ?? undefined,
           status: update.status ?? "pending",
-          outputSummary: preview.outputSummary,
-          errorSummary: preview.errorSummary,
+          resultPreview: preview.resultPreview,
+          errorPreview: preview.errorPreview,
           durationMs: preview.durationMs,
         },
       ];

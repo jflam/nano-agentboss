@@ -1,49 +1,31 @@
+import type { ToolPreviewBlock } from "../../core/tool-call-preview.ts";
 import type { UiToolCall } from "../state.ts";
 
-export interface FormattedToolCardSection {
-  label: string;
-  value: string;
+const DEFAULT_COLLAPSED_LINES = 6;
+
+export type ToolCardTone = "default" | "error" | "warning" | "meta";
+
+export interface ToolCardSection {
+  label?: string;
+  lines: string[];
+  tone?: ToolCardTone;
 }
 
-export interface FormattedToolCard {
+export interface RenderedToolCard {
   title: string;
   metaLine: string;
-  sections: FormattedToolCardSection[];
+  sections: ToolCardSection[];
 }
 
-export function formatToolCard(toolCall: UiToolCall): FormattedToolCard {
-  const sections: FormattedToolCardSection[] = [];
-  const inputLabel = getInputLabel(toolCall);
-  const outputLabel = getOutputLabel(toolCall);
-
-  if (toolCall.inputSummary) {
-    sections.push({ label: inputLabel, value: toolCall.inputSummary });
-  }
-
-  if (toolCall.outputSummary) {
-    sections.push({ label: outputLabel, value: toolCall.outputSummary });
-  }
-
-  if (toolCall.errorSummary) {
-    sections.push({ label: "error", value: toolCall.errorSummary });
-  }
-
-  return {
-    title: toolCall.title,
-    metaLine: formatMetaLine(toolCall),
-    sections,
-  };
-}
-
-function formatMetaLine(toolCall: UiToolCall): string {
+export function formatToolMetaLine(toolCall: UiToolCall): string {
   const parts = [formatStatus(toolCall.status)];
   if (toolCall.durationMs !== undefined) {
-    parts.push(`${formatDuration(toolCall.durationMs)}`);
+    parts.push(formatDuration(toolCall.durationMs));
   }
   return parts.join(" • ");
 }
 
-function formatStatus(status: string): string {
+export function formatStatus(status: string): string {
   switch (status) {
     case "pending":
       return "pending";
@@ -61,7 +43,7 @@ function formatStatus(status: string): string {
   }
 }
 
-function formatDuration(durationMs: number): string {
+export function formatDuration(durationMs: number): string {
   if (durationMs < 1_000) {
     return `${durationMs}ms`;
   }
@@ -69,37 +51,7 @@ function formatDuration(durationMs: number): string {
   return `${(durationMs / 1_000).toFixed(durationMs >= 10_000 ? 0 : 1)}s`;
 }
 
-function getInputLabel(toolCall: UiToolCall): string {
-  const name = normalizeToolName(toolCall);
-  switch (name) {
-    case "bash":
-      return "command";
-    case "read":
-    case "write":
-    case "edit":
-    case "ls":
-      return "path";
-    case "grep":
-    case "find":
-      return "query";
-    default:
-      return "input";
-  }
-}
-
-function getOutputLabel(toolCall: UiToolCall): string {
-  const name = normalizeToolName(toolCall);
-  switch (name) {
-    case "bash":
-      return "output";
-    case "read":
-      return "contents";
-    default:
-      return "result";
-  }
-}
-
-function normalizeToolName(toolCall: UiToolCall): string | undefined {
+export function normalizeToolName(toolCall: Pick<UiToolCall, "kind" | "title">): string | undefined {
   if (toolCall.kind && toolCall.kind !== "other" && toolCall.kind !== "thought" && toolCall.kind !== "wrapper") {
     return toolCall.kind;
   }
@@ -110,5 +62,72 @@ function normalizeToolName(toolCall: UiToolCall): string | undefined {
     return parts[1];
   }
 
+  if (title.startsWith("callagent") || title.startsWith("defaultsession:")) {
+    return "agent";
+  }
+
   return title.split(/[\s:(\[]/, 1)[0] || undefined;
+}
+
+export function previewBodyLines(
+  block: ToolPreviewBlock | undefined,
+  expanded: boolean,
+  collapsedLines = DEFAULT_COLLAPSED_LINES,
+): string[] {
+  if (!block?.bodyLines?.length) {
+    return [];
+  }
+
+  const visibleLines = expanded ? block.bodyLines : block.bodyLines.slice(0, collapsedLines);
+  return block.truncated && !expanded && block.bodyLines.length > visibleLines.length
+    ? [...visibleLines, `… ${block.bodyLines.length - visibleLines.length} more line${block.bodyLines.length - visibleLines.length === 1 ? "" : "s"}`]
+    : visibleLines;
+}
+
+export function warningSection(block: ToolPreviewBlock | undefined): ToolCardSection | undefined {
+  if (!block?.warnings?.length) {
+    return undefined;
+  }
+
+  return {
+    label: "warnings",
+    lines: block.warnings,
+    tone: "warning",
+  };
+}
+
+export function blockSection(
+  label: string,
+  block: ToolPreviewBlock | undefined,
+  expanded: boolean,
+  options: {
+    collapsedLines?: number;
+    tone?: ToolCardTone;
+    includeHeaderLine?: boolean;
+  } = {},
+): ToolCardSection | undefined {
+  if (!block) {
+    return undefined;
+  }
+
+  const lines = [
+    ...(options.includeHeaderLine && block.header ? [block.header] : []),
+    ...previewBodyLines(block, expanded, options.collapsedLines),
+  ];
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  return {
+    label,
+    lines,
+    tone: options.tone,
+  };
+}
+
+export function appendSection(
+  sections: ToolCardSection[],
+  section: ToolCardSection | undefined,
+): ToolCardSection[] {
+  return section ? [...sections, section] : sections;
 }

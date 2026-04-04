@@ -1,3 +1,4 @@
+import type { ToolPreviewBlock } from "../core/tool-call-preview.ts";
 import type { DownstreamAgentSelection } from "../core/types.ts";
 
 export interface UiTurn {
@@ -21,9 +22,9 @@ export interface UiToolCall {
   status: string;
   depth: number;
   isWrapper: boolean;
-  inputSummary?: string;
-  outputSummary?: string;
-  errorSummary?: string;
+  callPreview?: ToolPreviewBlock;
+  resultPreview?: ToolPreviewBlock;
+  errorPreview?: ToolPreviewBlock;
   durationMs?: number;
 }
 
@@ -54,6 +55,7 @@ export interface UiState {
   tokenUsageLine?: string;
   inputDisabled: boolean;
   showToolCalls: boolean;
+  expandedToolOutput: boolean;
 }
 
 export function createInitialUiState(params: {
@@ -61,6 +63,7 @@ export function createInitialUiState(params: {
   buildLabel?: string;
   agentLabel?: string;
   showToolCalls?: boolean;
+  expandedToolOutput?: boolean;
 } = {}): UiState {
   return {
     cwd: params.cwd ?? process.cwd(),
@@ -76,5 +79,6 @@ export function createInitialUiState(params: {
     runtimeNotes: [],
     inputDisabled: false,
     showToolCalls: params.showToolCalls ?? true,
+    expandedToolOutput: params.expandedToolOutput ?? false,
   };
 }

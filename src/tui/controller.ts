@@ -185,6 +185,10 @@ export class NanobossTuiController {
     }
   }
 
+  toggleToolOutput(): void {
+    this.dispatch({ type: "toggle_tool_output" });
+  }
+
   requestExit(): void {
     if (this.stopped) {
       return;
