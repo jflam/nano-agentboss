@@ -4,10 +4,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { join } from "node:path";
 
 import {
-  callSessionMcpTool,
-  createSessionMcpApi,
-  listSessionMcpTools,
-} from "../../src/mcp/session.ts";
+  callMcpTool,
+  createNanobossMcpApi,
+  listMcpTools,
+} from "../../src/mcp/server.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { SessionStore } from "../../src/session/index.ts";
 
@@ -58,7 +58,7 @@ function expectDefined<T>(value: T | undefined, message: string): T {
 
 function seedSession(rootDir: string) {
   const store = new SessionStore({
-    sessionId: "session-mcp",
+    sessionId: "mcp-test-session",
     cwd: process.cwd(),
     rootDir,
   });
@@ -162,15 +162,15 @@ function seedSession(rootDir: string) {
   };
 }
 
-describe("session MCP API", () => {
+describe("nanoboss MCP API", () => {
   test("supports structural traversal, exact cell reads, ref reads, and schema lookup", () => {
-    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-"));
+    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-mcp-test-session-"));
     tempDirs.push(rootDir);
 
     const { critiqueResult, planResult, reviewResult, summaryResult } = seedSession(rootDir);
 
-    const api = createSessionMcpApi({
-      sessionId: "session-mcp",
+    const api = createNanobossMcpApi({
+      sessionId: "mcp-test-session",
       cwd: process.cwd(),
       rootDir,
     });
@@ -264,7 +264,7 @@ describe("session MCP API", () => {
   });
 
   test("requires an explicit session id", () => {
-    const api = createSessionMcpApi({
+    const api = createNanobossMcpApi({
       cwd: process.cwd(),
     });
 
@@ -272,18 +272,18 @@ describe("session MCP API", () => {
   });
 
   test("registers and dispatches the structural MCP tools", async () => {
-    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-"));
+    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-mcp-test-session-"));
     tempDirs.push(rootDir);
 
     const { critiqueResult, reviewResult } = seedSession(rootDir);
 
-    const api = createSessionMcpApi({
-      sessionId: "session-mcp",
+    const api = createNanobossMcpApi({
+      sessionId: "mcp-test-session",
       cwd: process.cwd(),
       rootDir,
     });
 
-    const toolNames = listSessionMcpTools().map((tool) => tool.name);
+    const toolNames = listMcpTools().map((tool) => tool.name);
     expect(toolNames).toContain("top_level_runs");
     expect(toolNames).toContain("cell_ancestors");
     expect(toolNames).toContain("cell_descendants");
@@ -300,7 +300,7 @@ describe("session MCP API", () => {
     expect(toolNames).toContain("procedure_dispatch_wait");
 
     expect(
-      await callSessionMcpTool(api, "cell_ancestors", {
+      await callMcpTool(api, "cell_ancestors", {
         cellRef: critiqueResult.cell,
         limit: 1,
       }),
@@ -309,7 +309,7 @@ describe("session MCP API", () => {
     ]);
 
     expect(
-      await callSessionMcpTool(api, "cell_descendants", {
+      await callMcpTool(api, "cell_descendants", {
         cellRef: reviewResult.cell,
         kind: "agent",
       }),
@@ -320,8 +320,8 @@ describe("session MCP API", () => {
   });
 
   test("lists and dispatches procedures through the async MCP surface", async () => {
-    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-"));
-    const cwd = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-workspace-"));
+    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-mcp-test-session-"));
+    const cwd = mkdtempSync(join(process.cwd(), ".tmp-mcp-test-session-workspace-"));
     const commandsDir = join(cwd, "commands");
     mkdirSync(commandsDir, { recursive: true });
     tempDirs.push(rootDir, cwd);
@@ -348,14 +348,14 @@ describe("session MCP API", () => {
     ].join("\n"));
     await registry.loadFromDisk();
 
-    const api = createSessionMcpApi({
-      sessionId: "session-mcp",
+    const api = createNanobossMcpApi({
+      sessionId: "mcp-test-session",
       cwd,
       rootDir,
       registry,
     });
 
-    const listed = await callSessionMcpTool(api, "procedure_list", {}) as {
+    const listed = await callMcpTool(api, "procedure_list", {}) as {
       procedures: Array<{
         name: string;
         description: string;
@@ -368,14 +368,14 @@ describe("session MCP API", () => {
       inputHint: "subject to review",
     });
 
-    expect(await callSessionMcpTool(api, "procedure_get", { name: "review" })).toEqual({
+    expect(await callMcpTool(api, "procedure_get", { name: "review" })).toEqual({
       name: "review",
       description: "store a durable review result",
       inputHint: "subject to review",
     });
 
     const dispatchCorrelationId = crypto.randomUUID();
-    const started = await callSessionMcpTool(api, "procedure_dispatch_start", {
+    const started = await callMcpTool(api, "procedure_dispatch_start", {
       name: "review",
       prompt: "patch",
       dispatchCorrelationId,
@@ -387,14 +387,14 @@ describe("session MCP API", () => {
     expect(started.dispatchId).toEqual(expect.stringContaining("dispatch_"));
     expect(started.status).toBe("queued");
 
-    const reloadedApi = createSessionMcpApi({
-      sessionId: "session-mcp",
+    const reloadedApi = createNanobossMcpApi({
+      sessionId: "mcp-test-session",
       cwd,
       rootDir,
       registry,
     });
 
-    const initialStatus = await callSessionMcpTool(reloadedApi, "procedure_dispatch_status", {
+    const initialStatus = await callMcpTool(reloadedApi, "procedure_dispatch_status", {
       dispatchId: started.dispatchId,
     }) as {
       dispatchId: string;
@@ -405,7 +405,7 @@ describe("session MCP API", () => {
     expect(initialStatus.procedure).toBe("review");
     expect(["queued", "running", "completed"]).toContain(initialStatus.status);
 
-    let completed = await callSessionMcpTool(reloadedApi, "procedure_dispatch_wait", {
+    let completed = await callMcpTool(reloadedApi, "procedure_dispatch_wait", {
       dispatchId: started.dispatchId,
       waitMs: 10,
     }) as {
@@ -423,7 +423,7 @@ describe("session MCP API", () => {
     };
 
     while (completed.status !== "completed") {
-      completed = await callSessionMcpTool(reloadedApi, "procedure_dispatch_wait", {
+      completed = await callMcpTool(reloadedApi, "procedure_dispatch_wait", {
         dispatchId: started.dispatchId,
         waitMs: 50,
       }) as typeof completed;

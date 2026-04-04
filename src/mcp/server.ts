@@ -25,19 +25,17 @@ import type {
   ValueRef,
 } from "../core/types.ts";
 
-export const SESSION_MCP_PROTOCOL_VERSION = "2025-11-25";
-export const SESSION_MCP_SERVER_NAME = "nanoboss-session";
-export const SESSION_MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state for the targeted session. Prefer passing an explicit sessionId for session-scoped operations. Do not inspect repo files or ~/.nanoboss to figure out dispatch.";
-export const GLOBAL_MCP_SERVER_NAME = "nanoboss";
-export const GLOBAL_MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state. Prefer an explicit sessionId for session-scoped operations such as procedure_dispatch_start, top_level_runs, and session_recent. If sessionId is omitted, the current-session pointer may be used when available.";
+export const MCP_PROTOCOL_VERSION = "2025-11-25";
+export const MCP_SERVER_NAME = "nanoboss";
+export const MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state. Prefer an explicit sessionId for session-scoped operations such as procedure_dispatch_start, top_level_runs, and session_recent. If sessionId is omitted, the current-session pointer may be used when available.";
 
-export interface SessionMcpServerOptions {
+export interface McpServerOptions {
   instructions?: string;
   protocolVersion?: string;
   serverName?: string;
 }
 
-interface SessionMcpParams {
+interface McpApiParams {
   sessionId?: string;
   cwd: string;
   rootDir?: string;
@@ -45,16 +43,16 @@ interface SessionMcpParams {
   allowCurrentSessionFallback?: boolean;
 }
 
-interface SessionMcpToolDefinition extends JsonRpcToolMetadata {
+interface McpToolDefinition extends JsonRpcToolMetadata {
   parseArgs(args: Record<string, unknown>): unknown;
-  call(api: SessionMcpApi, args: unknown): Promise<unknown>;
+  call(api: NanobossMcpApi, args: unknown): Promise<unknown>;
 }
 
 interface ProcedureListResult {
-  procedures: SessionProcedureMetadata[];
+  procedures: ProcedureMetadata[];
 }
 
-interface SessionProcedureMetadata {
+interface ProcedureMetadata {
   name: string;
   description: string;
   inputHint?: string;
@@ -64,14 +62,14 @@ export type ProcedureDispatchResult = ProcedureExecutionResult;
 export type ProcedureDispatchStartToolResult = ProcedureDispatchStartResult;
 export type ProcedureDispatchStatusToolResult = ProcedureDispatchStatusResult;
 
-export interface SessionSchemaResult {
+export interface McpSchemaResult {
   target: CellRef | ValueRef;
   dataShape: unknown;
   explicitDataSchema?: object;
 }
 
-export class SessionMcpApi {
-  constructor(private readonly params: SessionMcpParams) {}
+export class NanobossMcpApi {
+  constructor(private readonly params: McpApiParams) {}
 
   sessionRecent(args: SessionRecentOptions & { sessionId?: string } = {}): ReturnType<SessionStore["recent"]> {
     return this.createStore(args.sessionId).recent(args);
@@ -113,7 +111,7 @@ export class SessionMcpApi {
     return { path };
   }
 
-  getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): SessionSchemaResult {
+  getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): McpSchemaResult {
     if (args.valueRef) {
       const store = this.createStoreForValueRef(args.valueRef);
       const value = store.readRef(args.valueRef);
@@ -143,7 +141,7 @@ export class SessionMcpApi {
     };
   }
 
-  async procedureGet(args: { name: string; sessionId?: string }): Promise<SessionProcedureMetadata> {
+  async procedureGet(args: { name: string; sessionId?: string }): Promise<ProcedureMetadata> {
     const registry = await this.getRegistry(args.sessionId);
     const procedure = registry.get(args.name);
     if (!procedure) {
@@ -220,7 +218,7 @@ export class SessionMcpApi {
       return this.params.registry;
     }
 
-    return await loadSessionMcpRegistry(this.resolveEffectiveContext(sessionIdOverride).cwd);
+    return await loadMcpRegistry(this.resolveEffectiveContext(sessionIdOverride).cwd);
   }
 
   private resolveEffectiveContext(sessionIdOverride?: string): { sessionId?: string; cwd: string; rootDir?: string } {
@@ -260,12 +258,12 @@ export class SessionMcpApi {
   }
 }
 
-export function createSessionMcpApi(params: SessionMcpParams): SessionMcpApi {
-  return new SessionMcpApi(params);
+export function createNanobossMcpApi(params: McpApiParams): NanobossMcpApi {
+  return new NanobossMcpApi(params);
 }
 
-export function createCurrentSessionBackedSessionMcpApi(cwd = process.cwd()): SessionMcpApi {
-  return createSessionMcpApi({
+export function createCurrentSessionBackedNanobossMcpApi(cwd = process.cwd()): NanobossMcpApi {
+  return createNanobossMcpApi({
     cwd,
     allowCurrentSessionFallback: true,
   });
@@ -301,8 +299,8 @@ function defineTool<Args>(definition: {
   description: string;
   inputSchema: object;
   parseArgs(args: Record<string, unknown>): Args;
-  call(api: SessionMcpApi, args: Args): Promise<unknown>;
-}): SessionMcpToolDefinition {
+  call(api: NanobossMcpApi, args: Args): Promise<unknown>;
+}): McpToolDefinition {
   return {
     name: definition.name,
     description: definition.description,
@@ -316,7 +314,7 @@ function defineTool<Args>(definition: {
   };
 }
 
-const SESSION_MCP_DIRECT_TOOL_NAMES = new Set([
+const MCP_DIRECT_TOOL_NAMES = new Set([
   "top_level_runs",
   "cell_descendants",
   "cell_ancestors",
@@ -328,7 +326,7 @@ const SESSION_MCP_DIRECT_TOOL_NAMES = new Set([
   "get_schema",
 ]);
 
-const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
+const MCP_TOOLS: McpToolDefinition[] = [
   defineTool({
     name: "procedure_list",
     description: "List nanoboss procedures that can be dispatched for the targeted session workspace.",
@@ -659,20 +657,20 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
   }),
 ];
 
-export function listSessionMcpTools(): JsonRpcToolMetadata[] {
-  return SESSION_MCP_TOOLS.map(({ name, description, inputSchema }) => ({
+export function listMcpTools(): JsonRpcToolMetadata[] {
+  return MCP_TOOLS.map(({ name, description, inputSchema }) => ({
     name,
     description,
     inputSchema,
   }));
 }
 
-export async function callSessionMcpTool(
-  api: SessionMcpApi,
+export async function callMcpTool(
+  api: NanobossMcpApi,
   name: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  const tool = SESSION_MCP_TOOLS.find((candidate) => candidate.name === name);
+  const tool = MCP_TOOLS.find((candidate) => candidate.name === name);
   if (!tool) {
     throw new Error(`Unknown tool: ${name}`);
   }
@@ -680,34 +678,34 @@ export async function callSessionMcpTool(
   return await tool.call(api, tool.parseArgs(args));
 }
 
-export async function dispatchSessionMcpMethod(
-  api: SessionMcpApi,
+export async function dispatchMcpMethod(
+  api: NanobossMcpApi,
   method: string,
   params: unknown,
-  options: SessionMcpServerOptions = {},
+  options: McpServerOptions = {},
 ): Promise<unknown> {
   return await dispatchMcpToolsMethod({
     api,
     method,
     messageParams: params,
-    protocolVersion: options.protocolVersion ?? SESSION_MCP_PROTOCOL_VERSION,
-    serverName: options.serverName ?? SESSION_MCP_SERVER_NAME,
+    protocolVersion: options.protocolVersion ?? MCP_PROTOCOL_VERSION,
+    serverName: options.serverName ?? MCP_SERVER_NAME,
     serverVersion: getBuildLabel(),
-    instructions: options.instructions ?? SESSION_MCP_INSTRUCTIONS,
-    listTools: listSessionMcpTools,
-    callTool: callSessionMcpTool,
-    formatToolResult: formatSessionMcpToolResult,
+    instructions: options.instructions ?? MCP_INSTRUCTIONS,
+    listTools: listMcpTools,
+    callTool: callMcpTool,
+    formatToolResult: formatMcpToolResult,
   });
 }
 
-export async function runSessionMcpServer(
-  api: SessionMcpApi,
-  options: SessionMcpServerOptions = {},
+export async function runMcpServer(
+  api: NanobossMcpApi,
+  options: McpServerOptions = {},
 ): Promise<void> {
-  await runStdioJsonRpcServer((method, messageParams) => dispatchSessionMcpMethod(api, method, messageParams, options));
+  await runStdioJsonRpcServer((method, messageParams) => dispatchMcpMethod(api, method, messageParams, options));
 }
 
-export function formatSessionMcpToolResult(
+export function formatMcpToolResult(
   toolName: string,
   result: unknown,
 ): { content: Array<{ type: "text"; text: string }>; structuredContent: Record<string, unknown> } {
@@ -776,7 +774,7 @@ function serializeToolResult(toolName: string, result: unknown): string {
   return JSON.stringify(result, null, 2);
 }
 
-async function loadSessionMcpRegistry(cwd: string): Promise<ProcedureRegistryLike> {
+async function loadMcpRegistry(cwd: string): Promise<ProcedureRegistryLike> {
   const registry = new ProcedureRegistry({
     commandsDir: resolve(cwd, "commands"),
   });
@@ -790,9 +788,9 @@ async function loadSessionMcpRegistry(cwd: string): Promise<ProcedureRegistryLik
 function getProcedureList(
   registry: ProcedureRegistryLike,
   includeHidden: boolean,
-): SessionProcedureMetadata[] {
+): ProcedureMetadata[] {
   const procedures = registry.toAvailableCommands()
-    .filter((procedure) => !SESSION_MCP_DIRECT_TOOL_NAMES.has(procedure.name))
+    .filter((procedure) => !MCP_DIRECT_TOOL_NAMES.has(procedure.name))
     .map((procedure) => ({
       name: procedure.name,
       description: procedure.description,
@@ -826,7 +824,7 @@ function isProcedureListResult(value: unknown): value is ProcedureListResult {
   );
 }
 
-function isProcedureMetadata(value: unknown): value is SessionProcedureMetadata {
+function isProcedureMetadata(value: unknown): value is ProcedureMetadata {
   return (
     typeof value === "object" &&
     value !== null &&

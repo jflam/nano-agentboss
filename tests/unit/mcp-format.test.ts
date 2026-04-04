@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { formatSessionMcpToolResult } from "../../src/mcp/session.ts";
+import { formatMcpToolResult } from "../../src/mcp/server.ts";
 
-describe("session MCP formatting", () => {
+describe("nanoboss MCP formatting", () => {
   test("wraps array results in an items record for structuredContent", () => {
-    const formatted = formatSessionMcpToolResult("top_level_runs", [
+    const formatted = formatMcpToolResult("top_level_runs", [
       { procedure: "review", summary: "done" },
     ]);
 
@@ -16,7 +16,7 @@ describe("session MCP formatting", () => {
   });
 
   test("preserves object results as structuredContent records", () => {
-    const formatted = formatSessionMcpToolResult("procedure_dispatch_start", {
+    const formatted = formatMcpToolResult("procedure_dispatch_start", {
       dispatchId: "dispatch_123",
       status: "queued",
     });

@@ -36,7 +36,7 @@ import {
 import { ProcedureRegistry } from "../procedure/registry.ts";
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
-import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "../mcp/session.ts";
+import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "../mcp/server.ts";
 import { SessionStore } from "../session/index.ts";
 import type {
   AgentTokenUsage,

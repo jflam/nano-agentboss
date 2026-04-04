@@ -35,7 +35,7 @@ interface InternalSlashDispatch {
 const SUPPORT_LOAD_SESSION = process.env.MOCK_AGENT_SUPPORT_LOAD_SESSION === "1";
 const SESSION_STORE_DIR = process.env.MOCK_AGENT_SESSION_STORE_DIR?.trim() || undefined;
 const PROCEDURE_DISPATCH_TIMEOUT_MS = Number(process.env.MOCK_AGENT_PROCEDURE_DISPATCH_TIMEOUT_MS ?? "0");
-const KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT = process.env.MOCK_AGENT_KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT === "1";
+const KEEP_MCP_RUNNING_ON_TIMEOUT = process.env.MOCK_AGENT_KEEP_MCP_RUNNING_ON_TIMEOUT === "1";
 const STREAM_ASYNC_DISPATCH_PROGRESS = process.env.MOCK_AGENT_STREAM_ASYNC_DISPATCH_PROGRESS === "1";
 const STRIP_ASYNC_WAIT_RAW_OUTPUT = process.env.MOCK_AGENT_STRIP_ASYNC_WAIT_RAW_OUTPUT === "1";
 
@@ -367,7 +367,7 @@ async function callNamedProcedureDispatchTool(
   try {
     const result = await callStdioMcpTool(server, params.name, params.args, {
       timeoutMs: PROCEDURE_DISPATCH_TIMEOUT_MS > 0 ? PROCEDURE_DISPATCH_TIMEOUT_MS : undefined,
-      keepAliveOnTimeout: KEEP_SESSION_MCP_RUNNING_ON_TIMEOUT,
+      keepAliveOnTimeout: KEEP_MCP_RUNNING_ON_TIMEOUT,
     });
     await connection.sessionUpdate({
       sessionId,

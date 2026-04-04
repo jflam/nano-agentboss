@@ -1,3 +1,17 @@
+> [!WARNING]
+> ARCHIVED / SUPERSEDED — 2026-04-04
+>
+> This document reflects the removed session-MCP / `nanoboss-session` architecture or analysis tied to it.
+>
+> Current architecture:
+> - single global MCP server: `nanoboss`
+> - implementation: `src/mcp/server.ts`
+> - entrypoint: `src/mcp/proxy.ts`
+> - registration: `src/mcp/registration.ts`
+> - overview: `docs/architecture.md`
+>
+> Do not use this archived plan as current implementation guidance.
+
 # MCP server fix narrative
 
 The commits do **not** include a written postmortem, so this reconstruction comes from the order and content of today’s diffs rather than an explicit author narrative.[L1][S2][S3][S4][S5][S6]

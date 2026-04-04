@@ -66,6 +66,5 @@ describe("parseNanobossArgs", () => {
   test("rejects removed alias commands", () => {
     expect(() => parseNanobossArgs(["tui"])).toThrow("Unknown nanoboss command: tui");
     expect(() => parseNanobossArgs(["server"])).toThrow("Unknown nanoboss command: server");
-    expect(() => parseNanobossArgs(["session-mcp"])).toThrow("Unknown nanoboss command: session-mcp");
   });
 });

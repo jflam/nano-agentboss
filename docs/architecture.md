@@ -50,7 +50,7 @@ This is **not** ACP. It is a globally registered MCP server surfaced as `nanobos
 Relevant files:
 - `src/mcp/proxy.ts`
 - `src/mcp/registration.ts`
-- `src/mcp/session.ts`
+- `src/mcp/server.ts`
 - `src/session/store.ts`
 
 ---
@@ -199,7 +199,7 @@ sequenceDiagram
 Relevant files:
 - `src/mcp/proxy.ts`
 - `src/mcp/registration.ts`
-- `src/mcp/session.ts`
+- `src/mcp/server.ts`
 - `src/session/store.ts`
 
 ---

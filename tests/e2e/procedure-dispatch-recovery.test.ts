@@ -55,7 +55,7 @@ describeAsyncDispatchE2E("async procedure dispatch (real agent opt-in)", () => {
         await sendSessionPrompt(
           baseUrl,
           session.sessionId,
-          "/research write a detailed report about the current nanoboss session-mcp architecture",
+          "/research write a detailed report about the current nanoboss MCP architecture",
         );
         await waitForCompletedRuns(events, 1);
 

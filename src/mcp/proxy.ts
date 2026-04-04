@@ -1,17 +1,17 @@
 import {
-  createCurrentSessionBackedSessionMcpApi,
-  GLOBAL_MCP_INSTRUCTIONS,
-  GLOBAL_MCP_SERVER_NAME,
-  runSessionMcpServer,
-} from "./session.ts";
+  createCurrentSessionBackedNanobossMcpApi,
+  MCP_INSTRUCTIONS,
+  MCP_SERVER_NAME,
+  runMcpServer,
+} from "./server.ts";
 
 export async function runMcpCommand(argv: string[] = []): Promise<void> {
   const [subcommand] = argv;
   if (!subcommand || subcommand === "proxy") {
-    const api = createCurrentSessionBackedSessionMcpApi();
-    await runSessionMcpServer(api, {
-      serverName: GLOBAL_MCP_SERVER_NAME,
-      instructions: GLOBAL_MCP_INSTRUCTIONS,
+    const api = createCurrentSessionBackedNanobossMcpApi();
+    await runMcpServer(api, {
+      serverName: MCP_SERVER_NAME,
+      instructions: MCP_INSTRUCTIONS,
     });
     return;
   }
