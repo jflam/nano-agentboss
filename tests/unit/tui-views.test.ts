@@ -95,13 +95,12 @@ describe("NanobossAppView", () => {
 
     expect(toolIndex).toBeGreaterThan(userIndex);
     expect(assistantIndex).toBeGreaterThan(toolIndex);
-    expect(joined).toContain("contents");
     expect(joined).toContain("Project instructions");
     expect(activityIndex).toBeGreaterThan(assistantIndex);
     expect(joined).not.toContain("[tool]");
   });
 
-  test("renders pending, success, and error tool cards with distinct status markers and backgrounds", () => {
+  test("renders pending, success, and error tool cards with distinct backgrounds", () => {
     const baseState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
     const state = {
       ...baseState,
@@ -161,9 +160,6 @@ describe("NanobossAppView", () => {
     const successLine = rendered.find((line) => stripAnsi(line).includes("read README.md"));
     const errorLine = rendered.find((line) => stripAnsi(line).includes("write notes.txt"));
 
-    expect(pendingLine).toContain("\u001b[33m●\u001b[0m");
-    expect(successLine).toContain("\u001b[32m●\u001b[0m");
-    expect(errorLine).toContain("\u001b[31m●\u001b[0m");
     expect(pendingLine).toContain("\u001b[48;5;236m");
     expect(successLine).toContain("\u001b[48;5;22m");
     expect(errorLine).toContain("\u001b[48;5;52m");
@@ -226,10 +222,10 @@ describe("NanobossAppView", () => {
     const expanded = stripAnsi(expandedView.render(120).join("\n"));
 
     expect(collapsed).toContain("line 1");
-    expect(collapsed).toContain("… 2 more lines");
+    expect(collapsed).toContain("... (2 more lines, ctrl+o to expand)");
     expect(collapsed).not.toContain("line 12");
     expect(expanded).toContain("line 12");
-    expect(expanded).not.toContain("… 2 more lines");
+    expect(expanded).not.toContain("... (2 more lines, ctrl+o to expand)");
   });
 
   test("does not paint streamed assistant content red after a failed run", () => {

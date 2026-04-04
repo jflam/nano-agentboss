@@ -1,24 +1,39 @@
 import type { UiToolCall } from "../../state.ts";
+import type { NanobossTuiTheme } from "../../theme.ts";
 import {
-  appendSection,
-  blockSection,
-  formatToolMetaLine,
+  formatErrorLines,
+  formatPreviewBody,
+  formatToolDurationLine,
+  formatToolHeader,
+  formatWarnings,
+  joinToolContent,
   type RenderedToolCard,
-  warningSection,
 } from "../tool-card-format.ts";
 
-export function renderEditToolCard(toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
-  let sections = appendSection([], blockSection("edits", toolCall.callPreview, expanded));
-  sections = appendSection(sections, blockSection("diff", toolCall.resultPreview, expanded, {
-    collapsedLines: 12,
-  }));
-  sections = appendSection(sections, blockSection("error", toolCall.errorPreview, expanded, { tone: "error" }));
-  sections = appendSection(sections, warningSection(toolCall.resultPreview));
-  sections = appendSection(sections, warningSection(toolCall.errorPreview));
+function formatDiffLine(theme: NanobossTuiTheme, line: string): string {
+  if (line.startsWith("+")) {
+    return theme.success(line);
+  }
 
+  if (line.startsWith("-")) {
+    return theme.error(line);
+  }
+
+  return theme.toolCardMeta(line);
+}
+
+export function renderEditToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
   return {
-    title: toolCall.callPreview?.header ?? toolCall.title,
-    metaLine: formatToolMetaLine(toolCall),
-    sections,
+    lines: joinToolContent(
+      formatToolHeader(theme, toolCall.callPreview?.header, toolCall.title),
+      formatPreviewBody(theme, toolCall.resultPreview, expanded, {
+        collapsedLines: 12,
+        lineFormatter: formatDiffLine,
+      }),
+      formatErrorLines(theme, toolCall.errorPreview, expanded, 12),
+      formatWarnings(theme, toolCall.resultPreview),
+      formatWarnings(theme, toolCall.errorPreview),
+      formatToolDurationLine(theme, toolCall),
+    ),
   };
 }

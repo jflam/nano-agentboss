@@ -1,23 +1,24 @@
 import type { UiToolCall } from "../../state.ts";
+import type { NanobossTuiTheme } from "../../theme.ts";
 import {
-  appendSection,
-  blockSection,
-  formatToolMetaLine,
+  formatErrorLines,
+  formatPreviewBody,
+  formatToolDurationLine,
+  formatToolHeader,
+  formatWarnings,
+  joinToolContent,
   type RenderedToolCard,
-  warningSection,
 } from "../tool-card-format.ts";
 
-export function renderGrepToolCard(toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
-  let sections = appendSection([], blockSection("matches", toolCall.resultPreview, expanded, {
-    collapsedLines: 10,
-  }));
-  sections = appendSection(sections, blockSection("error", toolCall.errorPreview, expanded, { tone: "error" }));
-  sections = appendSection(sections, warningSection(toolCall.resultPreview));
-  sections = appendSection(sections, warningSection(toolCall.errorPreview));
-
+export function renderGrepToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
   return {
-    title: toolCall.callPreview?.header ?? toolCall.title,
-    metaLine: formatToolMetaLine(toolCall),
-    sections,
+    lines: joinToolContent(
+      formatToolHeader(theme, toolCall.callPreview?.header, toolCall.title),
+      formatPreviewBody(theme, toolCall.resultPreview, expanded, { collapsedLines: 10 }),
+      formatErrorLines(theme, toolCall.errorPreview, expanded, 10),
+      formatWarnings(theme, toolCall.resultPreview),
+      formatWarnings(theme, toolCall.errorPreview),
+      formatToolDurationLine(theme, toolCall),
+    ),
   };
 }

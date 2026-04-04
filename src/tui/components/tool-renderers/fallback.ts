@@ -1,25 +1,29 @@
 import type { UiToolCall } from "../../state.ts";
+import type { NanobossTuiTheme } from "../../theme.ts";
 import {
-  appendSection,
-  blockSection,
-  formatToolMetaLine,
+  formatErrorLines,
+  formatPreviewBody,
+  formatToolDurationLine,
+  formatToolHeader,
+  formatWarnings,
+  joinToolContent,
   type RenderedToolCard,
-  warningSection,
 } from "../tool-card-format.ts";
 
-export function renderFallbackToolCard(toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
-  let sections = appendSection([], blockSection("input", toolCall.callPreview, expanded, {
-    includeHeaderLine: !toolCall.callPreview?.header,
-  }));
-  sections = appendSection(sections, blockSection("result", toolCall.resultPreview, expanded));
-  sections = appendSection(sections, blockSection("error", toolCall.errorPreview, expanded, { tone: "error" }));
-  sections = appendSection(sections, warningSection(toolCall.callPreview));
-  sections = appendSection(sections, warningSection(toolCall.resultPreview));
-  sections = appendSection(sections, warningSection(toolCall.errorPreview));
-
+export function renderFallbackToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
   return {
-    title: toolCall.callPreview?.header ?? toolCall.title,
-    metaLine: formatToolMetaLine(toolCall),
-    sections,
+    lines: joinToolContent(
+      formatToolHeader(theme, toolCall.callPreview?.header, toolCall.title),
+      formatPreviewBody(theme, {
+        ...toolCall.callPreview,
+        header: undefined,
+      }, expanded),
+      formatPreviewBody(theme, toolCall.resultPreview, expanded),
+      formatErrorLines(theme, toolCall.errorPreview, expanded),
+      formatWarnings(theme, toolCall.callPreview),
+      formatWarnings(theme, toolCall.resultPreview),
+      formatWarnings(theme, toolCall.errorPreview),
+      formatToolDurationLine(theme, toolCall),
+    ),
   };
 }

@@ -1,4 +1,5 @@
 import type { UiToolCall } from "../../state.ts";
+import type { NanobossTuiTheme } from "../../theme.ts";
 import type { RenderedToolCard } from "../tool-card-format.ts";
 import { normalizeToolName } from "../tool-card-format.ts";
 
@@ -11,23 +12,23 @@ import { renderLsToolCard } from "./ls.ts";
 import { renderReadToolCard } from "./read.ts";
 import { renderWriteToolCard } from "./write.ts";
 
-export function renderToolCard(toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
+export function renderToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
   switch (normalizeToolName(toolCall)) {
     case "bash":
-      return renderBashToolCard(toolCall, expanded);
+      return renderBashToolCard(theme, toolCall, expanded);
     case "read":
-      return renderReadToolCard(toolCall, expanded);
+      return renderReadToolCard(theme, toolCall, expanded);
     case "edit":
-      return renderEditToolCard(toolCall, expanded);
+      return renderEditToolCard(theme, toolCall, expanded);
     case "write":
-      return renderWriteToolCard(toolCall, expanded);
+      return renderWriteToolCard(theme, toolCall, expanded);
     case "grep":
-      return renderGrepToolCard(toolCall, expanded);
+      return renderGrepToolCard(theme, toolCall, expanded);
     case "find":
-      return renderFindToolCard(toolCall, expanded);
+      return renderFindToolCard(theme, toolCall, expanded);
     case "ls":
-      return renderLsToolCard(toolCall, expanded);
+      return renderLsToolCard(theme, toolCall, expanded);
     default:
-      return renderFallbackToolCard(toolCall, expanded);
+      return renderFallbackToolCard(theme, toolCall, expanded);
   }
 }

@@ -1,46 +1,11 @@
 import type { ToolPreviewBlock } from "../../core/tool-call-preview.ts";
 import type { UiToolCall } from "../state.ts";
+import type { NanobossTuiTheme } from "../theme.ts";
 
 const DEFAULT_COLLAPSED_LINES = 6;
 
-export type ToolCardTone = "default" | "error" | "warning" | "meta";
-
-export interface ToolCardSection {
-  label?: string;
-  lines: string[];
-  tone?: ToolCardTone;
-}
-
 export interface RenderedToolCard {
-  title: string;
-  metaLine: string;
-  sections: ToolCardSection[];
-}
-
-export function formatToolMetaLine(toolCall: UiToolCall): string {
-  const parts = [formatStatus(toolCall.status)];
-  if (toolCall.durationMs !== undefined) {
-    parts.push(formatDuration(toolCall.durationMs));
-  }
-  return parts.join(" • ");
-}
-
-export function formatStatus(status: string): string {
-  switch (status) {
-    case "pending":
-      return "pending";
-    case "running":
-    case "in_progress":
-      return "running";
-    case "completed":
-      return "completed";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "cancelled";
-    default:
-      return status;
-  }
+  lines: string[];
 }
 
 export function formatDuration(durationMs: number): string {
@@ -49,6 +14,14 @@ export function formatDuration(durationMs: number): string {
   }
 
   return `${(durationMs / 1_000).toFixed(durationMs >= 10_000 ? 0 : 1)}s`;
+}
+
+export function formatToolDurationLine(theme: NanobossTuiTheme, toolCall: UiToolCall): string | undefined {
+  if (toolCall.durationMs === undefined) {
+    return undefined;
+  }
+
+  return theme.toolCardMeta(`Took ${formatDuration(toolCall.durationMs)}`);
 }
 
 export function normalizeToolName(toolCall: Pick<UiToolCall, "kind" | "title">): string | undefined {
@@ -69,65 +42,93 @@ export function normalizeToolName(toolCall: Pick<UiToolCall, "kind" | "title">):
   return title.split(/[\s:(\[]/, 1)[0] || undefined;
 }
 
-export function previewBodyLines(
+export function formatToolHeader(theme: NanobossTuiTheme, header: string | undefined, fallbackTitle: string): string {
+  const text = header?.trim() || fallbackTitle;
+
+  if (text.startsWith("$ ")) {
+    return `${theme.toolCardTitle("$")} ${theme.toolCardBody(text.slice(2))}`;
+  }
+
+  const match = text.match(/^(read|write|edit|grep|find|ls)(?:\s+(.*))?$/i);
+  if (!match) {
+    return theme.toolCardTitle(text);
+  }
+
+  const [, command, rest] = match;
+  const commandText = theme.toolCardTitle(command);
+  if (!rest) {
+    return commandText;
+  }
+
+  if (command.toLowerCase() === "read") {
+    const rangeMatch = rest.match(/^(.*?)(:\d+(?:-\d+)?)$/);
+    if (rangeMatch) {
+      return `${commandText} ${theme.accent(rangeMatch[1])}${theme.warning(rangeMatch[2])}`;
+    }
+  }
+
+  return `${commandText} ${theme.accent(rest)}`;
+}
+
+export function formatPreviewBody(
+  theme: NanobossTuiTheme,
   block: ToolPreviewBlock | undefined,
   expanded: boolean,
-  collapsedLines = DEFAULT_COLLAPSED_LINES,
+  options: {
+    collapsedLines?: number;
+    lineFormatter?: (theme: NanobossTuiTheme, line: string) => string;
+  } = {},
 ): string[] {
   if (!block?.bodyLines?.length) {
     return [];
   }
 
+  const collapsedLines = options.collapsedLines ?? DEFAULT_COLLAPSED_LINES;
+  const formatter = options.lineFormatter ?? ((currentTheme: NanobossTuiTheme, line: string) => currentTheme.toolCardBody(line));
   const visibleLines = expanded ? block.bodyLines : block.bodyLines.slice(0, collapsedLines);
-  return block.truncated && !expanded && block.bodyLines.length > visibleLines.length
-    ? [...visibleLines, `… ${block.bodyLines.length - visibleLines.length} more line${block.bodyLines.length - visibleLines.length === 1 ? "" : "s"}`]
-    : visibleLines;
-}
+  const lines = visibleLines.map((line) => formatter(theme, line));
 
-export function warningSection(block: ToolPreviewBlock | undefined): ToolCardSection | undefined {
-  if (!block?.warnings?.length) {
-    return undefined;
+  if (block.truncated && !expanded && block.bodyLines.length > visibleLines.length) {
+    lines.push(theme.toolCardMeta(`... (${block.bodyLines.length - visibleLines.length} more lines, ctrl+o to expand)`));
   }
 
-  return {
-    label: "warnings",
-    lines: block.warnings,
-    tone: "warning",
-  };
+  return lines;
 }
 
-export function blockSection(
-  label: string,
+export function formatWarnings(theme: NanobossTuiTheme, block: ToolPreviewBlock | undefined): string[] {
+  return (block?.warnings ?? []).map((warning) => theme.warning(warning.startsWith("[") ? warning : `[${warning}]`));
+}
+
+export function formatErrorLines(
+  theme: NanobossTuiTheme,
   block: ToolPreviewBlock | undefined,
   expanded: boolean,
-  options: {
-    collapsedLines?: number;
-    tone?: ToolCardTone;
-    includeHeaderLine?: boolean;
-  } = {},
-): ToolCardSection | undefined {
-  if (!block) {
-    return undefined;
-  }
-
-  const lines = [
-    ...(options.includeHeaderLine && block.header ? [block.header] : []),
-    ...previewBodyLines(block, expanded, options.collapsedLines),
-  ];
-  if (lines.length === 0) {
-    return undefined;
-  }
-
-  return {
-    label,
-    lines,
-    tone: options.tone,
-  };
+  collapsedLines = DEFAULT_COLLAPSED_LINES,
+): string[] {
+  return formatPreviewBody(theme, block, expanded, {
+    collapsedLines,
+    lineFormatter: (currentTheme, line) => currentTheme.error(line),
+  });
 }
 
-export function appendSection(
-  sections: ToolCardSection[],
-  section: ToolCardSection | undefined,
-): ToolCardSection[] {
-  return section ? [...sections, section] : sections;
+export function joinToolContent(...groups: Array<string[] | string | undefined>): string[] {
+  const lines: string[] = [];
+
+  for (const group of groups) {
+    const normalized = typeof group === "string"
+      ? [group]
+      : Array.isArray(group)
+        ? group.filter((line) => line.length > 0)
+        : [];
+    if (normalized.length === 0) {
+      continue;
+    }
+
+    if (lines.length > 0) {
+      lines.push("");
+    }
+    lines.push(...normalized);
+  }
+
+  return lines;
 }
