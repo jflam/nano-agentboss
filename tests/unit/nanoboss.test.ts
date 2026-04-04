@@ -38,10 +38,10 @@ describe("parseNanobossArgs", () => {
     });
   });
 
-  test("parses session-mcp command", () => {
-    expect(parseNanobossArgs(["session-mcp", "--session-id", "abc"])).toEqual({
-      command: "session-mcp",
-      args: ["--session-id", "abc"],
+  test("parses mcp command", () => {
+    expect(parseNanobossArgs(["mcp", "proxy"])).toEqual({
+      command: "mcp",
+      args: ["proxy"],
     });
   });
 
@@ -66,6 +66,6 @@ describe("parseNanobossArgs", () => {
   test("rejects removed alias commands", () => {
     expect(() => parseNanobossArgs(["tui"])).toThrow("Unknown nanoboss command: tui");
     expect(() => parseNanobossArgs(["server"])).toThrow("Unknown nanoboss command: server");
-    expect(() => parseNanobossArgs(["mcp"])).toThrow("Unknown nanoboss command: mcp");
+    expect(() => parseNanobossArgs(["session-mcp"])).toThrow("Unknown nanoboss command: session-mcp");
   });
 });

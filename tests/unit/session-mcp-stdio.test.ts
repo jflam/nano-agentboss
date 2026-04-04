@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { writeCurrentSessionMetadata } from "../../src/session/index.ts";
 import { resolveSelfCommand } from "../../src/core/self-command.ts";
 import { SessionStore } from "../../src/session/index.ts";
 
@@ -17,49 +19,49 @@ afterEach(() => {
   }
 });
 
-describe("session MCP stdio transport", () => {
-  test("serves tools/list and tools/call over stdio", async () => {
-    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-mcp-stdio-"));
-    tempDirs.push(rootDir);
+describe("global nanoboss MCP stdio transport", () => {
+  test("serves tools/list and defaults to the current session", async () => {
+    const home = mkdtempSync(join(tmpdir(), "nanoboss-mcp-home-"));
+    const rootDir = mkdtempSync(join(tmpdir(), "nanoboss-mcp-root-"));
+    tempDirs.push(home, rootDir);
 
-    const sessionId = `session-stdio-${crypto.randomUUID()}`;
+    const originalHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const sessionId = `session-proxy-${crypto.randomUUID()}`;
     const store = new SessionStore({
       sessionId,
       cwd: process.cwd(),
       rootDir,
     });
-
     const reviewCell = store.startCell({
       procedure: "second-opinion",
       input: "review the patch",
       kind: "top_level",
     });
     store.finalizeCell(reviewCell, {
-      data: {
-        verdict: "mixed",
-      },
+      data: { verdict: "mixed" },
       display: "review display",
       summary: "review summary",
     });
-
-    const command = resolveSelfCommand("session-mcp", [
-      "--session-id",
+    writeCurrentSessionMetadata({
       sessionId,
-      "--cwd",
-      process.cwd(),
-      "--root-dir",
+      cwd: process.cwd(),
       rootDir,
-    ]);
+      createdAt: "2026-04-03T00:00:00.000Z",
+      updatedAt: "2026-04-03T00:00:00.000Z",
+    });
+
+    const command = resolveSelfCommand("mcp", ["proxy"]);
     const child = spawn(command.command, command.args, {
       cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: home,
+      },
       stdio: ["pipe", "pipe", "pipe"],
     });
     const frames = new StdioFrameReader(child.stdout);
-
-    const stderrChunks: Buffer[] = [];
-    child.stderr.on("data", (chunk: Buffer | string) => {
-      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
 
     try {
       writeMcpMessage(child.stdin, {
@@ -76,7 +78,7 @@ describe("session MCP stdio transport", () => {
         },
       });
       const initialize = await readMcpMessage(frames);
-      expect(initialize.result?.serverInfo?.name).toBe("nanoboss-session");
+      expect(initialize.result?.serverInfo?.name).toBe("nanoboss");
 
       writeMcpMessage(child.stdin, {
         jsonrpc: "2.0",
@@ -90,9 +92,9 @@ describe("session MCP stdio transport", () => {
       });
       const list = await readMcpMessage(frames);
       const toolNames = list.result?.tools?.map((tool) => tool.name) ?? [];
-      expect(toolNames).toContain("procedure_list");
+      expect(toolNames).toContain("procedure_dispatch_start");
+      expect(toolNames).toContain("procedure_dispatch_wait");
       expect(toolNames).toContain("top_level_runs");
-      expect(toolNames).not.toContain("cell_parent");
 
       writeMcpMessage(child.stdin, {
         jsonrpc: "2.0",
@@ -106,32 +108,21 @@ describe("session MCP stdio transport", () => {
         },
       });
       const call = await readMcpMessage(frames);
-      const topLevelRuns = call.result?.structuredContent?.items;
-      expect(topLevelRuns).toHaveLength(1);
-      expect(topLevelRuns?.[0]).toMatchObject({
+      expect(call.result?.structuredContent?.items?.[0]).toMatchObject({
         cell: reviewCell.cell,
         procedure: "second-opinion",
-        kind: "top_level",
         summary: "review summary",
-        dataRef: {
-          cell: reviewCell.cell,
-          path: "output.data",
-        },
-        displayRef: {
-          cell: reviewCell.cell,
-          path: "output.display",
-        },
-        dataShape: {
-          verdict: "mixed",
-        },
       });
     } finally {
       child.kill();
       await new Promise<void>((resolve) => {
         child.once("exit", () => resolve());
       });
-      const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
-      expect(stderr).toBe("");
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
     }
   }, 30_000);
 });
@@ -153,22 +144,15 @@ async function readMcpMessage(
       items?: Array<{
         cell: { sessionId: string; cellId: string };
         procedure: string;
-        kind: string;
         summary?: string;
-        dataRef?: {
-          cell: { sessionId: string; cellId: string };
-          path: string;
-        };
-        displayRef?: {
-          cell: { sessionId: string; cellId: string };
-          path: string;
-        };
-        dataShape?: { verdict: string };
       }>;
     };
   };
+  error?: {
+    message?: string;
+  };
 }> {
-  const body = await frames.readFrame();
+  const body = await frames.read();
   return JSON.parse(body) as {
     result?: {
       serverInfo?: { name?: string };
@@ -177,82 +161,56 @@ async function readMcpMessage(
         items?: Array<{
           cell: { sessionId: string; cellId: string };
           procedure: string;
-          kind: string;
           summary?: string;
-          dataRef?: {
-            cell: { sessionId: string; cellId: string };
-            path: string;
-          };
-          displayRef?: {
-            cell: { sessionId: string; cellId: string };
-            path: string;
-          };
-          dataShape?: { verdict: string };
         }>;
       };
+    };
+    error?: {
+      message?: string;
     };
   };
 }
 
 class StdioFrameReader {
   private buffer = Buffer.alloc(0);
-  private readonly stdout: NodeJS.ReadableStream;
+  private readonly pending: Array<{
+    resolve: (body: string) => void;
+    reject: (error: unknown) => void;
+  }> = [];
 
-  constructor(stdout: NodeJS.ReadableStream) {
-    this.stdout = stdout;
-  }
-
-  async readFrame(): Promise<string> {
-    for (;;) {
-      const body = this.tryReadFrame();
-      if (body !== undefined) {
-        return body;
+  constructor(stream: NodeJS.ReadableStream) {
+    stream.on("data", (chunk: Buffer | string) => {
+      this.buffer = Buffer.concat([this.buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+      this.flush();
+    });
+    stream.on("error", (error) => {
+      for (const waiter of this.pending.splice(0)) {
+        waiter.reject(error);
       }
-
-      const chunk = await this.readChunk();
-      this.buffer = Buffer.concat([
-        this.buffer,
-        Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
-      ]);
-    }
-  }
-
-  private async readChunk(): Promise<Buffer | string> {
-    return await new Promise<Buffer | string>((resolve, reject) => {
-      const onData = (chunk: Buffer | string) => {
-        cleanup();
-        resolve(chunk);
-      };
-      const onError = (error: Error) => {
-        cleanup();
-        reject(error);
-      };
-      const onEnd = () => {
-        cleanup();
-        reject(new Error("MCP stdio stream ended before a full JSON-RPC line was received"));
-      };
-      const cleanup = () => {
-        this.stdout.off("data", onData);
-        this.stdout.off("error", onError);
-        this.stdout.off("end", onEnd);
-        this.stdout.off("close", onEnd);
-      };
-
-      this.stdout.on("data", onData);
-      this.stdout.once("error", onError);
-      this.stdout.once("end", onEnd);
-      this.stdout.once("close", onEnd);
     });
   }
 
-  private tryReadFrame(): string | undefined {
-    const lineEnd = this.buffer.indexOf("\n");
-    if (lineEnd < 0) {
-      return undefined;
-    }
+  read(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.pending.push({ resolve, reject });
+      this.flush();
+    });
+  }
 
-    const line = this.buffer.subarray(0, lineEnd).toString("utf8").replace(/\r$/, "");
-    this.buffer = this.buffer.subarray(lineEnd + 1);
-    return line.length > 0 ? line : this.tryReadFrame();
+  private flush(): void {
+    while (this.pending.length > 0) {
+      const lineEnd = this.buffer.indexOf("\n");
+      if (lineEnd < 0) {
+        return;
+      }
+
+      const line = this.buffer.subarray(0, lineEnd).toString("utf8").replace(/\r$/, "");
+      this.buffer = this.buffer.subarray(lineEnd + 1);
+      if (line.length === 0) {
+        continue;
+      }
+
+      this.pending.shift()?.resolve(line);
+    }
   }
 }

@@ -3,11 +3,11 @@ import { runResumeCommand } from "./resume.ts";
 import { DEFAULT_HTTP_SERVER_PORT, DEFAULT_HTTP_SERVER_URL } from "./src/core/defaults.ts";
 import { runDoctorCommand } from "./src/core/doctor.ts";
 import { runHttpServerCommand } from "./src/http/server.ts";
-import { runSessionMcpStdioCommand } from "./src/mcp/session-stdio.ts";
+import { runMcpCommand } from "./src/mcp/proxy.ts";
 import { runProcedureDispatchWorkerCommand } from "./src/procedure/dispatch-jobs.ts";
 import { runAcpServerCommand } from "./src/core/acp-server.ts";
 
-export type NanobossSubcommand = "cli" | "resume" | "http" | "acp-server" | "session-mcp" | "procedure-dispatch-worker" | "doctor" | "help";
+export type NanobossSubcommand = "cli" | "resume" | "http" | "acp-server" | "procedure-dispatch-worker" | "doctor" | "mcp" | "help";
 
 export interface NanobossArgs {
   command: NanobossSubcommand;
@@ -30,7 +30,7 @@ export function parseNanobossArgs(argv: string[]): NanobossArgs {
     first === "http" ||
     first === "acp-server" ||
     first === "doctor" ||
-    first === "session-mcp" ||
+    first === "mcp" ||
     first === "procedure-dispatch-worker"
   ) {
     return {
@@ -58,8 +58,8 @@ export async function runNanoboss(argv: string[]): Promise<void> {
     case "acp-server":
       await runAcpServerCommand();
       return;
-    case "session-mcp":
-      await runSessionMcpStdioCommand(parsed.args);
+    case "mcp":
+      await runMcpCommand(parsed.args);
       return;
     case "procedure-dispatch-worker":
       await runProcedureDispatchWorkerCommand(parsed.args);
@@ -81,9 +81,9 @@ export function printHelp(): void {
     "  cli                Launch the interactive frontend",
     "  resume             Resume a saved CLI session",
     "  http               Launch the HTTP/SSE server",
-    "  doctor             Show agent/ACP and attached session-MCP health",
+    "  doctor             Show agent/ACP health and optionally register nanoboss MCP",
+    "  mcp                Launch the global nanoboss MCP stdio server",
     "  acp-server         Launch the internal stdio ACP server",
-    "  session-mcp        Launch the internal stdio session MCP server",
     "  procedure-dispatch-worker  Launch the internal async procedure dispatch worker",
     "  help               Show this help text",
     "",
@@ -91,6 +91,7 @@ export function printHelp(): void {
     `  nanoboss http --port ${DEFAULT_HTTP_SERVER_PORT}`,
     "  nanoboss cli",
     "  nanoboss resume",
+    "  nanoboss doctor --register",
     `  nanoboss cli --server-url ${DEFAULT_HTTP_SERVER_URL}`,
     "",
   ].join("\n"));

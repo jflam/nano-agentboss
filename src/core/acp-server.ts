@@ -2,7 +2,6 @@ import * as acp from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 
 import { getBuildLabel } from "./build-info.ts";
-import { SESSION_MCP_SERVER_NAME } from "../mcp/session.ts";
 import { sessionToolProcedures } from "../mcp/session-tool-procedures.ts";
 import { NanobossService } from "./service.ts";
 import type { DownstreamAgentSelection } from "./types.ts";
@@ -54,7 +53,6 @@ class Nanoboss implements acp.Agent {
 
   async newSession(params: acp.NewSessionRequest): Promise<acp.NewSessionResponse> {
     const requestedSessionId = extractNanobossSessionId(params);
-    const attachedSessionMcp = hasAttachedSessionMcp(params);
     const session = this.service.createSession({
       cwd: params.cwd,
       defaultAgentSelection: extractDefaultAgentSelection(params),
@@ -71,7 +69,7 @@ class Nanoboss implements acp.Agent {
 
     return {
       sessionId: session.sessionId,
-      _meta: buildTopLevelSessionMeta({ attachedSessionMcp }),
+      _meta: buildTopLevelSessionMeta(),
     };
   }
 
@@ -90,25 +88,16 @@ class Nanoboss implements acp.Agent {
   }
 }
 
-export function buildTopLevelSessionMeta(
-  params: { attachedSessionMcp: boolean },
-): NonNullable<acp.NewSessionResponse["_meta"]> {
+export function buildTopLevelSessionMeta(): NonNullable<acp.NewSessionResponse["_meta"]> {
   return {
     nanoboss: {
       sessionInspection: {
-        attachedSessionMcp: params.attachedSessionMcp,
-        surface: params.attachedSessionMcp ? "attached-mcp+commands" : "commands",
+        surface: "global-mcp+commands",
         commandNames: sessionToolProcedures.map((procedure) => procedure.name),
-        note: params.attachedSessionMcp
-          ? "Session inspection is available through the attached session MCP server and matching slash commands."
-          : "ACP top-level sessions can advertise availableCommands, but exact session inspection depends on the attached session MCP server.",
+        note: "Session inspection is available through the globally registered `nanoboss` MCP server and matching slash commands.",
       },
     },
   };
-}
-
-export function hasAttachedSessionMcp(params: acp.NewSessionRequest): boolean {
-  return params.mcpServers.some((server) => server.name === SESSION_MCP_SERVER_NAME);
 }
 
 export function extractNanobossSessionId(params: acp.NewSessionRequest): string | undefined {

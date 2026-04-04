@@ -5,6 +5,8 @@ import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
+import { resolveSelfCommand } from "../../src/core/self-command.ts";
+
 interface StoredTurn {
   role: "user" | "assistant";
   text: string;
@@ -20,6 +22,7 @@ interface LiveSession extends StoredSession {
 }
 
 interface InternalSlashDispatch {
+  sessionId?: string;
   name: string;
   prompt: string;
   defaultAgentSelection?: {
@@ -255,6 +258,7 @@ function parseInternalSlashDispatch(prompt: string): InternalSlashDispatch | und
   }
 
   const parsed = JSON.parse(jsonBlock) as {
+    sessionId?: unknown;
     name?: unknown;
     prompt?: unknown;
     defaultAgentSelection?: unknown;
@@ -273,6 +277,7 @@ function parseInternalSlashDispatch(prompt: string): InternalSlashDispatch | und
     : undefined;
 
   return {
+    sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : undefined,
     name: parsed.name,
     prompt: parsed.prompt,
     defaultAgentSelection: provider === "claude" || provider === "gemini" || provider === "codex" || provider === "copilot"
@@ -288,12 +293,12 @@ async function callProcedureDispatchAsync(
   sessionId: string,
   dispatch: InternalSlashDispatch,
 ): Promise<unknown> {
-  const server = getSessionMcpServer(session);
+  const server = getGlobalMcpServer();
   if (STREAM_ASYNC_DISPATCH_PROGRESS) {
     await emitAssistantChunk(
       connection,
       sessionId,
-      "Running the dispatch through the session MCP implementation and waiting on the final procedure result.",
+      "Running the dispatch through the global nanoboss MCP implementation and waiting on the final procedure result.",
     );
   }
 
@@ -435,7 +440,7 @@ async function callStdioMcpTool(
   });
   child.once("exit", (_code, _signal) => {
     // Allow the per-call timeout below to report missing responses. Some fast
-    // one-shot session-mcp invocations can exit before readline has drained the
+    // one-shot nanoboss mcp invocations can exit before readline has drained the
     // final JSON-RPC response line.
   });
 
@@ -485,7 +490,7 @@ async function callStdioMcpTool(
         if (options.keepAliveOnTimeout) {
           preserveChild = true;
         }
-        throw new Error(`Request timed out waiting for session-mcp ${method}`);
+        throw new Error(`Request timed out waiting for nanoboss-mcp ${method}`);
       }),
     ]);
   };
@@ -520,15 +525,15 @@ async function callStdioMcpTool(
   }
 }
 
-function getSessionMcpServer(
-  session: LiveSession,
-): Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }> {
-  const server = session.mcpServers?.find((candidate) => candidate.name === "nanoboss-session");
-  if (!server || server.type !== "stdio") {
-    throw new Error("Missing stdio nanoboss-session MCP server");
-  }
-
-  return server;
+function getGlobalMcpServer(): Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }> {
+  const command = resolveSelfCommand("mcp", ["proxy"]);
+  return {
+    type: "stdio",
+    name: "nanoboss",
+    command: command.command,
+    args: command.args,
+    env: [],
+  };
 }
 
 function extractDispatchId(value: unknown): string | undefined {

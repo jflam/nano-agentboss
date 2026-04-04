@@ -107,7 +107,7 @@ describe("procedure memory cards", () => {
     expect(preamble).toContain("Use session_recent(...) or /session_recent only for true global recency scans across the whole session; it is not the primary retrieval path.");
     expect(preamble).toContain("If ref_read(...) returns nested refs such as critique or answer, call ref_read(...) on those refs too.");
     expect(preamble).toContain("Do not treat not-found results from a bounded scan as proof of absence unless the search scope was exhaustive.");
-    expect(preamble).toContain("Do not inspect ~/.nanoboss/sessions directly unless the session MCP tools fail.");
+    expect(preamble).toContain("Do not inspect ~/.nanoboss/sessions directly unless the nanoboss MCP tools fail.");
     expect(preamble).not.toContain("full rendered review output that should not be injected wholesale");
   });
 

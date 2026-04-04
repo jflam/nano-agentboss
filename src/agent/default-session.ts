@@ -6,7 +6,6 @@ import {
   openAcpConnection,
   type OpenAcpConnection,
 } from "./acp-runtime.ts";
-import { buildSessionMcpServers } from "../mcp/attachment.ts";
 import { collectTokenSnapshot } from "./token-metrics.ts";
 import type { AgentTokenSnapshot, CallAgentOptions, DownstreamAgentConfig } from "../core/types.ts";
 
@@ -159,12 +158,7 @@ class PersistentAcpSession {
     try {
       const session = await state.connection.newSession({
         cwd: state.cwd,
-        mcpServers: buildSessionMcpServers({
-          config,
-          sessionId,
-          cwd: state.cwd,
-          rootDir,
-        }),
+        mcpServers: [],
       });
       const runtime = new PersistentAcpSession(state, config, session.sessionId);
       await applyAcpSessionConfig(state.connection, session.sessionId, config);
@@ -191,12 +185,7 @@ class PersistentAcpSession {
 
       await state.connection.loadSession({
         cwd: state.cwd,
-        mcpServers: buildSessionMcpServers({
-          config,
-          sessionId: nanobossSessionId,
-          cwd: state.cwd,
-          rootDir,
-        }),
+        mcpServers: [],
         sessionId,
       });
 

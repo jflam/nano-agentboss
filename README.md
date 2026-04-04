@@ -67,7 +67,7 @@ See [`docs/architecture.md`](docs/architecture.md) for a transport-level overvie
 - local CLI over ACP/stdin-stdout
 - HTTP/SSE frontend mode
 - downstream agent ACP sessions
-- session MCP over stdio
+- global nanoboss MCP over stdio
 
 ## Commands
 
@@ -96,10 +96,11 @@ Override the server URL if needed:
 bun run nanoboss cli --server-url http://localhost:6503
 ```
 
-Inspect agent health and attached nanoboss session-MCP readiness:
+Inspect agent health and register the global nanoboss MCP server if needed:
 
 ```bash
 bun run nanoboss doctor
+bun run nanoboss doctor --register
 ```
 
 The internal stdio ACP server is still available for local CLI mode:
@@ -108,7 +109,7 @@ The internal stdio ACP server is still available for local CLI mode:
 bun run nanoboss acp-server
 ```
 
-Nanoboss attaches a session-pinned MCP stdio server automatically to downstream ACP sessions.
+Nanoboss standardizes on one globally registered `nanoboss` MCP stdio server across Claude, Gemini, Codex, and Copilot.
 
 Tool call progress lines are shown by default. Hide them with:
 

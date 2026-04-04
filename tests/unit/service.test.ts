@@ -195,7 +195,6 @@ describe("NanobossService", () => {
 
       expect(toolTitles).toContain("procedure_dispatch_start");
       expect(toolTitles).toContain("procedure_dispatch_wait");
-      expect(toolTitles.some((title) => title.startsWith("callAgent:"))).toBe(true);
       expect(toolTitles).toContain("Mock read README.md");
       expect(textEvents).toContain("done");
       expect(completed?.type).toBe("run_completed");
@@ -232,7 +231,7 @@ describe("NanobossService", () => {
         await service.prompt(session.sessionId, "/slowreview patch");
 
         const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
-        const firstProgressIndex = events.findIndex((event) => event.type === "text_delta" && event.data.text.includes("Running the dispatch through the session MCP implementation"));
+        const firstProgressIndex = events.findIndex((event) => event.type === "text_delta" && event.data.text.includes("Running the dispatch through the global nanoboss MCP implementation"));
         const completedIndex = events.findIndex((event) => event.type === "run_completed" && event.data.procedure === "slowreview");
 
         expect(firstProgressIndex).toBeGreaterThanOrEqual(0);

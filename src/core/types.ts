@@ -279,11 +279,6 @@ export interface CallAgentOptions {
   namedRefs?: Record<string, unknown>;
   onUpdate?: (update: acp.SessionUpdate) => Promise<void> | void;
   signal?: AbortSignal;
-  sessionMcp?: {
-    sessionId: string;
-    cwd?: string;
-    rootDir?: string;
-  };
 }
 
 export interface CallAgentTransport {

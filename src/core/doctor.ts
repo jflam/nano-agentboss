@@ -1,5 +1,8 @@
+import { registerSupportedAgentMcp } from "../mcp/registration.ts";
+
 interface DoctorOptions {
   showHelp: boolean;
+  register: boolean;
 }
 
 interface AgentDoctorRow {
@@ -7,21 +10,28 @@ interface AgentDoctorRow {
   installed: boolean;
   version?: string;
   acp: string;
-  sessionMcp: string;
+  globalMcp: string;
 }
 
 export function parseDoctorOptions(argv: string[]): DoctorOptions {
   let showHelp = false;
+  let register = false;
+
   for (const arg of argv) {
     if (arg === "--help" || arg === "-h") {
       showHelp = true;
       continue;
     }
 
+    if (arg === "--register") {
+      register = true;
+      continue;
+    }
+
     throw new Error(`Unknown doctor option: ${arg}`);
   }
 
-  return { showHelp };
+  return { showHelp, register };
 }
 
 export async function runDoctorCommand(argv: string[] = []): Promise<void> {
@@ -31,16 +41,23 @@ export async function runDoctorCommand(argv: string[] = []): Promise<void> {
     return;
   }
 
+  if (options.register) {
+    printRegistrationReport(registerSupportedAgentMcp());
+    process.stdout.write("\n");
+  }
+
   printDoctorReport(collectDoctorRows());
 }
 
 export function printDoctorHelp(): void {
   process.stdout.write([
-    "Usage: nanoboss doctor",
+    "Usage: nanoboss doctor [--register]",
     "",
-    "Shows installed agent status, ACP transport readiness, and whether nanoboss can attach its session-pinned stdio MCP server.",
+    "Shows installed agent status, ACP transport readiness, and the standard global nanoboss MCP setup path.",
     "",
     "Options:",
+    "  --register          Register the global nanoboss MCP stdio server for Claude, Codex, Gemini, and Copilot.",
+    "                      This repairs stale, missing, or broken nanoboss MCP registrations.",
     "  -h, --help          Show this help text",
     "",
   ].join("\n"));
@@ -95,17 +112,37 @@ function buildDoctorRow(params: {
     installed,
     version,
     acp: installed ? formatAcpLabel(params.acp, version) : "-",
-    sessionMcp: installed ? "[ok] attached stdio" : "-",
+    globalMcp: installed ? "[setup] nanoboss doctor --register" : "-",
   };
 }
 
 function printDoctorReport(rows: AgentDoctorRow[]): void {
-  process.stdout.write("Agents                    ACP                     Session MCP\n");
+  process.stdout.write("Agents                    ACP                     Global MCP\n");
   for (const row of rows) {
     process.stdout.write(
-      `  ${padRight(row.name, 24)} ${padRight(row.acp, 22)} ${row.sessionMcp}\n`,
+      `  ${padRight(row.name, 24)} ${padRight(row.acp, 22)} ${row.globalMcp}\n`,
     );
   }
+}
+
+function printRegistrationReport(results: ReturnType<typeof registerSupportedAgentMcp>): void {
+  process.stdout.write([
+    "Registered nanoboss MCP for supported agents.",
+    "This configures a working global `nanoboss` MCP stdio server and repairs stale broken registrations.",
+    "",
+    "Registration results:",
+  ].join("\n"));
+
+  for (const result of results) {
+    const label = result.status === "registered"
+      ? "[registered]"
+      : result.status === "not_installed"
+        ? "[skip]"
+        : "[failed]";
+    process.stdout.write(`\n  ${padRight(result.name, 12)} ${padRight(label, 12)} ${result.details}`);
+  }
+
+  process.stdout.write("\n");
 }
 
 function formatAcpLabel(acp: string, version?: string): string {

@@ -11,7 +11,7 @@ import {
 } from "../procedure/dispatch-jobs.ts";
 import { type ProcedureExecutionResult } from "../procedure/runner.ts";
 import { ProcedureRegistry } from "../procedure/registry.ts";
-import { SessionStore } from "../session/index.ts";
+import { SessionStore, sessionRepository } from "../session/index.ts";
 import { shouldLoadDiskCommands } from "../core/runtime-mode.ts";
 import type {
   CellDescendantsOptions,
@@ -27,13 +27,22 @@ import type {
 
 export const SESSION_MCP_PROTOCOL_VERSION = "2025-11-25";
 export const SESSION_MCP_SERVER_NAME = "nanoboss-session";
-export const SESSION_MCP_INSTRUCTIONS = "These tools are already attached to the current nanoboss master session. Do not discover or pass a session id. Do not inspect repo files or ~/.nanoboss to figure out dispatch. For slash commands, first call procedure_dispatch_start once, then call procedure_dispatch_wait with the returned dispatch id until terminal status. The client may expose these tools under namespaced handles for the attached nanoboss-session server.";
+export const SESSION_MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state for the targeted session. Prefer passing an explicit sessionId for session-scoped operations. Do not inspect repo files or ~/.nanoboss to figure out dispatch.";
+export const GLOBAL_MCP_SERVER_NAME = "nanoboss";
+export const GLOBAL_MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state. Prefer an explicit sessionId for session-scoped operations such as procedure_dispatch_start, top_level_runs, and session_recent. If sessionId is omitted, the current-session pointer may be used when available.";
+
+export interface SessionMcpServerOptions {
+  instructions?: string;
+  protocolVersion?: string;
+  serverName?: string;
+}
 
 interface SessionMcpParams {
   sessionId?: string;
   cwd: string;
   rootDir?: string;
   registry?: ProcedureRegistryLike;
+  allowCurrentSessionFallback?: boolean;
 }
 
 interface SessionMcpToolDefinition extends JsonRpcToolMetadata {
@@ -64,49 +73,49 @@ export interface SessionSchemaResult {
 export class SessionMcpApi {
   constructor(private readonly params: SessionMcpParams) {}
 
-  sessionRecent(args: SessionRecentOptions = {}): ReturnType<SessionStore["recent"]> {
-    return this.createStore().recent(args);
+  sessionRecent(args: SessionRecentOptions & { sessionId?: string } = {}): ReturnType<SessionStore["recent"]> {
+    return this.createStore(args.sessionId).recent(args);
   }
 
-  topLevelRuns(args: TopLevelRunsOptions = {}): ReturnType<SessionStore["topLevelRuns"]> {
-    return this.createStore().topLevelRuns(args);
+  topLevelRuns(args: TopLevelRunsOptions & { sessionId?: string } = {}): ReturnType<SessionStore["topLevelRuns"]> {
+    return this.createStore(args.sessionId).topLevelRuns(args);
   }
 
   cellGet(cellRef: CellRef): CellRecord {
-    return this.createStore().readCell(cellRef);
+    return this.createStoreForCellRef(cellRef).readCell(cellRef);
   }
 
   cellAncestors(
     cellRef: CellRef,
     args: { includeSelf?: boolean; limit?: number } = {},
   ): ReturnType<SessionStore["ancestors"]> {
-    return this.createStore().ancestors(cellRef, args);
+    return this.createStoreForCellRef(cellRef).ancestors(cellRef, args);
   }
 
   cellDescendants(
     cellRef: CellRef,
     args: CellDescendantsOptions = {},
   ): ReturnType<SessionStore["descendants"]> {
-    return this.createStore().descendants(cellRef, args);
+    return this.createStoreForCellRef(cellRef).descendants(cellRef, args);
   }
 
   refRead(valueRef: ValueRef): unknown {
-    return this.createStore().readRef(valueRef);
+    return this.createStoreForValueRef(valueRef).readRef(valueRef);
   }
 
   refStat(valueRef: ValueRef) {
-    return this.createStore().statRef(valueRef);
+    return this.createStoreForValueRef(valueRef).statRef(valueRef);
   }
 
   refWriteToFile(valueRef: ValueRef, path: string): { path: string } {
-    this.createStore().writeRefToFile(valueRef, path, this.params.cwd);
+    const store = this.createStoreForValueRef(valueRef);
+    store.writeRefToFile(valueRef, path, store.cwd);
     return { path };
   }
 
   getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): SessionSchemaResult {
-    const store = this.createStore();
-
     if (args.valueRef) {
+      const store = this.createStoreForValueRef(args.valueRef);
       const value = store.readRef(args.valueRef);
       return {
         target: args.valueRef,
@@ -118,6 +127,7 @@ export class SessionMcpApi {
       throw new Error("get_schema requires cellRef or valueRef");
     }
 
+    const store = this.createStoreForCellRef(args.cellRef);
     const cell = store.readCell(args.cellRef);
     return {
       target: args.cellRef,
@@ -126,15 +136,15 @@ export class SessionMcpApi {
     };
   }
 
-  async procedureList(args: { includeHidden?: boolean } = {}): Promise<ProcedureListResult> {
-    const registry = await this.getRegistry();
+  async procedureList(args: { includeHidden?: boolean; sessionId?: string } = {}): Promise<ProcedureListResult> {
+    const registry = await this.getRegistry(args.sessionId);
     return {
       procedures: getProcedureList(registry, args.includeHidden === true),
     };
   }
 
-  async procedureGet(args: { name: string }): Promise<SessionProcedureMetadata> {
-    const registry = await this.getRegistry();
+  async procedureGet(args: { name: string; sessionId?: string }): Promise<SessionProcedureMetadata> {
+    const registry = await this.getRegistry(args.sessionId);
     const procedure = registry.get(args.name);
     if (!procedure) {
       throw new Error(`Unknown procedure: ${args.name}`);
@@ -148,12 +158,18 @@ export class SessionMcpApi {
   }
 
   async procedureDispatchStart(args: {
+    sessionId?: string;
     name: string;
     prompt: string;
     defaultAgentSelection?: DownstreamAgentSelection;
     dispatchCorrelationId?: string;
   }): Promise<ProcedureDispatchStartToolResult> {
-    return await this.createDispatchJobManager().start(args);
+    return await this.createDispatchJobManager(args.sessionId).start({
+      name: args.name,
+      prompt: args.prompt,
+      defaultAgentSelection: args.defaultAgentSelection,
+      dispatchCorrelationId: args.dispatchCorrelationId,
+    });
   }
 
   async procedureDispatchStatus(args: { dispatchId: string }): Promise<ProcedureDispatchStatusToolResult> {
@@ -167,10 +183,10 @@ export class SessionMcpApi {
     return await this.createDispatchJobManager().wait(args.dispatchId, args.waitMs);
   }
 
-  private createStore(): SessionStore {
-    const context = this.resolveEffectiveContext();
+  private createStore(sessionIdOverride?: string): SessionStore {
+    const context = this.resolveEffectiveContext(sessionIdOverride);
     if (!context.sessionId) {
-      throw new Error("Session MCP requires an explicit sessionId.");
+      throw new Error("Nanoboss MCP requires an explicit sessionId or a current-session pointer.");
     }
 
     return new SessionStore({
@@ -180,32 +196,61 @@ export class SessionMcpApi {
     });
   }
 
-  private createDispatchJobManager(): ProcedureDispatchJobManager {
-    const context = this.resolveEffectiveContext();
-    const store = this.createStore();
+  private createStoreForCellRef(cellRef: CellRef): SessionStore {
+    return this.createStore(cellRef.sessionId);
+  }
+
+  private createStoreForValueRef(valueRef: ValueRef): SessionStore {
+    return this.createStore(valueRef.cell.sessionId);
+  }
+
+  private createDispatchJobManager(sessionIdOverride?: string): ProcedureDispatchJobManager {
+    const context = this.resolveEffectiveContext(sessionIdOverride);
+    const store = this.createStore(sessionIdOverride);
     return new ProcedureDispatchJobManager({
       cwd: context.cwd,
       sessionId: store.sessionId,
       rootDir: store.rootDir,
-      getRegistry: async () => await this.getRegistry(),
+      getRegistry: async () => await this.getRegistry(store.sessionId),
     });
   }
 
-  private async getRegistry(): Promise<ProcedureRegistryLike> {
+  private async getRegistry(sessionIdOverride?: string): Promise<ProcedureRegistryLike> {
     if (this.params.registry) {
       return this.params.registry;
     }
 
-    return await loadSessionMcpRegistry(this.resolveEffectiveContext().cwd);
+    return await loadSessionMcpRegistry(this.resolveEffectiveContext(sessionIdOverride).cwd);
   }
 
-  private resolveEffectiveContext(): { sessionId?: string; cwd: string; rootDir?: string } {
-    if (this.params.sessionId) {
+  private resolveEffectiveContext(sessionIdOverride?: string): { sessionId?: string; cwd: string; rootDir?: string } {
+    const explicitSessionId = sessionIdOverride ?? this.params.sessionId;
+    if (explicitSessionId) {
+      const metadata = sessionRepository.readMetadata(explicitSessionId);
+      if (metadata) {
+        return {
+          sessionId: metadata.sessionId,
+          cwd: metadata.cwd,
+          rootDir: metadata.rootDir,
+        };
+      }
+
       return {
-        sessionId: this.params.sessionId,
+        sessionId: explicitSessionId,
         cwd: this.params.cwd,
         rootDir: this.params.rootDir,
       };
+    }
+
+    if (this.params.allowCurrentSessionFallback) {
+      const current = sessionRepository.readCurrentMetadata();
+      if (current) {
+        return {
+          sessionId: current.sessionId,
+          cwd: current.cwd,
+          rootDir: current.rootDir,
+        };
+      }
     }
 
     return {
@@ -217,6 +262,13 @@ export class SessionMcpApi {
 
 export function createSessionMcpApi(params: SessionMcpParams): SessionMcpApi {
   return new SessionMcpApi(params);
+}
+
+export function createCurrentSessionBackedSessionMcpApi(cwd = process.cwd()): SessionMcpApi {
+  return createSessionMcpApi({
+    cwd,
+    allowCurrentSessionFallback: true,
+  });
 }
 
 const CELL_REF_SCHEMA = {
@@ -279,16 +331,18 @@ const SESSION_MCP_DIRECT_TOOL_NAMES = new Set([
 const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
   defineTool({
     name: "procedure_list",
-    description: "List nanoboss procedures that can be dispatched into the current master session.",
+    description: "List nanoboss procedures that can be dispatched for the targeted session workspace.",
     inputSchema: {
       type: "object",
       properties: {
+        sessionId: { type: "string" },
         includeHidden: { type: "boolean" },
       },
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
+        sessionId: asOptionalString(args.sessionId),
         includeHidden: asOptionalBoolean(args.includeHidden),
       };
     },
@@ -298,10 +352,11 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
   }),
   defineTool({
     name: "procedure_get",
-    description: "Return metadata for one nanoboss procedure.",
+    description: "Return metadata for one nanoboss procedure in the targeted session workspace.",
     inputSchema: {
       type: "object",
       properties: {
+        sessionId: { type: "string" },
         name: { type: "string" },
       },
       required: ["name"],
@@ -309,6 +364,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     },
     parseArgs(args) {
       return {
+        sessionId: asOptionalString(args.sessionId),
         name: asString(args.name, "name"),
       };
     },
@@ -318,10 +374,11 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
   }),
   defineTool({
     name: "procedure_dispatch_start",
-    description: "First step for slash-command dispatch on the already-attached current nanoboss session. Returns quickly with a dispatch id; then call procedure_dispatch_wait using the client-exposed handle for this attached server.",
+    description: "Start an async nanoboss slash-command dispatch for the targeted session. Returns quickly with a dispatch id; then call procedure_dispatch_wait until the dispatch reaches a terminal status.",
     inputSchema: {
       type: "object",
       properties: {
+        sessionId: { type: "string" },
         name: { type: "string" },
         prompt: { type: "string" },
         defaultAgentSelection: {
@@ -340,6 +397,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     },
     parseArgs(args) {
       return {
+        sessionId: asOptionalString(args.sessionId),
         name: asString(args.name, "name"),
         prompt: typeof args.prompt === "string" ? args.prompt : "",
         defaultAgentSelection: args.defaultAgentSelection === undefined
@@ -354,7 +412,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
   }),
   defineTool({
     name: "procedure_dispatch_status",
-    description: "Optional non-blocking status check for an async nanoboss procedure dispatch on the attached current session. If you are already in the normal start/wait flow, prefer procedure_dispatch_wait.",
+    description: "Optional non-blocking status check for an async nanoboss procedure dispatch. If you are already in the normal start/wait flow, prefer procedure_dispatch_wait.",
     inputSchema: {
       type: "object",
       properties: {
@@ -374,7 +432,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
   }),
   defineTool({
     name: "procedure_dispatch_wait",
-    description: "Second/repeated step after procedure_dispatch_start on the attached current session. Wait briefly using the same dispatch id, then return either the latest running status or the final result.",
+    description: "Wait briefly for a started nanoboss async dispatch, then return either the latest running status or the final result.",
     inputSchema: {
       type: "object",
       properties: {
@@ -400,6 +458,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
+        sessionId: { type: "string" },
         procedure: { type: "string" },
         limit: { type: "number" },
       },
@@ -407,6 +466,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     },
     parseArgs(args) {
       return {
+        sessionId: asOptionalString(args.sessionId),
         procedure: asOptionalString(args.procedure),
         limit: asOptionalNonNegativeNumber(args.limit, "limit"),
       };
@@ -513,10 +573,11 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
   }),
   defineTool({
     name: "session_recent",
-    description: "Return recent completed session cell summaries from the whole session. Use this only for global recency scans, not as the primary structural retrieval path.",
+    description: "Return recent completed session cell summaries from the whole targeted session. Use this only for global recency scans, not as the primary structural retrieval path.",
     inputSchema: {
       type: "object",
       properties: {
+        sessionId: { type: "string" },
         procedure: { type: "string" },
         limit: { type: "number" },
       },
@@ -524,6 +585,7 @@ const SESSION_MCP_TOOLS: SessionMcpToolDefinition[] = [
     },
     parseArgs(args) {
       return {
+        sessionId: asOptionalString(args.sessionId),
         procedure: asOptionalString(args.procedure),
         limit: asOptionalNonNegativeNumber(args.limit, "limit"),
       };
@@ -622,23 +684,27 @@ export async function dispatchSessionMcpMethod(
   api: SessionMcpApi,
   method: string,
   params: unknown,
+  options: SessionMcpServerOptions = {},
 ): Promise<unknown> {
   return await dispatchMcpToolsMethod({
     api,
     method,
     messageParams: params,
-    protocolVersion: SESSION_MCP_PROTOCOL_VERSION,
-    serverName: SESSION_MCP_SERVER_NAME,
+    protocolVersion: options.protocolVersion ?? SESSION_MCP_PROTOCOL_VERSION,
+    serverName: options.serverName ?? SESSION_MCP_SERVER_NAME,
     serverVersion: getBuildLabel(),
-    instructions: SESSION_MCP_INSTRUCTIONS,
+    instructions: options.instructions ?? SESSION_MCP_INSTRUCTIONS,
     listTools: listSessionMcpTools,
     callTool: callSessionMcpTool,
     formatToolResult: formatSessionMcpToolResult,
   });
 }
 
-export async function runSessionMcpServer(api: SessionMcpApi): Promise<void> {
-  await runStdioJsonRpcServer((method, messageParams) => dispatchSessionMcpMethod(api, method, messageParams));
+export async function runSessionMcpServer(
+  api: SessionMcpApi,
+  options: SessionMcpServerOptions = {},
+): Promise<void> {
+  await runStdioJsonRpcServer((method, messageParams) => dispatchSessionMcpMethod(api, method, messageParams, options));
 }
 
 export function formatSessionMcpToolResult(

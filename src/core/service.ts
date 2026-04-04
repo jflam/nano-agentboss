@@ -5,7 +5,6 @@ import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./conf
 import { type SessionUpdateEmitter } from "./context.ts";
 import { DefaultConversationSession } from "../agent/default-session.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
-import { disposeSessionMcpTransport } from "../mcp/attachment.ts";
 import {
   collectUnsyncedProcedureMemoryCards,
   materializeProcedureMemoryCard,
@@ -282,7 +281,6 @@ export class NanobossService {
 
     session.abortController?.abort();
     session.defaultConversation.closeLiveSession();
-    disposeSessionMcpTransport(sessionId);
     this.sessions.delete(sessionId);
   }
 
@@ -367,6 +365,7 @@ export class NanobossService {
     try {
       const promptResult = await session.defaultConversation.prompt(
         buildProcedureDispatchPrompt(
+          session.store.sessionId,
           procedureName,
           procedurePrompt,
           toDownstreamAgentSelection(session.defaultAgentConfig),
@@ -724,6 +723,7 @@ function getRecoveredProcedureGuidanceWindowMs(): number {
 }
 
 function buildProcedureDispatchPrompt(
+  sessionId: string,
   procedureName: string,
   procedurePrompt: string,
   defaultAgentSelection?: DownstreamAgentSelection,
@@ -732,14 +732,14 @@ function buildProcedureDispatchPrompt(
   return [
     "Nanoboss internal slash-command dispatch.",
     "Internal control message for the current persistent master conversation.",
-    "A session-pinned nanoboss MCP surface is available for this conversation.",
-    "Use the attached `nanoboss-session` MCP server.",
+    "Use the globally registered `nanoboss` MCP server.",
     "Do not inspect repo files, CLI wiring, session pointer files, or ~/.nanoboss.",
-    "Do not try to discover a session id.",
-    "The client may expose the tools under bare names or namespaced handles such as `mcp__nanoboss-session__procedure_dispatch_start` or similar names that contain `procedure_dispatch_start` / `procedure_dispatch_wait`.",
-    "Use the attached nanoboss-session MCP handle that contains `procedure_dispatch_start` for step 1 and the attached nanoboss-session MCP handle that contains `procedure_dispatch_wait` for step 2.",
+    "The client may expose the tools under bare names or namespaced handles such as `mcp__nanoboss__procedure_dispatch_start` or similar names that contain `procedure_dispatch_start` / `procedure_dispatch_wait`.",
+    "Use the global nanoboss MCP handle that contains `procedure_dispatch_start` for step 1 and the matching `procedure_dispatch_wait` handle for step 2.",
+    `Target session id: ${sessionId}`,
     "Step 1: call the chosen `procedure_dispatch_start` tool exactly once with this JSON:",
     JSON.stringify({
+      sessionId,
       name: procedureName,
       prompt: procedurePrompt,
       defaultAgentSelection,

@@ -7,7 +7,6 @@ import {
   openAcpConnection,
 } from "./acp-runtime.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
-import { buildSessionMcpServers } from "../mcp/attachment.ts";
 import { SessionStore } from "../session/index.ts";
 import { collectTokenSnapshot } from "./token-metrics.ts";
 import type {
@@ -359,14 +358,7 @@ async function runAcpPrompt(
   try {
     const session = await state.connection.newSession({
       cwd: state.cwd,
-      mcpServers: options.sessionMcp
-        ? buildSessionMcpServers({
-            config,
-            sessionId: options.sessionMcp.sessionId,
-            cwd: options.sessionMcp.cwd ?? state.cwd,
-            rootDir: options.sessionMcp.rootDir,
-          })
-        : [],
+      mcpServers: [],
     });
     sessionId = session.sessionId;
 

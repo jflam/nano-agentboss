@@ -162,11 +162,6 @@ export class CommandContextImpl implements CommandContext {
         config: agentConfig,
         namedRefs,
         signal: this.signal,
-        sessionMcp: {
-          sessionId: this.sessionId,
-          cwd: this.cwd,
-          rootDir: this.store.rootDir,
-        },
         onUpdate: async (update) => {
           if (shouldForwardNestedAgentUpdate(update, options?.stream !== false)) {
             this.emitter.emit(update);

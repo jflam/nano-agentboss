@@ -268,7 +268,7 @@ describe("session MCP API", () => {
       cwd: process.cwd(),
     });
 
-    expect(() => api.topLevelRuns()).toThrow("Session MCP requires an explicit sessionId.");
+    expect(() => api.topLevelRuns()).toThrow("Nanoboss MCP requires an explicit sessionId or a current-session pointer.");
   });
 
   test("registers and dispatches the structural MCP tools", async () => {

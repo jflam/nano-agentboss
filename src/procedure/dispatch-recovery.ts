@@ -102,7 +102,7 @@ export function buildRecoveredProcedureSyncPrompt(sessionId: string, cell: CellR
       ? `Explicit data schema: ${summarizeText(JSON.stringify(cell.output.explicitDataSchema), 800)}`
       : undefined,
     "",
-    "Use the attached nanoboss session MCP tools later if you need exact stored values.",
+    "Use the global nanoboss MCP tools later if you need exact stored values.",
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
