@@ -298,6 +298,50 @@ describe("NanobossAppView", () => {
     expect(expanded).not.toContain("... (2 more lines, ctrl+o to expand)");
   });
 
+  test("expanded tool output uses preserved raw tool payloads", () => {
+    const lines = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`);
+    const view = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo", showToolCalls: true, expandedToolOutput: true }),
+        sessionId: "session-1",
+        toolCalls: [
+          {
+            id: "tool-1",
+            runId: "run-1",
+            title: "Read File",
+            kind: "read",
+            status: "completed",
+            depth: 0,
+            isWrapper: false,
+            callPreview: { header: "read README.md" },
+            resultPreview: { bodyLines: ["line 1"], truncated: true },
+            rawInput: {
+              file_path: "/very/long/path/to/README.md",
+            },
+            rawOutput: {
+              file: {
+                filePath: "/very/long/path/to/README.md",
+                content: lines.join("\n"),
+              },
+            },
+          },
+        ],
+        transcriptItems: [{ type: "tool_call" as const, id: "tool-1" }],
+      },
+    );
+
+    const expanded = stripAnsi(view.render(160).join("\n"));
+
+    expect(expanded).toContain("read /very/long/path/to/README.md");
+    expect(expanded).toContain("line 20");
+    expect(expanded).not.toContain("... (19 more lines, ctrl+o to expand)");
+  });
+
   test("does not paint streamed assistant content red after a failed run", () => {
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),

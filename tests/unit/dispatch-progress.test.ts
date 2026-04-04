@@ -1,0 +1,90 @@
+import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { ProcedureDispatchProgressEmitter } from "../../src/procedure/dispatch-progress.ts";
+
+describe("dispatch-progress", () => {
+  test("forwards nested tool updates with full fidelity", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "nanoboss-dispatch-progress-"));
+    const progressPath = join(tempDir, "progress.jsonl");
+
+    try {
+      const emitter = new ProcedureDispatchProgressEmitter(progressPath);
+
+      emitter.emit({
+        sessionUpdate: "tool_call",
+        toolCallId: "tool-read",
+        title: "Read File",
+        kind: "read",
+        status: "pending",
+        rawInput: {
+          file_path: "src/mcp/jsonrpc.ts",
+          locations: [{ path: "src/mcp/jsonrpc.ts", line: 12 }],
+        },
+      });
+
+      emitter.emit({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-read",
+        title: "Read File",
+        status: "completed",
+        rawOutput: {
+          type: "text",
+          file: {
+            filePath: "src/mcp/jsonrpc.ts",
+            content: "export const hello = 1;\nexport const world = 2;",
+          },
+          duration_ms: 12,
+        },
+      });
+
+      emitter.emit({
+        sessionUpdate: "usage_update",
+        used: 123,
+        size: 456,
+      });
+
+      const [started, updated, usage] = readFileSync(progressPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+
+      expect(started).toEqual({
+        sessionUpdate: "tool_call",
+        toolCallId: "tool-read",
+        title: "Read File",
+        kind: "read",
+        status: "pending",
+        rawInput: {
+          file_path: "src/mcp/jsonrpc.ts",
+          locations: [{ path: "src/mcp/jsonrpc.ts", line: 12 }],
+        },
+      });
+
+      expect(updated).toEqual({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-read",
+        title: "Read File",
+        status: "completed",
+        rawOutput: {
+          type: "text",
+          file: {
+            filePath: "src/mcp/jsonrpc.ts",
+            content: "export const hello = 1;\nexport const world = 2;",
+          },
+          duration_ms: 12,
+        },
+      });
+
+      expect(usage).toEqual({
+        sessionUpdate: "usage_update",
+        used: 123,
+        size: 456,
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});

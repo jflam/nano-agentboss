@@ -223,6 +223,8 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         callPreview: mergeToolPreview(existing?.callPreview, event.data.callPreview),
         resultPreview: existing?.resultPreview,
         errorPreview: existing?.errorPreview,
+        rawInput: event.data.rawInput ?? existing?.rawInput,
+        rawOutput: existing?.rawOutput,
         durationMs: existing?.durationMs,
       };
 
@@ -278,6 +280,8 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         callPreview: existing?.callPreview,
         resultPreview: mergeToolPreview(existing?.resultPreview, event.data.resultPreview),
         errorPreview: mergeToolPreview(existing?.errorPreview, event.data.errorPreview),
+        rawInput: existing?.rawInput,
+        rawOutput: event.data.rawOutput ?? existing?.rawOutput,
         durationMs: event.data.durationMs ?? existing?.durationMs,
       };
 

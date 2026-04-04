@@ -39,10 +39,10 @@ export function summarizeToolCallUpdate(
   rawOutput: unknown,
 ): Pick<ToolPreviewFields, "resultPreview" | "errorPreview" | "durationMs"> {
   const record = asRecord(rawOutput);
-  const durationMs = typeof record?.durationMs === "number" ? record.durationMs : undefined;
+  const durationMs = firstNumber(record?.durationMs, record?.duration_ms);
 
-  const explicitErrorPreview = normalizeToolPreviewBlock(record?.errorPreview);
-  const explicitResultPreview = normalizeToolPreviewBlock(record?.resultPreview);
+  const explicitErrorPreview = normalizeToolPreviewBlock(record?.errorPreview ?? record?.error_preview);
+  const explicitResultPreview = normalizeToolPreviewBlock(record?.resultPreview ?? record?.result_preview);
   if (explicitErrorPreview || explicitResultPreview) {
     return {
       resultPreview: explicitResultPreview,
@@ -82,16 +82,20 @@ export function compactToolCallOutput(identity: ToolIdentity, rawOutput: unknown
     ...(preview.resultPreview ? { resultPreview: preview.resultPreview } : {}),
     ...(preview.errorPreview ? { errorPreview: preview.errorPreview } : {}),
     ...(preview.durationMs !== undefined ? { durationMs: preview.durationMs } : {}),
-    ...(record && typeof record.tokenUsage === "object" ? { tokenUsage: record.tokenUsage } : {}),
-    ...(record && typeof record.tokenSnapshot === "object" ? { tokenSnapshot: record.tokenSnapshot } : {}),
+    ...(record && typeof (record.tokenUsage ?? record.token_usage) === "object"
+      ? { tokenUsage: record.tokenUsage ?? record.token_usage }
+      : {}),
+    ...(record && typeof (record.tokenSnapshot ?? record.token_snapshot) === "object"
+      ? { tokenSnapshot: record.tokenSnapshot ?? record.token_snapshot }
+      : {}),
   });
 }
 
 function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): ToolPreviewBlock | undefined {
   const record = asRecord(rawInput);
   const explicit = normalizeToolPreviewBlock(
-    record?.callPreview,
-    buildSummaryPreviewBlock(record?.inputSummary ?? record?.preview),
+    record?.callPreview ?? record?.call_preview,
+    buildSummaryPreviewBlock(record?.inputSummary ?? record?.input_summary ?? record?.preview),
   );
   if (explicit) {
     return explicit;
@@ -104,7 +108,7 @@ function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): ToolPrev
       return command ? { header: summarizeInline(`$ ${command}`, MAX_HEADER_LENGTH) } : undefined;
     }
     case "read": {
-      const path = firstString(record?.path, record?.filePath);
+      const path = extractPathLike(record);
       const header = path ? summarizeInline(`read ${path}${formatLineRange(record)}`, MAX_HEADER_LENGTH) : undefined;
       return cleanPreviewBlock({
         header,
@@ -112,7 +116,7 @@ function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): ToolPrev
       });
     }
     case "write": {
-      const path = firstString(record?.path, record?.filePath);
+      const path = extractPathLike(record);
       return cleanPreviewBlock({
         header: path ? summarizeInline(`write ${path}`, MAX_HEADER_LENGTH) : undefined,
         bodyLines: boundedPreviewLines(extractTextLikeContent(record?.content ?? record?.text ?? rawInput), "start").lines,
@@ -120,7 +124,7 @@ function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): ToolPrev
       });
     }
     case "edit": {
-      const path = firstString(record?.path, record?.filePath);
+      const path = extractPathLike(record);
       const edits = Array.isArray(record?.edits) ? record.edits.length : undefined;
       const bodyLines = edits !== undefined ? [`${edits} edit${edits === 1 ? "" : "s"}`] : undefined;
       return cleanPreviewBlock({
@@ -154,7 +158,7 @@ function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): ToolPrev
       });
     }
     case "ls": {
-      const path = firstString(record?.path, record?.filePath, record?.dir, record?.cwd);
+      const path = firstString(extractPathLike(record), record?.dir, record?.cwd);
       return cleanPreviewBlock({
         header: path ? summarizeInline(`ls ${path}`, MAX_HEADER_LENGTH) : undefined,
         warnings: summarizeWarnings(extractWarnings(record)),
@@ -167,7 +171,7 @@ function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): ToolPrev
     return buildSummaryPreviewBlock(prompt);
   }
 
-  const path = firstString(record?.path, record?.filePath);
+  const path = extractPathLike(record);
   if (path) {
     return buildSummaryPreviewBlock(path);
   }
@@ -178,8 +182,8 @@ function summarizeToolInput(identity: ToolIdentity, rawInput: unknown): ToolPrev
 function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): ToolPreviewBlock | undefined {
   const record = asRecord(rawOutput);
   const explicit = normalizeToolPreviewBlock(
-    record?.resultPreview,
-    buildSummaryPreviewBlock(record?.outputSummary ?? record?.preview),
+    record?.resultPreview ?? record?.result_preview,
+    buildSummaryPreviewBlock(record?.outputSummary ?? record?.output_summary ?? record?.preview),
   );
   if (explicit) {
     return explicit;
@@ -208,7 +212,7 @@ function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): ToolPr
     case "edit": {
       const diffText = firstString(record?.diff, record?.patch, record?.text, record?.content);
       const diffPreview = boundedPreviewLines(diffText, "start");
-      const path = firstString(record?.path, record?.filePath);
+      const path = extractPathLike(record);
       return cleanPreviewBlock({
         bodyLines: diffPreview.lines.length > 0
           ? diffPreview.lines
@@ -222,7 +226,7 @@ function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): ToolPr
     case "write": {
       const outputText = extractTextLikeContent(rawOutput);
       const preview = boundedPreviewLines(outputText, "start");
-      const path = firstString(record?.path, record?.filePath);
+      const path = extractPathLike(record);
       return cleanPreviewBlock({
         bodyLines: preview.lines.length > 0
           ? preview.lines
@@ -277,7 +281,7 @@ function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): ToolPr
     return { bodyLines: [summarizeInline(`stored ref ${dataRef.path}`, MAX_PREVIEW_LINE_LENGTH)] };
   }
 
-  const path = firstString(record?.path, record?.filePath);
+  const path = extractPathLike(record);
   if (path) {
     return { bodyLines: [summarizeInline(path, MAX_PREVIEW_LINE_LENGTH)] };
   }
@@ -288,14 +292,14 @@ function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): ToolPr
 function summarizeToolError(rawOutput: unknown): ToolPreviewBlock | undefined {
   const record = asRecord(rawOutput);
   const explicit = normalizeToolPreviewBlock(
-    record?.errorPreview,
-    buildSummaryPreviewBlock(record?.errorSummary),
+    record?.errorPreview ?? record?.error_preview,
+    buildSummaryPreviewBlock(record?.errorSummary ?? record?.error_summary),
   );
   if (explicit) {
     return explicit;
   }
 
-  const errorText = firstString(record?.error, record?.message, record?.stderr);
+  const errorText = firstString(record?.error, record?.error_message, record?.message, record?.stderr);
   if (!errorText) {
     return undefined;
   }
@@ -318,6 +322,8 @@ function normalizeToolPreviewBlock(value: unknown, fallback?: ToolPreviewBlock):
   const bodyText = firstString(record.body, record.text, record.content);
   const bodyLines = Array.isArray(record.bodyLines)
     ? normalizePreviewLines(record.bodyLines)
+    : Array.isArray(record.body_lines)
+      ? normalizePreviewLines(record.body_lines)
     : bodyText
       ? boundedPreviewLines(bodyText, "start").lines
       : undefined;
@@ -377,7 +383,11 @@ function summarizeListEntry(entry: unknown): string | undefined {
     return summarizeUnknown(entry, MAX_PREVIEW_LINE_LENGTH);
   }
 
-  const path = firstString(record.path, record.file, record.filePath, record.name);
+  const path = firstString(
+    extractPathLike(record),
+    record.file,
+    record.name,
+  );
   const line = typeof record.line === "number" ? record.line : undefined;
   const text = firstString(record.text, record.content, record.preview, record.match);
 
@@ -399,6 +409,13 @@ function summarizeListEntry(entry: unknown): string | undefined {
 
 function extractTextLikeContent(value: unknown): string | undefined {
   const record = asRecord(value);
+  const nestedRecords = [
+    asRecord(record?.file),
+    asRecord(record?.result),
+    asRecord(record?.response),
+    asRecord(record?.output),
+    asRecord(record?.data),
+  ];
 
   const direct = firstString(
     record?.text,
@@ -406,6 +423,13 @@ function extractTextLikeContent(value: unknown): string | undefined {
     record?.detailedContent,
     record?.stdout,
     record?.stderr,
+    ...nestedRecords.flatMap((item) => item ? [
+      item.text,
+      item.content,
+      item.detailedContent,
+      item.stdout,
+      item.stderr,
+    ] : []),
     value,
   );
   if (direct) {
@@ -415,7 +439,7 @@ function extractTextLikeContent(value: unknown): string | undefined {
   if (Array.isArray(record?.contents)) {
     const text = record.contents
       .map((item) => asRecord(item))
-      .map((item) => firstString(item?.text, item?.content))
+      .map((item) => firstString(item?.text, item?.content, asRecord(item?.file)?.content))
       .filter((item): item is string => Boolean(item))
       .join("\n");
     if (text) {
@@ -426,7 +450,7 @@ function extractTextLikeContent(value: unknown): string | undefined {
   if (Array.isArray(record?.content)) {
     const text = record.content
       .map((item) => asRecord(item))
-      .map((item) => firstString(item?.text, asRecord(item?.content)?.text))
+      .map((item) => firstString(item?.text, asRecord(item?.content)?.text, asRecord(item?.file)?.content))
       .filter((item): item is string => Boolean(item))
       .join("\n");
     if (text) {
@@ -434,7 +458,7 @@ function extractTextLikeContent(value: unknown): string | undefined {
     }
   }
 
-  const structuredContent = record?.structuredContent;
+  const structuredContent = firstDefined(record?.structuredContent, ...nestedRecords.map((item) => item?.structuredContent));
   if (structuredContent !== undefined) {
     return summarizeUnknown(structuredContent, MAX_BODY_CHARS);
   }
@@ -517,23 +541,35 @@ function extractWarnings(record: Record<string, unknown> | undefined): string[] 
   const explicitWarnings = Array.isArray(record.warnings) ? normalizePreviewLines(record.warnings) : [];
   warnings.push(...explicitWarnings);
 
-  if (record.truncated === true || record.isTruncated === true) {
+  if (record.truncated === true || record.isTruncated === true || record.is_truncated === true) {
     warnings.push("output truncated");
   }
 
   const fullOutputPath = firstString(
     record.fullOutputPath,
+    record.full_output_path,
     record.truncatedOutputPath,
+    record.truncated_output_path,
     record.outputPath,
+    record.output_path,
     record.savedPath,
     record.savedTo,
+    record.saved_to,
     record.logFile,
+    record.log_file,
   );
   if (fullOutputPath) {
     warnings.push(`full output: ${fullOutputPath}`);
   }
 
-  const notice = firstString(record.notice, record.warning, record.warningMessage, record.truncationNotice);
+  const notice = firstString(
+    record.notice,
+    record.warning,
+    record.warningMessage,
+    record.warning_message,
+    record.truncationNotice,
+    record.truncation_notice,
+  );
   if (notice) {
     warnings.push(notice);
   }
@@ -546,18 +582,17 @@ function formatLineRange(record: Record<string, unknown> | undefined): string {
     return "";
   }
 
-  const offset = typeof record.offset === "number"
-    ? record.offset
-    : typeof record.line === "number"
-      ? record.line
-      : typeof record.startLine === "number"
-        ? record.startLine
-        : undefined;
-  const limit = typeof record.limit === "number"
-    ? record.limit
-    : typeof record.count === "number"
-      ? record.count
-      : undefined;
+  const firstLocation = Array.isArray(record.locations) ? asRecord(record.locations[0]) : undefined;
+  const offset = firstNumber(
+    record.offset,
+    record.line,
+    record.startLine,
+    record.start_line,
+    firstLocation?.line,
+    firstLocation?.startLine,
+    firstLocation?.start_line,
+  );
+  const limit = firstNumber(record.limit, record.count);
   if (offset === undefined && limit === undefined) {
     return "";
   }
@@ -574,7 +609,7 @@ function hasPreviewTruncation(text: string | undefined, record: Record<string, u
 }
 
 function hasExplicitTruncation(record: Record<string, unknown> | undefined): boolean {
-  return record?.truncated === true || record?.isTruncated === true;
+  return record?.truncated === true || record?.isTruncated === true || record?.is_truncated === true;
 }
 
 function summarizeUnknown(value: unknown, maxLength: number): string | undefined {
@@ -632,9 +667,60 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function extractPathLike(record: Record<string, unknown> | undefined): string | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const location = asRecord(record.location);
+  const firstLocation = Array.isArray(record.locations) ? asRecord(record.locations[0]) : undefined;
+  const file = asRecord(record.file);
+  const target = asRecord(record.target);
+
+  return firstString(
+    record.path,
+    record.filePath,
+    record.file_path,
+    record.fileName,
+    record.filename,
+    location?.path,
+    location?.filePath,
+    location?.file_path,
+    firstLocation?.path,
+    firstLocation?.filePath,
+    firstLocation?.file_path,
+    file?.path,
+    file?.filePath,
+    file?.file_path,
+    target?.path,
+    target?.filePath,
+    target?.file_path,
+  );
+}
+
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function firstDefined<T>(...values: (T | undefined)[]): T | undefined {
+  for (const value of values) {
+    if (value !== undefined) {
       return value;
     }
   }

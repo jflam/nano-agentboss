@@ -82,6 +82,9 @@ describe("frontend-events", () => {
         callPreview: {
           header: "read README.md",
         },
+        rawInput: {
+          path: "README.md",
+        },
       },
     ]);
 
@@ -112,6 +115,15 @@ describe("frontend-events", () => {
         },
         errorPreview: undefined,
         durationMs: 37,
+        rawOutput: {
+          text: "The quick brown fox jumps over the lazy dog.",
+          durationMs: 37,
+          tokenUsage: {
+            source: "copilot_log",
+            currentContextTokens: 24236,
+            maxContextTokens: 272000,
+          },
+        },
       },
       {
         type: "token_usage",
@@ -150,6 +162,9 @@ describe("frontend-events", () => {
       callPreview: {
         header: "$ git show --stat HEAD",
       },
+      rawInput: {
+        command: "git show --stat HEAD",
+      },
     });
   });
 
@@ -180,6 +195,75 @@ describe("frontend-events", () => {
     expect(updated?.type).toBe("tool_updated");
     expect(updated?.type === "tool_updated" && updated.errorPreview?.bodyLines?.[0]).toContain("stderr:");
     expect(updated?.type === "tool_updated" && updated.errorPreview?.bodyLines?.[0]?.length).toBeLessThanOrEqual(160);
+  });
+
+  test("normalizes provider-specific read payloads into consistent previews", () => {
+    const [started] = mapSessionUpdateToFrontendEvents("run-1", {
+      sessionUpdate: "tool_call",
+      toolCallId: "tool-read",
+      title: "Read File",
+      kind: "read",
+      status: "pending",
+      rawInput: {
+        file_path: "src/mcp/jsonrpc.ts",
+        locations: [{ path: "src/mcp/jsonrpc.ts", line: 12 }],
+      },
+    });
+
+    const [updated] = mapSessionUpdateToFrontendEvents("run-1", {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "tool-read",
+      title: "Read File",
+      status: "completed",
+      rawOutput: {
+        type: "text",
+        file: {
+          filePath: "src/mcp/jsonrpc.ts",
+          content: "export const hello = 1;\nexport const world = 2;",
+        },
+        duration_ms: 12,
+      },
+    });
+
+    expect(started).toEqual({
+      type: "tool_started",
+      runId: "run-1",
+      toolCallId: "tool-read",
+      title: "Read File",
+      kind: "read",
+      status: "pending",
+      callPreview: {
+        header: "read src/mcp/jsonrpc.ts:12",
+      },
+      rawInput: {
+        file_path: "src/mcp/jsonrpc.ts",
+        locations: [{ path: "src/mcp/jsonrpc.ts", line: 12 }],
+      },
+    });
+
+    expect(updated).toEqual({
+      type: "tool_updated",
+      runId: "run-1",
+      toolCallId: "tool-read",
+      title: "Read File",
+      status: "completed",
+      resultPreview: {
+        bodyLines: [
+          "export const hello = 1;",
+          "export const world = 2;",
+        ],
+      },
+      errorPreview: undefined,
+      durationMs: 12,
+      rawOutput: {
+        type: "text",
+        file: {
+          filePath: "src/mcp/jsonrpc.ts",
+          content: "export const hello = 1;\nexport const world = 2;",
+        },
+        duration_ms: 12,
+      },
+    });
   });
 
   test("stores replayable session events with increasing sequence numbers", () => {

@@ -25,6 +25,8 @@ export interface UiToolCall {
   callPreview?: ToolPreviewBlock;
   resultPreview?: ToolPreviewBlock;
   errorPreview?: ToolPreviewBlock;
+  rawInput?: unknown;
+  rawOutput?: unknown;
   durationMs?: number;
 }
 

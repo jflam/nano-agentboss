@@ -2,10 +2,14 @@ import type { UiToolCall } from "../../state.ts";
 import type { NanobossTuiTheme } from "../../theme.ts";
 import {
   formatErrorLines,
+  formatExpandedToolHeader,
   formatPreviewBody,
   formatToolDurationLine,
   formatToolHeader,
   formatWarnings,
+  getExpandedToolErrorBlock,
+  getExpandedToolInputBlock,
+  getExpandedToolResultBlock,
   joinToolContent,
   type RenderedToolCard,
 } from "../tool-card-format.ts";
@@ -13,13 +17,18 @@ import {
 export function renderWriteToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
   return {
     lines: joinToolContent(
-      formatToolHeader(theme, toolCall.callPreview?.header, toolCall.title),
-      formatPreviewBody(theme, {
-        ...toolCall.callPreview,
-        header: undefined,
-      }, expanded, { collapsedLines: 10 }),
-      formatPreviewBody(theme, toolCall.resultPreview, expanded, { collapsedLines: 10 }),
-      formatErrorLines(theme, toolCall.errorPreview, expanded, 10),
+      formatToolHeader(theme, expanded ? formatExpandedToolHeader(toolCall) : toolCall.callPreview?.header, toolCall.title),
+      formatPreviewBody(theme, expanded
+        ? getExpandedToolInputBlock(toolCall) ?? {
+            ...toolCall.callPreview,
+            header: undefined,
+          }
+        : {
+            ...toolCall.callPreview,
+            header: undefined,
+          }, expanded, { collapsedLines: 10 }),
+      formatPreviewBody(theme, expanded ? getExpandedToolResultBlock(toolCall) ?? toolCall.resultPreview : toolCall.resultPreview, expanded, { collapsedLines: 10 }),
+      formatErrorLines(theme, expanded ? getExpandedToolErrorBlock(toolCall) ?? toolCall.errorPreview : toolCall.errorPreview, expanded, 10),
       formatWarnings(theme, toolCall.callPreview),
       formatWarnings(theme, toolCall.resultPreview),
       formatWarnings(theme, toolCall.errorPreview),

@@ -4,7 +4,6 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "nod
 import { dirname, join } from "node:path";
 
 import type { SessionUpdateEmitter } from "../core/context.ts";
-import { compactToolCallInput, compactToolCallOutput } from "../core/tool-call-preview.ts";
 import type { AgentTokenUsage } from "../core/types.ts";
 
 const PROCEDURE_DISPATCH_PROGRESS_DIR = "procedure-dispatch-progress";
@@ -106,45 +105,24 @@ export class ProcedureDispatchProgressEmitter implements SessionUpdateEmitter {
       return;
     }
 
-    const sanitized = sanitizeProcedureDispatchProgressUpdate(update);
-    if (!sanitized) {
+    const forwarded = forwardProcedureDispatchProgressUpdate(update);
+    if (!forwarded) {
       return;
     }
 
     mkdirSync(dirname(this.progressPath), { recursive: true });
-    appendFileSync(this.progressPath, `${JSON.stringify(sanitized)}\n`, "utf8");
+    appendFileSync(this.progressPath, `${JSON.stringify(forwarded)}\n`, "utf8");
   }
 }
 
-function sanitizeProcedureDispatchProgressUpdate(update: acp.SessionUpdate): acp.SessionUpdate | undefined {
-  if (update.sessionUpdate === "agent_message_chunk") {
+function forwardProcedureDispatchProgressUpdate(update: acp.SessionUpdate): acp.SessionUpdate | undefined {
+  if (
+    update.sessionUpdate === "agent_message_chunk" ||
+    update.sessionUpdate === "tool_call" ||
+    update.sessionUpdate === "tool_call_update" ||
+    update.sessionUpdate === "usage_update"
+  ) {
     return update;
-  }
-
-  if (update.sessionUpdate === "tool_call") {
-    return {
-      sessionUpdate: "tool_call",
-      toolCallId: update.toolCallId,
-      title: update.title,
-      kind: update.kind,
-      status: update.status,
-      rawInput: compactToolCallInput({
-        title: update.title,
-        kind: String(update.kind),
-      }, update.rawInput),
-    };
-  }
-
-  if (update.sessionUpdate === "tool_call_update") {
-    return {
-      sessionUpdate: "tool_call_update",
-      toolCallId: update.toolCallId,
-      title: update.title,
-      status: update.status,
-      rawOutput: compactToolCallOutput({
-        title: update.title,
-      }, update.rawOutput),
-    };
   }
 
   return undefined;

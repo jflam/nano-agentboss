@@ -2,6 +2,8 @@ import type { ToolPreviewBlock } from "../../core/tool-call-preview.ts";
 import type { UiToolCall } from "../state.ts";
 import type { NanobossTuiTheme } from "../theme.ts";
 
+const MAX_FALLBACK_JSON_LENGTH = 200_000;
+
 const DEFAULT_COLLAPSED_LINES = 6;
 
 export interface RenderedToolCard {
@@ -115,6 +117,380 @@ export function formatErrorLines(
     collapsedLines,
     lineFormatter: (currentTheme, line) => currentTheme.error(line),
   });
+}
+
+export function formatExpandedToolHeader(toolCall: UiToolCall): string | undefined {
+  const toolName = normalizeToolName(toolCall);
+  const record = asRecord(toolCall.rawInput);
+
+  switch (toolName) {
+    case "bash": {
+      const command = firstString(record?.command, record?.cmd);
+      return command ? `$ ${command}` : toolCall.callPreview?.header;
+    }
+    case "read": {
+      const path = extractPathLike(record);
+      return path ? `read ${path}${formatLineRange(record)}` : toolCall.callPreview?.header;
+    }
+    case "write": {
+      const path = extractPathLike(record);
+      return path ? `write ${path}` : toolCall.callPreview?.header;
+    }
+    case "edit": {
+      const path = extractPathLike(record);
+      return path ? `edit ${path}` : toolCall.callPreview?.header;
+    }
+    case "grep": {
+      const pattern = firstString(record?.pattern, record?.query);
+      const path = firstString(extractPathLike(record), record?.cwd);
+      if (pattern || path) {
+        return path ? `grep ${pattern ?? ""} @ ${path}` : `grep ${pattern ?? path}`;
+      }
+      return toolCall.callPreview?.header;
+    }
+    case "find": {
+      const query = firstString(record?.query, record?.pattern, record?.name);
+      const path = firstString(extractPathLike(record), record?.cwd, record?.dir);
+      if (query || path) {
+        return path && query ? `find ${query} @ ${path}` : `find ${query ?? path}`;
+      }
+      return toolCall.callPreview?.header;
+    }
+    case "ls": {
+      const path = firstString(extractPathLike(record), record?.dir, record?.cwd);
+      return path ? `ls ${path}` : toolCall.callPreview?.header;
+    }
+    default:
+      return toolCall.callPreview?.header;
+  }
+}
+
+export function getExpandedToolInputBlock(toolCall: UiToolCall): ToolPreviewBlock | undefined {
+  const toolName = normalizeToolName(toolCall);
+  const record = asRecord(toolCall.rawInput);
+
+  switch (toolName) {
+    case "write": {
+      const text = extractTextLikeContent(record?.content ?? record?.text ?? toolCall.rawInput);
+      return buildFullPreviewBlock(text);
+    }
+    case "edit": {
+      if (!Array.isArray(record?.edits)) {
+        return undefined;
+      }
+
+      const lines: string[] = [];
+      for (const [index, entry] of record.edits.entries()) {
+        const edit = asRecord(entry);
+        if (!edit) {
+          lines.push(`[edit ${index + 1}] ${stringifyValue(entry)}`);
+          continue;
+        }
+
+        lines.push(`[edit ${index + 1}]`);
+        const oldText = firstString(edit.oldText, edit.old_text);
+        if (oldText) {
+          lines.push("--- oldText ---");
+          lines.push(...normalizeMultilineText(oldText).split("\n"));
+        }
+        const newText = firstString(edit.newText, edit.new_text);
+        if (newText) {
+          lines.push("+++ newText +++");
+          lines.push(...normalizeMultilineText(newText).split("\n"));
+        }
+      }
+
+      return lines.length > 0 ? { bodyLines: lines } : undefined;
+    }
+    case "bash":
+    case "read":
+    case "grep":
+    case "find":
+    case "ls":
+      return undefined;
+    default:
+      return buildFullPreviewBlock(stringifyValue(toolCall.rawInput));
+  }
+}
+
+export function getExpandedToolResultBlock(toolCall: UiToolCall): ToolPreviewBlock | undefined {
+  const toolName = normalizeToolName(toolCall);
+  const record = asRecord(toolCall.rawOutput);
+
+  switch (toolName) {
+    case "bash":
+      return buildFullPreviewBlock(firstString(record?.stdout, record?.stderr, record?.text, record?.content));
+    case "read":
+    case "write":
+      return buildFullPreviewBlock(extractTextLikeContent(toolCall.rawOutput));
+    case "edit":
+      return buildFullPreviewBlock(firstString(record?.diff, record?.patch, record?.text, record?.content));
+    case "grep":
+    case "find":
+    case "ls": {
+      const lines = extractListLikeLines(toolCall.rawOutput);
+      return lines.length > 0 ? { bodyLines: lines } : undefined;
+    }
+    default:
+      return buildFullPreviewBlock(extractTextLikeContent(toolCall.rawOutput) ?? stringifyValue(toolCall.rawOutput));
+  }
+}
+
+export function getExpandedToolErrorBlock(toolCall: UiToolCall): ToolPreviewBlock | undefined {
+  const record = asRecord(toolCall.rawOutput);
+  return buildFullPreviewBlock(
+    firstString(record?.error, record?.error_message, record?.message, record?.stderr)
+      ?? stringifyValue(toolCall.rawOutput),
+  );
+}
+
+function buildFullPreviewBlock(text: string | undefined): ToolPreviewBlock | undefined {
+  if (!text) {
+    return undefined;
+  }
+
+  const normalized = normalizeMultilineText(text);
+  if (!normalized) {
+    return undefined;
+  }
+
+  return {
+    bodyLines: normalized.split("\n").map((line) => line.replace(/\s+$/g, "")),
+  };
+}
+
+function extractListLikeLines(value: unknown): string[] {
+  const record = asRecord(value);
+  const candidates: unknown[] = [
+    record?.matches,
+    record?.items,
+    record?.entries,
+    record?.files,
+    record?.paths,
+    record?.results,
+    record?.lines,
+  ];
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate) || candidate.length === 0) {
+      continue;
+    }
+
+    const lines = candidate
+      .map((entry) => summarizeListEntry(entry))
+      .filter((entry): entry is string => Boolean(entry));
+    if (lines.length > 0) {
+      return lines;
+    }
+  }
+
+  return [];
+}
+
+function summarizeListEntry(entry: unknown): string | undefined {
+  if (typeof entry === "string") {
+    return entry;
+  }
+
+  const record = asRecord(entry);
+  if (!record) {
+    return stringifyValue(entry);
+  }
+
+  const path = firstString(extractPathLike(record), record.file, record.name);
+  const line = firstNumber(record.line, record.startLine, record.start_line);
+  const text = firstString(record.text, record.content, record.preview, record.match);
+
+  if (path && line !== undefined && text) {
+    return `${path}:${line} ${text}`;
+  }
+  if (path && text) {
+    return `${path} ${text}`;
+  }
+  if (path) {
+    return path;
+  }
+  if (text) {
+    return text;
+  }
+
+  return stringifyValue(entry);
+}
+
+function extractTextLikeContent(value: unknown): string | undefined {
+  const record = asRecord(value);
+  const nestedRecords = [
+    asRecord(record?.file),
+    asRecord(record?.result),
+    asRecord(record?.response),
+    asRecord(record?.output),
+    asRecord(record?.data),
+  ];
+
+  const direct = firstString(
+    record?.text,
+    record?.content,
+    record?.detailedContent,
+    record?.stdout,
+    record?.stderr,
+    ...nestedRecords.flatMap((item) => item ? [item.text, item.content, item.detailedContent, item.stdout, item.stderr] : []),
+    value,
+  );
+  if (direct) {
+    return direct;
+  }
+
+  if (Array.isArray(record?.contents)) {
+    const text = record.contents
+      .map((item) => asRecord(item))
+      .map((item) => firstString(item?.text, item?.content, asRecord(item?.file)?.content))
+      .filter((item): item is string => Boolean(item))
+      .join("\n");
+    if (text) {
+      return text;
+    }
+  }
+
+  if (Array.isArray(record?.content)) {
+    const text = record.content
+      .map((item) => asRecord(item))
+      .map((item) => firstString(item?.text, asRecord(item?.content)?.text, asRecord(item?.file)?.content))
+      .filter((item): item is string => Boolean(item))
+      .join("\n");
+    if (text) {
+      return text;
+    }
+  }
+
+  const structuredContent = firstDefined(record?.structuredContent, ...nestedRecords.map((item) => item?.structuredContent));
+  if (structuredContent !== undefined) {
+    return stringifyValue(structuredContent);
+  }
+
+  return undefined;
+}
+
+function normalizeMultilineText(value: string): string {
+  return stripAnsi(value)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, "  ")
+    .trim();
+}
+
+function formatLineRange(record: Record<string, unknown> | undefined): string {
+  if (!record) {
+    return "";
+  }
+
+  const firstLocation = Array.isArray(record.locations) ? asRecord(record.locations[0]) : undefined;
+  const offset = firstNumber(
+    record.offset,
+    record.line,
+    record.startLine,
+    record.start_line,
+    firstLocation?.line,
+    firstLocation?.startLine,
+    firstLocation?.start_line,
+  );
+  const limit = firstNumber(record.limit, record.count);
+  if (offset === undefined && limit === undefined) {
+    return "";
+  }
+
+  if (offset !== undefined && limit !== undefined) {
+    return `:${offset}-${offset + Math.max(0, limit - 1)}`;
+  }
+
+  return offset !== undefined ? `:${offset}` : "";
+}
+
+function extractPathLike(record: Record<string, unknown> | undefined): string | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const location = asRecord(record.location);
+  const firstLocation = Array.isArray(record.locations) ? asRecord(record.locations[0]) : undefined;
+  const file = asRecord(record.file);
+  const target = asRecord(record.target);
+
+  return firstString(
+    record.path,
+    record.filePath,
+    record.file_path,
+    record.fileName,
+    record.filename,
+    location?.path,
+    location?.filePath,
+    location?.file_path,
+    firstLocation?.path,
+    firstLocation?.filePath,
+    firstLocation?.file_path,
+    file?.path,
+    file?.filePath,
+    file?.file_path,
+    target?.path,
+    target?.filePath,
+    target?.file_path,
+  );
+}
+
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function firstDefined<T>(...values: (T | undefined)[]): T | undefined {
+  for (const value of values) {
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function stringifyValue(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    const text = JSON.stringify(value, null, 2);
+    return text.length > MAX_FALLBACK_JSON_LENGTH ? `${text.slice(0, MAX_FALLBACK_JSON_LENGTH)}\n…` : text;
+  } catch {
+    return String(value);
+  }
 }
 
 export function joinToolContent(...groups: Array<string[] | string | undefined>): string[] {

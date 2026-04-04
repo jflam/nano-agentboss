@@ -73,6 +73,7 @@ export type FrontendEvent =
       kind: string;
       status?: string;
       callPreview?: ToolPreviewBlock;
+      rawInput?: unknown;
     }
   | {
       type: "tool_updated";
@@ -83,6 +84,7 @@ export type FrontendEvent =
       resultPreview?: ToolPreviewBlock;
       errorPreview?: ToolPreviewBlock;
       durationMs?: number;
+      rawOutput?: unknown;
     }
   | {
       type: "run_completed";
@@ -225,6 +227,7 @@ export function mapSessionUpdateToFrontendEvents(
           kind: String(update.kind),
           status: update.status ?? undefined,
           callPreview: preview.callPreview,
+          rawInput: update.rawInput,
         },
       ];
     }
@@ -242,6 +245,7 @@ export function mapSessionUpdateToFrontendEvents(
           resultPreview: preview.resultPreview,
           errorPreview: preview.errorPreview,
           durationMs: preview.durationMs,
+          rawOutput: update.rawOutput,
         },
       ];
 
