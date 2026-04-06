@@ -9,7 +9,7 @@ import {
 import { RunCancelledError, defaultCancellationMessage } from "../core/cancellation.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
 import { SessionStore } from "../session/index.ts";
-import { collectTokenSnapshot } from "./token-metrics.ts";
+import { collectTokenSnapshot, enrichToolCallUpdateWithTokenUsage } from "./token-metrics.ts";
 import type {
   AgentRunResult,
   AgentTokenSnapshot,
@@ -335,24 +335,33 @@ async function runAcpPrompt(
   const config = options.config ?? resolveDownstreamAgentConfig();
   const state = await openAcpConnection(config);
   const updates: acp.SessionUpdate[] = [];
+  let lastTokenSnapshot: AgentTokenSnapshot | undefined;
   let raw = "";
   let sessionId: acp.SessionId | undefined;
 
   state.setSessionUpdateHandler(async (params) => {
-    updates.push(params.update);
+    const { update, tokenSnapshot } = await enrichToolCallUpdateWithTokenUsage({
+      childPid: state.child.pid,
+      config,
+      sessionId: params.sessionId,
+      update: params.update,
+      updates,
+    });
+    lastTokenSnapshot = tokenSnapshot ?? lastTokenSnapshot;
+    updates.push(update);
     state.writeEvent({
       event: "session_update",
-      update: params.update,
+      update,
     });
 
     if (
-      params.update.sessionUpdate === "agent_message_chunk" &&
-      params.update.content.type === "text"
+      update.sessionUpdate === "agent_message_chunk" &&
+      update.content.type === "text"
     ) {
-      raw += params.update.content.text;
+      raw += update.content.text;
     }
 
-    await options.onUpdate?.(params.update);
+    await options.onUpdate?.(update);
   });
 
   const softStopListener = () => {
@@ -401,18 +410,18 @@ async function runAcpPrompt(
       throw error;
     }
 
-    return {
-      raw,
-      logFile: state.transcriptPath,
-      updates,
-      tokenSnapshot: await collectTokenSnapshot({
+      return {
+        raw,
+        logFile: state.transcriptPath,
+        updates,
+        tokenSnapshot: await collectTokenSnapshot({
         childPid: state.child.pid,
         config,
-        promptResponse,
-        sessionId,
-        updates,
-      }),
-    };
+          promptResponse,
+          sessionId,
+          updates,
+        }) ?? lastTokenSnapshot,
+      };
   } finally {
     options.softStopSignal?.removeEventListener("abort", softStopListener);
     options.signal?.removeEventListener("abort", abortListener);

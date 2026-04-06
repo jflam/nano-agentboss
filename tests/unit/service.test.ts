@@ -182,6 +182,67 @@ describe("NanobossService", () => {
     expect(textEvents[0]?.data.text).toBe("4");
   });
 
+  test("reconstructed resume replays the persisted frontend transcript trace", async () => {
+    const tempHome = mkdtempSync(join(tmpdir(), "nab-resume-history-home-"));
+    const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-resume-history-agent-"));
+
+    await withMockAgentEnv(async () => {
+      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-resume-history-reg-")));
+      registry.loadBuiltins();
+      const createService = () => new NanobossService(registry);
+
+      const service = createService();
+      const session = service.createSession({ cwd: process.cwd() });
+
+      try {
+        await service.prompt(session.sessionId, "nested tool trace demo");
+        const liveReplay = normalizeReplayEvents(
+          service.getSessionEvents(session.sessionId)?.after(-1) ?? [],
+        );
+
+        expect(liveReplay.some((event) => event.type === "tool_started")).toBe(true);
+        expect(liveReplay.some((event) => event.type === "text_delta")).toBe(true);
+
+        service.destroySession(session.sessionId);
+
+        const resumedService = createService();
+        resumedService.resumeSession({
+          sessionId: session.sessionId,
+          cwd: process.cwd(),
+        });
+
+        const resumedEvents = resumedService.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+        const restored = resumedEvents.find((event) => event.type === "run_restored");
+        const commandsUpdated = resumedEvents.find((event) => event.type === "commands_updated");
+
+        expect(restored).toEqual({
+          sessionId: session.sessionId,
+          seq: 1,
+          type: "run_restored",
+          data: {
+            runId: expect.any(String),
+            procedure: "default",
+            prompt: "nested tool trace demo",
+            completedAt: expect.any(String),
+            cell: {
+              sessionId: session.sessionId,
+              cellId: expect.any(String),
+            },
+            status: "complete",
+          },
+        });
+        expect(normalizeReplayEvents(resumedEvents.slice(1))).toEqual(liveReplay);
+        expect(commandsUpdated?.type).toBe("commands_updated");
+      } finally {
+        service.destroySession(session.sessionId);
+      }
+    }, {
+      HOME: tempHome,
+      MOCK_AGENT_SUPPORT_LOAD_SESSION: "1",
+      MOCK_AGENT_SESSION_STORE_DIR: sessionStoreDir,
+    });
+  }, 30_000);
+
   test("slash commands dispatch through async procedure dispatch tools inside the default session", async () => {
     await withMockAgentEnv(async () => {
       const { cwd, registry } = await createRegistryWithWorkspace({
@@ -638,3 +699,24 @@ describe("NanobossService", () => {
     });
   }, 30_000);
 });
+
+function normalizeReplayEvents(events: Array<{ type: string; data: Record<string, unknown> }>): Array<{
+  type: string;
+  data: Record<string, unknown>;
+}> {
+  const replayable = new Set([
+    "text_delta",
+    "tool_started",
+    "tool_updated",
+    "token_usage",
+    "run_completed",
+    "run_failed",
+  ]);
+
+  return events
+    .filter((event) => replayable.has(event.type))
+    .map((event) => ({
+      type: event.type,
+      data: event.data,
+    }));
+}

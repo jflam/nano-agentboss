@@ -11,6 +11,7 @@ describe("tui reducer", () => {
     state = reduceUiState(state, {
       type: "session_ready",
       sessionId: "session-1",
+      cwd: "/repo",
       buildLabel: "nanoboss-test",
       agentLabel: "copilot/default",
       commands: [{ name: "tokens", description: "show tokens" }],
@@ -216,6 +217,109 @@ describe("tui reducer", () => {
     expect(state.stopRequestedRunId).toBeUndefined();
     expect(state.statusLine).toBe("[run] default stopped");
     expect(state.inputDisabled).toBe(false);
+  });
+
+  test("restores persisted runs into transcript history", () => {
+    let state = createInitialUiState({ cwd: "/wrong", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "session_ready",
+      sessionId: "session-1",
+      cwd: "/repo",
+      buildLabel: "nanoboss-test",
+      agentLabel: "copilot/default",
+      commands: [{ name: "tokens", description: "show tokens" }],
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_restored", {
+        runId: "run-1",
+        procedure: "default",
+        prompt: "hello",
+        completedAt: new Date(1).toISOString(),
+        cell: { sessionId: "session-1", cellId: "cell-1" },
+        status: "complete",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_started", {
+        runId: "run-1",
+        toolCallId: "tool-1",
+        title: "Mock read README.md",
+        kind: "read",
+        status: "pending",
+        callPreview: { header: "read README.md" },
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_updated", {
+        runId: "run-1",
+        toolCallId: "tool-1",
+        status: "completed",
+        resultPreview: { bodyLines: ["hello from read"] },
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("text_delta", {
+        runId: "run-1",
+        text: "hi",
+        stream: "agent",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_completed", {
+        runId: "run-1",
+        procedure: "default",
+        completedAt: new Date(1).toISOString(),
+        cell: { sessionId: "session-1", cellId: "cell-1" },
+      }),
+    });
+
+    expect(state.cwd).toBe("/repo");
+    expect(state.turns).toEqual([
+      {
+        id: "user-1",
+        role: "user",
+        markdown: "hello",
+        status: "complete",
+      },
+      {
+        id: "assistant-2",
+        role: "assistant",
+        markdown: "hi",
+        status: "complete",
+        runId: "run-1",
+        meta: {
+          procedure: "default",
+          tokenUsageLine: undefined,
+          failureMessage: undefined,
+        },
+      },
+    ]);
+    expect(state.transcriptItems).toEqual([
+      { type: "turn", id: "user-1" },
+      { type: "tool_call", id: "tool-1" },
+      { type: "turn", id: "assistant-2" },
+    ]);
+    expect(state.toolCalls).toEqual([
+      {
+        id: "tool-1",
+        runId: "run-1",
+        title: "Mock read README.md",
+        kind: "read",
+        status: "completed",
+        depth: 0,
+        isWrapper: false,
+        callPreview: { header: "read README.md" },
+        resultPreview: { bodyLines: ["hello from read"] },
+        errorPreview: undefined,
+        durationMs: undefined,
+      },
+    ]);
   });
 
   test("suppresses async dispatch wait traces while preserving nested activity depth", () => {
@@ -475,6 +579,7 @@ describe("tui reducer", () => {
     state = reduceUiState(state, {
       type: "session_ready",
       sessionId: "session-1",
+      cwd: "/repo",
       buildLabel: "nanoboss-test",
       agentLabel: "copilot/default",
       commands: [{ name: "tokens", description: "show tokens" }],

@@ -7,7 +7,7 @@ import {
   type OpenAcpConnection,
 } from "./acp-runtime.ts";
 import { RunCancelledError, defaultCancellationMessage } from "../core/cancellation.ts";
-import { collectTokenSnapshot } from "./token-metrics.ts";
+import { collectTokenSnapshot, enrichToolCallUpdateWithTokenUsage } from "./token-metrics.ts";
 import type { AgentTokenSnapshot, CallAgentOptions, DownstreamAgentConfig } from "../core/types.ts";
 
 interface DefaultSessionPromptOptions {
@@ -152,8 +152,8 @@ class PersistentAcpSession {
 
   static async createFresh(
     config: DownstreamAgentConfig,
-    sessionId: string,
-    rootDir?: string,
+    _sessionId: string,
+    _rootDir?: string,
   ): Promise<PersistentAcpSession> {
     const state = await openAcpConnection(config);
 
@@ -174,8 +174,8 @@ class PersistentAcpSession {
   static async load(
     config: DownstreamAgentConfig,
     sessionId: acp.SessionId,
-    nanobossSessionId: string,
-    rootDir?: string,
+    _nanobossSessionId: string,
+    _rootDir?: string,
   ): Promise<PersistentAcpSession | undefined> {
     const state = await openAcpConnection(config);
 
@@ -314,16 +314,24 @@ class PersistentAcpSession {
       return;
     }
 
-    this.activeCollector.updates.push(params.update);
+    const { update, tokenSnapshot } = await enrichToolCallUpdateWithTokenUsage({
+      childPid: this.state.child.pid,
+      config: this.config,
+      sessionId: this.sessionId,
+      update: params.update,
+      updates: this.activeCollector.updates,
+    });
+    this.tokenSnapshot = tokenSnapshot ?? this.tokenSnapshot;
+    this.activeCollector.updates.push(update);
 
     if (
-      params.update.sessionUpdate === "agent_message_chunk" &&
-      params.update.content.type === "text"
+      update.sessionUpdate === "agent_message_chunk" &&
+      update.content.type === "text"
     ) {
-      this.activeCollector.raw += params.update.content.text;
+      this.activeCollector.raw += update.content.text;
     }
 
-    await this.activeCollector.onUpdate?.(params.update);
+    await this.activeCollector.onUpdate?.(update);
   }
 }
 

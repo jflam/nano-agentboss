@@ -399,6 +399,7 @@ describe("NanobossTuiController", () => {
     const runPromise = controller.run();
     await waitFor(() => controller.getState().sessionId === "session-resume");
 
+    expect(controller.getState().cwd).toBe("/repo");
     expect(controller.getState().agentLabel).toBe("copilot/gpt-5.4/x-high");
     expect(controller.getState().defaultAgentSelection).toEqual({
       provider: "copilot",
