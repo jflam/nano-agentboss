@@ -214,10 +214,7 @@ export async function parseSseStream(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let aborted = signal?.aborted ?? false;
-
   const handleAbort = () => {
-    aborted = true;
     void reader.cancel().catch(() => {});
   };
 
@@ -225,12 +222,12 @@ export async function parseSseStream(
 
   try {
     for (;;) {
-      if (aborted) {
+      if (signal?.aborted) {
         return;
       }
 
       const { done, value } = await reader.read();
-      if (done || aborted) {
+      if (done || signal?.aborted) {
         break;
       }
 
@@ -251,7 +248,7 @@ export async function parseSseStream(
       }
     }
 
-    if (!aborted) {
+    if (!signal?.aborted) {
       buffer += decoder.decode();
       const parsed = parseSseMessage(buffer.trim());
       if (parsed) {
