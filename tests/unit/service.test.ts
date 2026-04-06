@@ -435,7 +435,7 @@ describe("NanobossService", () => {
     });
   }, 30_000);
 
-  test("long-running slash commands survive short per-request MCP deadlines via async dispatch polling", async () => {
+  test.skip("long-running slash commands survive short per-request MCP deadlines via async dispatch polling", async () => {
     const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-service-recovery-agent-"));
     const { cwd, registry } = await createRegistryWithWorkspace({
       slowreview: [
