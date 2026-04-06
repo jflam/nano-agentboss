@@ -22,6 +22,16 @@ export type FrontendEvent =
       commands: FrontendCommand[];
     }
   | {
+      type: "run_restored";
+      runId: string;
+      procedure: string;
+      prompt: string;
+      completedAt: string;
+      cell: CellRef;
+      status: "complete" | "failed";
+      text?: string;
+    }
+  | {
       type: "run_started";
       runId: string;
       procedure: string;

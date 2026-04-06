@@ -164,6 +164,59 @@ describe("NanobossService", () => {
     expect(textEvents[0]?.data.text).toBe("4");
   });
 
+  test("reconstructed resume replays persisted top-level history into the frontend event log", async () => {
+    const tempHome = mkdtempSync(join(tmpdir(), "nab-resume-history-home-"));
+    const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-resume-history-agent-"));
+
+    await withMockAgentEnv(async () => {
+      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-resume-history-reg-")));
+      registry.loadBuiltins();
+      const createService = () => new NanobossService(registry);
+
+      const service = createService();
+      const session = service.createSession({ cwd: process.cwd() });
+
+      try {
+        await service.prompt(session.sessionId, "what is 2+2");
+      } finally {
+        service.destroySession(session.sessionId);
+      }
+
+      const resumedService = createService();
+      resumedService.resumeSession({
+        sessionId: session.sessionId,
+        cwd: process.cwd(),
+      });
+
+      const events = resumedService.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const restored = events.find((event) => event.type === "run_restored");
+      const commandsUpdated = events.find((event) => event.type === "commands_updated");
+
+      expect(restored).toEqual({
+        sessionId: session.sessionId,
+        seq: 1,
+        type: "run_restored",
+        data: {
+          runId: expect.any(String),
+          procedure: "default",
+          prompt: "what is 2+2",
+          completedAt: expect.any(String),
+          cell: {
+            sessionId: session.sessionId,
+            cellId: expect.any(String),
+          },
+          status: "complete",
+          text: "4",
+        },
+      });
+      expect(commandsUpdated?.type).toBe("commands_updated");
+    }, {
+      HOME: tempHome,
+      MOCK_AGENT_SUPPORT_LOAD_SESSION: "1",
+      MOCK_AGENT_SESSION_STORE_DIR: sessionStoreDir,
+    });
+  }, 30_000);
+
   test("slash commands dispatch through async procedure dispatch tools inside the default session", async () => {
     await withMockAgentEnv(async () => {
       const { cwd, registry } = await createRegistryWithWorkspace({

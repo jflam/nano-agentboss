@@ -25,6 +25,7 @@ export type UiAction =
   | {
       type: "session_ready";
       sessionId: string;
+      cwd: string;
       buildLabel: string;
       agentLabel: string;
       commands: FrontendCommand[];
@@ -60,7 +61,7 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
     case "session_ready":
       return {
         ...createInitialUiState({
-          cwd: state.cwd,
+          cwd: action.cwd,
           buildLabel: action.buildLabel,
           agentLabel: action.agentLabel,
           showToolCalls: state.showToolCalls,
@@ -148,6 +149,43 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         ...state,
         availableCommands: mergeAvailableCommands(event.data.commands),
       };
+    case "run_restored": {
+      const userTurn = createTurn({
+        id: nextTurnId("user", state.turns.length),
+        role: "user",
+        markdown: event.data.prompt,
+        status: "complete",
+      });
+      const nextTurns: UiTurn[] = [...state.turns, userTurn];
+      const nextTranscriptItems: UiTranscriptItem[] = appendTranscriptItem(
+        state.transcriptItems,
+        { type: "turn", id: userTurn.id },
+      );
+      if (!event.data.text) {
+        return {
+          ...state,
+          turns: nextTurns,
+          transcriptItems: nextTranscriptItems,
+        };
+      }
+
+      const assistantTurn = createTurn({
+        id: nextTurnId("assistant", nextTurns.length),
+        role: "assistant",
+        markdown: event.data.text,
+        status: event.data.status,
+        runId: event.data.runId,
+        meta: buildAssistantTurnMeta({
+          procedure: event.data.procedure,
+        }),
+      });
+
+      return {
+        ...state,
+        turns: [...nextTurns, assistantTurn],
+        transcriptItems: appendTranscriptItem(nextTranscriptItems, { type: "turn", id: assistantTurn.id }),
+      };
+    }
     case "run_started":
       return {
         ...state,

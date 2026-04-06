@@ -16,6 +16,7 @@ import {
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
   toFrontendCommands,
+  type FrontendEvent,
   type FrontendCommand,
 } from "../http/frontend-events.ts";
 import {
@@ -37,9 +38,10 @@ import { ProcedureRegistry } from "../procedure/registry.ts";
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "../mcp/server.ts";
-import { SessionStore } from "../session/index.ts";
+import type { SessionStore } from "../session/index.ts";
 import type {
   AgentTokenUsage,
+  CellRecord,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
 } from "./types.ts";
@@ -180,6 +182,7 @@ export class NanobossService {
       defaultAgentSelection: params.defaultAgentSelection ?? stored?.defaultAgentSelection,
       defaultAcpSessionId: stored?.defaultAcpSessionId,
     });
+    this.restorePersistedSessionHistory(params.sessionId, state);
 
     this.sessions.set(params.sessionId, state);
     this.touchCurrentSessionMetadata(this.persistSessionState(state));
@@ -238,6 +241,14 @@ export class NanobossService {
       agentLabel: formatAgentBanner(state.defaultAgentConfig),
       defaultAgentSelection: toDownstreamAgentSelection(state.defaultAgentConfig),
     };
+  }
+
+  private restorePersistedSessionHistory(sessionId: string, session: SessionState): void {
+    const runs = session.store.topLevelRuns().reverse();
+    for (const summary of runs) {
+      const record = session.store.readCell(summary.cell);
+      session.events.publish(sessionId, restoredFrontendEventFromCell(sessionId, record));
+    }
   }
 
   private persistSessionState(
@@ -769,6 +780,27 @@ export function extractProcedureDispatchResult(updates: acp.SessionUpdate[]): Pr
   }
 
   return undefined;
+}
+
+function restoredFrontendEventFromCell(sessionId: string, cell: CellRecord): FrontendEvent {
+  const restoredText = cell.output.display ?? cell.output.summary;
+  const failed = cell.output.display === undefined
+    && typeof cell.output.summary === "string"
+    && /^Error:/i.test(cell.output.summary);
+
+  return {
+    type: "run_restored",
+    runId: cell.cellId,
+    procedure: cell.procedure,
+    prompt: cell.input,
+    completedAt: cell.meta.createdAt,
+    cell: {
+      sessionId,
+      cellId: cell.cellId,
+    },
+    status: failed ? "failed" : "complete",
+    text: restoredText,
+  };
 }
 
 function collectProcedureDispatchCandidates(update: Extract<acp.SessionUpdate, { sessionUpdate: "tool_call_update" }>): unknown[] {

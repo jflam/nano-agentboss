@@ -225,6 +225,7 @@ export class NanobossTuiController {
     this.dispatch({
       type: "session_ready",
       sessionId: session.sessionId,
+      cwd: session.cwd,
       buildLabel: session.buildLabel,
       agentLabel: session.agentLabel,
       commands: session.commands,
