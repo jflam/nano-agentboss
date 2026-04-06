@@ -18,7 +18,6 @@ import {
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
   toFrontendCommands,
-  type FrontendEvent,
   type FrontendEventEnvelope,
   type FrontendCommand,
 } from "../http/frontend-events.ts";
@@ -46,7 +45,6 @@ import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "../m
 import type { SessionStore } from "../session/index.ts";
 import type {
   AgentTokenUsage,
-  CellRecord,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   PersistedFrontendEvent,
