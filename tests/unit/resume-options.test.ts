@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-import { DEFAULT_HTTP_SERVER_URL } from "../../src/core/defaults.ts";
 import { parseResumeOptions } from "../../src/options/resume.ts";
 
 describe("parseResumeOptions", () => {
@@ -8,7 +7,8 @@ describe("parseResumeOptions", () => {
     expect(parseResumeOptions([])).toEqual({
       showToolCalls: true,
       showHelp: false,
-      serverUrl: DEFAULT_HTTP_SERVER_URL,
+      connectionMode: "private",
+      serverUrl: undefined,
       list: false,
       sessionId: undefined,
     });
@@ -18,7 +18,8 @@ describe("parseResumeOptions", () => {
     expect(parseResumeOptions(["session-123"])).toEqual({
       showToolCalls: true,
       showHelp: false,
-      serverUrl: DEFAULT_HTTP_SERVER_URL,
+      connectionMode: "private",
+      serverUrl: undefined,
       list: false,
       sessionId: "session-123",
     });
@@ -28,6 +29,7 @@ describe("parseResumeOptions", () => {
     expect(parseResumeOptions(["--list", "--server-url=http://localhost:4000", "--no-tool-calls"])).toEqual({
       showToolCalls: false,
       showHelp: false,
+      connectionMode: "external",
       serverUrl: "http://localhost:4000",
       list: true,
       sessionId: undefined,

@@ -6,6 +6,11 @@ export interface ServerHealthResponse {
   buildLabel?: string;
   buildCommit?: string;
   pid?: number;
+  mode?: "private" | "shared";
+  cwd?: string;
+  repoRoot?: string;
+  workspaceKey?: string;
+  commandsFingerprint?: string;
 }
 
 interface SessionResponse {

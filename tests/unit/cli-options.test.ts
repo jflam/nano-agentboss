@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { parseCliOptions } from "../../src/options/cli.ts";
-import { DEFAULT_HTTP_SERVER_URL } from "../../src/core/defaults.ts";
-
 describe("parseCliOptions", () => {
   test("shows tool calls by default", () => {
     expect(parseCliOptions([])).toEqual({
       showToolCalls: true,
       showHelp: false,
-      serverUrl: DEFAULT_HTTP_SERVER_URL,
+      connectionMode: "private",
+      serverUrl: undefined,
     });
   });
 
@@ -16,7 +15,8 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["--no-tool-calls"])).toEqual({
       showToolCalls: false,
       showHelp: false,
-      serverUrl: DEFAULT_HTTP_SERVER_URL,
+      connectionMode: "private",
+      serverUrl: undefined,
     });
   });
 
@@ -24,7 +24,8 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["--tool-calls", "--help"])).toEqual({
       showToolCalls: true,
       showHelp: true,
-      serverUrl: DEFAULT_HTTP_SERVER_URL,
+      connectionMode: "private",
+      serverUrl: undefined,
     });
   });
 
@@ -32,6 +33,7 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["--server-url", "http://localhost:3000"])).toEqual({
       showToolCalls: true,
       showHelp: false,
+      connectionMode: "external",
       serverUrl: "http://localhost:3000",
     });
   });
@@ -40,6 +42,7 @@ describe("parseCliOptions", () => {
     expect(parseCliOptions(["--server-url=http://localhost:4000"])).toEqual({
       showToolCalls: true,
       showHelp: false,
+      connectionMode: "external",
       serverUrl: "http://localhost:4000",
     });
   });

@@ -80,10 +80,11 @@ flowchart TD
 
 ## Default CLI path
 
-When you run `nanoboss cli` without `--server-url`, the CLI connects to nanoboss over **HTTP/SSE** at `http://localhost:6502`.
-For loopback URLs, the CLI first checks the server health/build id and will start
-or restart the server automatically if it is missing or running a different
-nanoboss commit.
+When you run `nanoboss cli` without `--server-url`, the CLI first starts an
+owned private loopback HTTP/SSE server on an ephemeral port and then connects to
+that exact server. If you pass `--server-url`, the CLI switches to explicit
+connect-only mode and validates the target server without killing or restarting
+it.
 
 ```mermaid
 sequenceDiagram
@@ -93,16 +94,13 @@ sequenceDiagram
   participant Service as NanobossService
 
   User->>CLI: start
-  CLI->>Server: GET /v1/health
-  alt missing or mismatched build
-    CLI->>Server: POST /v1/admin/shutdown
-    CLI->>Server: spawn matching server in background
-  end
+  CLI->>Server: spawn private loopback server
+  Server-->>CLI: readiness payload with baseUrl
   User->>CLI: type prompt / command
   CLI->>Server: HTTP + SSE
   Server->>Service: createSession / prompt / cancel
-  Service-->>ACP: session updates
-  ACP-->>CLI: ACP session updates over stdio
+  Service-->>Server: frontend events
+  Server-->>CLI: SSE updates
   CLI-->>User: render output and tool traces
 ```
 

@@ -77,9 +77,9 @@ Launch the HTTP/SSE server:
 bun run nanoboss http
 ```
 
-Launch the CLI frontend. By default it connects to `http://localhost:6502`.
-If the local server is missing or running a different nanoboss commit, the CLI
-will start or restart it automatically in the background.
+Launch the CLI frontend. By default it starts an owned private loopback HTTP/SSE
+server on an ephemeral port for that terminal session. Use `nanoboss http` when
+you want an explicit shared server instead.
 
 When you run the installed `nanoboss` binary from the nanoboss repo working
 copy, the CLI also warns if the executable looks older than the current
@@ -95,6 +95,10 @@ Override the server URL if needed:
 ```bash
 bun run nanoboss cli --server-url http://localhost:6503
 ```
+
+Passing `--server-url` is connect-only: nanoboss validates the target server and
+will never kill or restart it for you. Omit `--server-url` to get the default
+private local server lifecycle.
 
 Inspect agent health and register the global nanoboss MCP server if needed:
 

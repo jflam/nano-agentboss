@@ -1,10 +1,12 @@
-import { DEFAULT_HTTP_SERVER_URL } from "../core/defaults.ts";
 import { requireValue } from "../util/argv.ts";
+
+export type FrontendConnectionMode = "private" | "external";
 
 export interface FrontendConnectionOptions {
   showToolCalls: boolean;
   showHelp: boolean;
-  serverUrl: string;
+  connectionMode: FrontendConnectionMode;
+  serverUrl?: string;
 }
 
 export interface ParsedFrontendConnectionOptions extends FrontendConnectionOptions {
@@ -14,7 +16,7 @@ export interface ParsedFrontendConnectionOptions extends FrontendConnectionOptio
 export function parseFrontendConnectionOptions(argv: string[]): ParsedFrontendConnectionOptions {
   let showToolCalls = true;
   let showHelp = false;
-  let serverUrl = Bun.env.NANOBOSS_SERVER_URL ?? DEFAULT_HTTP_SERVER_URL;
+  let serverUrl = normalizeServerUrl(Bun.env.NANOBOSS_SERVER_URL);
   const remainingArgs: string[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -52,7 +54,13 @@ export function parseFrontendConnectionOptions(argv: string[]): ParsedFrontendCo
   return {
     showToolCalls,
     showHelp,
+    connectionMode: serverUrl ? "external" : "private",
     serverUrl,
     remainingArgs,
   };
+}
+
+function normalizeServerUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }

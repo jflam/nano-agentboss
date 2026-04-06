@@ -1,17 +1,25 @@
 import { getBuildCommit, getBuildLabel } from "../core/build-info.ts";
 import { DEFAULT_HTTP_SERVER_PORT } from "../core/defaults.ts";
+import { requireValue } from "../util/argv.ts";
 import type { FrontendEventEnvelope } from "./frontend-events.ts";
 import { NanobossService } from "../core/service.ts";
 import type { DownstreamAgentSelection } from "../core/types.ts";
+import { getWorkspaceIdentity } from "../core/workspace-identity.ts";
 
 export interface HttpServerOptions {
   port: number;
+  host?: string;
+  mode: "private" | "shared";
+  readySignal: boolean;
   idleTimeoutSeconds: number;
   sseKeepAliveMs: number;
 }
 
 export function parseHttpServerOptions(argv: string[]): HttpServerOptions {
   let port = Number(Bun.env.NANOBOSS_PORT ?? String(DEFAULT_HTTP_SERVER_PORT));
+  let host = normalizeHost(Bun.env.NANOBOSS_HOST);
+  let mode = normalizeMode(Bun.env.NANOBOSS_HTTP_MODE) ?? "shared";
+  let readySignal = false;
   const idleTimeoutSeconds = Number(Bun.env.NANOBOSS_HTTP_IDLE_TIMEOUT_SECONDS ?? "30");
   const sseKeepAliveMs = Number(Bun.env.NANOBOSS_SSE_KEEPALIVE_MS ?? "10000");
 
@@ -31,12 +39,39 @@ export function parseHttpServerOptions(argv: string[]): HttpServerOptions {
       continue;
     }
 
+    if (arg === "--host") {
+      host = requireValue(argv[index + 1], "--host");
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--mode") {
+      mode = parseMode(argv[index + 1], "--mode");
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--ready-signal") {
+      readySignal = true;
+      continue;
+    }
+
     if (arg.startsWith("--port=")) {
       port = Number(arg.slice("--port=".length));
+      continue;
+    }
+
+    if (arg.startsWith("--host=")) {
+      host = normalizeHost(arg.slice("--host=".length));
+      continue;
+    }
+
+    if (arg.startsWith("--mode=")) {
+      mode = parseMode(arg.slice("--mode=".length), "--mode");
     }
   }
 
-  if (!Number.isInteger(port) || port <= 0) {
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error(`Invalid port: ${String(port)}`);
   }
 
@@ -50,6 +85,9 @@ export function parseHttpServerOptions(argv: string[]): HttpServerOptions {
 
   return {
     port,
+    host,
+    mode,
+    readySignal,
     idleTimeoutSeconds,
     sseKeepAliveMs,
   };
@@ -59,10 +97,10 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
   const options = parseHttpServerOptions(argv);
   const service = await NanobossService.create();
   const encoder = new TextEncoder();
-  let server!: ReturnType<typeof Bun.serve>;
-
-  server = Bun.serve({
+  const workspace = getWorkspaceIdentity(process.cwd());
+  const server = Bun.serve({
     port: options.port,
+    hostname: options.host,
     idleTimeout: options.idleTimeoutSeconds,
     async fetch(request) {
       const url = new URL(request.url);
@@ -74,6 +112,11 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
           buildLabel: getBuildLabel(),
           buildCommit: getBuildCommit(),
           pid: process.pid,
+          mode: options.mode,
+          cwd: workspace.cwd,
+          repoRoot: workspace.repoRoot,
+          workspaceKey: workspace.workspaceKey,
+          commandsFingerprint: workspace.commandsFingerprint,
         });
       }
 
@@ -226,7 +269,16 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
     },
   });
 
-  console.log(`${getBuildLabel()} server listening on http://localhost:${options.port}`);
+  const baseUrl = formatBaseUrl(options.host, server.port);
+  if (options.readySignal) {
+    console.log(`NANOBOSS_SERVER_READY ${JSON.stringify({
+      baseUrl,
+      pid: process.pid,
+      buildLabel: getBuildLabel(),
+      mode: options.mode,
+    })}`);
+  }
+  console.log(`${getBuildLabel()} server listening on ${baseUrl}`);
   return server;
 }
 
@@ -260,7 +312,7 @@ function error(status: number, message: string): Response {
 function queueServerShutdown(server: ReturnType<typeof Bun.serve>): void {
   setTimeout(() => {
     try {
-      server.stop(true);
+      void server.stop(true);
     } finally {
       process.exit(0);
     }
@@ -269,4 +321,28 @@ function queueServerShutdown(server: ReturnType<typeof Bun.serve>): void {
 
 if (import.meta.main) {
   await runHttpServerCommand(Bun.argv.slice(2));
+}
+
+function normalizeHost(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeMode(value: string | undefined): "private" | "shared" | undefined {
+  return value === "private" || value === "shared" ? value : undefined;
+}
+
+function parseMode(value: string | undefined, optionName: string): "private" | "shared" {
+  const mode = normalizeMode(value);
+  if (!mode) {
+    throw new Error(`${optionName} must be "private" or "shared"`);
+  }
+  return mode;
+}
+
+function formatBaseUrl(host: string | undefined, port: number): string {
+  const resolvedHost = host?.includes(":")
+    ? `[${host}]`
+    : (host ?? "localhost");
+  return `http://${resolvedHost}:${port}`;
 }

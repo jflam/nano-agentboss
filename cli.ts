@@ -1,5 +1,4 @@
 import { parseCliOptions } from "./src/options/cli.ts";
-import { DEFAULT_HTTP_SERVER_URL } from "./src/core/defaults.ts";
 import { assertInteractiveTty, runTuiCli } from "./src/tui/run.ts";
 
 export async function runCliCommand(argv: string[] = []): Promise<void> {
@@ -12,6 +11,7 @@ export async function runCliCommand(argv: string[] = []): Promise<void> {
   assertInteractiveTty("cli");
 
   await runTuiCli({
+    connectionMode: options.connectionMode,
     serverUrl: options.serverUrl,
     showToolCalls: options.showToolCalls,
   });
@@ -26,7 +26,8 @@ function printHelp(): void {
     "Options:",
     "  --tool-calls          Show tool call progress lines (default)",
     "  --no-tool-calls       Hide tool call progress lines",
-    `  --server-url <url>    Connect to nanoboss over HTTP/SSE (default: ${DEFAULT_HTTP_SERVER_URL})`,
+    "  --server-url <url>    Connect to an existing nanoboss HTTP/SSE server",
+    "                        (default: start a private local server)",
     "  -h, --help            Show this help text",
     "",
   ].join("\n"));
