@@ -5,6 +5,7 @@ const MAX_WARNING_LENGTH = 180;
 const MAX_PREVIEW_LINES = 16;
 const MAX_PREVIEW_LINE_LENGTH = 160;
 const MAX_BODY_CHARS = 4_000;
+const ANSI_SGR_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 
 export interface ToolPreviewBlock {
   header?: string;
@@ -277,7 +278,7 @@ function summarizeToolOutput(identity: ToolIdentity, rawOutput: unknown): ToolPr
   }
 
   const dataRef = asRecord(record?.dataRef);
-  if (isCellRef(dataRef?.cell) && typeof dataRef?.path === "string") {
+  if (dataRef && isCellRef(dataRef.cell) && typeof dataRef.path === "string") {
     return { bodyLines: [summarizeInline(`stored ref ${dataRef.path}`, MAX_PREVIEW_LINE_LENGTH)] };
   }
 
@@ -491,7 +492,7 @@ function boundedPreviewLines(
   const rawLines = normalized.split("\n");
   const limitedByChars = normalized.length > MAX_BODY_CHARS;
   const sourceLines = limitedByChars
-    ? normalizeMultilineText(normalized.slice(0, MAX_BODY_CHARS))?.split("\n") ?? rawLines
+    ? normalizeMultilineText(normalized.slice(0, MAX_BODY_CHARS)).split("\n")
     : rawLines;
   const trimmed = mode === "end" ? sourceLines.slice(-MAX_PREVIEW_LINES) : sourceLines.slice(0, MAX_PREVIEW_LINES);
   return {
@@ -625,10 +626,18 @@ function summarizeUnknown(value: unknown, maxLength: number): string | undefined
     return String(value);
   }
 
+  if (typeof value === "bigint" || typeof value === "symbol") {
+    return String(value);
+  }
+
+  if (typeof value === "function") {
+    return summarizeInline(Object.prototype.toString.call(value), maxLength);
+  }
+
   try {
     return summarizeInline(JSON.stringify(value), maxLength);
   } catch {
-    return summarizeInline(String(value), maxLength);
+    return summarizeInline(Object.prototype.toString.call(value), maxLength);
   }
 }
 
@@ -652,13 +661,13 @@ function normalizeToolName(identity: ToolIdentity): string | undefined {
     return "agent";
   }
 
-  const firstToken = title.split(/[\s:(\[]/, 1)[0] || "";
+  const firstToken = title.split(/[[\s:(]/, 1)[0] || "";
   const lastSegment = firstToken.split(".").at(-1);
   return lastSegment || firstToken || undefined;
 }
 
 function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
+  return text.replace(ANSI_SGR_PATTERN, "");
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -757,5 +766,5 @@ function cleanPreviewBlock(block: ToolPreviewBlock | undefined): ToolPreviewBloc
 
 function isCellRef(value: unknown): value is { sessionId: string; cellId: string } {
   const record = asRecord(value);
-  return typeof record?.sessionId === "string" && typeof record?.cellId === "string";
+  return record !== undefined && typeof record.sessionId === "string" && typeof record.cellId === "string";
 }
