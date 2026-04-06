@@ -49,6 +49,7 @@ import type {
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   PersistedFrontendEvent,
+  Procedure,
 } from "./types.ts";
 
 interface ActiveRunState {
@@ -66,6 +67,7 @@ interface SessionState {
   defaultConversation: DefaultConversationSession;
   syncedProcedureMemoryCellIds: Set<string>;
   recentRecoverySyncAtMs?: number;
+  defaultSlashDispatchDisabled?: boolean;
   activeRun?: ActiveRunState;
   commands: FrontendCommand[];
 }
@@ -78,6 +80,8 @@ export interface SessionDescriptor {
   agentLabel: string;
   defaultAgentSelection?: DownstreamAgentSelection;
 }
+
+class DefaultSlashDispatchUnavailableError extends Error {}
 
 class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
   private streamedText = "";
@@ -481,10 +485,17 @@ export class NanobossService {
       }
 
       const failureMessage = extractProcedureDispatchFailure(promptResult.updates);
+      const rawFailure = promptResult.raw.trim();
+      const unavailableMessage = failureMessage || rawFailure;
+      if (isUnavailableSlashDispatchMessage(unavailableMessage)) {
+        throw new DefaultSlashDispatchUnavailableError(unavailableMessage);
+      }
       throw new Error(
         failureMessage
           ? `Default session did not complete async dispatch for /${procedureName}: ${failureMessage}`
-          : `Default session did not complete async dispatch for /${procedureName}.`,
+          : rawFailure
+            ? `Default session did not complete async dispatch for /${procedureName}: ${rawFailure}`
+            : `Default session did not complete async dispatch for /${procedureName}.`,
       );
     } finally {
       await stopProgressBridge();
@@ -699,55 +710,78 @@ export class NanobossService {
         return { stopReason: "end_turn", runId };
       }
 
-      if (text.startsWith("/") && procedure.name !== "default") {
-        const dispatched = await this.dispatchProcedureIntoDefaultConversation(
-          session,
-          procedure.name,
-          commandPrompt,
-          emitter,
-          {
-            signal: activeRun.abortController.signal,
-            softStopSignal: activeRun.softStopController.signal,
-            assertCanStartBoundary,
-          },
-        );
-
-        this.publishRunCompleted({
-          session,
-          sessionId,
-          runId,
-          procedure: procedure.name,
-          result: dispatched.result,
-          tokenUsage: dispatched.tokenUsage,
-          emitter,
-          markRunActivity,
-        });
-        persistedTopLevelCell = dispatched.result.cell;
-      } else {
+      if (text.startsWith("/") && procedure.name !== "default" && !session.defaultSlashDispatchDisabled) {
         try {
-          const result = await executeTopLevelProcedure({
-            cwd: session.cwd,
+          const dispatched = await this.dispatchProcedureIntoDefaultConversation(
+            session,
+            procedure.name,
+            commandPrompt,
+            emitter,
+            {
+              signal: activeRun.abortController.signal,
+              softStopSignal: activeRun.softStopController.signal,
+              assertCanStartBoundary,
+            },
+          );
+
+          this.publishRunCompleted({
+            session,
             sessionId,
-            store: session.store,
+            runId,
+            procedure: procedure.name,
+            result: dispatched.result,
+            tokenUsage: dispatched.tokenUsage,
+            emitter,
+            markRunActivity,
+          });
+          persistedTopLevelCell = dispatched.result.cell;
+        } catch (error) {
+          if (!(error instanceof DefaultSlashDispatchUnavailableError)) {
+            throw error;
+          }
+
+          session.defaultSlashDispatchDisabled = true;
+
+          const result = await executeProcedureLocally({
             registry: this.registry,
+            resolveDefaultAgentConfig: this.resolveDefaultAgentConfig,
+            session,
+            sessionId,
             procedure,
             prompt: commandPrompt,
             emitter,
             signal: activeRun.abortController.signal,
             softStopSignal: activeRun.softStopController.signal,
-            defaultConversation: session.defaultConversation,
-            getDefaultAgentConfig: () => session.defaultAgentConfig,
-            setDefaultAgentSelection: (selection) => {
-              const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
-              session.defaultAgentConfig = nextConfig;
-              session.defaultConversation.updateConfig(nextConfig);
-              return nextConfig;
-            },
-            prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId),
-            onError: (ctx, errorText) => {
-              ctx.print(errorText);
-            },
             assertCanStartBoundary,
+            prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId),
+          });
+
+          this.publishRunCompleted({
+            session,
+            sessionId,
+            runId,
+            procedure: procedure.name,
+            result,
+            tokenUsage: result.tokenUsage,
+            emitter,
+            markRunActivity,
+          });
+          persistedTopLevelCell = result.cell;
+        }
+      } else {
+        try {
+          const result = await executeProcedureLocally({
+            registry: this.registry,
+            resolveDefaultAgentConfig: this.resolveDefaultAgentConfig,
+            session,
+            sessionId,
+            procedure,
+            prompt: commandPrompt,
+            emitter,
+            signal: activeRun.abortController.signal,
+            softStopSignal: activeRun.softStopController.signal,
+            assertCanStartBoundary,
+            prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId),
           });
 
           this.publishRunCompleted({
@@ -909,6 +943,55 @@ function shouldIncludeRecoveredProcedureGuidance(session: SessionState): boolean
 function getRecoveredProcedureGuidanceWindowMs(): number {
   const value = Number(process.env.NANOBOSS_RECOVERED_PROCEDURE_GUIDANCE_WINDOW_MS ?? "300000");
   return Number.isFinite(value) && value > 0 ? value : 300000;
+}
+
+async function executeProcedureLocally(params: {
+  registry: ProcedureRegistry;
+  resolveDefaultAgentConfig: (
+    cwd: string,
+    selection?: DownstreamAgentSelection,
+  ) => DownstreamAgentConfig;
+  session: SessionState;
+  sessionId: string;
+  procedure: Procedure;
+  prompt: string;
+  emitter: CompositeSessionUpdateEmitter;
+  signal: AbortSignal;
+  softStopSignal: AbortSignal;
+  assertCanStartBoundary: () => void;
+  prepareDefaultPrompt?: (prompt: string) => { prompt: string; markSubmitted?: () => void };
+}) {
+  return await executeTopLevelProcedure({
+    cwd: params.session.cwd,
+    sessionId: params.sessionId,
+    store: params.session.store,
+    registry: params.registry,
+    procedure: params.procedure,
+    prompt: params.prompt,
+    emitter: params.emitter,
+    signal: params.signal,
+    softStopSignal: params.softStopSignal,
+    defaultConversation: params.session.defaultConversation,
+    getDefaultAgentConfig: () => params.session.defaultAgentConfig,
+    setDefaultAgentSelection: (selection) => {
+      const nextConfig = params.resolveDefaultAgentConfig(params.session.cwd, selection);
+      params.session.defaultAgentConfig = nextConfig;
+      params.session.defaultConversation.updateConfig(nextConfig);
+      return nextConfig;
+    },
+    prepareDefaultPrompt: params.prepareDefaultPrompt,
+    onError: (ctx, errorText) => {
+      ctx.print(errorText);
+    },
+    assertCanStartBoundary: params.assertCanStartBoundary,
+  });
+}
+
+function isUnavailableSlashDispatchMessage(message: string | undefined): boolean {
+  const normalized = message?.toLowerCase() ?? "";
+  return normalized.includes("procedure_dispatch_start")
+    && normalized.includes("procedure_dispatch_wait")
+    && normalized.includes("not available");
 }
 
 function buildProcedureDispatchPrompt(
