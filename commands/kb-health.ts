@@ -8,7 +8,6 @@ import {
   readConceptsManifest,
   readRendersManifest,
   readSourcesManifest,
-  summarizeList,
   writeDatedKnowledgeMarkdown,
   type HealthRepairIssue,
   type KnowledgeBaseHealthData,
