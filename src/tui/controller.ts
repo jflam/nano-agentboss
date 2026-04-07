@@ -355,7 +355,13 @@ export class NanobossTuiController {
     });
 
     try {
-      await this.forwardPrompt(nextPrompt.text);
+      const forwarded = await this.forwardPrompt(nextPrompt.text);
+      if (!forwarded && this.state.pendingPrompts.length > 0) {
+        this.dispatch({
+          type: "local_pending_prompts_cleared",
+          text: formatPendingPromptClearStatus(this.state.pendingPrompts.length),
+        });
+      }
     } finally {
       this.flushingPendingPrompt = false;
     }
@@ -423,7 +429,7 @@ export class NanobossTuiController {
     }
   }
 
-  private async forwardPrompt(prompt: string): Promise<void> {
+  private async forwardPrompt(prompt: string): Promise<boolean> {
     this.dispatch({ type: "local_user_submitted", text: prompt });
 
     try {
@@ -436,9 +442,11 @@ export class NanobossTuiController {
         this.state.sessionId,
         prompt,
       );
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.dispatch({ type: "local_send_failed", error: message });
+      return false;
     }
   }
 }
@@ -462,4 +470,8 @@ function isTerminalFrontendEvent(event: FrontendEventEnvelope): boolean {
 function selectNextPendingPrompt(prompts: UiPendingPrompt[]): UiPendingPrompt | undefined {
   return prompts.find((prompt) => prompt.kind === "steering")
     ?? prompts.find((prompt) => prompt.kind === "queued");
+}
+
+function formatPendingPromptClearStatus(count: number): string {
+  return `[run] cleared ${count} pending prompt${count === 1 ? "" : "s"} after send failed`;
 }

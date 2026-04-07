@@ -207,6 +207,70 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
+  test("clears remaining pending prompts when a flushed prompt fails to send", async () => {
+    const sendCalls: string[] = [];
+    const cancelCalls: Array<{ sessionId: string; runId: string }> = [];
+    const streams: FakeStreamRecord[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
+          sendCalls.push(prompt);
+          if (prompt === "steer first") {
+            throw new Error("network down");
+          }
+        },
+        cancelSessionRun: async (_baseUrl, sessionId, runId) => {
+          cancelCalls.push({ sessionId, runId });
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream(streams, sessionId, onEvent),
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    await controller.handleSubmit("hello");
+    streams[0]?.emit(eventEnvelope("run_started", {
+      runId: "run-1",
+      procedure: "default",
+      prompt: "hello",
+      startedAt: new Date(0).toISOString(),
+    }));
+
+    await controller.queuePrompt("queued later");
+    await controller.handleSubmit("steer first");
+
+    expect(cancelCalls).toEqual([{ sessionId: "session-1", runId: "run-1" }]);
+
+    streams[0]?.emit(eventEnvelope("run_cancelled", {
+      runId: "run-1",
+      procedure: "default",
+      completedAt: new Date(1).toISOString(),
+      message: "Stopped.",
+    }));
+
+    await waitFor(() => sendCalls.length === 2);
+    await waitFor(() => controller.getState().pendingPrompts.length === 0);
+
+    expect(sendCalls).toEqual(["hello", "steer first"]);
+    expect(controller.getState().pendingPrompts).toEqual([]);
+    expect(controller.getState().statusLine).toBe("[run] cleared 1 pending prompt after send failed");
+    expect(controller.getState().turns.at(-1)).toMatchObject({
+      role: "system",
+      markdown: "network down",
+      status: "failed",
+    });
+
+    controller.requestExit();
+    await runPromise;
+  });
+
   test("/new creates a new session and reconnects the event stream", async () => {
     const createCalls: Array<DownstreamAgentSelection | undefined> = [];
     const streams: FakeStreamRecord[] = [];

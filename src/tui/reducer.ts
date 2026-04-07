@@ -64,6 +64,10 @@ export type UiAction =
       promptId: string;
     }
   | {
+      type: "local_pending_prompts_cleared";
+      text: string;
+    }
+  | {
       type: "local_agent_selection";
       agentLabel: string;
       selection: DownstreamAgentSelection;
@@ -192,6 +196,12 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
       return {
         ...state,
         pendingPrompts: state.pendingPrompts.filter((prompt) => prompt.id !== action.promptId),
+      };
+    case "local_pending_prompts_cleared":
+      return {
+        ...state,
+        pendingPrompts: [],
+        statusLine: action.text,
       };
     case "local_agent_selection":
       return {
