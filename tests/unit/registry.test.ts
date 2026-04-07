@@ -24,6 +24,7 @@ describe("ProcedureRegistry", () => {
     await registry.loadFromDisk();
 
     expect(registry.get("hello")?.description).toBe("hello world");
+    await expect(registry.get("hello")?.execute("", {} as never)).resolves.toBe("hi");
   });
 
   test("loads procedures from both repo and profile command directories", async () => {
@@ -62,6 +63,28 @@ describe("ProcedureRegistry", () => {
 
     expect(registry.get("repo-only")?.description).toBe("repo command");
     expect(registry.get("profile-only")?.description).toBe("profile command");
+  });
+
+  test("defers disk procedure compilation until first execution", async () => {
+    const commandsDir = mkdtempSync(join(tmpdir(), "nab-lazy-commands-"));
+    writeFileSync(
+      join(commandsDir, "broken.ts"),
+      [
+        'import "./missing.ts";',
+        "export default {",
+        '  name: "broken",',
+        '  description: "broken command",',
+        '  async execute() { return "broken"; },',
+        "};",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const registry = new ProcedureRegistry(commandsDir);
+    await expect(registry.loadFromDisk()).resolves.toBeUndefined();
+
+    expect(registry.get("broken")?.description).toBe("broken command");
+    await expect(registry.get("broken")?.execute("", {} as never)).rejects.toThrow();
   });
 
   test("loads typia-based procedures through the runtime build pipeline", async () => {

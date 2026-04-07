@@ -80,6 +80,7 @@ export interface NanobossTuiAppDeps {
 }
 
 const TOOL_OUTPUT_TOGGLE_COOLDOWN_MS = 150;
+const CTRL_C_EXIT_WINDOW_MS = 500;
 
 export class NanobossTuiApp {
   private readonly cwd: string;
@@ -95,6 +96,7 @@ export class NanobossTuiApp {
   private stopped = false;
   private liveRefreshInterval?: ReturnType<typeof setInterval>;
   private lastToolOutputToggleAt = Number.NEGATIVE_INFINITY;
+  private lastCtrlCAt = Number.NEGATIVE_INFINITY;
 
   constructor(
     private readonly params: NanobossTuiAppParams,
@@ -176,8 +178,7 @@ export class NanobossTuiApp {
         return undefined;
       }
 
-      this.editor.setText("");
-      this.controller.requestExit();
+      this.handleCtrlC();
       return { consume: true };
     });
 
@@ -203,6 +204,10 @@ export class NanobossTuiApp {
     this.controller.requestExit();
   }
 
+  requestSigintExit(): boolean {
+    return this.handleCtrlC();
+  }
+
   private syncState(state: UiState): void {
     if (this.theme.getToolCardMode() !== state.toolCardThemeMode) {
       this.theme.setToolCardMode(state.toolCardThemeMode);
@@ -216,6 +221,18 @@ export class NanobossTuiApp {
 
   private updateEditorSubmitState(): void {
     this.editor.disableSubmit = shouldDisableEditorSubmit(this.state.inputDisabled, this.editor.getText());
+  }
+
+  private handleCtrlC(): boolean {
+    const now = this.now();
+    if (now - this.lastCtrlCAt < CTRL_C_EXIT_WINDOW_MS) {
+      this.controller.requestExit();
+      return true;
+    }
+
+    this.lastCtrlCAt = now;
+    this.editor.setText("");
+    return false;
   }
 
   private refreshAutocompleteProvider(): void {

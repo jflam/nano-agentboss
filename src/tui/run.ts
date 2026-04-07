@@ -24,6 +24,7 @@ export interface RunTuiCliParams extends Omit<NanobossTuiAppParams, "serverUrl">
 interface TuiAppRunner {
   run(): Promise<string | undefined>;
   requestExit?(): void;
+  requestSigintExit?(): boolean;
 }
 
 type RestoreTerminalInput = () => void | Promise<void>;
@@ -36,19 +37,35 @@ export interface RunTuiCliDeps {
   addSignalListener?: (signal: TuiExitSignal, listener: () => void) => () => void;
   setExitCode?: (code: number) => void;
   writeStderr?: (text: string) => void;
+  now?: () => number;
 }
+
+const CTRL_C_EXIT_WINDOW_MS = 500;
 
 export async function runTuiCli(params: RunTuiCliParams, deps: RunTuiCliDeps = {}): Promise<void> {
   let server: Awaited<ReturnType<typeof startPrivateHttpServer>> | undefined;
   let sessionId: string | undefined;
   let app: TuiAppRunner | undefined;
   let exitSignal: TuiExitSignal | undefined;
+  let lastSigintAt = Number.NEGATIVE_INFINITY;
   const restoreTerminalInput = await (deps.suspendDiscardControlCharacter ?? suspendDiscardControlCharacter)();
   const addSignalListener = deps.addSignalListener ?? addProcessSignalListener;
   const removeSignalListeners = [
     addSignalListener("SIGINT", () => {
-      exitSignal ??= "SIGINT";
-      app?.requestExit?.();
+      const appHandled = app?.requestSigintExit?.();
+      if (appHandled) {
+        exitSignal ??= "SIGINT";
+        return;
+      }
+
+      const now = (deps.now ?? Date.now)();
+      if (now - lastSigintAt < CTRL_C_EXIT_WINDOW_MS) {
+        exitSignal ??= "SIGINT";
+        app?.requestExit?.();
+        return;
+      }
+
+      lastSigintAt = now;
     }),
     addSignalListener("SIGTERM", () => {
       exitSignal ??= "SIGTERM";

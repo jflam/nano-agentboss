@@ -63,10 +63,12 @@ describe("runTuiCli", () => {
     ]);
   });
 
-  test("handles SIGINT with a clean shutdown before printing the session id", async () => {
+  test("handles double SIGINT with a clean shutdown before printing the session id", async () => {
     const events: string[] = [];
     const signalHandlers: Partial<Record<"SIGINT" | "SIGTERM", () => void>> = {};
     let resolveRun: ((sessionId: string | undefined) => void) | undefined;
+    let now = 1_000;
+    let lastSigintAt = Number.NEGATIVE_INFINITY;
 
     await runTuiCli({
       cwd: "/repo-one",
@@ -94,18 +96,33 @@ describe("runTuiCli", () => {
         };
       },
       createApp: () => ({
+        requestSigintExit() {
+          events.push("sigint");
+          if (now - lastSigintAt < 500) {
+            events.push("request-exit");
+            resolveRun?.("session-123");
+            return true;
+          }
+          lastSigintAt = now;
+          return false;
+        },
         requestExit() {
           events.push("request-exit");
           resolveRun?.("session-123");
         },
         async run() {
           events.push("run");
-          queueMicrotask(() => signalHandlers.SIGINT?.());
+          queueMicrotask(() => {
+            signalHandlers.SIGINT?.();
+            now += 250;
+            signalHandlers.SIGINT?.();
+          });
           return await new Promise<string | undefined>((resolve) => {
             resolveRun = resolve;
           });
         },
       }),
+      now: () => now,
       writeStderr(text) {
         events.push(`stderr:${text.trim()}`);
       },
@@ -119,6 +136,8 @@ describe("runTuiCli", () => {
       "listen:SIGINT",
       "listen:SIGTERM",
       "run",
+      "sigint",
+      "sigint",
       "request-exit",
       "unlisten:SIGTERM",
       "unlisten:SIGINT",

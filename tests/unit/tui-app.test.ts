@@ -157,6 +157,122 @@ describe("NanobossTuiApp", () => {
     expect(toggles).toEqual(["toggle"]);
   });
 
+  test("pressing ctrl+c once clears the editor without exiting", async () => {
+    const editor = new FakeEditor();
+    const exits: string[] = [];
+    const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    let inputListener: ((data: string) => unknown) | undefined;
+    let now = 1_000;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        now: () => now,
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener(listener) {
+            inputListener = listener;
+          },
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async queuePrompt() {},
+          async cancelActiveRun() {},
+          toggleToolOutput() {},
+          requestExit() {
+            exits.push("exit");
+          },
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => ({
+          setState() {},
+        }),
+      },
+    );
+
+    editor.setText("draft");
+    const result = inputListener?.("\u0003");
+    await Promise.resolve();
+
+    expect(result).toEqual({ consume: true });
+    expect(editor.getText()).toBe("");
+    expect(exits).toEqual([]);
+  });
+
+  test("pressing ctrl+c twice within the pi window exits", async () => {
+    const editor = new FakeEditor();
+    const exits: string[] = [];
+    const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    let inputListener: ((data: string) => unknown) | undefined;
+    let now = 1_000;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        now: () => now,
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener(listener) {
+            inputListener = listener;
+          },
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async queuePrompt() {},
+          async cancelActiveRun() {},
+          toggleToolOutput() {},
+          requestExit() {
+            exits.push("exit");
+          },
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => ({
+          setState() {},
+        }),
+      },
+    );
+
+    editor.setText("draft");
+    expect(inputListener?.("\u0003")).toEqual({ consume: true });
+    now += 250;
+    expect(inputListener?.("\u0003")).toEqual({ consume: true });
+    await Promise.resolve();
+
+    expect(exits).toEqual(["exit"]);
+  });
+
   test("ignores duplicate ctrl+o input that arrives immediately", async () => {
     const editor = new FakeEditor();
     const toggles: string[] = [];

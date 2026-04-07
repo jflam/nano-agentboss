@@ -1,7 +1,8 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import commitProcedure from "../../commands/commit.ts";
@@ -31,8 +32,44 @@ interface ProcedureRegistryOptions {
   diskCommandDirs?: string[];
 }
 
+interface ProcedureManifest {
+  name: string;
+  description: string;
+  inputHint?: string;
+  executionMode?: "defaultConversation" | "harness";
+}
+
+interface DiskProcedureEntry {
+  path: string;
+  manifest: ProcedureManifest;
+  loadPromise?: Promise<Procedure>;
+}
+
+interface ProcedureSourceFile {
+  path: string;
+  contents: string;
+}
+
+const PROCEDURE_BUILD_CACHE_VERSION = 1;
+const LOCAL_IMPORT_PATTERNS = [
+  /\b(?:import|export)\s+(?:type\s+)?(?:[^"'`]*?\s+from\s+)?["'`](\.[^"'`]+)["'`]/g,
+  /\bimport\s*\(\s*["'`](\.[^"'`]+)["'`]\s*\)/g,
+];
+const PROCEDURE_SOURCE_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".json",
+];
+
 export class ProcedureRegistry implements ProcedureRegistryLike {
   private readonly procedures = new Map<string, Procedure>();
+  private readonly diskProcedureEntries = new Map<string, DiskProcedureEntry>();
   readonly commandsDir: string;
   readonly profileCommandsDir: string;
   readonly diskCommandDirs: string[];
@@ -63,6 +100,7 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
 
   register(procedure: Procedure): void {
     this.assertProcedure(procedure);
+    this.diskProcedureEntries.delete(procedure.name);
     this.procedures.set(procedure.name, procedure);
   }
 
@@ -103,8 +141,7 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
           continue;
         }
 
-        const procedure = await this.loadProcedureFromPath(join(commandsDir, file));
-        this.register(procedure);
+        this.registerDiskProcedure(join(commandsDir, file));
       }
     }
   }
@@ -131,32 +168,44 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
   }
 
   private async buildProcedureModule(path: string): Promise<string> {
-    const outdir = mkdtempSync(join(tmpdir(), "nanoboss-procedure-"));
-    const result = await withProcedureBuildNodeModules(path, async () =>
-      await Bun.build({
-        entrypoints: [path],
-        outdir,
-        format: "esm",
-        plugins: [createTypiaBunPlugin()],
-        sourcemap: "inline",
-        target: "bun",
-        autoloadBunfig: false,
-        autoloadTsconfig: false,
-      }));
+    const cacheKey = buildProcedureCacheKey(path);
+    const cacheDir = join(getProcedureBuildCacheDir(), cacheKey);
+    const cacheModulePath = join(cacheDir, "module.js");
+    if (!existsSync(cacheModulePath)) {
+      const outdir = mkdtempSync(join(tmpdir(), "nanoboss-procedure-"));
+      try {
+        const result = await withProcedureBuildNodeModules(path, async () =>
+          await Bun.build({
+            entrypoints: [path],
+            outdir,
+            format: "esm",
+            plugins: [createTypiaBunPlugin()],
+            sourcemap: "inline",
+            target: "bun",
+            autoloadBunfig: false,
+            autoloadTsconfig: false,
+          }));
 
-    if (!result.success) {
-      throw new Error([
-        `Failed to compile procedure module: ${path}`,
-        ...formatBuildLogs(result.logs),
-      ].join("\n"));
+        if (!result.success) {
+          throw new Error([
+            `Failed to compile procedure module: ${path}`,
+            ...formatBuildLogs(result.logs),
+          ].join("\n"));
+        }
+
+        const output = result.outputs[0];
+        if (!output) {
+          throw new Error(`Procedure build produced no output for ${path}`);
+        }
+
+        mkdirSync(cacheDir, { recursive: true });
+        copyFileSync(output.path, cacheModulePath);
+      } finally {
+        rmSync(outdir, { recursive: true, force: true });
+      }
     }
 
-    const output = result.outputs[0];
-    if (!output) {
-      throw new Error(`Procedure build produced no output for ${path}`);
-    }
-
-    return `${pathToFileURL(output.path).href}?v=${Date.now()}`;
+    return `${pathToFileURL(cacheModulePath).href}?v=${cacheKey}`;
   }
 
   toAvailableCommands(): acp.AvailableCommand[] {
@@ -183,6 +232,59 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     ) {
       throw new Error("Procedure module does not export a valid default procedure");
     }
+  }
+
+  private registerDiskProcedure(path: string): void {
+    const manifest = readProcedureManifest(path);
+    if (this.procedures.has(manifest.name)) {
+      return;
+    }
+
+    const entry: DiskProcedureEntry = {
+      path,
+      manifest,
+    };
+    this.diskProcedureEntries.set(manifest.name, entry);
+    this.procedures.set(manifest.name, this.createLazyProcedure(entry));
+  }
+
+  private createLazyProcedure(entry: DiskProcedureEntry): Procedure {
+    return {
+      name: entry.manifest.name,
+      description: entry.manifest.description,
+      inputHint: entry.manifest.inputHint,
+      executionMode: entry.manifest.executionMode,
+      execute: async (prompt, ctx) => {
+        const loaded = await this.ensureDiskProcedureLoaded(entry.manifest.name);
+        return await loaded.execute(prompt, ctx);
+      },
+    };
+  }
+
+  private async ensureDiskProcedureLoaded(name: string): Promise<Procedure> {
+    const entry = this.diskProcedureEntries.get(name);
+    if (!entry) {
+      const procedure = this.procedures.get(name);
+      if (!procedure) {
+        throw new Error(`Unknown procedure: ${name}`);
+      }
+      return procedure;
+    }
+
+    if (!entry.loadPromise) {
+      entry.loadPromise = this.loadProcedureFromPath(entry.path)
+        .then((procedure) => {
+          this.diskProcedureEntries.delete(name);
+          this.procedures.set(name, procedure);
+          return procedure;
+        })
+        .catch((error) => {
+          entry.loadPromise = undefined;
+          throw error;
+        });
+    }
+
+    return await entry.loadPromise;
   }
 }
 
@@ -220,6 +322,143 @@ function formatBuildLogs(logs: unknown[]): string[] {
 
 function uniquePaths(paths: string[]): string[] {
   return [...new Set(paths.map((path) => resolve(path)))];
+}
+
+function getProcedureBuildCacheDir(): string {
+  return join(getProcedureRuntimeDir(), "procedure-builds");
+}
+
+function buildProcedureCacheKey(path: string): string {
+  const workspaceRoot = resolveProcedureWorkspaceRoot(path);
+  const hash = createHash("sha256");
+  hash.update(`procedure-cache-version:${String(PROCEDURE_BUILD_CACHE_VERSION)}\n`);
+  hash.update(`bun-version:${Bun.version}\n`);
+
+  for (const sourceFile of resolveProcedureSourceGraph(path)) {
+    hash.update(relative(workspaceRoot, sourceFile.path));
+    hash.update("\n");
+    hash.update(sourceFile.contents);
+    hash.update("\n");
+  }
+
+  return hash.digest("hex").slice(0, 24);
+}
+
+function resolveProcedureSourceGraph(path: string): ProcedureSourceFile[] {
+  const pending = [resolve(path)];
+  const visited = new Set<string>();
+  const sourceFiles: ProcedureSourceFile[] = [];
+
+  while (pending.length > 0) {
+    const currentPath = pending.pop();
+    if (!currentPath || visited.has(currentPath)) {
+      continue;
+    }
+    visited.add(currentPath);
+
+    const contents = readFileSync(currentPath, "utf8");
+    sourceFiles.push({ path: currentPath, contents });
+
+    for (const specifier of findLocalImportSpecifiers(contents)) {
+      const resolvedImportPath = resolveLocalImportPath(dirname(currentPath), specifier);
+      if (resolvedImportPath && !visited.has(resolvedImportPath)) {
+        pending.push(resolvedImportPath);
+      }
+    }
+  }
+
+  sourceFiles.sort((left, right) => left.path.localeCompare(right.path));
+  return sourceFiles;
+}
+
+function findLocalImportSpecifiers(source: string): string[] {
+  const matches = new Set<string>();
+  for (const pattern of LOCAL_IMPORT_PATTERNS) {
+    for (const match of source.matchAll(pattern)) {
+      const specifier = match[1]?.trim();
+      if (specifier?.startsWith(".")) {
+        matches.add(specifier);
+      }
+    }
+  }
+  return [...matches];
+}
+
+function resolveLocalImportPath(baseDir: string, specifier: string): string | undefined {
+  const cleanSpecifier = specifier.split("?")[0]?.split("#")[0];
+  if (!cleanSpecifier) {
+    return undefined;
+  }
+
+  const absoluteBase = resolve(baseDir, cleanSpecifier);
+  const candidates = new Set<string>([
+    absoluteBase,
+    ...PROCEDURE_SOURCE_EXTENSIONS.map((extension) => `${absoluteBase}${extension}`),
+    ...PROCEDURE_SOURCE_EXTENSIONS.map((extension) => join(absoluteBase, `index${extension}`)),
+  ]);
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate) && !lstatSync(candidate).isDirectory()) {
+      return resolve(candidate);
+    }
+  }
+
+  return undefined;
+}
+
+function readProcedureManifest(path: string): ProcedureManifest {
+  const source = readFileSync(path, "utf8");
+  const name = readStaticStringProperty(source, "name") ?? basename(path, ".ts");
+  const description = readStaticStringProperty(source, "description") ?? `Lazy-loaded procedure from ${basename(path)}`;
+  const inputHint = readStaticStringProperty(source, "inputHint");
+  const executionMode = parseExecutionMode(readStaticStringProperty(source, "executionMode"));
+
+  return {
+    name,
+    description,
+    inputHint,
+    executionMode,
+  };
+}
+
+function readStaticStringProperty(source: string, propertyName: string): string | undefined {
+  const patterns = [
+    new RegExp(`\\b${escapeRegExp(propertyName)}\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, "u"),
+    new RegExp(`\\b${escapeRegExp(propertyName)}\\s*:\\s*'((?:\\\\.|[^'\\\\])*)'`, "u"),
+    new RegExp(`\\b${escapeRegExp(propertyName)}\\s*:\\s*\`((?:\\\\.|[^\`\\\\])*)\``, "u"),
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(source);
+    if (match?.[1] !== undefined) {
+      return decodeStringLiteral(match[1]);
+    }
+  }
+
+  return undefined;
+}
+
+function decodeStringLiteral(value: string): string {
+  return value.replace(/\\([\\'"`nrt])/g, (_, escaped: string) => {
+    switch (escaped) {
+      case "n":
+        return "\n";
+      case "r":
+        return "\r";
+      case "t":
+        return "\t";
+      default:
+        return escaped;
+    }
+  });
+}
+
+function parseExecutionMode(value: string | undefined): Procedure["executionMode"] | undefined {
+  return value === "defaultConversation" || value === "harness" ? value : undefined;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function withProcedureBuildNodeModules<T>(path: string, run: () => Promise<T>): Promise<T> {
