@@ -3,8 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { createNanobossTuiTheme } from "../../src/tui/theme.ts";
 import { SelectOverlay } from "../../src/tui/overlays/select-overlay.ts";
 
+const ANSI_COLOR_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
+
 function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
+  return text.replace(ANSI_COLOR_PATTERN, "");
 }
 
 describe("SelectOverlay", () => {
