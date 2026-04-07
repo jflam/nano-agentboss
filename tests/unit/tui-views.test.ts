@@ -5,7 +5,29 @@ import { createNanobossTuiTheme } from "../../src/tui/theme.ts";
 import { NanobossAppView } from "../../src/tui/views.ts";
 
 function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
+  const esc = String.fromCharCode(27);
+  let result = "";
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (char === esc && text.charAt(index + 1) === "[") {
+      let cursor = index + 2;
+
+      while (cursor < text.length && /[0-9;]/.test(text.charAt(cursor))) {
+        cursor += 1;
+      }
+
+      if (text.charAt(cursor) === "m") {
+        index = cursor;
+        continue;
+      }
+    }
+
+    result += char;
+  }
+
+  return result;
 }
 
 describe("NanobossAppView", () => {
