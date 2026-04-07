@@ -91,7 +91,7 @@ export function formatStoredMemoryCardLines(
   const lines = [`[memory] stored /${card.procedure} @ ${card.createdAt}`];
   lines.push(...formatMemoryCardsLines([card]).slice(1));
   if (card.estimatedPromptTokens !== undefined) {
-    const suffix = estimate?.method && estimate?.encoding
+    const suffix = estimate?.method && estimate.encoding
       ? ` via ${estimate.method}/${estimate.encoding}`
       : "";
     lines.push(`│   future_visible_context_tokens: ${formatInt(card.estimatedPromptTokens)}${suffix}`);
