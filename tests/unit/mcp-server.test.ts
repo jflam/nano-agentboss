@@ -385,7 +385,7 @@ describe("nanoboss MCP API", () => {
       status: string;
     };
 
-    expect(started.dispatchId).toEqual(expect.stringContaining("dispatch_"));
+    expect(started.dispatchId).toMatch(/^dispatch_/);
     expect(started.status).toBe("queued");
 
     const reloadedApi = createNanobossMcpApi({
