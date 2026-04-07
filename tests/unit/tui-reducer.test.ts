@@ -232,9 +232,79 @@ describe("tui reducer", () => {
       }),
     });
 
-    expect(state.turns.at(-1)?.meta?.completionNote).toBe("# turn completed in 2.5s | tools 1/2 succeeded");
+    expect(state.turns.at(-1)?.meta?.completionNote).toBe("turn #2 completed in 2.5s | tools 1/2 succeeded");
     expect(state.activeRunAttemptedToolCallIds).toEqual([]);
     expect(state.activeRunSucceededToolCallIds).toEqual([]);
+  });
+
+  test("preserves the last token usage line until a newer run update arrives", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("token_usage", {
+        runId: "run-0",
+        usage: {
+          source: "acp_usage_update",
+          currentContextTokens: 512,
+          maxContextTokens: 8192,
+        },
+        sourceUpdate: "usage_update",
+      }),
+    });
+
+    state = reduceUiState(state, {
+      type: "local_user_submitted",
+      text: "hello",
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "default",
+        prompt: "hello",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+
+    expect(state.tokenUsageLine).toBe("[tokens] 512 / 8,192 (6.3%)");
+  });
+
+  test("uses the created assistant turn number in completion notes when no text streamed before cancellation", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "local_user_submitted",
+      text: "hello",
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "default",
+        prompt: "hello",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_cancelled", {
+        runId: "run-1",
+        procedure: "default",
+        completedAt: new Date(2_000).toISOString(),
+        message: "Stopped.",
+      }),
+    });
+
+    expect(state.turns.at(-1)).toMatchObject({
+      id: "assistant-2",
+      role: "assistant",
+      markdown: "Stopped.",
+      status: "cancelled",
+      meta: {
+        completionNote: "turn #2 stopped in 2.0s | tools 0/0 succeeded",
+      },
+    });
   });
 
   test("ignores stale run events after a newer run has started", () => {

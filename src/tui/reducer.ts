@@ -103,7 +103,6 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         activeAssistantTurnId: undefined,
         assistantParagraphBreakPending: undefined,
         promptDiagnosticsLine: undefined,
-        tokenUsageLine: undefined,
         runStartedAtMs: Date.now(),
         activeRunAttemptedToolCallIds: [],
         activeRunSucceededToolCallIds: [],
@@ -247,7 +246,6 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         hiddenToolCallIds: [],
         runtimeNotes: [],
         promptDiagnosticsLine: undefined,
-        tokenUsageLine: undefined,
         activeRunId: event.data.runId,
         activeProcedure: event.data.procedure,
         activeAssistantTurnId: undefined,
@@ -738,13 +736,14 @@ function buildTurnCompletionNote(
   const durationMs = Math.max(0, finishedAtMs - state.runStartedAtMs);
   const attempted = state.activeRunAttemptedToolCallIds.length;
   const succeeded = state.activeRunSucceededToolCallIds.length;
+  const turnNumber = getCompletionTurnNumber(state);
   const label = status === "complete"
     ? "completed"
     : status === "failed"
       ? "failed"
       : "stopped";
 
-  return `# turn ${label} in ${formatDuration(durationMs)} | tools ${succeeded}/${attempted} succeeded`;
+  return `turn #${turnNumber} ${label} in ${formatDuration(durationMs)} | tools ${succeeded}/${attempted} succeeded`;
 }
 
 function formatDuration(durationMs: number): string {
@@ -753,6 +752,17 @@ function formatDuration(durationMs: number): string {
   }
 
   return `${(durationMs / 1_000).toFixed(durationMs >= 10_000 ? 0 : 1)}s`;
+}
+
+function getCompletionTurnNumber(state: UiState): number {
+  const activeAssistantTurnId = state.activeAssistantTurnId;
+  if (!activeAssistantTurnId) {
+    return state.turns.length + 1;
+  }
+
+  const suffix = activeAssistantTurnId.split("-").at(-1);
+  const parsed = suffix ? Number.parseInt(suffix, 10) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : state.turns.length + 1;
 }
 
 function createAssistantTurn(state: UiState, markdown: string): UiTurn {

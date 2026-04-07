@@ -574,6 +574,14 @@ export class NanobossService {
     this.applyDefaultAgentSelection(params.session, params.result.defaultAgentSelection);
     this.emitDisplayIfNeeded(params.emitter, params.result.display);
     publishStoredMemoryCard(params.session, params.sessionId, params.runId, params.result.cell);
+    if (params.tokenUsage) {
+      params.session.events.publish(params.sessionId, {
+        type: "token_usage",
+        runId: params.runId,
+        usage: params.tokenUsage,
+        sourceUpdate: "run_completed",
+      });
+    }
     params.session.events.publish(
       params.sessionId,
       buildRunCompletedEvent({

@@ -219,6 +219,36 @@ describe("NanobossService", () => {
     expect(textEvents[0]?.data.text).toBe("4");
   });
 
+  test("publishes a final token usage event before run completion for assistant replies", async () => {
+    await withMockAgentEnv(async () => {
+      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-token-usage-")));
+      registry.loadBuiltins();
+
+      const service = new NanobossService(registry);
+      const session = service.createSession({ cwd: process.cwd() });
+
+      await service.prompt(session.sessionId, "what is 2+2");
+
+      const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const completedIndex = events.findLastIndex((event) => event.type === "run_completed");
+      const tokenUsageIndex = events.findLastIndex((event) => event.type === "token_usage");
+
+      expect(completedIndex).toBeGreaterThanOrEqual(0);
+      expect(tokenUsageIndex).toBe(completedIndex - 1);
+
+      const completed = completedIndex >= 0 ? events[completedIndex] : undefined;
+      const tokenUsage = tokenUsageIndex >= 0 ? events[tokenUsageIndex] : undefined;
+      expect(completed?.type).toBe("run_completed");
+      expect(tokenUsage?.type).toBe("token_usage");
+      if (completed?.type !== "run_completed" || tokenUsage?.type !== "token_usage") {
+        throw new Error("Expected final token_usage and run_completed events");
+      }
+
+      expect(tokenUsage.data.sourceUpdate).toBe("run_completed");
+      expect(tokenUsage.data.usage).toEqual(completed.data.tokenUsage);
+    });
+  });
+
   test("reconstructed resume replays the persisted frontend transcript trace", async () => {
     const tempHome = mkdtempSync(join(tmpdir(), "nab-resume-history-home-"));
     const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-resume-history-agent-"));

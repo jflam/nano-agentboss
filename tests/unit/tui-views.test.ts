@@ -247,7 +247,7 @@ describe("NanobossAppView", () => {
             markdown: "Done.",
             status: "complete" as const,
             meta: {
-              completionNote: "# turn completed in 2.5s | tools 1/2 succeeded",
+              completionNote: "turn #1 completed in 2.5s | tools 1/2 succeeded",
             },
           },
         ],
@@ -257,7 +257,7 @@ describe("NanobossAppView", () => {
 
     const plain = stripAnsi(view.render(120).join("\n"));
     expect(plain).toContain("Done.");
-    expect(plain).toContain("# turn completed in 2.5s | tools 1/2 succeeded");
+    expect(plain).toContain("turn #1 completed in 2.5s | tools 1/2 succeeded");
   });
 
   test("renders read tool code with pi-style syntax colors", () => {

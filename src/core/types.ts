@@ -189,7 +189,7 @@ export type PersistedFrontendEvent =
       type: "token_usage";
       runId: string;
       usage: AgentTokenUsage;
-      sourceUpdate: "usage_update" | "tool_call_update";
+      sourceUpdate: "usage_update" | "tool_call_update" | "run_completed";
       toolCallId?: string;
       status?: string;
     }
