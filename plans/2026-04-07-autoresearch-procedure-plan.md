@@ -142,6 +142,28 @@ An experiment may include:
 
 But it should not become a generated command module unless we later discover a very strong reason to make experiments first-class executable artifacts.
 
+### Generic-loop intent
+
+`/autoresearch-loop` should be understood as a **generic deterministic optimization loop**, not as a bespoke procedure for one benchmark domain.
+
+What stays generic:
+
+- loop state transitions
+- benchmark execution flow
+- keep/revert decision flow
+- logging and confidence updates
+- async continuation/resume behavior
+
+What varies per session:
+
+- the optimization goal
+- the benchmark/check configuration
+- the metric parser and direction
+- the files in scope
+- the experiment spec proposed by the agent for that iteration
+
+In other words, `/autoresearch-loop` is the reusable engine, while each concrete autoresearch session supplies the payload it operates on.
+
 ### Proposed procedure set
 
 #### 1. `/autoresearch`
@@ -169,6 +191,8 @@ Responsibilities:
 #### 2. `/autoresearch-loop`
 
 Internal or advanced procedure for the long-running experiment loop.
+
+This should be implemented as a **generic loop procedure** that can run arbitrary experiments as long as the session has valid structured benchmark state and the agent can return a conforming experiment spec.
 
 Responsibilities:
 
@@ -203,6 +227,16 @@ The result of step 2 should be an **experiment spec**, not a generated procedure
 - `expectedMetricEffect`
 
 The runner then decides what to do with that spec.
+
+That makes the loop broadly reusable across domains such as:
+
+- test runtime reduction
+- build time reduction
+- bundle-size reduction
+- benchmark-score improvement
+- training-metric improvement
+
+without changing the control-plane procedure itself.
 
 #### 3. `/autoresearch-stop`
 
@@ -359,6 +393,8 @@ For phase 1, the simpler and more NanoBoss-native design is:
 - structured experiment specs for each iteration
 - durable logs and state for replay/resume
 
+This also makes the control plane easier to test, because the generic loop can be validated against multiple experiment-spec fixtures without changing procedure code.
+
 ---
 
 ## Loop design in NanoBoss terms
@@ -396,6 +432,8 @@ Each loop iteration should:
 The shell never decides whether to continue, keep, revert, or finalize; those transitions belong to the runner. In the preferred design, the loop does not require a shell artifact at all.
 
 The runner may invoke the agent repeatedly, but those calls stay inside the stable `/autoresearch-loop` procedure rather than materializing new procedures on disk.
+
+The important architectural point is that this iteration flow should not need to change when the optimization target changes; only the session config and experiment specs should.
 
 ### Resume phase
 
