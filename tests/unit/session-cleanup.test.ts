@@ -4,7 +4,26 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { inspectSessionCleanupCandidates, selectCleanupCandidates } from "../../src/session/cleanup.ts";
+import {
+  inspectSessionCleanupCandidates,
+  selectCleanupCandidates,
+  type SessionCleanupCandidate,
+} from "../../src/session/cleanup.ts";
+
+function expectCandidates(value: unknown): SessionCleanupCandidate[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Expected session cleanup candidates");
+  }
+  return value as SessionCleanupCandidate[];
+}
+
+function findCandidate(candidates: SessionCleanupCandidate[], sessionId: string): SessionCleanupCandidate {
+  const candidate = candidates.find((entry) => entry.sessionId === sessionId);
+  if (candidate === undefined) {
+    throw new Error(`Expected candidate ${sessionId}`);
+  }
+  return candidate;
+}
 
 describe("session cleanup inspection", () => {
   test("classifies empty directories, temp cwd sessions, and fixture prompts", () => {
@@ -42,34 +61,26 @@ describe("session cleanup inspection", () => {
       },
     })}\n`);
 
-    const candidates = inspectSessionCleanupCandidates(baseDir);
-    const legacyFixture = candidates.find((candidate) => candidate.sessionId === "legacy-fixture");
-    const selected = selectCleanupCandidates(candidates, [
+    const candidates = expectCandidates(inspectSessionCleanupCandidates(baseDir));
+    const selected = expectCandidates(selectCleanupCandidates(candidates, [
       "empty_dir",
       "empty_session",
       "temp_cwd",
       "fixture_session_id",
       "fixture_prompt",
-    ]);
-
-    expect(selected).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        sessionId: "empty-dir",
-        reasons: expect.arrayContaining(["empty_dir", "unknown_cwd"]),
-      }),
-      expect.objectContaining({
-        sessionId: "temp-session",
-        reasons: expect.arrayContaining(["temp_cwd", "fixture_prompt"]),
-      }),
-      expect.objectContaining({
-        sessionId: "session-from-client",
-        reasons: expect.arrayContaining(["empty_session", "fixture_session_id"]),
-      }),
     ]));
-    expect(legacyFixture).toMatchObject({
-      sessionId: "legacy-fixture",
-      reasons: expect.arrayContaining(["unknown_cwd"]),
-    });
+    const emptyDir = findCandidate(selected, "empty-dir");
+    const tempSession = findCandidate(selected, "temp-session");
+    const emptySession = findCandidate(selected, "session-from-client");
+    const legacyFixture = findCandidate(candidates, "legacy-fixture");
+
+    expect(emptyDir.reasons).toContain("empty_dir");
+    expect(emptyDir.reasons).toContain("unknown_cwd");
+    expect(tempSession.reasons).toContain("temp_cwd");
+    expect(tempSession.reasons).toContain("fixture_prompt");
+    expect(emptySession.reasons).toContain("empty_session");
+    expect(emptySession.reasons).toContain("fixture_session_id");
+    expect(legacyFixture.reasons).toContain("unknown_cwd");
     expect(selected.some((candidate) => candidate.sessionId === "legacy-fixture")).toBe(false);
   });
 });
