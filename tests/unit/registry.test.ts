@@ -205,8 +205,9 @@ describe("ProcedureRegistry", () => {
 
     expect(registry.get("default")).toBeDefined();
     expect(registry.get("autoresearch")).toBeDefined();
-    expect(registry.get("autoresearch-loop")).toBeDefined();
-    expect(registry.get("autoresearch-stop")).toBeDefined();
+    expect(registry.get("autoresearch-start")).toBeDefined();
+    expect(registry.get("autoresearch-continue")).toBeDefined();
+    expect(registry.get("autoresearch-status")).toBeDefined();
     expect(registry.get("autoresearch-clear")).toBeDefined();
     expect(registry.get("autoresearch-finalize")).toBeDefined();
     expect(registry.get("model")).toBeDefined();
@@ -223,8 +224,9 @@ describe("ProcedureRegistry", () => {
     expect(registry.get("ref_read")).toBeDefined();
     expect(registry.toAvailableCommands().some((command) => command.name === "default")).toBe(false);
     expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch-loop")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch-stop")).toBe(true);
+    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch-start")).toBe(true);
+    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch-continue")).toBe(true);
+    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch-status")).toBe(true);
     expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch-clear")).toBe(true);
     expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch-finalize")).toBe(true);
     expect(registry.toAvailableCommands().some((command) => command.name === "model")).toBe(true);
