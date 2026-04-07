@@ -191,7 +191,7 @@ test("explicit env overrides beat the persisted default agent selection", () => 
 
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {
-    delete process.env[key];
+    Reflect.deleteProperty(process.env, key);
     return;
   }
 
