@@ -107,7 +107,7 @@ function transformTypeScriptWithTypia(path: string, source: string): string {
 }
 
 function resolveTypeScriptConfig(path: string): ResolvedTypeScriptConfig {
-  const configPath = ts.findConfigFile(dirname(path), ts.sys.fileExists);
+  const configPath = ts.findConfigFile(dirname(path), (fileName) => ts.sys.fileExists(fileName));
   const cacheKey = configPath ?? "__default__";
   const cached = tsconfigCache.get(cacheKey);
   if (cached) {
@@ -126,7 +126,7 @@ function resolveTypeScriptConfig(path: string): ResolvedTypeScriptConfig {
 }
 
 function readTypeScriptConfig(configPath: string): ResolvedTypeScriptConfig {
-  const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
+  const configFile = ts.readConfigFile(configPath, (fileName) => ts.sys.readFile(fileName));
   if (configFile.error) {
     throw new Error(formatTypeScriptDiagnostics([configFile.error]));
   }
@@ -198,12 +198,8 @@ function readTypiaTransformOptions(config: unknown): TypiaTransformOptions | und
 }
 
 function extractRecord(value: object, key: string): Record<string, unknown> | undefined {
-  if (!(key in value)) {
-    return undefined;
-  }
-
-  const entry = value[key as keyof typeof value];
-  return entry && typeof entry === "object" && !Array.isArray(entry)
+  const entry = Reflect.get(value, key);
+  return typeof entry === "object" && entry !== null && !Array.isArray(entry)
     ? entry as Record<string, unknown>
     : undefined;
 }
