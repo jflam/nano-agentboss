@@ -3,8 +3,7 @@ import { executeAutoresearchCommand } from "../src/autoresearch/runner.ts";
 
 export default {
   name: "autoresearch",
-  description: "Start, resume, or inspect a resumable autoresearch optimization loop",
-  inputHint: "Goal text, `status`, or `resume`",
+  description: "Show the explicit autoresearch v1 command surface",
   async execute(prompt, ctx) {
     return await executeAutoresearchCommand(prompt, ctx);
   },

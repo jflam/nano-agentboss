@@ -1,9 +1,6 @@
-import { join } from "node:path";
-
 import typia from "typia";
 
 import { expectData } from "../core/run-result.ts";
-import { getSessionDir } from "../core/config.ts";
 import { formatErrorMessage } from "../core/error-format.ts";
 import {
   jsonType,
@@ -11,16 +8,11 @@ import {
   type ProcedureResult,
 } from "../core/types.ts";
 import { summarizeText } from "../util/text.ts";
-import {
-  ProcedureDispatchJobManager,
-  type ProcedureDispatchStartResult,
-  type ProcedureDispatchStatusResult,
-} from "../procedure/dispatch-jobs.ts";
-import { ProcedureRegistry } from "../procedure/registry.ts";
 
 import { runBenchmark, runChecks } from "./benchmark.ts";
 import {
   branchExists,
+  cherryPickCommit,
   commitPaths,
   createAndSwitchBranch,
   ensureCleanWorktree,
@@ -29,7 +21,6 @@ import {
   getHeadCommit,
   getMergeBase,
   makeUniqueBranchName,
-  cherryPickCommit,
   revertWorkingTreeChanges,
   switchToBranch,
 } from "./git.ts";
@@ -72,113 +63,186 @@ const AutoresearchApplyResultType = jsonType<AutoresearchApplyResult>(
   typia.createValidate<AutoresearchApplyResult>(),
 );
 
-export interface AutoresearchRuntime {
-  startLoopDispatch(params: {
-    cwd: string;
-    sessionId: string;
-    correlationId: string;
-  }): Promise<ProcedureDispatchStartResult>;
-  getLoopDispatchStatus(params: {
-    cwd: string;
-    sessionId: string;
-    dispatchId: string;
-  }): Promise<ProcedureDispatchStatusResult | undefined>;
-  cancelLoopDispatch(params: {
-    cwd: string;
-    sessionId: string;
-    correlationId: string;
-  }): void;
-}
+type AutoresearchProgressEvent =
+  | { kind: "session_configuring" }
+  | { kind: "session_resuming"; branchName: string }
+  | {
+      kind: "baseline_started";
+      command: string;
+    }
+  | {
+      kind: "baseline_completed";
+      metricName: string;
+      metric?: number;
+      metricUnit?: string;
+      reason?: string;
+    }
+  | {
+      kind: "iteration_started";
+      iteration: number;
+      maxIterations: number;
+    }
+  | {
+      kind: "candidate_selected";
+      idea: string;
+      filesInScope: string[];
+    }
+  | {
+      kind: "candidate_applied";
+      summary: string;
+    }
+  | {
+      kind: "benchmark_started";
+      command: string;
+    }
+  | {
+      kind: "benchmark_completed";
+      metricName: string;
+      metric?: number;
+      metricUnit?: string;
+    }
+  | {
+      kind: "checks_failed";
+      checkName: string;
+    }
+  | {
+      kind: "decision_kept";
+      metric?: number;
+      bestMetric?: number;
+      metricUnit?: string;
+    }
+  | {
+      kind: "decision_reverted";
+      metric?: number;
+      bestMetric?: number;
+      metricUnit?: string;
+    }
+  | {
+      kind: "decision_failed";
+      reason: string;
+    }
+  | {
+      kind: "session_completed";
+      iterationCount: number;
+      maxIterations: number;
+      bestMetric?: number;
+      metricName: string;
+      metricUnit?: string;
+      reason?: string;
+    };
+
+type AutoresearchIterationResult =
+  | {
+      kind: "recorded";
+      state: AutoresearchState;
+      record: AutoresearchExperimentRecord;
+      experiment: AutoresearchExperimentSpec;
+      applied: AutoresearchApplyResult;
+      shouldContinue: boolean;
+    }
+  | {
+      kind: "stopped";
+      state: AutoresearchState;
+      stopReason: string;
+      shouldContinue: false;
+    };
 
 export async function executeAutoresearchCommand(
   prompt: string,
-  ctx: CommandContext,
-  runtime: AutoresearchRuntime = defaultAutoresearchRuntime,
+  _ctx: CommandContext,
 ): Promise<ProcedureResult> {
   const trimmed = prompt.trim();
-  const paths = resolveAutoresearchPaths(ctx.cwd);
-  const state = readAutoresearchState(paths);
-  const records = readExperimentLog(paths);
-  const mode = parseAutoresearchPrompt(trimmed);
+  const lines = [
+    "Autoresearch v1 uses explicit commands:",
+    "- /autoresearch-start <goal>",
+    "- /autoresearch-continue [note]",
+    "- /autoresearch-status",
+    "- /autoresearch-finalize",
+    "- /autoresearch-clear",
+  ];
 
-  if (mode.kind === "status") {
-    return buildStatusResult(paths, state, records, undefined);
+  if (trimmed.length > 0) {
+    lines.push("", `Use /autoresearch-start or /autoresearch-continue instead of \`/autoresearch ${trimmed}\`.`);
   }
-
-  if (!state) {
-    if (!trimmed) {
-      return {
-        display: "Provide an optimization goal for /autoresearch.\n",
-        summary: "autoresearch: missing prompt",
-      };
-    }
-    return await initializeAutoresearch(paths, prompt, ctx, runtime);
-  }
-
-  const nextState = writeAutoresearchState(paths, {
-    ...state,
-    status: "active",
-    pendingContextNotes: mode.note ? [...state.pendingContextNotes, mode.note] : state.pendingContextNotes,
-  });
-  const existingStatus = nextState.lastDispatchId
-    ? await runtime.getLoopDispatchStatus({
-      cwd: paths.repoRoot,
-      sessionId: ctx.sessionId,
-      dispatchId: nextState.lastDispatchId,
-    })
-    : undefined;
-  if (existingStatus && (existingStatus.status === "queued" || existingStatus.status === "running")) {
-    writeAutoresearchSummary(paths, nextState, records);
-    return buildStatusResult(paths, nextState, records, existingStatus);
-  }
-
-  const launched = await launchNextLoopDispatch(paths, nextState, ctx, runtime);
-  const launchedState = writeAutoresearchState(paths, {
-    ...nextState,
-    lastDispatchId: launched.dispatchId,
-    activeDispatchCorrelationId: launched.correlationId,
-  });
-  writeAutoresearchSummary(paths, launchedState, records);
 
   return {
-    data: {
-      status: launchedState.status,
-      branchName: launchedState.branchName,
-      dispatchId: launched.dispatchId,
-      bestMetric: launchedState.currentBestMetric,
-      statePath: paths.statePath,
-      logPath: paths.logPath,
-      summaryPath: paths.summaryPath,
-    },
-    display: [
-      `Autoresearch resumed on ${launchedState.branchName}.`,
-      `Best ${launchedState.benchmark.metric.name}: ${formatMetricValue(launchedState.currentBestMetric, launchedState.benchmark.metric.unit)}.`,
-      `Loop dispatch: ${launched.dispatchId} (${launched.status}).`,
-      `State: ${paths.statePath}.`,
-    ].join("\n") + "\n",
-    summary: `autoresearch: resumed ${launchedState.branchName}`,
-    memory: `Autoresearch is active on ${launchedState.branchName}; state lives at ${paths.statePath}.`,
+    display: `${lines.join("\n")}\n`,
+    summary: "autoresearch: overview",
   };
 }
 
-export async function executeAutoresearchLoopCommand(
+export async function executeAutoresearchStartCommand(
   prompt: string,
   ctx: CommandContext,
-  runtime: AutoresearchRuntime = defaultAutoresearchRuntime,
 ): Promise<ProcedureResult> {
-  void prompt;
+  const goal = prompt.trim();
+  if (!goal) {
+    return {
+      display: "Provide an optimization goal for /autoresearch-start.\n",
+      summary: "autoresearch-start: missing goal",
+    };
+  }
+
+  const paths = resolveAutoresearchPaths(ctx.cwd);
+  const state = readAutoresearchState(paths);
+  if (state) {
+    return {
+      data: {
+        branchName: state.branchName,
+        statePath: paths.statePath,
+      },
+      display: [
+        `Autoresearch state already exists on ${state.branchName}.`,
+        "Use /autoresearch-continue [note] to keep going, or /autoresearch-clear to reset the session.",
+      ].join("\n") + "\n",
+      summary: "autoresearch-start: existing session",
+    };
+  }
+
+  return await initializeAutoresearch(paths, goal, ctx);
+}
+
+export async function executeAutoresearchContinueCommand(
+  prompt: string,
+  ctx: CommandContext,
+): Promise<ProcedureResult> {
+  const note = prompt.trim() || undefined;
   const paths = resolveAutoresearchPaths(ctx.cwd);
   const state = readAutoresearchState(paths);
   if (!state) {
     return {
       display: formatMissingAutoresearchDisplay("continue"),
-      summary: "autoresearch-loop: missing state",
+      summary: "autoresearch-continue: missing state",
     };
   }
 
-  if (state.status !== "active") {
-    const records = readExperimentLog(paths);
-    return buildStatusResult(paths, state, records, undefined);
+  if (state.iterationCount >= state.maxIterations) {
+    return {
+      data: {
+        branchName: state.branchName,
+        iterationCount: state.iterationCount,
+        maxIterations: state.maxIterations,
+      },
+      display: [
+        `Autoresearch has already reached its iteration budget on ${state.branchName}.`,
+        "Use /autoresearch-finalize to review kept wins, or /autoresearch-clear to start over.",
+      ].join("\n") + "\n",
+      summary: "autoresearch-continue: iteration budget exhausted",
+    };
+  }
+
+  if (typeof state.currentBestMetric !== "number") {
+    return {
+      data: {
+        branchName: state.branchName,
+        statePath: paths.statePath,
+      },
+      display: [
+        `Cannot continue autoresearch on ${state.branchName} because the baseline never completed successfully.`,
+        "Run /autoresearch-clear and start a new session with /autoresearch-start <goal>.",
+      ].join("\n") + "\n",
+      summary: "autoresearch-continue: baseline unavailable",
+    };
   }
 
   const prepared = prepareAutoresearchBranch(paths, state);
@@ -186,146 +250,33 @@ export async function executeAutoresearchLoopCommand(
     return prepared.pausedResult;
   }
 
+  emitAutoresearchProgress(ctx, {
+    kind: "session_resuming",
+    branchName: state.branchName,
+  });
+
   const records = readExperimentLog(paths);
-  const stateBeforeIteration = writeAutoresearchState(paths, {
+  const nextState = writeAutoresearchState(paths, {
     ...state,
-    pendingContextNotes: [],
+    status: "active",
+    pendingContextNotes: note ? [...state.pendingContextNotes, note] : state.pendingContextNotes,
   });
 
-  if (stateBeforeIteration.iterationCount >= stateBeforeIteration.maxIterations) {
-    const stoppedState = writeAutoresearchState(paths, {
-      ...stateBeforeIteration,
-      status: "inactive",
-      activeDispatchCorrelationId: undefined,
-    });
-    writeAutoresearchSummary(paths, stoppedState, records);
-    return {
-      data: {
-        status: stoppedState.status,
-        branchName: stoppedState.branchName,
-      },
-      display: `Autoresearch stopped: reached ${stoppedState.maxIterations} iterations.\n`,
-      summary: `autoresearch-loop: max iterations reached`,
-    };
-  }
-
-  ctx.print(`Autoresearch iteration ${stateBeforeIteration.iterationCount + 1}/${stateBeforeIteration.maxIterations}...\n`);
-
-  const experiment = await proposeExperiment(ctx, stateBeforeIteration, records);
-  if (experiment.stop) {
-    const stoppedState = writeAutoresearchState(paths, {
-      ...stateBeforeIteration,
-      status: "inactive",
-      activeDispatchCorrelationId: undefined,
-    });
-    writeAutoresearchSummary(paths, stoppedState, records);
-    return {
-      data: {
-        status: stoppedState.status,
-        branchName: stoppedState.branchName,
-        reason: experiment.stopReason ?? "agent requested stop",
-      },
-      display: `Autoresearch stopped: ${experiment.stopReason ?? "agent requested stop"}.\n`,
-      summary: `autoresearch-loop: stopped`,
-    };
-  }
-
-  const iteration = stateBeforeIteration.iterationCount + 1;
-  const runId = `run-${String(iteration).padStart(4, "0")}`;
-  const applied = await applyExperiment(ctx, stateBeforeIteration, experiment, records);
-
-  const record = await executeExperimentRun({
-    runId,
-    iteration,
+  return await runForegroundAutoresearchLoop({
     paths,
-    state: stateBeforeIteration,
-    priorRecords: records,
-    experiment,
-    applied,
+    state: nextState,
+    records,
+    ctx,
   });
-  appendExperimentRecord(paths, record);
-
-  let nextState = updateStateAfterRecord(stateBeforeIteration, record);
-  nextState = writeAutoresearchState(paths, nextState);
-
-  let nextDispatch: ProcedureDispatchStartResult | undefined;
-  if (nextState.status === "active" && nextState.iterationCount < nextState.maxIterations) {
-    const launched = await launchNextLoopDispatch(paths, nextState, ctx, runtime);
-    nextState = writeAutoresearchState(paths, {
-      ...nextState,
-      lastDispatchId: launched.dispatchId,
-      activeDispatchCorrelationId: launched.correlationId,
-    });
-    nextDispatch = launched;
-  } else {
-    nextState = writeAutoresearchState(paths, {
-      ...nextState,
-      status: "inactive",
-      activeDispatchCorrelationId: undefined,
-    });
-  }
-
-  writeAutoresearchSummary(paths, nextState, [...records, record]);
-
-  return {
-    data: {
-      runId: record.id,
-      status: record.decision.status,
-      branchName: nextState.branchName,
-      metric: record.benchmark.metric,
-      bestMetric: nextState.currentBestMetric,
-      keptCommit: record.keptCommit,
-      nextDispatchId: nextDispatch?.dispatchId,
-    },
-    display: [
-      `Recorded ${record.id}: ${record.decision.status}.`,
-      `Metric: ${formatMetricValue(record.benchmark.metric, nextState.benchmark.metric.unit)}.`,
-      `Reason: ${record.decision.reason}.`,
-      nextDispatch ? `Queued next iteration: ${nextDispatch.dispatchId}.` : "Loop is now inactive.",
-    ].join("\n") + "\n",
-    summary: `autoresearch-loop: ${record.id} ${record.decision.status}`,
-  };
 }
 
-export async function executeAutoresearchStopCommand(
+export async function executeAutoresearchStatusCommand(
   prompt: string,
   ctx: CommandContext,
-  runtime: AutoresearchRuntime = defaultAutoresearchRuntime,
 ): Promise<ProcedureResult> {
   void prompt;
   const paths = resolveAutoresearchPaths(ctx.cwd);
-  const state = readAutoresearchState(paths);
-  const records = readExperimentLog(paths);
-  if (!state) {
-    return {
-      display: formatMissingAutoresearchDisplay("stop"),
-      summary: "autoresearch-stop: missing state",
-    };
-  }
-
-  if (state.activeDispatchCorrelationId) {
-    runtime.cancelLoopDispatch({
-      cwd: paths.repoRoot,
-      sessionId: ctx.sessionId,
-      correlationId: state.activeDispatchCorrelationId,
-    });
-  }
-
-  const stoppedState = writeAutoresearchState(paths, {
-    ...state,
-    status: "inactive",
-    activeDispatchCorrelationId: undefined,
-  });
-  writeAutoresearchSummary(paths, stoppedState, records);
-
-  return {
-    data: {
-      status: stoppedState.status,
-      branchName: stoppedState.branchName,
-    },
-    display: `Autoresearch stopped for ${stoppedState.branchName}. History was preserved.\n`,
-    summary: `autoresearch-stop: ${stoppedState.branchName}`,
-  };
+  return buildStatusResult(paths, readAutoresearchState(paths), readExperimentLog(paths));
 }
 
 export async function executeAutoresearchClearCommand(
@@ -344,7 +295,7 @@ export async function executeAutoresearchClearCommand(
 
   if (state.status === "active") {
     return {
-      display: "Autoresearch is still active. Run /autoresearch-stop before clearing state.\n",
+      display: "Autoresearch is currently running. Wait for it to finish before clearing state.\n",
       summary: "autoresearch-clear: active session",
     };
   }
@@ -428,14 +379,13 @@ export async function executeAutoresearchFinalizeCommand(
 
 async function initializeAutoresearch(
   paths: AutoresearchPaths,
-  prompt: string,
+  goal: string,
   ctx: CommandContext,
-  runtime: AutoresearchRuntime,
 ): Promise<ProcedureResult> {
   ensureCleanWorktree(paths.repoRoot, "start autoresearch");
-  ctx.print("Configuring autoresearch session...\n");
+  emitAutoresearchProgress(ctx, { kind: "session_configuring" });
 
-  const initPlan = await buildInitializationPlan(prompt, ctx);
+  const initPlan = await buildInitializationPlan(goal, ctx);
   const baseBranch = getCurrentBranch(paths.repoRoot) || "HEAD";
   const baseCommit = getHeadCommit(paths.repoRoot);
   const desiredBranchName = sanitizeBranchName(initPlan.branchName ?? `autoresearch/${initPlan.goalSummary}`);
@@ -447,7 +397,7 @@ async function initializeAutoresearch(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     sessionId: ctx.sessionId,
-    goal: prompt.trim(),
+    goal,
     goalSummary: initPlan.goalSummary.trim(),
     summary: initPlan.summary?.trim() || undefined,
     status: "active",
@@ -462,6 +412,11 @@ async function initializeAutoresearch(
     benchmark: initPlan.benchmark,
     checks: initPlan.checks ?? [],
     pendingContextNotes: [],
+  });
+
+  emitAutoresearchProgress(ctx, {
+    kind: "baseline_started",
+    command: summarizeText(state.benchmark.argv.join(" "), 80),
   });
 
   const baseline = runBenchmark(state.benchmark, paths.repoRoot);
@@ -492,54 +447,227 @@ async function initializeAutoresearch(
   state = writeAutoresearchState(paths, updateStateAfterRecord(state, baselineRecord));
   writeAutoresearchSummary(paths, state, [baselineRecord]);
 
+  emitAutoresearchProgress(ctx, {
+    kind: "baseline_completed",
+    metricName: state.benchmark.metric.name,
+    metric: baselineRecord.benchmark.metric,
+    metricUnit: state.benchmark.metric.unit,
+    reason: baselineRecord.decision.status === "failed" ? baselineRecord.decision.reason : undefined,
+  });
+
   if (baselineRecord.decision.status === "failed") {
     state = writeAutoresearchState(paths, {
       ...state,
       status: "inactive",
     });
     writeAutoresearchSummary(paths, state, [baselineRecord]);
+    emitAutoresearchProgress(ctx, {
+      kind: "session_completed",
+      iterationCount: state.iterationCount,
+      maxIterations: state.maxIterations,
+      bestMetric: state.currentBestMetric,
+      metricName: state.benchmark.metric.name,
+      metricUnit: state.benchmark.metric.unit,
+      reason: baselineRecord.decision.reason,
+    });
+    return buildForegroundCompletionResult(paths, state, [baselineRecord], baselineRecord.decision.reason);
+  }
+
+  return await runForegroundAutoresearchLoop({
+    paths,
+    state,
+    records: [baselineRecord],
+    ctx,
+  });
+}
+
+async function runForegroundAutoresearchLoop(params: {
+  paths: AutoresearchPaths;
+  state: AutoresearchState;
+  records: AutoresearchExperimentRecord[];
+  ctx: CommandContext;
+}): Promise<ProcedureResult> {
+  let state = params.state;
+  let records = params.records;
+  let completionReason: string | undefined;
+
+  while (state.iterationCount < state.maxIterations) {
+    emitAutoresearchProgress(params.ctx, {
+      kind: "iteration_started",
+      iteration: state.iterationCount + 1,
+      maxIterations: state.maxIterations,
+    });
+
+    const iteration = await runAutoresearchIteration({
+      paths: params.paths,
+      state,
+      records,
+      ctx: params.ctx,
+    });
+
+    state = iteration.state;
+    if (iteration.kind === "stopped") {
+      completionReason = iteration.stopReason;
+      break;
+    }
+
+    records = [...records, iteration.record];
+    emitAutoresearchProgress(params.ctx, {
+      kind: "benchmark_completed",
+      metricName: state.benchmark.metric.name,
+      metric: iteration.record.benchmark.metric,
+      metricUnit: state.benchmark.metric.unit,
+    });
+
+    if (iteration.record.decision.reason.startsWith("Check failed: ")) {
+      emitAutoresearchProgress(params.ctx, {
+        kind: "checks_failed",
+        checkName: iteration.record.decision.reason.slice("Check failed: ".length),
+      });
+    }
+
+    switch (iteration.record.decision.status) {
+      case "kept":
+        emitAutoresearchProgress(params.ctx, {
+          kind: "decision_kept",
+          metric: iteration.record.benchmark.metric,
+          bestMetric: state.currentBestMetric,
+          metricUnit: state.benchmark.metric.unit,
+        });
+        break;
+      case "rejected":
+        emitAutoresearchProgress(params.ctx, {
+          kind: "decision_reverted",
+          metric: iteration.record.benchmark.metric,
+          bestMetric: state.currentBestMetric,
+          metricUnit: state.benchmark.metric.unit,
+        });
+        break;
+      case "failed":
+        if (!iteration.record.decision.reason.startsWith("Check failed: ")) {
+          emitAutoresearchProgress(params.ctx, {
+            kind: "decision_failed",
+            reason: iteration.record.decision.reason,
+          });
+        }
+        break;
+    }
+  }
+
+  state = writeAutoresearchState(params.paths, {
+    ...state,
+    status: "inactive",
+  });
+  writeAutoresearchSummary(params.paths, state, records);
+
+  emitAutoresearchProgress(params.ctx, {
+    kind: "session_completed",
+    iterationCount: state.iterationCount,
+    maxIterations: state.maxIterations,
+    bestMetric: state.currentBestMetric,
+    metricName: state.benchmark.metric.name,
+    metricUnit: state.benchmark.metric.unit,
+    reason: completionReason,
+  });
+
+  return buildForegroundCompletionResult(params.paths, state, records, completionReason);
+}
+
+async function runAutoresearchIteration(params: {
+  paths: AutoresearchPaths;
+  state: AutoresearchState;
+  records: AutoresearchExperimentRecord[];
+  ctx: CommandContext;
+}): Promise<AutoresearchIterationResult> {
+  const experiment = await proposeExperiment(params.ctx, params.state, params.records);
+  if (experiment.stop) {
+    const stoppedState = writeAutoresearchState(params.paths, {
+      ...params.state,
+      pendingContextNotes: [],
+    });
     return {
-      data: {
-        status: state.status,
-        branchName: state.branchName,
-        statePath: paths.statePath,
-        logPath: paths.logPath,
-      },
-      display: [
-        `Autoresearch initialized on ${state.branchName}, but the baseline failed.`,
-        `Reason: ${baselineRecord.decision.reason}.`,
-        `State: ${paths.statePath}.`,
-      ].join("\n") + "\n",
-      summary: "autoresearch: baseline failed",
+      kind: "stopped",
+      state: stoppedState,
+      stopReason: experiment.stopReason ?? "agent requested stop",
+      shouldContinue: false,
     };
   }
 
-  const launched = await launchNextLoopDispatch(paths, state, ctx, runtime);
-  state = writeAutoresearchState(paths, {
-    ...state,
-    lastDispatchId: launched.dispatchId,
-    activeDispatchCorrelationId: launched.correlationId,
+  const stateBeforeIteration = writeAutoresearchState(params.paths, {
+    ...params.state,
+    pendingContextNotes: [],
   });
-  writeAutoresearchSummary(paths, state, [baselineRecord]);
 
+  emitAutoresearchProgress(params.ctx, {
+    kind: "candidate_selected",
+    idea: experiment.idea,
+    filesInScope: experiment.filesInScope,
+  });
+
+  const applied = await applyExperiment(params.ctx, stateBeforeIteration, experiment, params.records);
+  emitAutoresearchProgress(params.ctx, {
+    kind: "candidate_applied",
+    summary: applied.summary,
+  });
+  emitAutoresearchProgress(params.ctx, {
+    kind: "benchmark_started",
+    command: summarizeText(stateBeforeIteration.benchmark.argv.join(" "), 80),
+  });
+
+  const iteration = stateBeforeIteration.iterationCount + 1;
+  const runId = `run-${String(iteration).padStart(4, "0")}`;
+  const record = await executeExperimentRun({
+    runId,
+    iteration,
+    paths: params.paths,
+    state: params.state,
+    priorRecords: params.records,
+    experiment,
+    applied,
+  });
+  appendExperimentRecord(params.paths, record);
+
+  const nextState = writeAutoresearchState(params.paths, updateStateAfterRecord(stateBeforeIteration, record));
+  writeAutoresearchSummary(params.paths, nextState, [...params.records, record]);
+
+  return {
+    kind: "recorded",
+    state: nextState,
+    record,
+    experiment,
+    applied,
+    shouldContinue: nextState.iterationCount < nextState.maxIterations,
+  };
+}
+
+function buildForegroundCompletionResult(
+  paths: AutoresearchPaths,
+  state: AutoresearchState,
+  records: AutoresearchExperimentRecord[],
+  reason?: string,
+): ProcedureResult {
+  const lastRecord = records.at(-1);
   return {
     data: {
       status: state.status,
       branchName: state.branchName,
-      dispatchId: launched.dispatchId,
       bestMetric: state.currentBestMetric,
+      iterationCount: state.iterationCount,
+      maxIterations: state.maxIterations,
       statePath: paths.statePath,
       logPath: paths.logPath,
       summaryPath: paths.summaryPath,
     },
     display: [
-      `Autoresearch initialized on ${state.branchName}.`,
-      `Baseline ${state.benchmark.metric.name}: ${formatMetricValue(state.currentBestMetric, state.benchmark.metric.unit)}.`,
-      `Loop dispatch: ${launched.dispatchId} (${launched.status}).`,
+      `Autoresearch finished on ${state.branchName}.`,
+      `Best ${state.benchmark.metric.name}: ${formatMetricValue(state.currentBestMetric, state.benchmark.metric.unit)}.`,
+      `Iterations: ${state.iterationCount}/${state.maxIterations}.`,
+      lastRecord ? `Last run: ${lastRecord.id} (${lastRecord.decision.status}).` : "Last run: none.",
+      reason ? `Reason: ${reason}.` : undefined,
       `State: ${paths.statePath}.`,
-    ].join("\n") + "\n",
-    summary: `autoresearch: initialized ${state.branchName}`,
-    memory: `Autoresearch baseline is ready on ${state.branchName}; state lives at ${paths.statePath}.`,
+    ].filter((line): line is string => typeof line === "string").join("\n") + "\n",
+    summary: `autoresearch: completed ${state.branchName}`,
+    memory: `Autoresearch state for ${state.branchName} lives at ${paths.statePath}.`,
   };
 }
 
@@ -856,12 +984,11 @@ function buildStatusResult(
   paths: AutoresearchPaths,
   state: AutoresearchState | undefined,
   records: AutoresearchExperimentRecord[],
-  dispatchStatus: ProcedureDispatchStatusResult | undefined,
 ): ProcedureResult {
   if (!state) {
     return {
       display: formatMissingAutoresearchDisplay("status"),
-      summary: "autoresearch: no state",
+      summary: "autoresearch-status: no state",
     };
   }
 
@@ -872,7 +999,7 @@ function buildStatusResult(
       branchName: state.branchName,
       bestMetric: state.currentBestMetric,
       iterationCount: state.iterationCount,
-      dispatchStatus: dispatchStatus?.status,
+      maxIterations: state.maxIterations,
       statePath: paths.statePath,
       logPath: paths.logPath,
       summaryPath: paths.summaryPath,
@@ -881,24 +1008,21 @@ function buildStatusResult(
       `Autoresearch is ${state.status} on ${state.branchName}.`,
       `Best ${state.benchmark.metric.name}: ${formatMetricValue(state.currentBestMetric, state.benchmark.metric.unit)}.`,
       `Iterations: ${state.iterationCount}/${state.maxIterations}.`,
-      dispatchStatus ? `Loop dispatch: ${dispatchStatus.dispatchId} (${dispatchStatus.status}).` : "Loop dispatch: idle.",
       lastRecord ? `Last run: ${lastRecord.id} (${lastRecord.decision.status}).` : "Last run: none.",
       `State: ${paths.statePath}.`,
     ].join("\n") + "\n",
-    summary: `autoresearch: ${state.status} ${state.branchName}`,
+    summary: `autoresearch-status: ${state.status} ${state.branchName}`,
   };
 }
 
 function formatMissingAutoresearchDisplay(
-  action: "status" | "continue" | "stop" | "clear" | "finalize",
+  action: "status" | "continue" | "clear" | "finalize",
 ): string {
   switch (action) {
     case "status":
-      return "No autoresearch session exists in this repository yet. Run /autoresearch <goal> to start one.\n";
+      return "No autoresearch session exists in this repository yet. Run /autoresearch-start <goal> to create one.\n";
     case "continue":
-      return "Cannot continue autoresearch: no session exists in this repository yet. Run /autoresearch <goal> to start one.\n";
-    case "stop":
-      return "Cannot stop autoresearch: no session exists in this repository yet.\n";
+      return "Cannot continue autoresearch: no session exists in this repository yet. Run /autoresearch-start <goal> to create one.\n";
     case "clear":
       return "Cannot clear autoresearch: no session exists in this repository yet.\n";
     case "finalize":
@@ -923,7 +1047,6 @@ function prepareAutoresearchBranch(
     const nextState = writeAutoresearchState(paths, {
       ...state,
       status: "inactive",
-      activeDispatchCorrelationId: undefined,
     });
     const records = readExperimentLog(paths);
     writeAutoresearchSummary(paths, nextState, records);
@@ -934,52 +1057,56 @@ function prepareAutoresearchBranch(
           branchName: nextState.branchName,
         },
         display: `Autoresearch paused: ${formatErrorMessage(error)}\n`,
-        summary: "autoresearch-loop: paused on dirty worktree",
+        summary: "autoresearch-continue: paused on dirty worktree",
       },
     };
   }
 }
 
-async function launchNextLoopDispatch(
-  paths: AutoresearchPaths,
-  state: AutoresearchState,
-  ctx: CommandContext,
-  runtime: AutoresearchRuntime,
-): Promise<ProcedureDispatchStartResult & { correlationId: string }> {
-  const correlationId = buildDispatchCorrelationId(state);
-  const started = await runtime.startLoopDispatch({
-    cwd: paths.repoRoot,
-    sessionId: ctx.sessionId,
-    correlationId,
-  });
-  return {
-    ...started,
-    correlationId,
-  };
+function emitAutoresearchProgress(ctx: CommandContext, event: AutoresearchProgressEvent): void {
+  const message = formatAutoresearchProgress(event);
+  if (message) {
+    ctx.print(`${message}\n`);
+  }
 }
 
-function buildDispatchCorrelationId(state: AutoresearchState): string {
-  const slug = sanitizeBranchName(state.branchName).replace(/\//gu, "-");
-  return `${slug}-${state.iterationCount + 1}-${crypto.randomUUID().slice(0, 8)}`;
-}
-
-function parseAutoresearchPrompt(trimmedPrompt: string): { kind: "status" | "resume"; note?: string } {
-  if (/^status(?:\s+|$)/iu.test(trimmedPrompt)) {
-    return { kind: "status" };
+function formatAutoresearchProgress(event: AutoresearchProgressEvent): string | undefined {
+  switch (event.kind) {
+    case "session_configuring":
+      return "Configuring autoresearch session...";
+    case "session_resuming":
+      return `Continuing autoresearch on ${event.branchName}...`;
+    case "baseline_started":
+      return `Running baseline benchmark (${event.command})...`;
+    case "baseline_completed":
+      return event.reason
+        ? `Baseline failed: ${event.reason}.`
+        : `Baseline: ${event.metricName} -> ${formatMetricValue(event.metric, event.metricUnit)}.`;
+    case "iteration_started":
+      return `Iteration ${event.iteration}/${event.maxIterations}: selecting the next experiment.`;
+    case "candidate_selected":
+      return `Candidate: ${summarizeText(event.idea, 120)}.`;
+    case "candidate_applied":
+      return event.summary.trim().length > 0
+        ? `Applied candidate: ${summarizeText(event.summary.trim(), 120)}.`
+        : "Applied candidate.";
+    case "benchmark_started":
+      return `Benchmarking candidate (${event.command})...`;
+    case "benchmark_completed":
+      return undefined;
+    case "checks_failed":
+      return `Checks failed: ${event.checkName}. Reverting candidate.`;
+    case "decision_kept":
+      return `Result: ${formatMetricValue(event.metric, event.metricUnit)}, improvement kept.`;
+    case "decision_reverted":
+      return `Result: ${formatMetricValue(event.metric, event.metricUnit)}, reverted.`;
+    case "decision_failed":
+      return `Experiment failed: ${event.reason}.`;
+    case "session_completed":
+      return event.reason
+        ? `Autoresearch finished after ${event.iterationCount} iteration${event.iterationCount === 1 ? "" : "s"}. Best ${event.metricName}: ${formatMetricValue(event.bestMetric, event.metricUnit)}. Reason: ${event.reason}.`
+        : `Autoresearch finished after ${event.iterationCount} iteration${event.iterationCount === 1 ? "" : "s"}. Best ${event.metricName}: ${formatMetricValue(event.bestMetric, event.metricUnit)}.`;
   }
-
-  const resumeMatch = /^(?:resume|continue)(?:\s+(.+))?$/iu.exec(trimmedPrompt);
-  if (resumeMatch) {
-    return {
-      kind: "resume",
-      note: resumeMatch[1]?.trim() || undefined,
-    };
-  }
-
-  return {
-    kind: "resume",
-    note: trimmedPrompt || undefined,
-  };
 }
 
 function sanitizeBranchName(value: string): string {
@@ -1005,43 +1132,4 @@ function emptyBenchmarkResult(state: AutoresearchState, repoRoot: string): Autor
     samples: [],
     metric: undefined,
   };
-}
-
-const defaultAutoresearchRuntime: AutoresearchRuntime = {
-  async startLoopDispatch(params) {
-    const manager = createDispatchManager(params.cwd, params.sessionId);
-    return await manager.start({
-      name: "autoresearch-loop",
-      prompt: "",
-      dispatchCorrelationId: params.correlationId,
-    });
-  },
-  async getLoopDispatchStatus(params) {
-    const manager = createDispatchManager(params.cwd, params.sessionId);
-    try {
-      return await manager.status(params.dispatchId);
-    } catch {
-      return undefined;
-    }
-  },
-  cancelLoopDispatch(params) {
-    const manager = createDispatchManager(params.cwd, params.sessionId);
-    manager.cancelByCorrelationId(params.correlationId);
-  },
-};
-
-function createDispatchManager(cwd: string, sessionId: string): ProcedureDispatchJobManager {
-  return new ProcedureDispatchJobManager({
-    cwd,
-    sessionId,
-    rootDir: getSessionDir(sessionId),
-    getRegistry: async () => {
-      const registry = new ProcedureRegistry({
-        commandsDir: join(cwd, "commands"),
-      });
-      registry.loadBuiltins();
-      await registry.loadFromDisk();
-      return registry;
-    },
-  });
 }
