@@ -741,7 +741,7 @@ export class NanobossService {
         return { stopReason: "end_turn", runId };
       }
 
-      if (text.startsWith("/") && procedure.name !== "default") {
+      if (text.startsWith("/") && procedure.name !== "default" && procedure.executionMode !== "harness") {
         try {
           const dispatched = await this.dispatchProcedureIntoDefaultConversation(
             session,

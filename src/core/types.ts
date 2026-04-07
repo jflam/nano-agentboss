@@ -285,6 +285,7 @@ export interface Procedure {
   name: string;
   description: string;
   inputHint?: string;
+  executionMode?: "defaultConversation" | "harness";
   execute(prompt: string, ctx: CommandContext): Promise<ProcedureResult | string | void>;
 }
 

@@ -14,6 +14,7 @@ export default {
   name: "model",
   description: "Set or inspect the default agent/model for this session",
   inputHint: "[agent] [model]",
+  executionMode: "harness",
   async execute(prompt, ctx) {
     const trimmed = prompt.trim();
     const current = ctx.getDefaultAgentConfig();

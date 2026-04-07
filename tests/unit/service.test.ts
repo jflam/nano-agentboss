@@ -638,6 +638,25 @@ describe("NanobossService", () => {
     });
   }, 30_000);
 
+  test("/model executes in the harness instead of dispatching through the default conversation", async () => {
+    const { cwd, registry } = await createRegistryWithWorkspace();
+
+    const service = new NanobossService(registry);
+    const session = service.createSession({ cwd });
+    setDispatchProcedureIntoDefaultConversation(service, async () => {
+      throw new Error("/model should not use async procedure dispatch");
+    });
+
+    await service.prompt(session.sessionId, "/model copilot gpt-5.4/xhigh");
+
+    expect(service.getSession(session.sessionId)?.agentLabel).toBe("copilot/gpt-5.4/x-high");
+    const toolTitles = (service.getSessionEvents(session.sessionId)?.after(-1) ?? [])
+      .filter((event) => event.type === "tool_started")
+      .map((event) => event.data.title);
+    expect(toolTitles).not.toContain("procedure_dispatch_start");
+    expect(toolTitles).not.toContain("procedure_dispatch_wait");
+  });
+
   test("cancelled slash-command dispatches still publish a terminal run_cancelled event", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-dispatch-stop-")));
     registry.register({
