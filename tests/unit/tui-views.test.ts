@@ -772,6 +772,77 @@ describe("NanobossAppView", () => {
     expect(expanded).not.toContain("... (19 more lines, ctrl+o to expand)");
   });
 
+  test("expanded agent tool output uses expanded-only completion content", () => {
+    const collapsedView = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo", showToolCalls: true, expandedToolOutput: false }),
+        sessionId: "session-1",
+        toolCalls: [
+          {
+            id: "tool-1",
+            runId: "run-1",
+            title: "callAgent: summarize the diff",
+            kind: "other",
+            status: "completed",
+            depth: 0,
+            isWrapper: false,
+            callPreview: { header: "callAgent: summarize the diff" },
+            resultPreview: { bodyLines: ["stored result in cell-1"] },
+            rawOutput: {
+              cell: { sessionId: "session-1", cellId: "cell-1" },
+              dataRef: { cell: { sessionId: "session-1", cellId: "cell-1" }, path: "data" },
+              expandedContent: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8",
+            },
+          },
+        ],
+        transcriptItems: [{ type: "tool_call" as const, id: "tool-1" }],
+      },
+    );
+    const expandedView = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo", showToolCalls: true, expandedToolOutput: true }),
+        sessionId: "session-1",
+        toolCalls: [
+          {
+            id: "tool-1",
+            runId: "run-1",
+            title: "callAgent: summarize the diff",
+            kind: "other",
+            status: "completed",
+            depth: 0,
+            isWrapper: false,
+            callPreview: { header: "callAgent: summarize the diff" },
+            resultPreview: { bodyLines: ["stored result in cell-1"] },
+            rawOutput: {
+              cell: { sessionId: "session-1", cellId: "cell-1" },
+              dataRef: { cell: { sessionId: "session-1", cellId: "cell-1" }, path: "data" },
+              expandedContent: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8",
+            },
+          },
+        ],
+        transcriptItems: [{ type: "tool_call" as const, id: "tool-1" }],
+      },
+    );
+
+    const collapsed = stripAnsi(collapsedView.render(160).join("\n"));
+    const expanded = stripAnsi(expandedView.render(160).join("\n"));
+
+    expect(collapsed).toContain("stored result in cell-1");
+    expect(collapsed).not.toContain("line 8");
+    expect(expanded).toContain("line 8");
+    expect(expanded).not.toContain("stored result in cell-1");
+  });
+
   test("does not paint streamed assistant content red after a failed run", () => {
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),

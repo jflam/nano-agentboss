@@ -419,6 +419,7 @@ export class CommandContextImpl implements CommandContext {
         dataRef: finalized.dataRef,
         durationMs: params.durationMs,
         logFile: params.logFile,
+        expandedContent: params.raw,
         ...params.rawOutputExtra,
       },
     });

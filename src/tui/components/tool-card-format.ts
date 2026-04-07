@@ -285,6 +285,7 @@ export function getExpandedToolInputBlock(toolCall: UiToolCall): ToolPreviewBloc
 export function getExpandedToolResultBlock(toolCall: UiToolCall): ToolPreviewBlock | undefined {
   const toolName = normalizeToolName(toolCall);
   const record = asRecord(toolCall.rawOutput);
+  const expandedContent = firstString(record?.expandedContent, record?.expanded_content);
 
   switch (toolName) {
     case "bash":
@@ -301,7 +302,7 @@ export function getExpandedToolResultBlock(toolCall: UiToolCall): ToolPreviewBlo
       return lines.length > 0 ? { bodyLines: lines } : undefined;
     }
     default:
-      return buildFullPreviewBlock(extractTextLikeContent(toolCall.rawOutput) ?? stringifyValue(toolCall.rawOutput));
+      return buildFullPreviewBlock(expandedContent ?? extractTextLikeContent(toolCall.rawOutput) ?? stringifyValue(toolCall.rawOutput));
   }
 }
 
