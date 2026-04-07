@@ -76,7 +76,10 @@ export interface NanobossTuiAppDeps {
   createView?: (editor: EditorLike, theme: NanobossTuiTheme, state: UiState) => ViewLike;
   setInterval?: typeof globalThis.setInterval;
   clearInterval?: typeof globalThis.clearInterval;
+  now?: () => number;
 }
+
+const TOOL_OUTPUT_TOGGLE_COOLDOWN_MS = 150;
 
 export class NanobossTuiApp {
   private readonly cwd: string;
@@ -86,16 +89,19 @@ export class NanobossTuiApp {
   private readonly editor: EditorLike;
   private readonly view: ViewLike;
   private readonly controller: ControllerLike;
+  private readonly now: () => number;
   private state: UiState;
   private autocompleteSignature = "";
   private stopped = false;
   private liveRefreshInterval?: ReturnType<typeof setInterval>;
+  private lastToolOutputToggleAt = Number.NEGATIVE_INFINITY;
 
   constructor(
     private readonly params: NanobossTuiAppParams,
     private readonly deps: NanobossTuiAppDeps = {},
   ) {
     this.cwd = params.cwd ?? process.cwd();
+    this.now = deps.now ?? Date.now;
     this.theme = deps.createTheme?.() ?? createNanobossTuiTheme();
     this.terminal = deps.createTerminal?.() ?? new ProcessTerminal();
     this.tui = deps.createTui?.(this.terminal) ?? new TUI(this.terminal as ProcessTerminal, false);
@@ -158,7 +164,11 @@ export class NanobossTuiApp {
       }
 
       if (matchesKey(data, "ctrl+o")) {
-        this.controller.toggleToolOutput();
+        const now = this.now();
+        if (now - this.lastToolOutputToggleAt >= TOOL_OUTPUT_TOGGLE_COOLDOWN_MS) {
+          this.lastToolOutputToggleAt = now;
+          this.controller.toggleToolOutput();
+        }
         return { consume: true };
       }
 

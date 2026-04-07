@@ -157,6 +157,68 @@ describe("NanobossTuiApp", () => {
     expect(toggles).toEqual(["toggle"]);
   });
 
+  test("ignores duplicate ctrl+o input that arrives immediately", async () => {
+    const editor = new FakeEditor();
+    const toggles: string[] = [];
+    const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    let inputListener: ((data: string) => unknown) | undefined;
+    let now = 1_000;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        now: () => now,
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener(listener) {
+            inputListener = listener;
+          },
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async queuePrompt() {},
+          async cancelActiveRun() {},
+          toggleToolOutput() {
+            toggles.push("toggle");
+          },
+          requestExit() {},
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => ({
+          setState() {},
+        }),
+      },
+    );
+
+    const firstResult = inputListener?.("\u000f");
+    now += 25;
+    const secondResult = inputListener?.("\u000f");
+    now += 200;
+    const thirdResult = inputListener?.("\u000f");
+    await Promise.resolve();
+
+    expect(firstResult).toEqual({ consume: true });
+    expect(secondResult).toEqual({ consume: true });
+    expect(thirdResult).toEqual({ consume: true });
+    expect(toggles).toEqual(["toggle", "toggle"]);
+  });
+
   test("pressing escape while a run is active cancels the current run", async () => {
     const editor = new FakeEditor();
     const cancellations: string[] = [];
