@@ -129,8 +129,6 @@ export interface AutoresearchState {
   currentBestCommit?: string;
   baselineRunId?: string;
   lastRunId?: string;
-  lastDispatchId?: string;
-  activeDispatchCorrelationId?: string;
   pendingContextNotes: string[];
 }
 

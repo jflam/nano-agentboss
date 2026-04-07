@@ -5,10 +5,11 @@ import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import autoresearchProcedure from "../../commands/autoresearch.ts";
+import autoresearchContinueProcedure from "../../commands/autoresearch-continue.ts";
 import autoresearchClearProcedure from "../../commands/autoresearch-clear.ts";
 import autoresearchFinalizeProcedure from "../../commands/autoresearch-finalize.ts";
-import autoresearchLoopProcedure from "../../commands/autoresearch-loop.ts";
-import autoresearchStopProcedure from "../../commands/autoresearch-stop.ts";
+import autoresearchStartProcedure from "../../commands/autoresearch-start.ts";
+import autoresearchStatusProcedure from "../../commands/autoresearch-status.ts";
 import commitProcedure from "../../commands/commit.ts";
 import defaultProcedure from "../../commands/default.ts";
 import kbAnswerProcedure from "../../commands/kb-answer.ts";
@@ -75,8 +76,9 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     this.register(defaultProcedure);
     this.register(createCreateProcedure(this));
     this.register(autoresearchProcedure);
-    this.register(autoresearchLoopProcedure);
-    this.register(autoresearchStopProcedure);
+    this.register(autoresearchStartProcedure);
+    this.register(autoresearchContinueProcedure);
+    this.register(autoresearchStatusProcedure);
     this.register(autoresearchClearProcedure);
     this.register(autoresearchFinalizeProcedure);
     this.register(commitProcedure);
