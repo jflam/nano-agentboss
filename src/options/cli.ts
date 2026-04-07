@@ -3,9 +3,9 @@ import {
   type FrontendConnectionOptions,
 } from "./frontend-connection.ts";
 
-export interface CliOptions extends FrontendConnectionOptions {}
+export type CliOptions = FrontendConnectionOptions;
 
 export function parseCliOptions(argv: string[]): CliOptions {
-  const { remainingArgs: _remainingArgs, ...options } = parseFrontendConnectionOptions(argv);
-  return options;
+  const { showToolCalls, showHelp, connectionMode, serverUrl } = parseFrontendConnectionOptions(argv);
+  return { showToolCalls, showHelp, connectionMode, serverUrl };
 }
