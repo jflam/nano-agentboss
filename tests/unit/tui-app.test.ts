@@ -37,7 +37,7 @@ class FakeEditor {
 }
 
 describe("NanobossTuiApp", () => {
-  test("keeps pi-tui submit enabled for /quit while a run is active", () => {
+  test("keeps pi-tui submit enabled for steering input while a run is active", () => {
     const editor = new FakeEditor();
     const handledSubmissions: string[] = [];
     let currentState: UiState = createInitialUiState({
@@ -72,6 +72,7 @@ describe("NanobossTuiApp", () => {
             async handleSubmit(text: string) {
               handledSubmissions.push(text);
             },
+            async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
             requestExit() {},
@@ -93,13 +94,13 @@ describe("NanobossTuiApp", () => {
       inputDisabled: true,
     };
     capturedOnStateChange?.(currentState);
-    expect(editor.disableSubmit).toBe(true);
+    expect(editor.disableSubmit).toBe(false);
 
-    editor.setText("/quit");
+    editor.setText("steer here");
     expect(editor.disableSubmit).toBe(false);
 
     editor.submit();
-    expect(handledSubmissions).toEqual(["/quit"]);
+    expect(handledSubmissions).toEqual(["steer here"]);
   });
 
   test("pressing ctrl+o toggles expanded tool output", async () => {
@@ -130,11 +131,12 @@ describe("NanobossTuiApp", () => {
         }),
         createEditor: () => editor,
         createController: () => ({
-          getState: () => currentState,
-          async handleSubmit() {},
-          async cancelActiveRun() {},
-          toggleToolOutput() {
-            toggles.push("toggle");
+            getState: () => currentState,
+            async handleSubmit() {},
+            async queuePrompt() {},
+            async cancelActiveRun() {},
+            toggleToolOutput() {
+              toggles.push("toggle");
           },
           requestExit() {},
           async run() {
@@ -191,6 +193,7 @@ describe("NanobossTuiApp", () => {
           return {
             getState: () => currentState,
             async handleSubmit() {},
+            async queuePrompt() {},
             async cancelActiveRun() {
               cancellations.push("cancel");
             },
@@ -214,6 +217,64 @@ describe("NanobossTuiApp", () => {
 
     expect(result).toEqual({ consume: true });
     expect(cancellations).toEqual(["cancel"]);
+  });
+
+  test("pressing tab while a run is active queues the current input", async () => {
+    const editor = new FakeEditor();
+    const queued: string[] = [];
+    const currentState: UiState = {
+      ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
+      inputDisabled: true,
+    };
+    let inputListener: ((data: string) => unknown) | undefined;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener(listener) {
+            inputListener = listener;
+          },
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async queuePrompt(text: string) {
+            queued.push(text);
+          },
+          async cancelActiveRun() {},
+          toggleToolOutput() {},
+          requestExit() {},
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => ({
+          setState() {},
+        }),
+      },
+    );
+
+    editor.setText("after this");
+    const result = inputListener?.("\t");
+    await Promise.resolve();
+
+    expect(result).toEqual({ consume: true });
+    expect(queued).toEqual(["after this"]);
   });
 
   test("applies local tool card theme changes to the shared theme instance", () => {
@@ -250,6 +311,7 @@ describe("NanobossTuiApp", () => {
           return {
             getState: () => currentState,
             async handleSubmit() {},
+            async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
             requestExit() {},

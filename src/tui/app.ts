@@ -56,6 +56,7 @@ interface ViewLike {
 interface ControllerLike {
   getState(): UiState;
   handleSubmit(text: string): Promise<void>;
+  queuePrompt(text: string): Promise<void>;
   cancelActiveRun(): Promise<void>;
   toggleToolOutput(): void;
   requestExit(): void;
@@ -138,6 +139,16 @@ export class NanobossTuiApp {
     };
 
     this.tui.addInputListener((data) => {
+      if (matchesKey(data, "tab") && this.state.inputDisabled) {
+        const text = this.editor.getText();
+        if (text.trim().length === 0) {
+          return undefined;
+        }
+
+        void this.controller.queuePrompt(text);
+        return { consume: true };
+      }
+
       if (matchesKey(data, "escape") && this.state.inputDisabled) {
         void this.controller.cancelActiveRun();
         return { consume: true };

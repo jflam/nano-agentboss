@@ -30,8 +30,7 @@ export function isExitRequest(trimmed: string): boolean {
 }
 
 export function shouldDisableEditorSubmit(inputDisabled: boolean, text: string): boolean {
-  const trimmed = text.trim();
-  return inputDisabled && !isExitRequest(trimmed) && parseToolCardThemeCommand(trimmed) === undefined;
+  return inputDisabled && text.trim().length === 0;
 }
 
 export function isNewSessionRequest(trimmed: string): boolean {

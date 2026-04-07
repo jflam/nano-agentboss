@@ -68,6 +68,145 @@ describe("NanobossTuiController", () => {
     await expect(runPromise).resolves.toBe("session-1");
   });
 
+  test("busy enter queues a steering prompt, latches stop, and submits it after the run stops", async () => {
+    const sendCalls: string[] = [];
+    const cancelCalls: Array<{ sessionId: string; runId: string }> = [];
+    const streams: FakeStreamRecord[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
+          sendCalls.push(prompt);
+        },
+        cancelSessionRun: async (_baseUrl, sessionId, runId) => {
+          cancelCalls.push({ sessionId, runId });
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream(streams, sessionId, onEvent),
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    await controller.handleSubmit("hello");
+    streams[0]?.emit(eventEnvelope("run_started", {
+      runId: "run-1",
+      procedure: "default",
+      prompt: "hello",
+      startedAt: new Date(0).toISOString(),
+    }));
+
+    await controller.handleSubmit("steer now");
+
+    expect(sendCalls).toEqual(["hello"]);
+    expect(cancelCalls).toEqual([{ sessionId: "session-1", runId: "run-1" }]);
+    expect(controller.getState().pendingPrompts).toEqual([
+      { id: "pending-1", text: "steer now", kind: "steering" },
+    ]);
+
+    streams[0]?.emit(eventEnvelope("run_cancelled", {
+      runId: "run-1",
+      procedure: "default",
+      completedAt: new Date(1).toISOString(),
+      message: "Stopped.",
+    }));
+
+    await waitFor(() => sendCalls.length === 2);
+
+    expect(sendCalls).toEqual(["hello", "steer now"]);
+    expect(controller.getState().pendingPrompts).toEqual([]);
+    expect(controller.getState().turns.at(-1)).toMatchObject({
+      role: "user",
+      markdown: "steer now",
+      status: "complete",
+    });
+
+    controller.requestExit();
+    await runPromise;
+  });
+
+  test("tab-queued prompts wait for completion and steering prompts run before queued prompts", async () => {
+    const sendCalls: string[] = [];
+    const cancelCalls: Array<{ sessionId: string; runId: string }> = [];
+    const streams: FakeStreamRecord[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
+          sendCalls.push(prompt);
+        },
+        cancelSessionRun: async (_baseUrl, sessionId, runId) => {
+          cancelCalls.push({ sessionId, runId });
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream(streams, sessionId, onEvent),
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    await controller.handleSubmit("hello");
+    streams[0]?.emit(eventEnvelope("run_started", {
+      runId: "run-1",
+      procedure: "default",
+      prompt: "hello",
+      startedAt: new Date(0).toISOString(),
+    }));
+
+    await controller.queuePrompt("queued later");
+    await controller.handleSubmit("steer first");
+
+    expect(controller.getState().pendingPrompts.map((prompt) => ({
+      text: prompt.text,
+      kind: prompt.kind,
+    }))).toEqual([
+      { text: "queued later", kind: "queued" },
+      { text: "steer first", kind: "steering" },
+    ]);
+    expect(cancelCalls).toEqual([{ sessionId: "session-1", runId: "run-1" }]);
+
+    streams[0]?.emit(eventEnvelope("run_cancelled", {
+      runId: "run-1",
+      procedure: "default",
+      completedAt: new Date(1).toISOString(),
+      message: "Stopped.",
+    }));
+
+    await waitFor(() => sendCalls.length === 2);
+    await Bun.sleep(10);
+    expect(sendCalls).toEqual(["hello", "steer first"]);
+
+    streams[0]?.emit(eventEnvelope("run_started", {
+      runId: "run-2",
+      procedure: "default",
+      prompt: "steer first",
+      startedAt: new Date(2).toISOString(),
+    }));
+    streams[0]?.emit(eventEnvelope("run_completed", {
+      runId: "run-2",
+      procedure: "default",
+      completedAt: new Date(3).toISOString(),
+      cell: { sessionId: "session-1", cellId: "cell-2" },
+    }));
+
+    await waitFor(() => sendCalls.length === 3);
+    expect(sendCalls).toEqual(["hello", "steer first", "queued later"]);
+    expect(controller.getState().pendingPrompts).toEqual([]);
+
+    controller.requestExit();
+    await runPromise;
+  });
+
   test("/new creates a new session and reconnects the event stream", async () => {
     const createCalls: Array<DownstreamAgentSelection | undefined> = [];
     const streams: FakeStreamRecord[] = [];

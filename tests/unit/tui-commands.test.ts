@@ -10,11 +10,13 @@ describe("tui commands", () => {
     expect(shouldDisableEditorSubmit(true, "/light")).toBe(false);
     expect(shouldDisableEditorSubmit(true, "/dark")).toBe(false);
     expect(shouldDisableEditorSubmit(true, "quit")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "hello")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "/new")).toBe(false);
   });
 
-  test("disables submit for non-exit input while a run is active", () => {
-    expect(shouldDisableEditorSubmit(true, "hello")).toBe(true);
-    expect(shouldDisableEditorSubmit(true, "/new")).toBe(true);
+  test("disables submit for blank input while a run is active", () => {
+    expect(shouldDisableEditorSubmit(true, "")).toBe(true);
+    expect(shouldDisableEditorSubmit(true, "   ")).toBe(true);
   });
 
   test("leaves submit enabled when no run is active", () => {

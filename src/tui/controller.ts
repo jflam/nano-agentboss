@@ -23,7 +23,7 @@ import {
   parseToolCardThemeCommand,
 } from "./commands.ts";
 import { reduceUiState, type UiAction } from "./reducer.ts";
-import { createInitialUiState, type UiState } from "./state.ts";
+import { createInitialUiState, type UiPendingPrompt, type UiState } from "./state.ts";
 
 export interface SessionResponse {
   sessionId: string;
@@ -71,6 +71,8 @@ export class NanobossTuiController {
   private state: UiState;
   private stream?: SessionStreamHandle;
   private stopped = false;
+  private flushingPendingPrompt = false;
+  private nextPendingPromptId = 1;
   private exitResolver?: () => void;
   private readonly exited: Promise<void>;
 
@@ -150,6 +152,18 @@ export class NanobossTuiController {
     }
 
     if (this.state.inputDisabled) {
+      const blockedCommand = getBusyLocalCommandLabel(trimmed);
+      if (blockedCommand) {
+        this.dispatch({
+          type: "local_status",
+          text: `[run] wait for the current run to finish before using ${blockedCommand}`,
+        });
+        return;
+      }
+
+      this.deps.onAddHistory?.(text);
+      this.deps.onClearInput?.();
+      await this.enqueuePendingPrompt(text, "steering");
       return;
     }
 
@@ -173,6 +187,26 @@ export class NanobossTuiController {
     this.deps.onAddHistory?.(text);
     this.deps.onClearInput?.();
     await this.forwardPrompt(text);
+  }
+
+  async queuePrompt(text: string): Promise<void> {
+    const trimmed = text.trim();
+    if (trimmed.length === 0 || !this.state.inputDisabled) {
+      return;
+    }
+
+    const blockedCommand = getBusyLocalCommandLabel(trimmed);
+    if (blockedCommand) {
+      this.dispatch({
+        type: "local_status",
+        text: `[run] wait for the current run to finish before using ${blockedCommand}`,
+      });
+      return;
+    }
+
+    this.deps.onAddHistory?.(text);
+    this.deps.onClearInput?.();
+    await this.enqueuePendingPrompt(text, "queued");
   }
 
   async cancelActiveRun(): Promise<void> {
@@ -250,6 +284,7 @@ export class NanobossTuiController {
       onEvent: (event) => {
         this.dispatch({ type: "frontend_event", event });
         this.maybeSendLatchedStopRequest(event);
+        void this.maybeFlushPendingPrompt(event);
       },
       onError: (error) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -285,6 +320,44 @@ export class NanobossTuiController {
         runId,
         text: `[run] cancel failed: ${message}`,
       });
+    }
+  }
+
+  private async enqueuePendingPrompt(text: string, kind: UiPendingPrompt["kind"]): Promise<void> {
+    this.dispatch({
+      type: "local_pending_prompt_added",
+      prompt: {
+        id: `pending-${this.nextPendingPromptId++}`,
+        text,
+        kind,
+      },
+    });
+
+    if (kind === "steering") {
+      await this.cancelActiveRun();
+    }
+  }
+
+  private async maybeFlushPendingPrompt(event: FrontendEventEnvelope): Promise<void> {
+    if (!isTerminalFrontendEvent(event) || this.flushingPendingPrompt || this.state.inputDisabled) {
+      return;
+    }
+
+    const nextPrompt = selectNextPendingPrompt(this.state.pendingPrompts);
+    if (!nextPrompt) {
+      return;
+    }
+
+    this.flushingPendingPrompt = true;
+    this.dispatch({
+      type: "local_pending_prompt_removed",
+      promptId: nextPrompt.id,
+    });
+
+    try {
+      await this.forwardPrompt(nextPrompt.text);
+    } finally {
+      this.flushingPendingPrompt = false;
     }
   }
 
@@ -368,4 +441,25 @@ export class NanobossTuiController {
       this.dispatch({ type: "local_send_failed", error: message });
     }
   }
+}
+
+function getBusyLocalCommandLabel(trimmed: string): string | undefined {
+  if (trimmed === "/new") {
+    return "/new";
+  }
+
+  if (trimmed === "/model" || trimmed.startsWith("/model ")) {
+    return "/model";
+  }
+
+  return undefined;
+}
+
+function isTerminalFrontendEvent(event: FrontendEventEnvelope): boolean {
+  return event.type === "run_completed" || event.type === "run_failed" || event.type === "run_cancelled";
+}
+
+function selectNextPendingPrompt(prompts: UiPendingPrompt[]): UiPendingPrompt | undefined {
+  return prompts.find((prompt) => prompt.kind === "steering")
+    ?? prompts.find((prompt) => prompt.kind === "queued");
 }
