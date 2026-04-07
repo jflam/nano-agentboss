@@ -104,7 +104,7 @@ describe("NanobossTuiApp", () => {
   test("pressing ctrl+o toggles expanded tool output", async () => {
     const editor = new FakeEditor();
     const toggles: string[] = [];
-    let currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
     let inputListener: ((data: string) => unknown) | undefined;
 
     new NanobossTuiApp(
@@ -157,7 +157,7 @@ describe("NanobossTuiApp", () => {
   test("pressing escape while a run is active cancels the current run", async () => {
     const editor = new FakeEditor();
     const cancellations: string[] = [];
-    let currentState: UiState = {
+    const currentState: UiState = {
       ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
       inputDisabled: true,
     };
