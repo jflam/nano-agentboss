@@ -5,10 +5,12 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 
+import { defaultCancellationMessage } from "../core/cancellation.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
 import { findRecoveredProcedureDispatchCell } from "./dispatch-recovery.ts";
 import {
@@ -16,6 +18,7 @@ import {
   buildProcedureDispatchProgressPath,
 } from "./dispatch-progress.ts";
 import {
+  TopLevelProcedureCancelledError,
   TopLevelProcedureExecutionError,
   buildProcedureExecutionResult,
   executeTopLevelProcedure,
@@ -32,6 +35,7 @@ import type {
 import { requireValue } from "../util/argv.ts";
 
 const PROCEDURE_DISPATCH_JOBS_DIR = "procedure-dispatch-jobs";
+const PROCEDURE_DISPATCH_CANCELS_DIR = "procedure-dispatch-cancels";
 const DEFAULT_WAIT_MS = 1_000;
 const MAX_WAIT_MS = 2_000;
 const WAIT_POLL_MS = 100;
@@ -130,9 +134,15 @@ export class ProcedureDispatchJobManager {
       defaultAgentSelection: args.defaultAgentSelection,
     };
 
-    this.writeJob(job);
-    const workerPid = this.spawnWorker(dispatchId);
-    this.writeJobWorkerPid(dispatchId, workerPid);
+    const cancellationRequested = isProcedureDispatchCancellationRequested(
+      this.params.rootDir,
+      job.dispatchCorrelationId,
+    );
+    this.writeJob(cancellationRequested ? markJobCancelled(job) : job);
+    if (!cancellationRequested) {
+      const workerPid = this.spawnWorker(dispatchId);
+      this.writeJobWorkerPid(dispatchId, workerPid);
+    }
 
     return {
       dispatchId,
@@ -159,12 +169,32 @@ export class ProcedureDispatchJobManager {
     }
   }
 
+  cancelByCorrelationId(dispatchCorrelationId: string): void {
+    requestProcedureDispatchCancellation(this.params.rootDir, dispatchCorrelationId);
+    for (const job of this.listJobs()) {
+      if (job.dispatchCorrelationId !== dispatchCorrelationId || isTerminalStatus(job.status)) {
+        continue;
+      }
+
+      this.writeJob(markJobCancelled(job));
+    }
+  }
+
   async run(dispatchId: string): Promise<void> {
     let job = this.readJob(dispatchId);
+    if (job.status === "cancelled" || isProcedureDispatchCancellationRequested(this.params.rootDir, job.dispatchCorrelationId)) {
+      if (job.status !== "cancelled") {
+        this.writeJob(markJobCancelled(job));
+      }
+      return;
+    }
+
     if (isTerminalStatus(job.status)) {
       return;
     }
 
+    const softStopController = new AbortController();
+    const stopWatchingCancellation = this.watchCancellation(dispatchId, job.dispatchCorrelationId, softStopController);
     const startedAt = new Date().toISOString();
     job = {
       ...job,
@@ -198,6 +228,7 @@ export class ProcedureDispatchJobManager {
         procedure,
         prompt: job.prompt,
         emitter,
+        softStopSignal: softStopController.signal,
         getDefaultAgentConfig: () => defaultAgentConfig,
         setDefaultAgentSelection: (selection) => {
           const nextConfig = resolveDownstreamAgentConfig(this.params.cwd, selection);
@@ -208,8 +239,20 @@ export class ProcedureDispatchJobManager {
       });
 
       const completedAt = new Date().toISOString();
+      const latest = this.readJob(dispatchId);
+      if (latest.status === "cancelled" || softStopController.signal.aborted) {
+        this.writeJob({
+          ...markJobCancelled(latest, completedAt),
+          cell: result.cell,
+          result,
+          error: defaultCancellationMessage("soft_stop"),
+          defaultAgentSelection: result.defaultAgentSelection ?? job.defaultAgentSelection,
+        });
+        return;
+      }
+
       this.writeJob({
-        ...this.readJob(dispatchId),
+        ...latest,
         status: "completed",
         updatedAt: completedAt,
         completedAt,
@@ -222,15 +265,29 @@ export class ProcedureDispatchJobManager {
       const completedAt = new Date().toISOString();
       const latest = this.readJob(dispatchId);
       const message = error instanceof Error ? error.message : String(error);
+      const cell = error instanceof TopLevelProcedureExecutionError || error instanceof TopLevelProcedureCancelledError
+        ? error.cell
+        : latest.cell;
+      if (latest.status === "cancelled" || softStopController.signal.aborted) {
+        this.writeJob({
+          ...markJobCancelled(latest, completedAt),
+          cell,
+          error: message,
+        });
+        return;
+      }
+
       this.writeJob({
         ...latest,
-        status: latest.status === "cancelled" ? "cancelled" : "failed",
+        status: "failed",
         updatedAt: completedAt,
         completedAt,
-        cell: error instanceof TopLevelProcedureExecutionError ? error.cell : latest.cell,
+        cell,
         error: message,
       });
       throw error;
+    } finally {
+      stopWatchingCancellation();
     }
   }
 
@@ -405,14 +462,74 @@ export class ProcedureDispatchJobManager {
       .filter((entry) => entry.endsWith(".json"))
       .map((entry) => JSON.parse(readFileSync(join(this.jobsDir, entry), "utf8")) as ProcedureDispatchJob);
   }
+
+  private watchCancellation(
+    dispatchId: string,
+    dispatchCorrelationId: string,
+    controller: AbortController,
+  ): () => void {
+    const poll = () => {
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      const latest = this.readJob(dispatchId);
+      if (
+        latest.status !== "cancelled"
+        && !isProcedureDispatchCancellationRequested(this.params.rootDir, dispatchCorrelationId)
+      ) {
+        return;
+      }
+
+      if (latest.status !== "cancelled") {
+        this.writeJob(markJobCancelled(latest));
+      }
+      controller.abort();
+    };
+
+    poll();
+    const timer = setInterval(poll, WAIT_POLL_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }
 }
 
 export function buildProcedureDispatchJobsDir(rootDir: string): string {
   return join(rootDir, PROCEDURE_DISPATCH_JOBS_DIR);
 }
 
+export function buildProcedureDispatchCancelsDir(rootDir: string): string {
+  return join(rootDir, PROCEDURE_DISPATCH_CANCELS_DIR);
+}
+
 export function buildProcedureDispatchJobPath(rootDir: string, dispatchId: string): string {
   return join(buildProcedureDispatchJobsDir(rootDir), `${dispatchId}.json`);
+}
+
+export function buildProcedureDispatchCancelPath(rootDir: string, dispatchCorrelationId: string): string {
+  return join(buildProcedureDispatchCancelsDir(rootDir), `${dispatchCorrelationId}.cancel`);
+}
+
+export function requestProcedureDispatchCancellation(rootDir: string, dispatchCorrelationId: string): void {
+  mkdirSync(buildProcedureDispatchCancelsDir(rootDir), { recursive: true });
+  const targetPath = buildProcedureDispatchCancelPath(rootDir, dispatchCorrelationId);
+  const tempPath = `${targetPath}.${process.pid}.tmp`;
+  writeFileSync(tempPath, `${new Date().toISOString()}\n`, "utf8");
+  renameSync(tempPath, targetPath);
+}
+
+export function clearProcedureDispatchCancellation(rootDir: string, dispatchCorrelationId: string): void {
+  const filePath = buildProcedureDispatchCancelPath(rootDir, dispatchCorrelationId);
+  if (!existsSync(filePath)) {
+    return;
+  }
+
+  unlinkSync(filePath);
+}
+
+export function isProcedureDispatchCancellationRequested(rootDir: string, dispatchCorrelationId: string): boolean {
+  return existsSync(buildProcedureDispatchCancelPath(rootDir, dispatchCorrelationId));
 }
 
 export async function runProcedureDispatchWorkerCommand(argv: string[]): Promise<void> {
@@ -543,5 +660,18 @@ function toProcedureDispatchStatusResult(job: ProcedureDispatchJob): ProcedureDi
     cell: job.cell,
     result: job.result,
     error: job.error,
+  };
+}
+
+function markJobCancelled(
+  job: ProcedureDispatchJob,
+  timestamp = new Date().toISOString(),
+): ProcedureDispatchJob {
+  return {
+    ...job,
+    status: "cancelled",
+    updatedAt: timestamp,
+    completedAt: job.completedAt ?? timestamp,
+    error: job.error ?? defaultCancellationMessage("soft_stop"),
   };
 }

@@ -30,6 +30,7 @@ import {
   procedureDispatchResultFromRecoveredCell,
   waitForRecoveredProcedureDispatchCell,
 } from "../procedure/dispatch-recovery.ts";
+import { ProcedureDispatchJobManager } from "../procedure/dispatch-jobs.ts";
 import {
   buildRunCancelledEvent,
   buildRunCompletedEvent,
@@ -55,6 +56,7 @@ interface ActiveRunState {
   abortController: AbortController;
   softStopController: AbortController;
   softStopRequested: boolean;
+  dispatchCorrelationIds: Set<string>;
 }
 
 interface SessionState {
@@ -319,7 +321,8 @@ export class NanobossService {
   }
 
   cancel(sessionId: string, runId?: string): void {
-    const activeRun = this.sessions.get(sessionId)?.activeRun;
+    const session = this.sessions.get(sessionId);
+    const activeRun = session?.activeRun;
     if (!activeRun) {
       return;
     }
@@ -330,6 +333,7 @@ export class NanobossService {
 
     activeRun.softStopRequested = true;
     activeRun.softStopController.abort();
+    this.cancelActiveProcedureDispatches(sessionId, session, activeRun);
   }
 
   destroySession(sessionId: string): void {
@@ -338,6 +342,7 @@ export class NanobossService {
       return;
     }
 
+    this.cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
     session.activeRun?.abortController.abort();
     session.activeRun?.softStopController.abort();
     session.defaultConversation.closeLiveSession();
@@ -418,9 +423,11 @@ export class NanobossService {
       signal?: AbortSignal;
       softStopSignal?: AbortSignal;
       assertCanStartBoundary?: () => void;
+      activeRun?: ActiveRunState;
     } = {},
   ): Promise<{ result: ProcedureExecutionResult; tokenUsage?: AgentTokenUsage }> {
     const dispatchCorrelationId = crypto.randomUUID();
+    options.activeRun?.dispatchCorrelationIds.add(dispatchCorrelationId);
     const stopProgressBridge = startProcedureDispatchProgressBridge(
       session.store.rootDir,
       dispatchCorrelationId,
@@ -468,6 +475,8 @@ export class NanobossService {
       const recoveredCell = await waitForRecoveredProcedureDispatchCell(session.store, {
         procedureName,
         dispatchCorrelationId,
+        signal: options.signal,
+        softStopSignal: options.softStopSignal,
       });
       if (recoveredCell) {
         return {
@@ -486,7 +495,31 @@ export class NanobossService {
           : `Default session did not complete async dispatch for /${procedureName}.`,
       );
     } finally {
+      options.activeRun?.dispatchCorrelationIds.delete(dispatchCorrelationId);
       await stopProgressBridge();
+    }
+  }
+
+  private cancelActiveProcedureDispatches(
+    sessionId: string,
+    session: SessionState,
+    activeRun: ActiveRunState | undefined,
+  ): void {
+    if (!activeRun || activeRun.dispatchCorrelationIds.size === 0) {
+      return;
+    }
+
+    const manager = new ProcedureDispatchJobManager({
+      cwd: session.cwd,
+      sessionId,
+      rootDir: session.store.rootDir,
+      getRegistry: async () => {
+        throw new Error("Procedure registry is unavailable during cancellation.");
+      },
+    });
+
+    for (const dispatchCorrelationId of activeRun.dispatchCorrelationIds) {
+      manager.cancelByCorrelationId(dispatchCorrelationId);
     }
   }
 
@@ -604,6 +637,7 @@ export class NanobossService {
       throw new Error(`Unknown session: ${sessionId}`);
     }
 
+    this.cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
     session.activeRun?.abortController.abort();
     session.activeRun?.softStopController.abort();
 
@@ -617,6 +651,7 @@ export class NanobossService {
       abortController: new AbortController(),
       softStopController: new AbortController(),
       softStopRequested: false,
+      dispatchCorrelationIds: new Set<string>(),
     };
     session.activeRun = activeRun;
     const runId = activeRun.runId;
@@ -709,6 +744,7 @@ export class NanobossService {
               signal: activeRun.abortController.signal,
               softStopSignal: activeRun.softStopController.signal,
               assertCanStartBoundary,
+              activeRun,
             },
           );
 

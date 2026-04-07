@@ -1,4 +1,8 @@
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
+import {
+  RunCancelledError,
+  defaultCancellationMessage,
+} from "../core/cancellation.ts";
 import type { DefaultConversationSession } from "../agent/default-session.ts";
 import { buildProcedureExecutionResult, type ProcedureExecutionResult } from "./runner.ts";
 import { createValueRef, type SessionStore } from "../session/index.ts";
@@ -15,11 +19,21 @@ export async function waitForRecoveredProcedureDispatchCell(
   params: {
     procedureName: string;
     dispatchCorrelationId: string;
+    signal?: AbortSignal;
+    softStopSignal?: AbortSignal;
   },
 ): Promise<CellRecord | undefined> {
   const deadline = Date.now() + getProcedureDispatchRecoveryWaitMs();
 
   for (;;) {
+    if (params.softStopSignal?.aborted) {
+      throw new RunCancelledError(defaultCancellationMessage("soft_stop"), "soft_stop");
+    }
+
+    if (params.signal?.aborted) {
+      throw new RunCancelledError(defaultCancellationMessage("abort"), "abort");
+    }
+
     const found = findRecoveredProcedureDispatchCell(store, params);
     if (found) {
       return found;

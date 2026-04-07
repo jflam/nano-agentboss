@@ -10,6 +10,7 @@ const BUILD_HOOK_TIMEOUT_MS = 15_000;
 
 import { DefaultConversationSession } from "../../src/agent/default-session.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { buildProcedureDispatchJobsDir } from "../../src/procedure/dispatch-jobs.ts";
 import { TopLevelProcedureCancelledError } from "../../src/procedure/runner.ts";
 import type { SessionStore } from "../../src/session/index.ts";
 import { extractProcedureDispatchResult, NanobossService } from "../../src/core/service.ts";
@@ -676,6 +677,67 @@ describe("NanobossService", () => {
       expect(startedTitles.some((title) => title.includes("second boundary should never start"))).toBe(false);
       expect(firstUpdate?.type).toBe("tool_updated");
       expect(firstUpdate?.data.status).toBe("cancelled");
+      expect(cancelledRun?.type).toBe("run_cancelled");
+      expect(cancelledRun?.data.message).toBe("Stopped.");
+    }, {
+      MOCK_AGENT_COOPERATIVE_CANCEL: "1",
+    });
+  }, 30_000);
+
+  test("soft stop cancels slash-command dispatch workers and their nested agents", async () => {
+    await withMockAgentEnv(async () => {
+      const { cwd, registry } = await createRegistryWithWorkspace({
+        review: [
+          "export default {",
+          '  name: "review",',
+          '  description: "test review",',
+          "  async execute(_prompt, ctx) {",
+          '    await ctx.callAgent("cooperative cancel demo", { stream: false });',
+          '    return { display: "done" };',
+          "  },",
+          "};",
+        ].join("\n"),
+      });
+
+      const service = new NanobossService(registry);
+      const session = service.createSession({ cwd });
+      const sessionState = (service as NanobossService & { sessions: Map<string, { store: SessionStore }> })
+        .sessions
+        .get(session.sessionId);
+      if (!sessionState) {
+        throw new Error("Missing internal session state");
+      }
+      const jobsDir = buildProcedureDispatchJobsDir(sessionState.store.rootDir);
+      const promptPromise = service.prompt(session.sessionId, "/review stop this");
+
+      await waitForCondition(() => {
+        try {
+          return readdirSync(jobsDir).some((file) => file.endsWith(".json"));
+        } catch {
+          return false;
+        }
+      }, 10_000, "Timed out waiting for procedure dispatch job");
+
+      const runStarted = (service.getSessionEvents(session.sessionId)?.after(-1) ?? []).findLast(
+        (event) => event.type === "run_started",
+      );
+      if (runStarted?.type !== "run_started") {
+        throw new Error("Missing run_started event");
+      }
+
+      service.cancel(session.sessionId, runStarted.data.runId);
+      await promptPromise;
+      await waitForCondition(() => {
+        const fileName = readdirSync(jobsDir).find((file) => file.endsWith(".json"));
+        if (!fileName) {
+          return false;
+        }
+        const job = JSON.parse(readFileSync(join(jobsDir, fileName), "utf8")) as { status?: string; error?: string };
+        return job.status === "cancelled" && job.error === "Stopped.";
+      }, 10_000, "Timed out waiting for cancelled dispatch job");
+
+      const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const cancelledRun = events.findLast((event) => event.type === "run_cancelled");
       expect(cancelledRun?.type).toBe("run_cancelled");
       expect(cancelledRun?.data.message).toBe("Stopped.");
     }, {
