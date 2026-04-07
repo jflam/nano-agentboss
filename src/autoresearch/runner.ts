@@ -85,7 +85,6 @@ type AutoresearchProgressEvent =
   | {
       kind: "candidate_selected";
       idea: string;
-      filesInScope: string[];
     }
   | {
       kind: "candidate_applied";
@@ -96,25 +95,17 @@ type AutoresearchProgressEvent =
       command: string;
     }
   | {
-      kind: "benchmark_completed";
-      metricName: string;
-      metric?: number;
-      metricUnit?: string;
-    }
-  | {
       kind: "checks_failed";
       checkName: string;
     }
   | {
       kind: "decision_kept";
       metric?: number;
-      bestMetric?: number;
       metricUnit?: string;
     }
   | {
       kind: "decision_reverted";
       metric?: number;
-      bestMetric?: number;
       metricUnit?: string;
     }
   | {
@@ -124,7 +115,6 @@ type AutoresearchProgressEvent =
   | {
       kind: "session_completed";
       iterationCount: number;
-      maxIterations: number;
       bestMetric?: number;
       metricName: string;
       metricUnit?: string;
@@ -136,15 +126,11 @@ type AutoresearchIterationResult =
       kind: "recorded";
       state: AutoresearchState;
       record: AutoresearchExperimentRecord;
-      experiment: AutoresearchExperimentSpec;
-      applied: AutoresearchApplyResult;
-      shouldContinue: boolean;
     }
   | {
       kind: "stopped";
       state: AutoresearchState;
       stopReason: string;
-      shouldContinue: false;
     };
 
 export async function executeAutoresearchCommand(
@@ -464,7 +450,6 @@ async function initializeAutoresearch(
     emitAutoresearchProgress(ctx, {
       kind: "session_completed",
       iterationCount: state.iterationCount,
-      maxIterations: state.maxIterations,
       bestMetric: state.currentBestMetric,
       metricName: state.benchmark.metric.name,
       metricUnit: state.benchmark.metric.unit,
@@ -512,12 +497,6 @@ async function runForegroundAutoresearchLoop(params: {
     }
 
     records = [...records, iteration.record];
-    emitAutoresearchProgress(params.ctx, {
-      kind: "benchmark_completed",
-      metricName: state.benchmark.metric.name,
-      metric: iteration.record.benchmark.metric,
-      metricUnit: state.benchmark.metric.unit,
-    });
 
     if (iteration.record.decision.reason.startsWith("Check failed: ")) {
       emitAutoresearchProgress(params.ctx, {
@@ -531,7 +510,6 @@ async function runForegroundAutoresearchLoop(params: {
         emitAutoresearchProgress(params.ctx, {
           kind: "decision_kept",
           metric: iteration.record.benchmark.metric,
-          bestMetric: state.currentBestMetric,
           metricUnit: state.benchmark.metric.unit,
         });
         break;
@@ -539,7 +517,6 @@ async function runForegroundAutoresearchLoop(params: {
         emitAutoresearchProgress(params.ctx, {
           kind: "decision_reverted",
           metric: iteration.record.benchmark.metric,
-          bestMetric: state.currentBestMetric,
           metricUnit: state.benchmark.metric.unit,
         });
         break;
@@ -563,7 +540,6 @@ async function runForegroundAutoresearchLoop(params: {
   emitAutoresearchProgress(params.ctx, {
     kind: "session_completed",
     iterationCount: state.iterationCount,
-    maxIterations: state.maxIterations,
     bestMetric: state.currentBestMetric,
     metricName: state.benchmark.metric.name,
     metricUnit: state.benchmark.metric.unit,
@@ -589,7 +565,6 @@ async function runAutoresearchIteration(params: {
       kind: "stopped",
       state: stoppedState,
       stopReason: experiment.stopReason ?? "agent requested stop",
-      shouldContinue: false,
     };
   }
 
@@ -601,7 +576,6 @@ async function runAutoresearchIteration(params: {
   emitAutoresearchProgress(params.ctx, {
     kind: "candidate_selected",
     idea: experiment.idea,
-    filesInScope: experiment.filesInScope,
   });
 
   const applied = await applyExperiment(params.ctx, stateBeforeIteration, experiment, params.records);
@@ -634,9 +608,6 @@ async function runAutoresearchIteration(params: {
     kind: "recorded",
     state: nextState,
     record,
-    experiment,
-    applied,
-    shouldContinue: nextState.iterationCount < nextState.maxIterations,
   };
 }
 
@@ -1092,8 +1063,6 @@ function formatAutoresearchProgress(event: AutoresearchProgressEvent): string | 
         : "Applied candidate.";
     case "benchmark_started":
       return `Benchmarking candidate (${event.command})...`;
-    case "benchmark_completed":
-      return undefined;
     case "checks_failed":
       return `Checks failed: ${event.checkName}. Reverting candidate.`;
     case "decision_kept":
