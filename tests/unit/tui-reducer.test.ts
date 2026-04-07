@@ -162,6 +162,81 @@ describe("tui reducer", () => {
     expect(state.transcriptItems).toContainEqual({ type: "tool_call", id: "tool-1" });
   });
 
+  test("records turn completion stats from attempted and succeeded tool calls", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "local_user_submitted",
+      text: "hello",
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "default",
+        prompt: "hello",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("text_delta", {
+        runId: "run-1",
+        text: "done",
+        stream: "agent",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_started", {
+        runId: "run-1",
+        toolCallId: "tool-1",
+        title: "Mock read README.md",
+        kind: "read",
+        status: "pending",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_updated", {
+        runId: "run-1",
+        toolCallId: "tool-1",
+        status: "completed",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_started", {
+        runId: "run-1",
+        toolCallId: "tool-2",
+        title: "Mock write notes.txt",
+        kind: "write",
+        status: "pending",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_updated", {
+        runId: "run-1",
+        toolCallId: "tool-2",
+        status: "failed",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_completed", {
+        runId: "run-1",
+        procedure: "default",
+        completedAt: new Date(2_500).toISOString(),
+        cell: { sessionId: "session-1", cellId: "cell-1" },
+      }),
+    });
+
+    expect(state.turns.at(-1)?.meta?.completionNote).toBe("# turn completed in 2.5s | tools 1/2 succeeded");
+    expect(state.activeRunAttemptedToolCallIds).toEqual([]);
+    expect(state.activeRunSucceededToolCallIds).toEqual([]);
+  });
+
   test("ignores stale run events after a newer run has started", () => {
     let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
 

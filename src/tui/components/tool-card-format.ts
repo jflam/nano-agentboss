@@ -1,6 +1,7 @@
 import type { ToolPreviewBlock } from "../../core/tool-call-preview.ts";
 import type { UiToolCall } from "../state.ts";
 import type { NanobossTuiTheme } from "../theme.ts";
+import { getLanguageFromPath } from "../theme.ts";
 
 const MAX_FALLBACK_JSON_LENGTH = 200_000;
 
@@ -98,6 +99,36 @@ export function formatPreviewBody(
 
   if (block.truncated && !expanded && block.bodyLines.length > visibleLines.length) {
     lines.push(theme.toolCardMeta(`... (${block.bodyLines.length - visibleLines.length} more lines, ctrl+o to expand)`));
+  }
+
+  return lines;
+}
+
+export function formatCodePreviewBody(
+  theme: NanobossTuiTheme,
+  toolCall: UiToolCall,
+  block: ToolPreviewBlock | undefined,
+  expanded: boolean,
+  options: {
+    collapsedLines?: number;
+  } = {},
+): string[] {
+  if (!block?.bodyLines?.length) {
+    return [];
+  }
+
+  const collapsedLines = options.collapsedLines ?? DEFAULT_COLLAPSED_LINES;
+  const { shouldHighlight, language } = getToolCodeContext(toolCall);
+  if (!shouldHighlight) {
+    return formatPreviewBody(theme, block, expanded, options);
+  }
+
+  const renderedLines = theme.highlightCode(block.bodyLines.join("\n"), language);
+  const visibleLines = expanded ? renderedLines : renderedLines.slice(0, collapsedLines);
+  const lines = [...visibleLines];
+
+  if (block.truncated && !expanded && renderedLines.length > visibleLines.length) {
+    lines.push(theme.toolCardMeta(`... (${renderedLines.length - visibleLines.length} more lines, ctrl+o to expand)`));
   }
 
   return lines;
@@ -242,6 +273,25 @@ export function getExpandedToolErrorBlock(toolCall: UiToolCall): ToolPreviewBloc
     firstString(record?.error, record?.error_message, record?.message, record?.stderr)
       ?? stringifyValue(toolCall.rawOutput),
   );
+}
+
+function getToolCodeContext(toolCall: UiToolCall): { shouldHighlight: boolean; language?: string } {
+  const toolName = normalizeToolName(toolCall);
+  const inputRecord = asRecord(toolCall.rawInput);
+  const outputRecord = asRecord(toolCall.rawOutput);
+  const explicitLanguage = firstString(
+    inputRecord?.language,
+    inputRecord?.lang,
+    outputRecord?.language,
+    outputRecord?.lang,
+  );
+  const path = firstString(extractPathLike(inputRecord), extractPathLike(outputRecord));
+  const inferredLanguage = path ? getLanguageFromPath(path) : undefined;
+
+  return {
+    shouldHighlight: toolName === "read" || toolName === "write" || explicitLanguage !== undefined || inferredLanguage !== undefined,
+    language: explicitLanguage ?? inferredLanguage,
+  };
 }
 
 function buildFullPreviewBlock(text: string | undefined): ToolPreviewBlock | undefined {

@@ -1,9 +1,9 @@
 import type { UiToolCall } from "../../state.ts";
 import type { NanobossTuiTheme } from "../../theme.ts";
 import {
+  formatCodePreviewBody,
   formatErrorLines,
   formatExpandedToolHeader,
-  formatPreviewBody,
   formatToolDurationLine,
   formatToolHeader,
   formatWarnings,
@@ -23,7 +23,7 @@ export function renderFallbackToolCard(theme: NanobossTuiTheme, toolCall: UiTool
       formatToolHeader(theme, header, toolCall.title),
       isProcedureCallMarker
         ? undefined
-        : formatPreviewBody(theme, expanded
+        : formatCodePreviewBody(theme, toolCall, expanded
           ? getExpandedToolInputBlock(toolCall) ?? {
               ...toolCall.callPreview,
               header: undefined,
@@ -34,7 +34,12 @@ export function renderFallbackToolCard(theme: NanobossTuiTheme, toolCall: UiTool
             }, expanded),
       isProcedureCallMarker
         ? undefined
-        : formatPreviewBody(theme, expanded ? getExpandedToolResultBlock(toolCall) ?? toolCall.resultPreview : toolCall.resultPreview, expanded),
+        : formatCodePreviewBody(
+          theme,
+          toolCall,
+          expanded ? getExpandedToolResultBlock(toolCall) ?? toolCall.resultPreview : toolCall.resultPreview,
+          expanded,
+        ),
       formatErrorLines(theme, expanded ? getExpandedToolErrorBlock(toolCall) ?? toolCall.errorPreview : toolCall.errorPreview, expanded),
       formatWarnings(theme, toolCall.callPreview),
       isProcedureCallMarker ? undefined : formatWarnings(theme, toolCall.resultPreview),

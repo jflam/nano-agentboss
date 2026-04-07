@@ -169,22 +169,22 @@ function renderTurnLabel(theme: NanobossTuiTheme, turn: UiTurn): string {
 
 function renderTurnBody(theme: NanobossTuiTheme, turn: UiTurn): Component {
   if (turn.role === "assistant") {
-    if (turn.markdown.length === 0) {
-      return new Text(theme.dim("…"));
-    }
-
-    const body = new Markdown(turn.markdown, 0, 0, theme.markdown, {
-      color: theme.text,
-    });
-
-    if (!turn.meta?.failureMessage) {
-      return body;
-    }
-
     const container = new Container();
-    container.addChild(body);
-    container.addChild(new Spacer(1));
-    container.addChild(new Text(theme.error(`Error: ${turn.meta.failureMessage}`), 0, 0));
+    container.addChild(turn.markdown.length === 0
+      ? new Text(theme.dim("…"))
+      : new Markdown(turn.markdown, 0, 0, theme.markdown, {
+          color: theme.text,
+        }));
+
+    if (turn.meta?.failureMessage) {
+      container.addChild(new Spacer(1));
+      container.addChild(new Text(theme.error(`Error: ${turn.meta.failureMessage}`), 0, 0));
+    }
+
+    if (turn.meta?.completionNote) {
+      container.addChild(new Text(theme.dim(turn.meta.completionNote), 0, 0));
+    }
+
     return container;
   }
 

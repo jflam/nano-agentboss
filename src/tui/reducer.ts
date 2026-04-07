@@ -104,6 +104,9 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         assistantParagraphBreakPending: undefined,
         promptDiagnosticsLine: undefined,
         tokenUsageLine: undefined,
+        runStartedAtMs: Date.now(),
+        activeRunAttemptedToolCallIds: [],
+        activeRunSucceededToolCallIds: [],
         pendingStopRequest: false,
         stopRequestedRunId: undefined,
         statusLine: "[run] waiting for response",
@@ -129,6 +132,8 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         runStartedAtMs: undefined,
         activeWrapperToolCallIds: [],
         hiddenToolCallIds: [],
+        activeRunAttemptedToolCallIds: [],
+        activeRunSucceededToolCallIds: [],
         pendingStopRequest: false,
         stopRequestedRunId: undefined,
         statusLine: `[run] ${action.error}`,
@@ -230,6 +235,12 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
       const stopRequestedRunId = state.pendingStopRequest || state.stopRequestedRunId === event.data.runId
         ? event.data.runId
         : undefined;
+      const parsedStartedAtMs = Date.parse(event.data.startedAt);
+      const runStartedAtMs = Number.isFinite(parsedStartedAtMs)
+        ? state.runStartedAtMs !== undefined
+          ? Math.min(state.runStartedAtMs, parsedStartedAtMs)
+          : parsedStartedAtMs
+        : state.runStartedAtMs ?? Date.now();
       return {
         ...state,
         activeWrapperToolCallIds: [],
@@ -241,7 +252,9 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         activeProcedure: event.data.procedure,
         activeAssistantTurnId: undefined,
         assistantParagraphBreakPending: undefined,
-        runStartedAtMs: Date.parse(event.data.startedAt) || Date.now(),
+        runStartedAtMs,
+        activeRunAttemptedToolCallIds: [],
+        activeRunSucceededToolCallIds: [],
         pendingStopRequest: false,
         stopRequestedRunId,
         statusLine: stopRequestedRunId ? STOP_REQUESTED_STATUS : `[run] ${event.data.procedure} working…`,
@@ -296,6 +309,9 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
       const depth = state.activeWrapperToolCallIds.length;
       const isWrapper = isWrapperToolTitle(event.data.title);
       const suppressed = shouldSuppressToolTraceTitle(event.data.title);
+      const activeRunAttemptedToolCallIds = state.activeRunId === event.data.runId
+        ? appendUniqueString(state.activeRunAttemptedToolCallIds, event.data.toolCallId)
+        : state.activeRunAttemptedToolCallIds;
       const activeWrapperToolCallIds = isWrapper && !state.activeWrapperToolCallIds.includes(event.data.toolCallId)
         ? [...state.activeWrapperToolCallIds, event.data.toolCallId]
         : state.activeWrapperToolCallIds;
@@ -306,6 +322,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
       if (!state.showToolCalls || suppressed) {
         return {
           ...state,
+          activeRunAttemptedToolCallIds,
           activeWrapperToolCallIds,
           hiddenToolCallIds,
         };
@@ -332,6 +349,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         ...state,
         toolCalls: upsertToolCall(state.toolCalls, nextToolCall),
         transcriptItems: appendTranscriptItem(state.transcriptItems, { type: "tool_call", id: nextToolCall.id }),
+        activeRunAttemptedToolCallIds,
         activeWrapperToolCallIds,
         hiddenToolCallIds,
       };
@@ -348,6 +366,9 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
       const activeWrapperToolCallIds = isWrapper && isTerminalToolStatus(event.data.status)
         ? state.activeWrapperToolCallIds.filter((toolCallId) => toolCallId !== event.data.toolCallId)
         : state.activeWrapperToolCallIds;
+      const activeRunSucceededToolCallIds = state.activeRunId === event.data.runId && event.data.status === "completed"
+        ? appendUniqueString(state.activeRunSucceededToolCallIds, event.data.toolCallId)
+        : state.activeRunSucceededToolCallIds;
       const hiddenToolCallIds = suppressed && isTerminalToolStatus(event.data.status)
         ? state.hiddenToolCallIds.filter((toolCallId) => toolCallId !== event.data.toolCallId)
         : suppressed && !state.hiddenToolCallIds.includes(event.data.toolCallId)
@@ -364,6 +385,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
           ...state,
           toolCalls,
           transcriptItems,
+          activeRunSucceededToolCallIds,
           activeWrapperToolCallIds,
           hiddenToolCallIds,
         };
@@ -397,6 +419,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         ...state,
         toolCalls,
         transcriptItems,
+        activeRunSucceededToolCallIds,
         activeWrapperToolCallIds,
         hiddenToolCallIds,
       };
@@ -413,6 +436,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         turnStatus: "complete",
         fallbackText: event.data.display,
         tokenUsageLine,
+        completedAt: event.data.completedAt,
         statusLine: `[run] ${event.data.procedure} completed`,
       });
     }
@@ -424,6 +448,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         turnStatus: "failed",
         fallbackText: event.data.error,
         failureMessage: event.data.error,
+        completedAt: event.data.completedAt,
         statusLine: `[run] ${event.data.error}`,
       });
     case "run_cancelled":
@@ -433,6 +458,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
       return finishRun(state, {
         turnStatus: "cancelled",
         fallbackText: event.data.message,
+        completedAt: event.data.completedAt,
         statusLine: `[run] ${event.data.procedure} stopped`,
       });
   }
@@ -507,14 +533,17 @@ function finishRun(
     fallbackText?: string;
     tokenUsageLine?: string;
     failureMessage?: string;
+    completedAt?: string;
     statusLine: string;
   },
 ): UiState {
+  const completionNote = buildTurnCompletionNote(state, params.turnStatus, params.completedAt);
   const nextState = finalizeAssistantTurn(state, {
     status: params.turnStatus,
     fallbackText: params.fallbackText,
     tokenUsageLine: params.tokenUsageLine,
     failureMessage: params.failureMessage,
+    completionNote,
   });
 
   return {
@@ -526,6 +555,8 @@ function finishRun(
     runStartedAtMs: undefined,
     activeWrapperToolCallIds: [],
     hiddenToolCallIds: [],
+    activeRunAttemptedToolCallIds: [],
+    activeRunSucceededToolCallIds: [],
     pendingStopRequest: false,
     stopRequestedRunId: undefined,
     tokenUsageLine: params.tokenUsageLine ?? nextState.tokenUsageLine,
@@ -541,6 +572,7 @@ function finalizeAssistantTurn(
     fallbackText?: string;
     tokenUsageLine?: string;
     failureMessage?: string;
+    completionNote?: string;
   },
 ): UiState {
   const activeAssistantTurnId = state.activeAssistantTurnId;
@@ -559,6 +591,7 @@ function finalizeAssistantTurn(
         procedure: state.activeProcedure,
         tokenUsageLine: params.tokenUsageLine,
         failureMessage: undefined,
+        completionNote: params.completionNote,
       }),
     });
 
@@ -587,6 +620,7 @@ function finalizeAssistantTurn(
           procedure: turn.meta?.procedure ?? state.activeProcedure,
           tokenUsageLine: params.tokenUsageLine,
           failureMessage: hadStreamedText ? params.failureMessage : undefined,
+          completionNote: params.completionNote,
         }),
       };
     }),
@@ -605,15 +639,17 @@ function buildAssistantTurnMeta(params: {
   procedure?: string;
   tokenUsageLine?: string;
   failureMessage?: string;
+  completionNote?: string;
 }): UiTurn["meta"] | undefined {
   const meta = {
     ...params.existing,
     procedure: params.procedure ?? params.existing?.procedure,
     tokenUsageLine: params.tokenUsageLine ?? params.existing?.tokenUsageLine,
     failureMessage: params.failureMessage,
+    completionNote: params.completionNote ?? params.existing?.completionNote,
   };
 
-  return meta.procedure || meta.tokenUsageLine || meta.failureMessage ? meta : undefined;
+  return meta.procedure || meta.tokenUsageLine || meta.failureMessage || meta.completionNote ? meta : undefined;
 }
 
 function mergeToolPreview(
@@ -671,6 +707,10 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+function appendUniqueString(values: string[], nextValue: string): string[] {
+  return values.includes(nextValue) ? values : [...values, nextValue];
+}
+
 function getActiveWrapperDepth(activeWrapperToolCallIds: string[], toolCallId: string): number {
   const depth = activeWrapperToolCallIds.indexOf(toolCallId);
   return depth >= 0 ? depth : activeWrapperToolCallIds.length;
@@ -682,6 +722,37 @@ function isTerminalToolStatus(status: string): boolean {
 
 function isStopRequestedForRun(state: UiState, runId: string): boolean {
   return state.stopRequestedRunId === runId;
+}
+
+function buildTurnCompletionNote(
+  state: UiState,
+  status: UiTurn["status"],
+  completedAt: string | undefined,
+): string | undefined {
+  if (!status || status === "streaming" || state.runStartedAtMs === undefined) {
+    return undefined;
+  }
+
+  const completedAtMs = completedAt ? Date.parse(completedAt) : Number.NaN;
+  const finishedAtMs = Number.isFinite(completedAtMs) ? completedAtMs : Date.now();
+  const durationMs = Math.max(0, finishedAtMs - state.runStartedAtMs);
+  const attempted = state.activeRunAttemptedToolCallIds.length;
+  const succeeded = state.activeRunSucceededToolCallIds.length;
+  const label = status === "complete"
+    ? "completed"
+    : status === "failed"
+      ? "failed"
+      : "stopped";
+
+  return `# turn ${label} in ${formatDuration(durationMs)} | tools ${succeeded}/${attempted} succeeded`;
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1_000) {
+    return `${durationMs}ms`;
+  }
+
+  return `${(durationMs / 1_000).toFixed(durationMs >= 10_000 ? 0 : 1)}s`;
 }
 
 function createAssistantTurn(state: UiState, markdown: string): UiTurn {

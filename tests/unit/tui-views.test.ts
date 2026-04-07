@@ -188,9 +188,9 @@ describe("NanobossAppView", () => {
     const successLine = rendered.find((line) => stripAnsi(line).includes("read README.md"));
     const errorLine = rendered.find((line) => stripAnsi(line).includes("write notes.txt"));
 
-    expect(pendingLine).toContain("\u001b[48;5;236m");
-    expect(successLine).toContain("\u001b[48;5;22m");
-    expect(errorLine).toContain("\u001b[48;5;52m");
+    expect(pendingLine).toContain("\u001b[48;2;40;40;50m");
+    expect(successLine).toContain("\u001b[48;2;40;50;40m");
+    expect(errorLine).toContain("\u001b[48;2;60;40;40m");
   });
 
   test("styled tool header spans preserve the card background", () => {
@@ -226,8 +226,72 @@ describe("NanobossAppView", () => {
     const headerLine = view.render(160).find((line) => stripAnsi(line).includes("find /Users/jflam/agentboss/workspaces/nanoboss @ /repo"));
 
     expect(headerLine).toBeDefined();
-    expect(headerLine).toContain("\u001b[48;5;22m");
+    expect(headerLine).toContain("\u001b[48;2;40;50;40m");
     expect(headerLine).not.toContain("\u001b[0m");
+  });
+
+  test("renders completion notes under completed assistant turns", () => {
+    const view = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo" }),
+        sessionId: "session-1",
+        turns: [
+          {
+            id: "assistant-1",
+            role: "assistant" as const,
+            markdown: "Done.",
+            status: "complete" as const,
+            meta: {
+              completionNote: "# turn completed in 2.5s | tools 1/2 succeeded",
+            },
+          },
+        ],
+        transcriptItems: [{ type: "turn" as const, id: "assistant-1" }],
+      },
+    );
+
+    const plain = stripAnsi(view.render(120).join("\n"));
+    expect(plain).toContain("Done.");
+    expect(plain).toContain("# turn completed in 2.5s | tools 1/2 succeeded");
+  });
+
+  test("renders read tool code with pi-style syntax colors", () => {
+    const view = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
+        sessionId: "session-1",
+        toolCalls: [
+          {
+            id: "tool-1",
+            runId: "run-1",
+            title: "read",
+            kind: "read",
+            status: "completed",
+            depth: 0,
+            isWrapper: false,
+            callPreview: { header: "read src/example.ts" },
+            resultPreview: { bodyLines: ["const answer = 42;"] },
+            rawInput: { path: "src/example.ts" },
+          },
+        ],
+        transcriptItems: [{ type: "tool_call" as const, id: "tool-1" }],
+      },
+    );
+
+    const highlightedLine = view.render(120).find((line) => stripAnsi(line).includes("const answer = 42;"));
+
+    expect(highlightedLine).toContain("\u001b[38;2;86;156;214mconst");
+    expect(highlightedLine).toContain("\u001b[38;2;181;206;168m42");
   });
 
   test("default procedure cards do not repeat the user prompt", () => {

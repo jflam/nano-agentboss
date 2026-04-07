@@ -11,6 +11,7 @@ export interface UiTurn {
     procedure?: string;
     tokenUsageLine?: string;
     failureMessage?: string;
+    completionNote?: string;
   };
 }
 
@@ -52,6 +53,8 @@ export interface UiState {
   activeAssistantTurnId?: string;
   assistantParagraphBreakPending?: boolean;
   runStartedAtMs?: number;
+  activeRunAttemptedToolCallIds: string[];
+  activeRunSucceededToolCallIds: string[];
   pendingStopRequest: boolean;
   stopRequestedRunId?: string;
   statusLine?: string;
@@ -81,6 +84,8 @@ export function createInitialUiState(params: {
     activeWrapperToolCallIds: [],
     hiddenToolCallIds: [],
     runtimeNotes: [],
+    activeRunAttemptedToolCallIds: [],
+    activeRunSucceededToolCallIds: [],
     pendingStopRequest: false,
     inputDisabled: false,
     showToolCalls: params.showToolCalls ?? true,

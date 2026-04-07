@@ -1,9 +1,9 @@
 import type { UiToolCall } from "../../state.ts";
 import type { NanobossTuiTheme } from "../../theme.ts";
 import {
+  formatCodePreviewBody,
   formatErrorLines,
   formatExpandedToolHeader,
-  formatPreviewBody,
   formatToolDurationLine,
   formatToolHeader,
   formatWarnings,
@@ -17,7 +17,13 @@ export function renderReadToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall
   return {
     lines: joinToolContent(
       formatToolHeader(theme, expanded ? formatExpandedToolHeader(toolCall) : toolCall.callPreview?.header, toolCall.title),
-      formatPreviewBody(theme, expanded ? getExpandedToolResultBlock(toolCall) ?? toolCall.resultPreview : toolCall.resultPreview, expanded, { collapsedLines: 10 }),
+      formatCodePreviewBody(
+        theme,
+        toolCall,
+        expanded ? getExpandedToolResultBlock(toolCall) ?? toolCall.resultPreview : toolCall.resultPreview,
+        expanded,
+        { collapsedLines: 10 },
+      ),
       formatErrorLines(theme, expanded ? getExpandedToolErrorBlock(toolCall) ?? toolCall.errorPreview : toolCall.errorPreview, expanded, 10),
       formatWarnings(theme, toolCall.resultPreview),
       formatWarnings(theme, toolCall.errorPreview),
