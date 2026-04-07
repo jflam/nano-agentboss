@@ -37,6 +37,10 @@ describe("token-usage", () => {
       cacheWriteTokens: undefined,
       totalTrackedTokens: 21177,
     });
-    expect(getAgentTokenUsagePercent(usage!)).toBeCloseTo(8.9102941176, 6);
+    if (!usage) {
+      throw new Error("expected usage to be defined");
+    }
+
+    expect(getAgentTokenUsagePercent(usage)).toBeCloseTo(8.9102941176, 6);
   });
 });
