@@ -126,7 +126,7 @@ describe("mcp registration", () => {
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
-    delete process.env[name];
+    Reflect.deleteProperty(process.env, name);
   } else {
     process.env[name] = value;
   }
