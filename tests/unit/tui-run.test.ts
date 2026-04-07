@@ -62,4 +62,70 @@ describe("runTuiCli", () => {
       "stopped",
     ]);
   });
+
+  test("handles SIGINT with a clean shutdown before printing the session id", async () => {
+    const events: string[] = [];
+    const signalHandlers: Partial<Record<"SIGINT" | "SIGTERM", () => void>> = {};
+    let resolveRun: ((sessionId: string | undefined) => void) | undefined;
+
+    await runTuiCli({
+      cwd: "/repo-one",
+      connectionMode: "private",
+      showToolCalls: true,
+    }, {
+      suspendDiscardControlCharacter: async () => {
+        events.push("suspended");
+        return async () => {
+          events.push("restored");
+        };
+      },
+      startPrivateHttpServer: async () => ({
+        baseUrl: "http://127.0.0.1:9999",
+        async stop() {
+          events.push("stopped");
+        },
+      }),
+      addSignalListener(signal, listener) {
+        events.push(`listen:${signal}`);
+        signalHandlers[signal] = listener;
+        return () => {
+          events.push(`unlisten:${signal}`);
+          delete signalHandlers[signal];
+        };
+      },
+      createApp: () => ({
+        requestExit() {
+          events.push("request-exit");
+          resolveRun?.("session-123");
+        },
+        async run() {
+          events.push("run");
+          queueMicrotask(() => signalHandlers.SIGINT?.());
+          return await new Promise<string | undefined>((resolve) => {
+            resolveRun = resolve;
+          });
+        },
+      }),
+      writeStderr(text) {
+        events.push(`stderr:${text.trim()}`);
+      },
+      setExitCode(code) {
+        events.push(`exit-code:${code}`);
+      },
+    });
+
+    expect(events).toEqual([
+      "suspended",
+      "listen:SIGINT",
+      "listen:SIGTERM",
+      "run",
+      "request-exit",
+      "unlisten:SIGTERM",
+      "unlisten:SIGINT",
+      "restored",
+      "stopped",
+      "stderr:nanoboss session id: session-123",
+      "exit-code:130",
+    ]);
+  });
 });

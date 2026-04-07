@@ -23,19 +23,38 @@ export interface RunTuiCliParams extends Omit<NanobossTuiAppParams, "serverUrl">
 
 interface TuiAppRunner {
   run(): Promise<string | undefined>;
+  requestExit?(): void;
 }
 
 type RestoreTerminalInput = () => void | Promise<void>;
+type TuiExitSignal = "SIGINT" | "SIGTERM";
 
 export interface RunTuiCliDeps {
   startPrivateHttpServer?: typeof startPrivateHttpServer;
   createApp?: (params: NanobossTuiAppParams) => TuiAppRunner;
   suspendDiscardControlCharacter?: () => RestoreTerminalInput | Promise<RestoreTerminalInput | undefined> | undefined;
+  addSignalListener?: (signal: TuiExitSignal, listener: () => void) => () => void;
+  setExitCode?: (code: number) => void;
+  writeStderr?: (text: string) => void;
 }
 
 export async function runTuiCli(params: RunTuiCliParams, deps: RunTuiCliDeps = {}): Promise<void> {
   let server: Awaited<ReturnType<typeof startPrivateHttpServer>> | undefined;
+  let sessionId: string | undefined;
+  let app: TuiAppRunner | undefined;
+  let exitSignal: TuiExitSignal | undefined;
   const restoreTerminalInput = await (deps.suspendDiscardControlCharacter ?? suspendDiscardControlCharacter)();
+  const addSignalListener = deps.addSignalListener ?? addProcessSignalListener;
+  const removeSignalListeners = [
+    addSignalListener("SIGINT", () => {
+      exitSignal ??= "SIGINT";
+      app?.requestExit?.();
+    }),
+    addSignalListener("SIGTERM", () => {
+      exitSignal ??= "SIGTERM";
+      app?.requestExit?.();
+    }),
+  ];
 
   try {
     server = params.connectionMode === "private"
@@ -46,22 +65,35 @@ export async function runTuiCli(params: RunTuiCliParams, deps: RunTuiCliDeps = {
       throw new Error("nanoboss CLI expected a server URL or private server mode");
     }
 
-    const app = (deps.createApp ?? ((appParams) => new NanobossTuiApp(appParams)))({
+    app = (deps.createApp ?? ((appParams) => new NanobossTuiApp(appParams)))({
       cwd: params.cwd,
       serverUrl,
       showToolCalls: params.showToolCalls,
       sessionId: params.sessionId,
     });
-    const sessionId = await app.run();
-    if (sessionId) {
-      process.stderr.write(`nanoboss session id: ${sessionId}\n`);
+    if (exitSignal) {
+      app.requestExit?.();
     }
+    sessionId = await app.run();
   } finally {
     try {
-      await restoreTerminalInput?.();
+      for (const removeSignalListener of removeSignalListeners.reverse()) {
+        removeSignalListener();
+      }
     } finally {
-      await server?.stop();
+      try {
+        await restoreTerminalInput?.();
+      } finally {
+        await server?.stop();
+      }
     }
+  }
+
+  if (sessionId) {
+    (deps.writeStderr ?? process.stderr.write.bind(process.stderr))(`nanoboss session id: ${sessionId}\n`);
+  }
+  if (exitSignal) {
+    (deps.setExitCode ?? setProcessExitCode)(getSignalExitCode(exitSignal));
   }
 }
 
@@ -117,4 +149,19 @@ function runStty(args: string[]): Bun.SyncSubprocess | undefined {
 function readProcessText(result: Bun.SyncSubprocess): string {
   const decoder = new TextDecoder();
   return `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`.trim();
+}
+
+function addProcessSignalListener(signal: TuiExitSignal, listener: () => void): () => void {
+  process.on(signal, listener);
+  return () => {
+    process.off(signal, listener);
+  };
+}
+
+function setProcessExitCode(code: number): void {
+  process.exitCode = code;
+}
+
+function getSignalExitCode(signal: TuiExitSignal): number {
+  return signal === "SIGINT" ? 130 : 143;
 }

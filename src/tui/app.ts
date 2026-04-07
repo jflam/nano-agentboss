@@ -199,6 +199,10 @@ export class NanobossTuiApp {
     }
   }
 
+  requestExit(): void {
+    this.controller.requestExit();
+  }
+
   private syncState(state: UiState): void {
     if (this.theme.getToolCardMode() !== state.toolCardThemeMode) {
       this.theme.setToolCardMode(state.toolCardThemeMode);
