@@ -45,8 +45,14 @@ test("matches the current Copilot ACP model ids", () => {
 });
 
 test("keeps codex slash model ids intact", () => {
+  const options = listSelectableModelOptions("codex");
+
+  expect(options.some((option) => option.value === "gpt-5.4/high")).toBe(true);
+  expect(options.some((option) => option.value === "gpt-5.4/xhigh")).toBe(true);
   expect(isKnownModelSelection("codex", "gpt-5.2-codex/xhigh")).toBe(true);
-  expect(findSelectableModelOption("codex", "gpt-5.2-codex/xhigh")?.label).toContain("xhigh");
+  expect(isKnownModelSelection("codex", "gpt-5.4/high")).toBe(true);
+  expect(findSelectableModelOption("codex", "gpt-5.4/high")?.label).toContain("gpt-5.4");
+  expect(findSelectableModelOption("codex", "gpt-5.2-codex/xhigh")?.label).toContain("Extra High");
 });
 
 test("parses reasoning selections only when the suffix is a known effort", () => {
