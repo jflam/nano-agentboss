@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildFixPrompt, groupErrorsByFile } from "../../commands/linter.ts";
+import {
+  buildFixPrompt,
+  groupErrorsByFile,
+  parseEslintJsonOutput,
+  selectFixWave,
+} from "../../commands/linter.ts";
 
 describe("/linter helpers", () => {
   test("groups relative and absolute paths by normalized file", () => {
@@ -58,5 +63,91 @@ describe("/linter helpers", () => {
     expect(prompt).toContain("Do not run the full repo linter");
     expect(prompt).toContain("Do not search for or fix unrelated lint errors in other files.");
     expect(prompt).toContain("The caller will rerun lint and manage commits after you return.");
+  });
+
+  test("parses eslint json output into normalized linter errors", () => {
+    const errors = parseEslintJsonOutput(
+      "/repo",
+      JSON.stringify([
+        {
+          filePath: "src/app.ts",
+          messages: [
+            {
+              line: 4,
+              column: 2,
+              message: "problem",
+              ruleId: "@typescript-eslint/no-unused-vars",
+              severity: 2,
+            },
+            {
+              line: 5,
+              column: 1,
+              message: "warning",
+              ruleId: "no-console",
+              severity: 1,
+            },
+          ],
+        },
+        {
+          filePath: "/repo/src/other.ts",
+          messages: [
+            {
+              line: 1,
+              column: 1,
+              message: "parse error",
+              ruleId: null,
+              severity: 2,
+            },
+          ],
+        },
+      ]),
+    );
+
+    expect(errors).toEqual([
+      {
+        file: "/repo/src/app.ts",
+        line: 4,
+        column: 2,
+        message: "problem",
+        rule: "@typescript-eslint/no-unused-vars",
+      },
+      {
+        file: "/repo/src/other.ts",
+        line: 1,
+        column: 1,
+        message: "parse error",
+        rule: "parsing",
+      },
+    ]);
+  });
+
+  test("selects a bounded fix wave", () => {
+    const groups = groupErrorsByFile("/repo", [
+      {
+        file: "src/a.ts",
+        line: 1,
+        column: 1,
+        message: "first",
+        rule: "rule-a",
+      },
+      {
+        file: "src/b.ts",
+        line: 1,
+        column: 1,
+        message: "second",
+        rule: "rule-b",
+      },
+      {
+        file: "src/c.ts",
+        line: 1,
+        column: 1,
+        message: "third",
+        rule: "rule-c",
+      },
+    ]);
+
+    const wave = selectFixWave(groups, 2);
+
+    expect(wave.map((group) => group.displayFile)).toEqual(["src/a.ts", "src/b.ts"]);
   });
 });

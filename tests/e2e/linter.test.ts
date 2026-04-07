@@ -24,7 +24,7 @@ describeE2E("/linter fixture (real agent)", () => {
   });
 
   test(
-    "fixes the fixture repo file by file and leaves it lint-clean",
+    "fixes the fixture repo in round-based waves and leaves it lint-clean",
     async () => {
       const fixtureDir = createFixtureRepo();
       const output: string[] = [];
@@ -79,6 +79,7 @@ describeE2E("/linter fixture (real agent)", () => {
       expect(transcript).toContain("Starting linter workflow...");
       expect(transcript).toContain("Fixing 2 errors in `src/alpha.ts`...");
       expect(transcript).toContain("Fixing 1 error in `src/beta.ts`...");
+      expect(transcript).toContain("Round 1 resolved 3 errors; 0 errors remain.");
       expect(transcript).toContain("Completed linter workflow: fixed 3 errors; 0 errors remain.");
       expect(status).toBe("");
       expect(commitCount).toBeGreaterThan(1);
