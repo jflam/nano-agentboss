@@ -278,7 +278,7 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
           this.procedures.set(name, procedure);
           return procedure;
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           entry.loadPromise = undefined;
           throw error;
         });

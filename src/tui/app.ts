@@ -11,6 +11,7 @@ import {
   Editor,
   ProcessTerminal,
   TUI,
+  isKeyRelease,
   matchesKey,
 } from "./pi-tui.ts";
 import { promptForModelSelection, promptToPersistModelSelection } from "./overlays/model-picker.ts";
@@ -150,6 +151,10 @@ export class NanobossTuiApp {
     };
 
     this.tui.addInputListener((data) => {
+      if (isKeyRelease(data)) {
+        return undefined;
+      }
+
       if (matchesKey(data, "tab") && this.state.inputDisabled) {
         const text = this.editor.getText();
         if (text.trim().length === 0) {

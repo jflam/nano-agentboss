@@ -92,7 +92,7 @@ describe("runTuiCli", () => {
         signalHandlers[signal] = listener;
         return () => {
           events.push(`unlisten:${signal}`);
-          delete signalHandlers[signal];
+          signalHandlers[signal] = undefined;
         };
       },
       createApp: () => ({

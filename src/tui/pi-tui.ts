@@ -3,6 +3,7 @@ export {
   CombinedAutocompleteProvider,
   Container,
   Editor,
+  isKeyRelease,
   Markdown,
   ProcessTerminal,
   SelectList,

@@ -162,7 +162,7 @@ describe("NanobossTuiApp", () => {
     const exits: string[] = [];
     const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
     let inputListener: ((data: string) => unknown) | undefined;
-    let now = 1_000;
+    const now = 1_000;
 
     new NanobossTuiApp(
       {
@@ -271,6 +271,64 @@ describe("NanobossTuiApp", () => {
     await Promise.resolve();
 
     expect(exits).toEqual(["exit"]);
+  });
+
+  test("ignores kitty ctrl+c release events so one press does not exit", async () => {
+    const editor = new FakeEditor();
+    const exits: string[] = [];
+    const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    let inputListener: ((data: string) => unknown) | undefined;
+    const now = 1_000;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        now: () => now,
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener(listener) {
+            inputListener = listener;
+          },
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async queuePrompt() {},
+          async cancelActiveRun() {},
+          toggleToolOutput() {},
+          requestExit() {
+            exits.push("exit");
+          },
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => ({
+          setState() {},
+        }),
+      },
+    );
+
+    editor.setText("draft");
+    expect(inputListener?.("\u0003")).toEqual({ consume: true });
+    expect(inputListener?.("\x1b[99;5:3u")).toBeUndefined();
+    await Promise.resolve();
+
+    expect(editor.getText()).toBe("");
+    expect(exits).toEqual([]);
   });
 
   test("ignores duplicate ctrl+o input that arrives immediately", async () => {
