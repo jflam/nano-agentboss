@@ -244,6 +244,7 @@ interface Simplify2State {
   version: 1;
   originalPrompt: string;
   iteration: number;
+  maxIterations: number;
   mode: SimplifyMode;
   focus: {
     scope: string[];
@@ -285,6 +286,7 @@ interface Simplify2State {
     journalEntryIds: string[];
     appliedHypothesisIds: string[];
     rejectedHypothesisIds: string[];
+    resolvedHypothesisIds: string[];
     decisions: string[];
   };
 }
@@ -384,6 +386,7 @@ const Simplify2TestMapType = jsonType<Simplify2TestMap>(
 );
 
 const DEFAULT_FOCUS = "simplify the current project";
+const DEFAULT_MAX_ITERATIONS = 3;
 const SIMPLIFY2_STORAGE_SUBDIR = [".nanoboss", "simplify2"] as const;
 const SIMPLIFY2_LOCAL_EXCLUDE_PATTERN = "/.nanoboss/";
 const SUGGESTED_REPLIES = [
@@ -428,7 +431,7 @@ const TOKEN_STOP_WORDS = new Set([
 
 export default {
   name: "simplify2",
-  description: "Model conceptual simplification with explicit checkpoints and one-slice application",
+  description: "Model conceptual simplification with explicit checkpoints and a bounded multi-step loop",
   inputHint: "Optional focus or scope",
   executionMode: "harness",
   async execute(prompt, ctx) {
@@ -436,15 +439,7 @@ export default {
 
     ctx.print("Loading simplify2 artifacts...\n");
     state = loadArtifacts(state, ctx);
-
-    ctx.print("Refreshing architecture memory for the current focus...\n");
-    state = await refreshArchitectureMemory(state, ctx);
-
-    ctx.print("Collecting conceptual simplification observations...\n");
-    state = await collectObservations(state, ctx);
-
-    ctx.print("Generating and ranking simplification hypotheses...\n");
-    state = await generateAndRankHypotheses(state, ctx);
+    state = await analyzeCurrentFocus(state, ctx);
 
     return continueFromAnalysis(state, ctx);
   },
@@ -467,7 +462,13 @@ export default {
       ctx.print(`Applying ${hypothesis.title}...\n`);
       state = await applySimplificationSlice(state, hypothesis, ctx);
       state = await validateAndReconcile(state, ctx);
-      return maybePauseOrFinishAfterApply(state);
+      const completion = maybeFinishAfterApply(state);
+      if (completion) {
+        return completion;
+      }
+      state = resetNotebookForFreshAnalysis(state);
+      state = await analyzeCurrentFocus(state, ctx);
+      return continueFromAnalysis(state, ctx);
     }
 
     if (decision.kind === "design_update" && decision.designUpdate) {
@@ -475,14 +476,7 @@ export default {
     }
 
     state = resetNotebookForFreshAnalysis(state);
-    ctx.print("Refreshing architecture memory for the updated focus...\n");
-    state = await refreshArchitectureMemory(state, ctx);
-
-    ctx.print("Collecting conceptual simplification observations...\n");
-    state = await collectObservations(state, ctx);
-
-    ctx.print("Generating and ranking simplification hypotheses...\n");
-    state = await generateAndRankHypotheses(state, ctx);
+    state = await analyzeCurrentFocus(state, ctx);
 
     return continueFromAnalysis(state, ctx);
   },
@@ -494,6 +488,7 @@ function initializeState(prompt: string): Simplify2State {
     version: 1,
     originalPrompt: focus,
     iteration: 1,
+    maxIterations: DEFAULT_MAX_ITERATIONS,
     mode: "explore",
     focus: {
       scope: [],
@@ -526,6 +521,7 @@ function initializeState(prompt: string): Simplify2State {
       journalEntryIds: [],
       appliedHypothesisIds: [],
       rejectedHypothesisIds: [],
+      resolvedHypothesisIds: [],
       decisions: [],
     },
   };
@@ -689,25 +685,36 @@ async function continueFromAnalysis(
   state: Simplify2State,
   ctx: CommandContext,
 ): Promise<ProcedureResult | string | void> {
-  const next = decideNextAction(state);
-  if (next.kind === "finish") {
-    state.mode = "finished";
-    state.notebook.status = "closed";
-    return buildFinishedResult(state, next.reason);
-  }
+  let current = state;
 
-  if (next.kind === "pause_for_human") {
-    state.mode = "checkpoint";
-    state.notebook.status = "awaiting_human";
-    state.notebook.currentCheckpoint = state.notebook.currentCheckpoint ?? buildCheckpoint(state.notebook.candidateHypotheses[0]!);
-    state = appendCheckpointJournal(state);
-    return buildPausedResult(state, next.question);
-  }
+  while (true) {
+    const next = decideNextAction(current);
+    if (next.kind === "finish") {
+      current = markFinished(current);
+      return buildFinishedResult(current, next.reason, buildLatestApplyLead(current));
+    }
 
-  ctx.print(`Applying ${next.hypothesis.title}...\n`);
-  state = await applySimplificationSlice(state, next.hypothesis, ctx);
-  state = await validateAndReconcile(state, ctx);
-  return maybePauseOrFinishAfterApply(state);
+    if (next.kind === "pause_for_human") {
+      current.mode = "checkpoint";
+      current.notebook.status = "awaiting_human";
+      current.notebook.currentCheckpoint = current.notebook.currentCheckpoint ?? buildCheckpoint(current.notebook.candidateHypotheses[0]!);
+      current = appendCheckpointJournal(current);
+      return buildPausedResult(current, next.question);
+    }
+
+    ctx.print(`Applying ${next.hypothesis.title}...\n`);
+    current = await applySimplificationSlice(current, next.hypothesis, ctx);
+    current = await validateAndReconcile(current, ctx);
+
+    const completion = maybeFinishAfterApply(current);
+    if (completion) {
+      return completion;
+    }
+
+    current = resetNotebookForFreshAnalysis(current);
+    ctx.print(`Continuing simplify2 analysis for iteration ${current.iteration}...\n`);
+    current = await analyzeCurrentFocus(current, ctx);
+  }
 }
 
 async function applySimplificationSlice(
@@ -773,23 +780,32 @@ async function validateAndReconcile(
   return state;
 }
 
-function maybePauseOrFinishAfterApply(state: Simplify2State): ProcedureResult {
+function maybeFinishAfterApply(state: Simplify2State): ProcedureResult | undefined {
   const latestApply = state.notebook.latestApply;
   const validation = state.testContext.lastValidation;
-  return buildFinishedResult(
-    state,
-    latestApply
-      ? `Applied one simplification slice: ${latestApply.title}.`
-      : "Applied one simplification slice.",
-    latestApply
-      ? [
-          `Applied: ${latestApply.title}.`,
-          latestApply.result.summary.trim(),
-          renderTouchedFiles(latestApply.result.touchedFiles),
-          renderValidationLine(validation),
-        ].filter(Boolean).join("\n")
-      : renderValidationLine(validation),
-  );
+  const lead = buildLatestApplyLead(state);
+
+  if (validation?.status === "failed") {
+    return buildFinishedResult(
+      markFinished(state),
+      latestApply
+        ? `Validation failed after applying ${latestApply.title}.`
+        : "Validation failed after the applied simplification slice.",
+      lead,
+    );
+  }
+
+  if (state.history.appliedHypothesisIds.length >= state.maxIterations) {
+    return buildFinishedResult(
+      markFinished(state),
+      latestApply
+        ? `Reached simplify2 iteration budget (${state.maxIterations}) after applying ${latestApply.title}.`
+        : `Reached simplify2 iteration budget (${state.maxIterations}).`,
+      lead,
+    );
+  }
+
+  return undefined;
 }
 
 async function interpretHumanReply(
@@ -937,7 +953,7 @@ function applyReconciliationResult(
 
   return {
     ...state,
-    mode: "finished",
+    mode: "explore",
     memorySnapshot: summarizeArchitectureMemory(nextMemory),
     notebook: {
       ...state.notebook,
@@ -952,6 +968,13 @@ function applyReconciliationResult(
     testContext: {
       ...state.testContext,
       lastValidation: validation,
+    },
+    history: {
+      ...state.history,
+      resolvedHypothesisIds: uniqueStrings([
+        ...state.history.resolvedHypothesisIds,
+        ...normalizeStrings(reconciliation.resolvedHypothesisIds),
+      ]),
     },
   };
 }
@@ -1041,6 +1064,7 @@ function buildPausedResult(
   const best = state.notebook.candidateHypotheses[0];
   return {
     display: [
+      buildLatestApplyLead(state),
       renderHypothesis(best, state.iteration),
       question,
       renderCheckpointOptions(state.notebook.currentCheckpoint),
@@ -1073,6 +1097,7 @@ function buildFinishedResult(
     data: {
       focus: state.originalPrompt,
       iteration: state.iteration,
+      maxIterations: state.maxIterations,
       appliedCount,
       rejectedCount,
       validationStatus: validation?.status,
@@ -1110,6 +1135,17 @@ function resetNotebookForFreshAnalysis(state: Simplify2State): Simplify2State {
     testContext: {
       ...state.testContext,
       selectedSlice: [],
+    },
+  };
+}
+
+function markFinished(state: Simplify2State): Simplify2State {
+  return {
+    ...state,
+    mode: "finished",
+    notebook: {
+      ...state.notebook,
+      status: "closed",
     },
   };
 }
@@ -1468,7 +1504,8 @@ function reconcileRankedHypotheses(
   return hypotheses.hypotheses
     .filter((hypothesis) =>
       !state.history.appliedHypothesisIds.includes(hypothesis.id)
-      && !state.history.rejectedHypothesisIds.includes(hypothesis.id))
+      && !state.history.rejectedHypothesisIds.includes(hypothesis.id)
+      && !state.history.resolvedHypothesisIds.includes(hypothesis.id))
     .map((hypothesis) => {
       const ranking = rankingById.get(hypothesis.id);
       return {
@@ -1483,6 +1520,34 @@ function reconcileRankedHypotheses(
       right.score - left.score
       || compareRisk(left.risk, right.risk)
       || left.title.localeCompare(right.title));
+}
+
+async function analyzeCurrentFocus(
+  state: Simplify2State,
+  ctx: CommandContext,
+): Promise<Simplify2State> {
+  ctx.print("Refreshing architecture memory for the current focus...\n");
+  state = await refreshArchitectureMemory(state, ctx);
+
+  ctx.print("Collecting conceptual simplification observations...\n");
+  state = await collectObservations(state, ctx);
+
+  ctx.print("Generating and ranking simplification hypotheses...\n");
+  return await generateAndRankHypotheses(state, ctx);
+}
+
+function buildLatestApplyLead(state: Simplify2State): string | undefined {
+  const latestApply = state.notebook.latestApply;
+  if (!latestApply) {
+    return undefined;
+  }
+
+  return [
+    `Applied: ${latestApply.title}.`,
+    latestApply.result.summary.trim(),
+    renderTouchedFiles(latestApply.result.touchedFiles),
+    renderValidationLine(state.testContext.lastValidation),
+  ].filter(Boolean).join("\n");
 }
 
 function maybeCreateCheckpoint(hypotheses: SimplifyHypothesis[]): SimplifyCheckpoint | undefined {
