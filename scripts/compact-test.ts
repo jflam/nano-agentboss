@@ -1,41 +1,147 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   extractFailureDetails,
+  mergeCompactTestReports,
   parseJunitReport,
   renderCompactTestOutput,
 } from "../src/util/compact-test.ts";
 
-const tempDir = mkdtempSync(join(tmpdir(), "nanoboss-compact-test-"));
-const junitPath = join(tempDir, "report.xml");
-const args = Bun.argv.slice(2);
-
-try {
-  const { stdout, stderr, exitCode } = await runBunTest(args);
-  const rawOutput = [stdout, stderr].filter(Boolean).join("\n");
-  const xml = existsSync(junitPath) ? readFileSync(junitPath, "utf8") : "";
-  const report = xml ? parseJunitReport(xml) : undefined;
-  const failureDetails = extractFailureDetails(rawOutput);
-
-  if (!report) {
-    process.stdout.write(rawOutput);
-    process.exitCode = exitCode;
-  } else {
-    process.stdout.write(renderCompactTestOutput(report, failureDetails));
-    process.exitCode = exitCode;
-  }
-} finally {
-  rmSync(tempDir, { recursive: true, force: true });
+interface CompactTestRunResult {
+  rawOutput: string;
+  report?: ReturnType<typeof parseJunitReport>;
+  exitCode: number;
 }
 
-async function runBunTest(args: string[]): Promise<{
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}> {
+interface CompactTestRunPlanEntry {
+  label: string;
+  args: string[];
+}
+
+const UNIT_HEAVY_FILES = [
+  "tests/unit/default-memory-bridge.test.ts",
+  "tests/unit/mcp-server.test.ts",
+  "tests/unit/service.test.ts",
+] as const;
+
+const UNIT_ENV_FILES = [
+  "tests/unit/config.test.ts",
+  "tests/unit/current-session.test.ts",
+  "tests/unit/default-history.test.ts",
+  "tests/unit/mcp-registration.test.ts",
+  "tests/unit/mcp-stdio.test.ts",
+  "tests/unit/procedure-dispatch-jobs.test.ts",
+  "tests/unit/resume.test.ts",
+  "tests/unit/second-opinion-inherits-default-model.test.ts",
+  "tests/unit/stored-sessions.test.ts",
+  "tests/unit/test-home-isolation.test.ts",
+] as const;
+
+const args = Bun.argv.slice(2);
+const plan = resolveOptimizedPlan(args);
+
+if (!plan) {
+  const result = await runBunTest(args);
+  writeResult(result);
+} else {
+  const startedAt = performance.now();
+  const results = await Promise.all(plan.map((entry) => runBunTest(entry.args)));
+  const elapsedSeconds = (performance.now() - startedAt) / 1_000;
+
+  if (results.some((result) => !result.report)) {
+    process.stdout.write(results.map((result) => result.rawOutput).filter(Boolean).join("\n"));
+    process.exitCode = results.find((result) => result.exitCode !== 0)?.exitCode ?? 1;
+  } else {
+    const report = mergeCompactTestReports(
+      results.flatMap((result) => result.report ? [result.report] : []),
+      elapsedSeconds,
+    );
+    const failureDetails = results
+      .map((result) => extractFailureDetails(result.rawOutput))
+      .filter(Boolean)
+      .join("\n\n");
+    process.stdout.write(renderCompactTestOutput(report, failureDetails));
+    process.exitCode = results.find((result) => result.exitCode !== 0)?.exitCode ?? 0;
+  }
+}
+
+function resolveOptimizedPlan(args: string[]): CompactTestRunPlanEntry[] | undefined {
+  if (args.some((arg) => arg.startsWith("-"))) {
+    return undefined;
+  }
+
+  const normalizedArgs = args.map(normalizeTestArg);
+  if (normalizedArgs.length === 0) {
+    if (process.env.NANOBOSS_RUN_E2E === "1") {
+      return undefined;
+    }
+
+    return [
+      ...buildUnitPlan(),
+      {
+        label: "e2e",
+        args: ["tests/e2e"],
+      },
+    ];
+  }
+
+  if (normalizedArgs.length === 1 && normalizedArgs[0] === "tests/unit") {
+    return buildUnitPlan();
+  }
+
+  return undefined;
+}
+
+function buildUnitPlan(): CompactTestRunPlanEntry[] {
+  const unitDir = join(process.cwd(), "tests", "unit");
+  const allUnitFiles = readdirSync(unitDir)
+    .filter((name) => name.endsWith(".test.ts"))
+    .map((name) => `tests/unit/${name}`)
+    .sort();
+
+  const heavyFiles = UNIT_HEAVY_FILES.filter((path) => allUnitFiles.includes(path));
+  const envFiles = UNIT_ENV_FILES.filter((path) => allUnitFiles.includes(path));
+  const isolatedFiles = new Set([...heavyFiles, ...envFiles]);
+  const parallelFiles = allUnitFiles.filter((path) => !isolatedFiles.has(path));
+
+  return [
+    {
+      label: "unit-parallel",
+      args: parallelFiles,
+    },
+    {
+      label: "unit-env",
+      args: envFiles,
+    },
+    {
+      label: "unit-heavy",
+      args: heavyFiles,
+    },
+  ].filter((entry) => entry.args.length > 0);
+}
+
+function normalizeTestArg(arg: string): string {
+  return arg.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "");
+}
+
+function writeResult(result: CompactTestRunResult): void {
+  const failureDetails = extractFailureDetails(result.rawOutput);
+  if (!result.report) {
+    process.stdout.write(result.rawOutput);
+    process.exitCode = result.exitCode;
+    return;
+  }
+
+  process.stdout.write(renderCompactTestOutput(result.report, failureDetails));
+  process.exitCode = result.exitCode;
+}
+
+async function runBunTest(args: string[]): Promise<CompactTestRunResult> {
+  const tempDir = mkdtempSync(join(tmpdir(), "nanoboss-compact-test-"));
+  const junitPath = join(tempDir, "report.xml");
   const child = spawn("bun", [
     "test",
     "--only-failures",
@@ -70,5 +176,12 @@ async function runBunTest(args: string[]): Promise<{
     });
   });
 
-  return { stdout, stderr, exitCode };
+  try {
+    const rawOutput = [stdout, stderr].filter(Boolean).join("\n");
+    const xml = existsSync(junitPath) ? readFileSync(junitPath, "utf8") : "";
+    const report = xml ? parseJunitReport(xml) : undefined;
+    return { rawOutput, report, exitCode };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 }

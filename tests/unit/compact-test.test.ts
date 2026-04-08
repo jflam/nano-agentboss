@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   extractFailureDetails,
+  mergeCompactTestReports,
   parseJunitReport,
   renderCompactTestOutput,
 } from "../../src/util/compact-test.ts";
@@ -87,5 +88,35 @@ describe("compact test output", () => {
     expect(rendered).toContain(".SF");
     expect(rendered).toContain("1 pass, 1 skip, 1 fail, 3 total [0.24s]");
     expect(rendered).toContain("failure details");
+  });
+
+  test("merges multiple junit summaries and preserves wall time", () => {
+    const merged = mergeCompactTestReports([
+      {
+        statuses: [".", "S"],
+        total: 2,
+        passed: 1,
+        skipped: 1,
+        failed: 0,
+        timeSeconds: 1.5,
+      },
+      {
+        statuses: [".", "F"],
+        total: 2,
+        passed: 1,
+        skipped: 0,
+        failed: 1,
+        timeSeconds: 3.5,
+      },
+    ], 4.2);
+
+    expect(merged).toEqual({
+      statuses: [".", "S", ".", "F"],
+      total: 4,
+      passed: 2,
+      skipped: 1,
+      failed: 1,
+      timeSeconds: 4.2,
+    });
   });
 });

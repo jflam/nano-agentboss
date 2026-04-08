@@ -9,6 +9,20 @@ export interface CompactTestReport {
   timeSeconds?: number;
 }
 
+export function mergeCompactTestReports(
+  reports: ReadonlyArray<CompactTestReport>,
+  timeSeconds?: number,
+): CompactTestReport {
+  return {
+    statuses: reports.flatMap((report) => report.statuses),
+    total: reports.reduce((sum, report) => sum + report.total, 0),
+    passed: reports.reduce((sum, report) => sum + report.passed, 0),
+    skipped: reports.reduce((sum, report) => sum + report.skipped, 0),
+    failed: reports.reduce((sum, report) => sum + report.failed, 0),
+    timeSeconds,
+  };
+}
+
 export function parseJunitReport(xml: string): CompactTestReport | undefined {
   const testsuitesMatch = xml.match(/<testsuites\b([^>]*)>/);
   if (!testsuitesMatch) {
