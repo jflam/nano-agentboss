@@ -1,8 +1,8 @@
-import { parseCliOptions } from "./src/options/cli.ts";
+import { parseFrontendConnectionOptions } from "./src/options/frontend-connection.ts";
 import { assertInteractiveTty, runTuiCli } from "./src/tui/run.ts";
 
 export async function runCliCommand(argv: string[] = []): Promise<void> {
-  const options = parseCliOptions(argv);
+  const options = parseFrontendConnectionOptions(argv);
   if (options.showHelp) {
     printHelp();
     return;
