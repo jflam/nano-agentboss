@@ -3,7 +3,10 @@ import { createNanobossTuiTheme } from "./src/tui/theme.ts";
 import { assertInteractiveTty, runTuiCli } from "./src/tui/run.ts";
 import { parseResumeOptions } from "./src/options/resume.ts";
 import {
-  sessionRepository,
+  findSessionSummary,
+  listSessionSummaries,
+  readCurrentSessionSummary,
+  resolveMostRecentSessionSummary,
   type SessionSummary,
 } from "./src/session/index.ts";
 
@@ -62,20 +65,20 @@ export async function runResumeCommand(
 }
 
 function resolveExplicitSession(sessionId: string): SessionSummary | undefined {
-  return sessionRepository.findSummary(sessionId);
+  return findSessionSummary(sessionId);
 }
 
 function resolveDefaultSession(cwd: string): SessionSummary | undefined {
-  const current = sessionRepository.readCurrentSummary(cwd);
+  const current = readCurrentSessionSummary(cwd);
   if (current) {
     return current;
   }
 
-  return sessionRepository.resolveMostRecentSummary(cwd);
+  return resolveMostRecentSessionSummary(cwd);
 }
 
 async function selectStoredSession(cwd: string): Promise<StoredSessionSelectionResult> {
-  const sessions = orderSessions(cwd, withCurrentSession(cwd, sessionRepository.listSummaries()));
+  const sessions = orderSessions(cwd, withCurrentSession(cwd, listSessionSummaries()));
   if (sessions.length === 0) {
     return { kind: "empty" };
   }
@@ -87,7 +90,7 @@ async function selectStoredSession(cwd: string): Promise<StoredSessionSelectionR
 }
 
 function withCurrentSession(cwd: string, sessions: SessionSummary[]): SessionSummary[] {
-  const current = sessionRepository.readCurrentSummary(cwd);
+  const current = readCurrentSessionSummary(cwd);
   if (!current || sessions.some((session) => session.sessionId === current.sessionId)) {
     return sessions;
   }

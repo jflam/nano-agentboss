@@ -10,7 +10,7 @@ import {
 } from "../procedure/dispatch-jobs.ts";
 import { type ProcedureExecutionResult } from "../procedure/runner.ts";
 import { ProcedureRegistry } from "../procedure/registry.ts";
-import { SessionStore, sessionRepository } from "../session/index.ts";
+import { SessionStore, readCurrentSessionMetadata, readSessionMetadata } from "../session/index.ts";
 import { shouldLoadDiskCommands } from "../core/runtime-mode.ts";
 import type {
   CellDescendantsOptions,
@@ -223,7 +223,7 @@ export class NanobossMcpApi {
   private resolveEffectiveContext(sessionIdOverride?: string): { sessionId?: string; cwd: string; rootDir?: string } {
     const explicitSessionId = sessionIdOverride ?? this.params.sessionId;
     if (explicitSessionId) {
-      const metadata = sessionRepository.readMetadata(explicitSessionId);
+      const metadata = readSessionMetadata(explicitSessionId);
       if (metadata) {
         return {
           sessionId: metadata.sessionId,
@@ -240,7 +240,7 @@ export class NanobossMcpApi {
     }
 
     if (this.params.allowCurrentSessionFallback) {
-      const current = sessionRepository.readCurrentMetadata();
+      const current = readCurrentSessionMetadata();
       if (current) {
         return {
           sessionId: current.sessionId,

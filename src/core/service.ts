@@ -21,8 +21,11 @@ import {
   type FrontendCommand,
 } from "../http/frontend-events.ts";
 import {
-  sessionRepository,
+  SessionStore,
+  readSessionMetadata,
   type SessionMetadata,
+  writeCurrentSessionMetadata,
+  writeSessionMetadata,
 } from "../session/index.ts";
 import { startProcedureDispatchProgressBridge } from "../procedure/dispatch-progress.ts";
 import {
@@ -46,7 +49,6 @@ import { ProcedureRegistry } from "../procedure/registry.ts";
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "../mcp/server.ts";
-import type { SessionStore } from "../session/index.ts";
 import type {
   AgentTokenUsage,
   DownstreamAgentConfig,
@@ -197,7 +199,7 @@ export class NanobossService {
       return this.buildSessionDescriptor(params.sessionId, existing);
     }
 
-    const stored = sessionRepository.readMetadata(params.sessionId);
+    const stored = readSessionMetadata(params.sessionId);
     const cwd = stored?.cwd || params.cwd;
     if (!cwd) {
       throw new Error(`Unknown session: ${params.sessionId}`);
@@ -241,7 +243,7 @@ export class NanobossService {
   }): SessionState {
     const commands = toFrontendCommands(buildAvailableCommands(this.registry));
     const defaultAgentConfig = this.resolveDefaultAgentConfig(params.cwd, params.defaultAgentSelection);
-    const store = sessionRepository.openStore({
+    const store = new SessionStore({
       sessionId: params.sessionId,
       cwd: params.cwd,
     });
@@ -331,11 +333,11 @@ export class NanobossService {
     session: SessionState,
     options: { prompt?: string; preserveDefaultAcpSessionId?: boolean } = {},
   ): SessionMetadata {
-    const existing = sessionRepository.readMetadata(session.store.sessionId, session.store.rootDir);
+    const existing = readSessionMetadata(session.store.sessionId, session.store.rootDir);
     const defaultAcpSessionId = session.defaultConversation.currentSessionId
       ?? (options.preserveDefaultAcpSessionId === false ? undefined : existing?.defaultAcpSessionId);
 
-    return sessionRepository.writeMetadata({
+    return writeSessionMetadata({
       sessionId: session.store.sessionId,
       cwd: session.cwd,
       rootDir: session.store.rootDir,
@@ -350,7 +352,7 @@ export class NanobossService {
   }
 
   private touchCurrentSessionMetadata(metadata: SessionMetadata): void {
-    sessionRepository.writeCurrentMetadata(metadata);
+    writeCurrentSessionMetadata(metadata);
   }
 
   getSessionEvents(sessionId: string): SessionEventLog | undefined {

@@ -11,15 +11,14 @@ export type {
 } from "./repository.ts";
 
 export {
-  SessionRepository,
   findSessionSummary,
   getCurrentSessionMetadataPath,
   getSessionMetadataPath,
   listSessionSummaries,
   readCurrentSessionMetadata,
+  readCurrentSessionSummary,
   readSessionMetadata,
   resolveMostRecentSessionSummary,
-  sessionRepository,
   toSessionSummary,
   writeCurrentSessionMetadata,
   writeSessionMetadata,
