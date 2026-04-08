@@ -594,7 +594,7 @@ function buildForegroundCompletionResult(
   };
 }
 
-function assertAutoresearchNotCancelled(ctx: { assertNotCancelled(): void }): void {
+function assertAutoresearchNotCancelled(ctx: Pick<CommandContext, "assertNotCancelled">): void {
   ctx.assertNotCancelled();
 }
 
