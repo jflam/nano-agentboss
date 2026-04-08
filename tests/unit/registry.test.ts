@@ -275,9 +275,9 @@ describe("ProcedureRegistry", () => {
     expect(registry.get("kb/health")).toBeDefined();
     expect(registry.get("kb/refresh")).toBeDefined();
     expect(registry.get("kb/answer")).toBeDefined();
-    expect(registry.get("top_level_runs")).toBeDefined();
-    expect(registry.get("cell_get")).toBeDefined();
-    expect(registry.get("ref_read")).toBeDefined();
+    expect(registry.get("top_level_runs")).toBeUndefined();
+    expect(registry.get("cell_get")).toBeUndefined();
+    expect(registry.get("ref_read")).toBeUndefined();
     expect(registry.toAvailableCommands().some((command) => command.name === "default")).toBe(false);
     expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch")).toBe(true);
     expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch/start")).toBe(true);
@@ -294,8 +294,8 @@ describe("ProcedureRegistry", () => {
     expect(registry.toAvailableCommands().some((command) => command.name === "kb/health")).toBe(true);
     expect(registry.toAvailableCommands().some((command) => command.name === "kb/refresh")).toBe(true);
     expect(registry.toAvailableCommands().some((command) => command.name === "kb/answer")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "top_level_runs")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "cell_get")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "ref_read")).toBe(true);
+    expect(registry.toAvailableCommands().some((command) => command.name === "top_level_runs")).toBe(false);
+    expect(registry.toAvailableCommands().some((command) => command.name === "cell_get")).toBe(false);
+    expect(registry.toAvailableCommands().some((command) => command.name === "ref_read")).toBe(false);
   });
 });

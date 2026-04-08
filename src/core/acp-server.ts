@@ -2,7 +2,6 @@ import * as acp from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 
 import { getBuildLabel } from "./build-info.ts";
-import { sessionToolProcedures } from "../mcp/session-tool-procedures.ts";
 import { NanobossService } from "./service.ts";
 import type { DownstreamAgentSelection } from "./types.ts";
 
@@ -92,9 +91,8 @@ export function buildTopLevelSessionMeta(): NonNullable<acp.NewSessionResponse["
   return {
     nanoboss: {
       sessionInspection: {
-        surface: "global-mcp+commands",
-        commandNames: sessionToolProcedures.map((procedure) => procedure.name),
-        note: "Session inspection is available through the globally registered `nanoboss` MCP server and matching slash commands.",
+        surface: "global-mcp",
+        note: "Session inspection is available through the globally registered `nanoboss` MCP server.",
       },
     },
   };

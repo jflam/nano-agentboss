@@ -31,7 +31,6 @@ import { getProcedureRuntimeDir } from "../core/config.ts";
 import { resolveProfileProcedureRoot, resolveRepoProcedureRoot, resolveWorkspaceProcedureRoot } from "../core/procedure-paths.ts";
 import { createCreateProcedure } from "./create.ts";
 import { resolveProcedureEntryRelativePath } from "./names.ts";
-import { sessionToolProcedures } from "../mcp/session-tool-procedures.ts";
 import type { Procedure, ProcedureRegistryLike } from "../core/types.ts";
 import { createTypiaBunPlugin } from "./typia-bun-plugin.ts";
 
@@ -145,9 +144,6 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     this.register(simplifyProcedure);
     this.register(tokensProcedure);
     this.register(secondOpinionProcedure);
-    for (const procedure of sessionToolProcedures) {
-      this.register(procedure);
-    }
   }
 
   async loadFromDisk(): Promise<void> {

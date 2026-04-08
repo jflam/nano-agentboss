@@ -1095,60 +1095,18 @@ describe("NanobossService", () => {
     expect(service.getSession("session-from-client")?.sessionId).toBe("session-from-client");
   });
 
-  test("createSession exposes session inspection commands on the parent command surface", () => {
+  test("createSession does not expose duplicate session inspection commands on the parent command surface", () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
     registry.loadBuiltins();
 
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
-    expect(session.commands.some((command) => command.name === "top_level_runs")).toBe(true);
-    expect(session.commands.some((command) => command.name === "cell_get")).toBe(true);
-    expect(session.commands.some((command) => command.name === "ref_read")).toBe(true);
+    expect(session.commands.some((command) => command.name === "top_level_runs")).toBe(false);
+    expect(session.commands.some((command) => command.name === "cell_get")).toBe(false);
+    expect(session.commands.some((command) => command.name === "ref_read")).toBe(false);
     expect(session.commands.some((command) => command.name === "dismiss")).toBe(true);
   });
-
-  test("session inspection commands can read current-session results", async () => {
-    await withMockAgentEnv(async () => {
-      const { cwd, registry } = await createRegistryWithWorkspace({
-        review: [
-          "export default {",
-          '  name: "review",',
-          '  description: "store a durable review result",',
-          '  async execute(prompt) {',
-          '    return {',
-          '      data: { subject: prompt, verdict: "mixed" },',
-          '      display: "review stored",',
-          '      summary: `review ${prompt}`,',
-          '    };',
-          '  },',
-          "};",
-        ].join("\n"),
-      });
-
-      const service = new NanobossService(registry);
-      const session = service.createSession({ cwd });
-
-      await service.prompt(session.sessionId, "/review patch");
-
-      const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
-      const runCompleted = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "review");
-      const cell = runCompleted?.type === "run_completed" ? runCompleted.data.cell : undefined;
-
-      expect(cell).toBeDefined();
-
-      await service.prompt(session.sessionId, `/ref_read session=${session.sessionId} cell=${cell?.cellId} path=output.data`);
-
-      const afterRefRead = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
-      const text = afterRefRead
-        .filter((event) => event.type === "text_delta")
-        .map((event) => event.data.text)
-        .join("");
-
-      expect(text).toContain("\"subject\": \"patch\"");
-      expect(text).toContain("\"verdict\": \"mixed\"");
-    });
-  }, 30_000);
 
   test("plain-text replies resume a paused procedure", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
