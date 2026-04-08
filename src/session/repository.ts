@@ -42,6 +42,9 @@ export function writeSessionMetadata(metadata: SessionMetadata): SessionMetadata
     `${JSON.stringify(metadata, null, 2)}\n`,
     "utf8",
   );
+  // `current-sessions.json` is a workspace-local cache of the canonical session snapshot.
+  mkdirSync(getNanobossHome(), { recursive: true });
+  writeCurrentWorkspaceIndex(metadata);
   return metadata;
 }
 

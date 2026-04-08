@@ -7,7 +7,8 @@ import { afterEach, expect, test } from "bun:test";
 import { resolveWorkspaceKey } from "../../src/core/workspace-identity.ts";
 import {
   readCurrentSessionMetadata,
-  writeCurrentSessionMetadata,
+  readSessionMetadata,
+  writeSessionMetadata,
 } from "../../src/session/index.ts";
 
 let tempHome: string | undefined;
@@ -19,24 +20,24 @@ afterEach(() => {
   }
 });
 
-test("writes and reads the current session metadata", () => {
+test("derives the current session metadata from the stored session snapshot", () => {
   const originalHome = process.env.HOME;
   tempHome = mkdtempSync(join(tmpdir(), "nanoboss-current-session-"));
   process.env.HOME = tempHome;
 
   try {
-    writeCurrentSessionMetadata({
+    const rootDir = join(tempHome, ".nanoboss", "sessions", "session-123");
+    const metadata = writeSessionMetadata({
       sessionId: "session-123",
       cwd: "/repo",
-      rootDir: "/repo/.nanoboss/session-123",
+      rootDir,
       createdAt: "2026-04-01T10:00:00.000Z",
       updatedAt: "2026-04-01T11:00:00.000Z",
+      initialPrompt: "review this patch",
     });
 
-    expect(readCurrentSessionMetadata("/repo")).toMatchObject({
-      sessionId: "session-123",
-      cwd: "/repo",
-    });
+    expect(readSessionMetadata("session-123", rootDir)).toEqual(metadata);
+    expect(readCurrentSessionMetadata("/repo")).toEqual(metadata);
     expect(readCurrentSessionMetadata("/other-repo")).toBeUndefined();
   } finally {
     if (originalHome === undefined) {
@@ -47,23 +48,23 @@ test("writes and reads the current session metadata", () => {
   }
 });
 
-test("keeps current session pointers isolated by workspace", () => {
+test("keeps derived current session cache entries isolated by workspace", () => {
   const originalHome = process.env.HOME;
   tempHome = mkdtempSync(join(tmpdir(), "nanoboss-current-session-workspaces-"));
   process.env.HOME = tempHome;
 
   try {
-    writeCurrentSessionMetadata({
+    writeSessionMetadata({
       sessionId: "session-one",
       cwd: "/repo-one",
-      rootDir: "/repo-one/.nanoboss/session-one",
+      rootDir: join(tempHome, ".nanoboss", "sessions", "session-one"),
       createdAt: "2026-04-01T10:00:00.000Z",
       updatedAt: "2026-04-01T11:00:00.000Z",
     });
-    writeCurrentSessionMetadata({
+    writeSessionMetadata({
       sessionId: "session-two",
       cwd: "/repo-two",
-      rootDir: "/repo-two/.nanoboss/session-two",
+      rootDir: join(tempHome, ".nanoboss", "sessions", "session-two"),
       createdAt: "2026-04-01T12:00:00.000Z",
       updatedAt: "2026-04-01T13:00:00.000Z",
     });

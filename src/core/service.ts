@@ -24,7 +24,6 @@ import {
   SessionStore,
   readSessionMetadata,
   type SessionMetadata,
-  writeCurrentSessionMetadata,
   writeSessionMetadata,
 } from "../session/index.ts";
 import { startProcedureDispatchProgressBridge } from "../procedure/dispatch-progress.ts";
@@ -178,7 +177,7 @@ export class NanobossService {
     });
 
     this.sessions.set(sessionId, state);
-    this.touchCurrentSessionMetadata(this.persistSessionState(state));
+    this.persistSessionState(state);
     state.events.publish(sessionId, {
       type: "commands_updated",
       commands: state.commands,
@@ -195,7 +194,7 @@ export class NanobossService {
   }): SessionDescriptor {
     const existing = this.sessions.get(params.sessionId);
     if (existing) {
-      this.touchCurrentSessionMetadata(this.persistSessionState(existing));
+      this.persistSessionState(existing);
       return this.buildSessionDescriptor(params.sessionId, existing);
     }
 
@@ -215,7 +214,7 @@ export class NanobossService {
     this.restorePersistedSessionHistory(params.sessionId, state);
 
     this.sessions.set(params.sessionId, state);
-    this.touchCurrentSessionMetadata(this.persistSessionState(state));
+    this.persistSessionState(state);
     state.events.publish(params.sessionId, {
       type: "commands_updated",
       commands: state.commands,
@@ -347,10 +346,6 @@ export class NanobossService {
       defaultAcpSessionId,
       pendingProcedureContinuation: session.pendingProcedureContinuation,
     });
-  }
-
-  private touchCurrentSessionMetadata(metadata: SessionMetadata): void {
-    writeCurrentSessionMetadata(metadata);
   }
 
   getSessionEvents(sessionId: string): SessionEventLog | undefined {
@@ -621,9 +616,7 @@ export class NanobossService {
     const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
     session.defaultAgentConfig = nextConfig;
     session.defaultConversation.updateConfig(nextConfig);
-    this.touchCurrentSessionMetadata(
-      this.persistSessionState(session, { preserveDefaultAcpSessionId: false }),
-    );
+    this.persistSessionState(session, { preserveDefaultAcpSessionId: false });
   }
 
   private emitDisplayIfNeeded(
@@ -772,7 +765,7 @@ export class NanobossService {
       text,
       session.pendingProcedureContinuation,
     );
-    this.touchCurrentSessionMetadata(this.persistSessionState(session, { prompt: text }));
+    this.persistSessionState(session, { prompt: text });
     const procedure = commandName === DISMISS_CONTINUATION_COMMAND_NAME
       ? createDismissContinuationProcedure(session)
       : this.registry.get(commandName);
@@ -1117,7 +1110,7 @@ export class NanobossService {
           },
         });
       }
-      this.touchCurrentSessionMetadata(this.persistSessionState(session));
+      this.persistSessionState(session);
       if (session.activeRun === activeRun) {
         session.activeRun = undefined;
       }
