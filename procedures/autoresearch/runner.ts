@@ -1,5 +1,6 @@
 import typia from "typia";
 
+import { normalizeRunCancelledError } from "../../src/core/cancellation.ts";
 import { expectData } from "../../src/core/run-result.ts";
 import { formatErrorMessage } from "../../src/core/error-format.ts";
 import {
@@ -127,7 +128,10 @@ export async function executeAutoresearchStartCommand(
     };
   }
 
-  return await initializeAutoresearch(paths, goal, ctx);
+  return await runAutoresearchWithCancellationRecovery(
+    paths,
+    () => initializeAutoresearch(paths, goal, ctx),
+  );
 }
 
 export async function executeAutoresearchContinueCommand(
@@ -187,12 +191,15 @@ export async function executeAutoresearchContinueCommand(
     pendingContextNotes: note ? [...state.pendingContextNotes, note] : state.pendingContextNotes,
   });
 
-  return await runForegroundAutoresearchLoop({
+  return await runAutoresearchWithCancellationRecovery(
     paths,
-    state: nextState,
-    records,
-    ctx,
-  });
+    () => runForegroundAutoresearchLoop({
+      paths,
+      state: nextState,
+      records,
+      ctx,
+    }),
+  );
 }
 
 export async function executeAutoresearchStatusCommand(
@@ -975,6 +982,36 @@ function prepareAutoresearchBranch(
 
 function printAutoresearchProgress(ctx: CommandContext, message: string): void {
   ctx.print(`${message}\n`);
+}
+
+async function runAutoresearchWithCancellationRecovery(
+  paths: AutoresearchPaths,
+  run: () => Promise<ProcedureResult>,
+): Promise<ProcedureResult> {
+  try {
+    return await run();
+  } catch (error) {
+    recoverAutoresearchCancellation(paths, error);
+    throw error;
+  }
+}
+
+function recoverAutoresearchCancellation(paths: AutoresearchPaths, error: unknown): void {
+  const cancelled = normalizeRunCancelledError(error);
+  if (!cancelled) {
+    return;
+  }
+
+  const state = readAutoresearchState(paths);
+  if (!state || state.status !== "active") {
+    return;
+  }
+
+  const nextState = writeAutoresearchState(paths, {
+    ...state,
+    status: "inactive",
+  });
+  writeAutoresearchSummary(paths, nextState, readExperimentLog(paths));
 }
 
 function sanitizeBranchName(value: string): string {

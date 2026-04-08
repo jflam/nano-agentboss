@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
+import { RunCancelledError } from "../../src/core/cancellation.ts";
 import {
   executeAutoresearchClearCommand,
   executeAutoresearchCommand,
@@ -190,6 +191,31 @@ describe("autoresearch procedures", () => {
     expect(continuedData?.status).toBe("inactive");
     expect(printed.join("")).toContain("Continuing autoresearch on");
     expect(printed.join("")).toContain("Result: 120, reverted.");
+  });
+
+  test("cancellation leaves autoresearch inactive so it can be cleared", async () => {
+    const cwd = createFixtureRepo();
+
+    await expect(executeAutoresearchStartCommand(
+      "reduce the score benchmark",
+      createMockContext(cwd, async (_prompt, callCount) => {
+        if (callCount === 1) {
+          return buildInitPlan({ maxIterations: 2 });
+        }
+
+        throw new RunCancelledError("Stopped.", "soft_stop");
+      }),
+    )).rejects.toThrow("Stopped.");
+
+    const paths = resolveAutoresearchPaths(cwd);
+    const state = readAutoresearchState(paths);
+    expect(state?.status).toBe("inactive");
+
+    const cleared = await executeAutoresearchClearCommand("", createMockContext(cwd, async () => {
+      throw new Error("clear should not callAgent");
+    }));
+    expect(cleared.summary).toBe("autoresearch/clear: cleared state");
+    expect(existsSync(paths.statePath)).toBe(false);
   });
 
   test("keeps improved experiments, rejects regressions, and records confidence", async () => {
