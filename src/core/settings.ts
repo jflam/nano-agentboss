@@ -2,7 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { DownstreamAgentProvider, DownstreamAgentSelection } from "./types.ts";
+import { parseDownstreamAgentSelection } from "./downstream-agent-selection.ts";
+import type { DownstreamAgentSelection } from "./types.ts";
 
 export interface NanobossSettings {
   defaultAgentSelection?: DownstreamAgentSelection;
@@ -43,29 +44,6 @@ export function writePersistedDefaultAgentSelection(selection: DownstreamAgentSe
 
 function getNanobossHome(): string {
   return join(process.env.HOME?.trim() || homedir(), ".nanoboss");
-}
-
-function parseDownstreamAgentSelection(value: unknown): DownstreamAgentSelection | undefined {
-  const record = asRecord(value);
-  const provider = asProvider(record?.provider);
-  if (!provider) {
-    return undefined;
-  }
-
-  const model = asNonEmptyString(record?.model);
-  return model
-    ? { provider, model }
-    : { provider };
-}
-
-function asProvider(value: unknown): DownstreamAgentProvider | undefined {
-  return value === "claude" || value === "gemini" || value === "codex" || value === "copilot"
-    ? value
-    : undefined;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null ? value as Record<string, unknown> : undefined;
 }
 
 function asNonEmptyString(value: unknown): string | undefined {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildTopLevelSessionMeta,
+  extractDefaultAgentSelection,
   extractNanobossSessionId,
 } from "../../src/core/acp-server.ts";
 
@@ -25,5 +26,32 @@ describe("top-level ACP session diagnostics", () => {
         nanobossSessionId: "session-from-client",
       },
     })).toBe("session-from-client");
+  });
+
+  test("keeps ACP default agent selections when the model is omitted", () => {
+    expect(extractDefaultAgentSelection({
+      cwd: process.cwd(),
+      mcpServers: [],
+      _meta: {
+        defaultAgentSelection: {
+          provider: "gemini",
+        },
+      },
+    })).toEqual({
+      provider: "gemini",
+    });
+  });
+
+  test("ignores ACP default agent selections with invalid providers", () => {
+    expect(extractDefaultAgentSelection({
+      cwd: process.cwd(),
+      mcpServers: [],
+      _meta: {
+        defaultAgentSelection: {
+          provider: "cursor",
+          model: "bad-model",
+        },
+      },
+    })).toBeUndefined();
   });
 });

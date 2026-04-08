@@ -8,9 +8,9 @@ import {
 import { join } from "node:path";
 
 import { getNanobossHome, getSessionDir } from "../core/config.ts";
+import { parseDownstreamAgentSelection } from "../core/downstream-agent-selection.ts";
 import { resolveWorkspaceKey } from "../core/workspace-identity.ts";
 import type {
-  DownstreamAgentProvider,
   DownstreamAgentSelection,
   PendingProcedureContinuation,
 } from "../core/types.ts";
@@ -192,19 +192,6 @@ function parseSessionMetadata(
   };
 }
 
-function parseDownstreamAgentSelection(value: unknown): DownstreamAgentSelection | undefined {
-  const record = asRecord(value);
-  const provider = asProvider(record?.provider);
-  if (!provider) {
-    return undefined;
-  }
-
-  const model = asNonEmptyString(record?.model);
-  return model
-    ? { provider, model }
-    : { provider };
-}
-
 function parsePendingProcedureContinuation(value: unknown): PendingProcedureContinuation | undefined {
   const record = asRecord(value);
   const procedure = asNonEmptyString(record?.procedure);
@@ -233,12 +220,6 @@ function parseCellRef(value: unknown): PendingProcedureContinuation["cell"] | un
   const sessionId = asNonEmptyString(record?.sessionId);
   const cellId = asNonEmptyString(record?.cellId);
   return sessionId && cellId ? { sessionId, cellId } : undefined;
-}
-
-function asProvider(value: unknown): DownstreamAgentProvider | undefined {
-  return value === "claude" || value === "gemini" || value === "codex" || value === "copilot"
-    ? value
-    : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

@@ -2,6 +2,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 
 import { getBuildLabel } from "./build-info.ts";
+import { parseDownstreamAgentSelection } from "./downstream-agent-selection.ts";
 import { NanobossService } from "./service.ts";
 import type { DownstreamAgentSelection } from "./types.ts";
 
@@ -108,27 +109,13 @@ export function extractNanobossSessionId(params: acp.NewSessionRequest): string 
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
 }
 
-function extractDefaultAgentSelection(params: acp.NewSessionRequest): DownstreamAgentSelection | undefined {
+export function extractDefaultAgentSelection(params: acp.NewSessionRequest): DownstreamAgentSelection | undefined {
   const record = params._meta;
   if (!record || typeof record !== "object") {
     return undefined;
   }
 
-  const candidate = (record as Record<string, unknown>).defaultAgentSelection;
-  if (!candidate || typeof candidate !== "object") {
-    return undefined;
-  }
-
-  const provider = (candidate as Record<string, unknown>).provider;
-  const model = (candidate as Record<string, unknown>).model;
-  if (provider !== "claude" && provider !== "gemini" && provider !== "codex" && provider !== "copilot") {
-    return undefined;
-  }
-
-  return {
-    provider,
-    model: typeof model === "string" ? model : undefined,
-  };
+  return parseDownstreamAgentSelection((record as Record<string, unknown>).defaultAgentSelection);
 }
 
 function extractPromptText(prompt: acp.PromptRequest["prompt"]): string {

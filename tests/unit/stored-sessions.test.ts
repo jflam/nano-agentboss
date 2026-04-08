@@ -98,6 +98,54 @@ describe("session persistence", () => {
     }
   });
 
+  test("keeps optional stored default agent models and ignores invalid providers", () => {
+    const originalHome = process.env.HOME;
+    tempHome = mkdtempSync(join(tmpdir(), "nanoboss-stored-agent-selection-"));
+    process.env.HOME = tempHome;
+
+    try {
+      const validSessionRoot = join(tempHome, ".nanoboss", "sessions", "session-valid");
+      mkdirSync(validSessionRoot, { recursive: true });
+      writeFileSync(join(validSessionRoot, "session.json"), `${JSON.stringify({
+        sessionId: "session-valid",
+        cwd: "/repo",
+        rootDir: validSessionRoot,
+        createdAt: "2026-04-01T10:00:00.000Z",
+        updatedAt: "2026-04-01T11:00:00.000Z",
+        defaultAgentSelection: {
+          provider: "codex",
+        },
+      }, null, 2)}\n`, "utf8");
+
+      const invalidSessionRoot = join(tempHome, ".nanoboss", "sessions", "session-invalid");
+      mkdirSync(invalidSessionRoot, { recursive: true });
+      writeFileSync(join(invalidSessionRoot, "session.json"), `${JSON.stringify({
+        sessionId: "session-invalid",
+        cwd: "/repo",
+        rootDir: invalidSessionRoot,
+        createdAt: "2026-04-01T12:00:00.000Z",
+        updatedAt: "2026-04-01T13:00:00.000Z",
+        defaultAgentSelection: {
+          provider: "cursor",
+          model: "bad-model",
+        },
+      }, null, 2)}\n`, "utf8");
+
+      const sessions = listSessionSummaries();
+      expect(sessions).toHaveLength(2);
+      expect(sessions.find((session) => session.sessionId === "session-valid")?.defaultAgentSelection).toEqual({
+        provider: "codex",
+      });
+      expect(sessions.find((session) => session.sessionId === "session-invalid")?.defaultAgentSelection).toBeUndefined();
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
   test("ignores sessions that have cells but no session metadata", () => {
     const originalHome = process.env.HOME;
     tempHome = mkdtempSync(join(tmpdir(), "nanoboss-metadata-required-"));

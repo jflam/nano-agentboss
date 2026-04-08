@@ -172,6 +172,44 @@ function seedSession(rootDir: string) {
 }
 
 describe("nanoboss MCP API", () => {
+  test("accepts MCP default agent selections without a model", async () => {
+    const fakeApi = {
+      async procedureDispatchStart(args: unknown) {
+        return args;
+      },
+    } as unknown as Parameters<typeof callMcpTool>[0];
+
+    await expect(callMcpTool(fakeApi, "procedure_dispatch_start", {
+      name: "review",
+      prompt: "patch",
+      defaultAgentSelection: {
+        provider: "codex",
+      },
+    })).resolves.toMatchObject({
+      name: "review",
+      prompt: "patch",
+      defaultAgentSelection: {
+        provider: "codex",
+      },
+    });
+  });
+
+  test("rejects MCP default agent selections with invalid providers", async () => {
+    const fakeApi = {
+      async procedureDispatchStart(args: unknown) {
+        return args;
+      },
+    } as unknown as Parameters<typeof callMcpTool>[0];
+
+    await expect(callMcpTool(fakeApi, "procedure_dispatch_start", {
+      name: "review",
+      prompt: "patch",
+      defaultAgentSelection: {
+        provider: "cursor",
+      },
+    })).rejects.toThrow("Expected defaultAgentSelection.provider to be one of claude, gemini, codex, copilot");
+  });
+
   test("supports structural traversal, exact cell reads, ref reads, and schema lookup", () => {
     const rootDir = mkdtempSync(join(process.cwd(), ".tmp-mcp-test-session-"));
     tempDirs.push(rootDir);

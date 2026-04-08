@@ -1,6 +1,7 @@
 
 import { getBuildLabel } from "../core/build-info.ts";
 import { inferDataShape } from "../core/data-shape.ts";
+import { parseRequiredDownstreamAgentSelection } from "../core/downstream-agent-selection.ts";
 import { dispatchMcpToolsMethod, type JsonRpcToolMetadata } from "./jsonrpc.ts";
 import { runStdioJsonRpcServer } from "./stdio-jsonrpc.ts";
 import {
@@ -399,7 +400,7 @@ const MCP_TOOLS: McpToolDefinition[] = [
         prompt: typeof args.prompt === "string" ? args.prompt : "",
         defaultAgentSelection: args.defaultAgentSelection === undefined
           ? undefined
-          : parseDownstreamAgentSelection(args.defaultAgentSelection),
+          : parseRequiredDownstreamAgentSelection(args.defaultAgentSelection),
         dispatchCorrelationId: asOptionalString(args.dispatchCorrelationId),
       };
     },
@@ -963,18 +964,4 @@ function asOptionalNonNegativeNumber(value: unknown, name: string): number | und
   }
 
   return value;
-}
-
-function parseDownstreamAgentSelection(value: unknown): DownstreamAgentSelection {
-  const record = asObject(value);
-  const provider = asString(record.provider, "defaultAgentSelection.provider");
-  if (provider !== "claude" && provider !== "gemini" && provider !== "codex" && provider !== "copilot") {
-    throw new Error("Expected defaultAgentSelection.provider to be one of claude, gemini, codex, or copilot");
-  }
-
-  const model = record.model === undefined ? undefined : asString(record.model, "defaultAgentSelection.model");
-  return {
-    provider,
-    model,
-  };
 }
