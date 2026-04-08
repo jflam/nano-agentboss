@@ -1,11 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, expect, test } from "bun:test";
 
 import {
-  getCurrentSessionMetadataPath,
   readCurrentSessionMetadata,
   writeCurrentSessionMetadata,
 } from "../../src/session/index.ts";
@@ -42,7 +41,7 @@ test("writes and reads the current session metadata", () => {
       sessionId: "session-123",
       cwd: "/repo",
     });
-    expect(readFileSync(getCurrentSessionMetadataPath(), "utf8")).toContain("\"sessionId\": \"session-123\"");
+    expect(readCurrentSessionMetadata("/other-repo")).toBeUndefined();
   } finally {
     if (originalHome === undefined) {
       delete process.env.HOME;

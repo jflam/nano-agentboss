@@ -36,7 +36,7 @@ export interface SessionSummary extends SessionMetadata {
   hasNativeResume: boolean;
 }
 
-export function getSessionMetadataPath(sessionId: string, rootDir?: string): string {
+function getSessionMetadataPath(sessionId: string, rootDir?: string): string {
   return join(rootDir ?? getSessionDir(sessionId), SESSION_METADATA_FILE);
 }
 
@@ -76,17 +76,12 @@ export function listSessionSummaries(): SessionSummary[] {
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-export function findSessionSummary(sessionId: string): SessionSummary | undefined {
-  const metadata = readSessionMetadata(sessionId);
-  return metadata ? toSessionSummary(metadata) : undefined;
-}
-
 export function resolveMostRecentSessionSummary(cwd: string): SessionSummary | undefined {
   const workspaceKey = resolveWorkspaceKey(cwd);
   return listSessionSummaries().find((session) => resolveWorkspaceKey(session.cwd) === workspaceKey);
 }
 
-export function getCurrentSessionMetadataPath(): string {
+function getCurrentSessionMetadataPath(): string {
   return join(getNanobossHome(), CURRENT_SESSION_FILE);
 }
 
@@ -126,12 +121,7 @@ export function readCurrentSessionMetadata(cwd?: string): SessionMetadata | unde
   }
 }
 
-export function readCurrentSessionSummary(cwd?: string): SessionSummary | undefined {
-  const metadata = readCurrentSessionMetadata(cwd);
-  return metadata ? toSessionSummary(metadata) : undefined;
-}
-
-export function toSessionSummary(metadata: SessionMetadata): SessionSummary {
+function toSessionSummary(metadata: SessionMetadata): SessionSummary {
   return {
     ...metadata,
     hasNativeResume: Boolean(metadata.defaultAcpSessionId),
