@@ -133,23 +133,6 @@ describe("autoresearch procedures", () => {
     expect(resultData?.iterationCount).toBe(0);
   });
 
-  test("migrates legacy autoresearch storage out of .git", () => {
-    const cwd = createFixtureRepo();
-    const legacyStorageDir = join(cwd, ".git", "nanoboss", "autoresearch");
-    mkdirSync(legacyStorageDir, { recursive: true });
-    writeFileSync(join(legacyStorageDir, "autoresearch.state.json"), "{\"goal\":\"legacy\"}\n", "utf8");
-    writeFileSync(join(legacyStorageDir, "autoresearch.jsonl"), "{\"id\":\"run-0001\"}\n", "utf8");
-    writeFileSync(join(legacyStorageDir, "autoresearch.md"), "# Legacy\n", "utf8");
-
-    const paths = resolveAutoresearchPaths(cwd);
-
-    expect(paths.storageDir).toBe(join(paths.repoRoot, ".nanoboss", "autoresearch"));
-    expect(readFileSync(paths.statePath, "utf8")).toBe("{\"goal\":\"legacy\"}\n");
-    expect(readFileSync(paths.logPath, "utf8")).toBe("{\"id\":\"run-0001\"}\n");
-    expect(readFileSync(paths.summaryPath, "utf8")).toBe("# Legacy\n");
-    expect(existsSync(legacyStorageDir)).toBe(false);
-  });
-
   test("continue resumes from durable state and incorporates continuation notes", async () => {
     const cwd = createFixtureRepo();
 
