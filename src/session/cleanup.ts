@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { getNanobossHome } from "../core/config.ts";
@@ -133,12 +133,14 @@ function inspectSessionDirectory(rootDir: string): SessionCleanupCandidate | und
   const jobsDir = join(rootDir, "procedure-dispatch-jobs");
   const hasSessionJson = existsSync(sessionJsonPath);
   const metadata = readSessionMetadata(sessionId, rootDir);
+  const partialMetadata = metadata ?? readPartialSessionMetadata(sessionJsonPath);
   const cellCount = countJsonFiles(cellsDir);
   const jobCount = countJsonFiles(jobsDir);
-  const initialPrompt = metadata?.initialPrompt;
+  const cwd = metadata?.cwd ?? partialMetadata?.cwd;
+  const initialPrompt = metadata?.initialPrompt ?? partialMetadata?.initialPrompt;
   const reasons = classifyCleanupReasons({
     sessionId,
-    cwd: metadata?.cwd,
+    cwd,
     initialPrompt,
     hasSessionJson,
     cellCount,
@@ -153,10 +155,10 @@ function inspectSessionDirectory(rootDir: string): SessionCleanupCandidate | und
   return {
     sessionId,
     rootDir,
-    cwd: metadata?.cwd,
+    cwd,
     initialPrompt,
-    updatedAt: metadata?.updatedAt,
-    createdAt: metadata?.createdAt,
+    updatedAt: metadata?.updatedAt ?? partialMetadata?.updatedAt,
+    createdAt: metadata?.createdAt ?? partialMetadata?.createdAt,
     cellCount,
     jobCount,
     hasSessionJson,
@@ -254,4 +256,27 @@ function looksLikeFixturePrompt(initialPrompt: string | undefined): boolean {
 
   const prompt = initialPrompt.trim();
   return FIXTURE_PROMPTS.has(prompt) || FIXTURE_PROMPT_PREFIXES.some((prefix) => prompt.startsWith(prefix));
+}
+
+function readPartialSessionMetadata(sessionJsonPath: string): {
+  cwd?: string;
+  initialPrompt?: string;
+  updatedAt?: string;
+  createdAt?: string;
+} | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(sessionJsonPath, "utf8")) as Record<string, unknown>;
+    return {
+      cwd: asNonEmptyString(raw.cwd),
+      initialPrompt: asNonEmptyString(raw.initialPrompt),
+      updatedAt: asNonEmptyString(raw.updatedAt),
+      createdAt: asNonEmptyString(raw.createdAt),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
