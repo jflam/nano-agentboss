@@ -1134,6 +1134,59 @@ return maybePauseOrFinishAfterApply(state)
 
 ---
 
+## Approach
+
+Based on the current nanoboss codebase, `/simplify2` is implementable as a new built-in procedure rather than a rewrite of the existing `/simplify` command.
+
+What the codebase already provides:
+
+- `Procedure.execute(...)` plus optional `resume(...)` with durable paused state
+- typed agent subcalls via `ctx.callAgent(...)`
+- optional typed helper procedure calls via `ctx.callProcedure(...)`
+- built-in slash-command registration through `ProcedureRegistry.loadBuiltins()`
+- an existing `/simplify` implementation that is a useful shape and test template for pause/resume behavior
+
+That means the first implementation should:
+
+- add a new `procedures/simplify2.ts`
+- register it alongside the existing `simplify` command
+- keep the orchestration in one procedure with local helper functions first
+- preserve the existing deterministic pause/resume model instead of introducing any new runtime mechanism
+
+The main gaps are not runtime capability. They are policy and storage choices that the plan must make concrete:
+
+- architecture memory storage format and file location
+- simplify journal storage format and file location
+- test map storage format and file location
+- deterministic heuristics for minimal trusted test-slice selection
+- concrete validation execution policy
+- exact typed schemas for refresh, ranking, reconciliation, and human-decision payloads
+
+The recommended first implementation slice is intentionally narrower than the full idealized design:
+
+1. implement `/simplify2` as a single procedure with richer paused state
+2. keep architecture memory, journal, and test map in simple repo-visible JSON or Markdown artifacts
+3. replace `findNextOpportunity(...)` with the explicit phases from this plan
+4. support human checkpoints and typed resume decisions
+5. start with conservative deterministic test selection heuristics
+6. defer helper sub-procedures and storage optimization until the core loop works
+
+Practical notes from the code review:
+
+- no special TUI command plumbing should be required beyond normal procedure registration
+- the new command should ship with focused unit tests modeled on `tests/unit/simplify-command.test.ts`
+- registry coverage should be updated so `/simplify2` appears in built-in command availability
+- the first version should coexist with `/simplify`, not replace it
+
+Implementation bias for v1:
+
+- choose inspectable artifacts over clever hidden state
+- choose deterministic heuristics over agent-selected control flow
+- choose narrow coherent changes over broad conceptual rewrites
+- choose a working end-to-end loop before refining memory sophistication
+
+---
+
 ## Suggested implementation order
 
 The cleanest path is incremental.
