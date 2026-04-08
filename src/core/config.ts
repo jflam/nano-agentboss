@@ -1,17 +1,21 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import {
+  buildReasoningModelSelection,
+  isReasoningEffort,
+  parseReasoningModelSelection,
+  type ReasoningEffort,
+} from "../agent/model-catalog.ts";
 import { readPersistedDefaultAgentSelection } from "./settings.ts";
 import type { DownstreamAgentConfig, DownstreamAgentProvider, DownstreamAgentSelection } from "./types.ts";
 
 const DEFAULT_AGENT_COMMAND = "copilot";
 const DEFAULT_AGENT_ARGS = ["--acp", "--allow-all-tools"];
-const COPILOT_REASONING_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
 
 interface ParsedModelSelection {
-  raw: string;
   modelId: string;
-  reasoningEffort?: string;
+  reasoningEffort?: ReasoningEffort;
 }
 
 export function getNanobossHome(): string {
@@ -74,8 +78,13 @@ export function toDownstreamAgentSelection(
   }
 
   const model = config.model
-    ? config.provider === "copilot" && config.reasoningEffort
-      ? `${config.model}/${config.reasoningEffort}`
+    ? config.provider === "copilot"
+      ? buildReasoningModelSelection(
+          config.model,
+          config.reasoningEffort && isReasoningEffort(config.reasoningEffort)
+            ? config.reasoningEffort
+            : undefined,
+        )
       : config.model
     : undefined;
 
@@ -91,27 +100,18 @@ export function parseAgentModelSelection(
 ): ParsedModelSelection {
   const raw = selector.trim();
   if (!raw) {
-    return { raw, modelId: raw };
+    return { modelId: raw };
   }
 
-  if (provider === "copilot") {
-    const separator = raw.lastIndexOf("/");
-    if (separator > 0 && separator < raw.length - 1) {
-      const modelId = raw.slice(0, separator);
-      const reasoningEffort = raw.slice(separator + 1);
-      if (COPILOT_REASONING_EFFORTS.includes(
-        reasoningEffort as typeof COPILOT_REASONING_EFFORTS[number],
-      )) {
-        return {
-          raw,
-          modelId,
-          reasoningEffort,
-        };
-      }
-    }
+  if (provider !== "copilot") {
+    return { modelId: raw };
   }
 
-  return { raw, modelId: raw };
+  const { baseModel, reasoningEffort } = parseReasoningModelSelection(raw);
+  return {
+    modelId: baseModel ?? raw,
+    reasoningEffort,
+  };
 }
 
 function resolveAgentSelection(

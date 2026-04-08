@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, expect, test } from "bun:test";
 
-import { parseAgentModelSelection, resolveDownstreamAgentConfig } from "../../src/core/config.ts";
+import {
+  parseAgentModelSelection,
+  resolveDownstreamAgentConfig,
+  toDownstreamAgentSelection,
+} from "../../src/core/config.ts";
 import { writePersistedDefaultAgentSelection } from "../../src/core/settings.ts";
 
 let tempHome: string | undefined;
@@ -33,7 +37,7 @@ test("resolveDownstreamAgentConfig maps claude selections to the ACP adapter", (
   });
 });
 
-test("resolveDownstreamAgentConfig parses copilot reasoning-effort suffixes", () => {
+test("resolveDownstreamAgentConfig applies shared reasoning parsing only to copilot selections", () => {
   const config = resolveDownstreamAgentConfig("/repo", {
     provider: "copilot",
     model: "gpt-5.4/xhigh",
@@ -44,13 +48,38 @@ test("resolveDownstreamAgentConfig parses copilot reasoning-effort suffixes", ()
   expect(config.args).toEqual(["--acp", "--allow-all-tools"]);
   expect(config.model).toBe("gpt-5.4");
   expect(config.reasoningEffort).toBe("xhigh");
+
+  const codexSelection = parseAgentModelSelection("codex", "gpt-5.4/xhigh");
+  expect(codexSelection.modelId).toBe("gpt-5.4/xhigh");
+  expect(codexSelection.reasoningEffort).toBeUndefined();
 });
 
-test("parseAgentModelSelection leaves non-copilot slash suffixes unchanged", () => {
-  const parsed = parseAgentModelSelection("codex", "gpt-5.4/xhigh");
+test("toDownstreamAgentSelection rebuilds copilot reasoning selections with the shared helper", () => {
+  expect(
+    toDownstreamAgentSelection({
+      provider: "copilot",
+      command: "copilot",
+      args: ["--acp", "--allow-all-tools"],
+      model: "gpt-5.4",
+      reasoningEffort: "xhigh",
+    }),
+  ).toEqual({
+    provider: "copilot",
+    model: "gpt-5.4/xhigh",
+  });
 
-  expect(parsed.modelId).toBe("gpt-5.4/xhigh");
-  expect(parsed.reasoningEffort).toBeUndefined();
+  expect(
+    toDownstreamAgentSelection({
+      provider: "codex",
+      command: "codex-acp",
+      args: [],
+      model: "gpt-5.4/xhigh",
+      reasoningEffort: "xhigh",
+    }),
+  ).toEqual({
+    provider: "codex",
+    model: "gpt-5.4/xhigh",
+  });
 });
 
 test("resolveDownstreamAgentConfig still supports raw env overrides", () => {

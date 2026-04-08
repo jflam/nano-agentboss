@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import {
+  buildReasoningModelSelection,
   findSelectableModelOption,
   isKnownAgentProvider,
   isKnownModelSelection,
@@ -55,11 +56,12 @@ test("keeps codex slash model ids intact", () => {
   expect(findSelectableModelOption("codex", "gpt-5.2-codex/xhigh")?.label).toContain("Extra High");
 });
 
-test("parses reasoning selections only when the suffix is a known effort", () => {
+test("shared reasoning helpers parse and rebuild known effort suffixes", () => {
   expect(parseReasoningModelSelection("gpt-5.4/xhigh")).toEqual({
     baseModel: "gpt-5.4",
     reasoningEffort: "xhigh",
   });
+  expect(buildReasoningModelSelection("gpt-5.4", "xhigh")).toBe("gpt-5.4/xhigh");
   expect(parseReasoningModelSelection("gpt-5.2-codex/xhigh")).toEqual({
     baseModel: "gpt-5.2-codex",
     reasoningEffort: "xhigh",
