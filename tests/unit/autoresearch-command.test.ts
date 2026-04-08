@@ -743,9 +743,6 @@ function createMockContext(
     async callProcedure() {
       throw new Error("Not implemented in test");
     },
-    async continueDefaultSession() {
-      throw new Error("Not implemented in test");
-    },
     print(text: string) {
       printed.push(text);
     },

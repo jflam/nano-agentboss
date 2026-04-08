@@ -44,7 +44,7 @@ what is 2+2
 is resolved by `src/service.ts` to the built-in `default` procedure, which calls:
 
 ```ts
-ctx.continueDefaultSession(prompt)
+ctx.callAgent(prompt, { session: "default" })
 ```
 
 That uses `DefaultConversationSession`, which creates or resumes a **persistent downstream ACP session**.

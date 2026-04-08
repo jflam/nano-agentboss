@@ -319,7 +319,7 @@ There are currently multiple pathways for “call an agent and record the result
 
 - standalone `callAgent(...)`
 - `CommandContextImpl.callAgent(...)`
-- `CommandContextImpl.continueDefaultSession(...)`
+- `CommandContextImpl.callAgent(..., { session: "default" })`
 - `DefaultConversationSession` / `PersistentAcpSession`
 
 Some duplication is justified because one path is one-shot and one path is persistent, but too much behavior is repeated in parallel:

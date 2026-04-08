@@ -2,18 +2,18 @@
 
 ## Summary
 
-`ctx.continueDefaultSession()` exposes an awkward special case in the procedure authoring API. The cleaner model is to make session reuse an explicit option on `ctx.callAgent(...)` so procedure authors can choose between:
+The old reused-session helper exposed an awkward special case in the procedure authoring API. The cleaner model is to make session reuse an explicit option on `ctx.callAgent(...)` so procedure authors can choose between:
 
 - a **fresh ACP session** for isolated one-shot work
 - the **default ACP session** for context-carrying work inside the caller's ongoing conversation
 
-The refactor should preserve current behavior by default, keep structured-output support available in both modes, and leave `continueDefaultSession()` as a compatibility wrapper during migration.
+The refactor should preserve current behavior by default, keep structured-output support available in both modes, and collapse everything onto one `callAgent(...)` API.
 
 ---
 
 ## Goals
 
-1. Replace the separate `continueDefaultSession()` entrypoint with a unified `callAgent(...)` API.
+1. Replace the separate reused-session entrypoint with a unified `callAgent(...)` API.
 2. Preserve existing semantics by making fresh sessions the default.
 3. Support both untyped and typed agent calls regardless of session mode.
 4. Make the API obvious enough that future agent-authored procedures use it correctly without rediscovering runtime details.
@@ -24,8 +24,7 @@ The refactor should preserve current behavior by default, keep structured-output
 
 ### What exists today
 
-- `ctx.callAgent(...)` uses a fresh ACP session for each invocation.
-- `ctx.continueDefaultSession(...)` reuses the session-wide default ACP conversation.
+- `ctx.callAgent(...)` can use either a fresh ACP session or the session-wide default ACP conversation.
 - child procedures already inherit access to the same default conversation through `CommandContext`.
 - `/default` is the visible example of reused-session behavior.
 
@@ -33,7 +32,7 @@ The refactor should preserve current behavior by default, keep structured-output
 
 - procedure authors have to know that "reuse the current agent session" is a separate method instead of an option on the main one
 - the split makes the API feel inconsistent
-- `continueDefaultSession()` only exposes the untyped path, while `callAgent(...)` is where typed structured outputs live
+- the old split exposed the untyped reused-session path separately from the typed `callAgent(...)` path
 - agent-authored procedures are more likely to choose the wrong primitive or ignore reuse entirely
 
 ---
@@ -58,7 +57,7 @@ Design notes:
 - default `session` to `"fresh"` so existing procedures keep their current behavior
 - `"default"` means "reuse the current nanoboss session's default ACP conversation if available"
 - keep the typed overloads working in both modes
-- keep `continueDefaultSession()` temporarily, but reimplement it as a thin wrapper over `callAgent(..., { session: "default" })`
+- remove the separate reused-session helper so `callAgent(..., { session: "default" })` is the only public shape
 
 I would prefer `session: "fresh" | "default"` over a bare boolean like `reuseSession: true` because it is easier to read and easier to extend later.
 
@@ -84,16 +83,15 @@ The unified API should support:
 
 That means the reused-session path should still run through the same JSON-schema prompt construction and parse/retry behavior that the fresh-session path uses today.
 
-### 3. Keep compatibility while migrating callers
+### 3. Migrate callers onto the unified API
 
 Migration sequence:
 
 1. add the new option and wire it through
-2. keep `continueDefaultSession()` as a wrapper
-3. switch `/default` to use `ctx.callAgent(prompt, { session: "default" })`
-4. update any other internal call sites that should be explicit about reuse
-5. deprecate `continueDefaultSession()` in docs and generated examples
-6. remove it only after procedure authors no longer rely on it
+2. switch `/default` to use `ctx.callAgent(prompt, { session: "default" })`
+3. update any other internal call sites that should be explicit about reuse
+4. remove the old helper from the public types and runtime implementation
+5. stop teaching the old shape in docs and generated examples
 
 ---
 
@@ -111,7 +109,7 @@ This refactor needs documentation updates in the places future agents are most l
 2. `src/procedure/create.ts`
    - update the procedure-generation prompt so generated procedures learn the new API
    - explicitly teach when to use `"fresh"` vs `"default"`
-   - stop teaching `ctx.continueDefaultSession(...)` as the primary pattern
+   - teach only `ctx.callAgent(..., { session: "default" })` for reused-session behavior
 
 3. `docs/architecture.md`
    - explain that `callAgent(...)` now has two session modes over the same downstream ACP machinery
@@ -137,7 +135,7 @@ This documentation work is part of the refactor, not follow-up polish. If we cha
 
 - **Context bleed in reused sessions:** `"default"` mode can be influenced by prior conversation, so it should not silently become the default.
 - **Typed-output regressions:** if reused-session calls bypass the existing parse/retry path, structured procedures will become less reliable.
-- **Half-migrated authoring guidance:** generated procedures may continue to emit `continueDefaultSession()` unless the scaffolding prompt is updated at the same time.
+- **Half-migrated authoring guidance:** generated procedures may continue to emit the old reused-session shape unless the scaffolding prompt is updated at the same time.
 
 ---
 

@@ -229,10 +229,6 @@ export class CommandContextImpl implements CommandContext {
     }
   }
 
-  async continueDefaultSession(prompt: string): Promise<RunResult<string>> {
-    return this.callAgent(prompt, { session: "default" });
-  }
-
   private createCallAgentTransport(sessionMode: AgentSessionMode): CallAgentTransport | undefined {
     if (sessionMode !== "default" || !this.defaultConversation) {
       return undefined;

@@ -370,9 +370,8 @@ Instead, `/default` should use a dedicated continuation path for the current ses
 Conceptually:
 
 ```ts
-continueDefaultSession({
-  sessionId: ctx.sessionId,
-  prompt,
+ctx.callAgent(prompt, {
+  session: "default",
 })
 ```
 
@@ -516,10 +515,10 @@ It belongs to session runtime state, not semantic result history.
 
 ## Phase 2: implement `/default` native continuation path
 
-Add a dedicated helper for `/default`, conceptually something like:
+Use the unified `callAgent(...)` API for `/default`, conceptually:
 
 ```ts
-continueDefaultSession(sessionId: string, prompt: string)
+ctx.callAgent(prompt, { session: "default" })
 ```
 
 Responsibilities:

@@ -96,7 +96,7 @@ describe("CommandContext callAgent session selection", () => {
     });
   });
 
-  test("continueDefaultSession remains a compatibility wrapper over default-mode callAgent", async () => {
+  test("untyped default-session calls use the same unified callAgent path", async () => {
     const { conversation, ctx, emittedUpdates } = createContext();
     const prompts: string[] = [];
     let submittedCount = 0;
@@ -125,7 +125,7 @@ describe("CommandContext callAgent session selection", () => {
       }),
     );
 
-    const result = await ctx.continueDefaultSession("What is 2 + 2?");
+    const result = await ctx.callAgent("What is 2 + 2?", { session: "default" });
 
     expect(result.data).toBe("4");
     expect(prompts).toHaveLength(1);

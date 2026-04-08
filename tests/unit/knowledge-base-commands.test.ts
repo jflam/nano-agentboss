@@ -755,9 +755,6 @@ function createMockContext(params: {
     },
     callAgent: callAgent as CommandContext["callAgent"],
     callProcedure: params.callProcedure as CommandContext["callProcedure"],
-    async continueDefaultSession() {
-      throw new Error("Not implemented in test");
-    },
     print: params.print,
   };
 }

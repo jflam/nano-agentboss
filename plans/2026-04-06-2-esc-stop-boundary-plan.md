@@ -39,7 +39,7 @@ That is enough for wiring, but not for the desired UX or execution semantics.
    - `src/agent/acp-runtime.ts` closes the transport by killing the child process
 
 3. **The next tool can still start after stop is requested**
-   - there is no durable session-level "stop requested" latch checked before starting `ctx.callAgent(...)`, `ctx.callProcedure(...)`, or `ctx.continueDefaultSession(...)`
+   - there is no durable session-level "stop requested" latch checked before starting `ctx.callAgent(...)` or `ctx.callProcedure(...)`
    - one-shot ACP calls also need an already-aborted preflight check before they begin
 
 4. **Cancelled work is not modeled distinctly**
@@ -173,7 +173,7 @@ Add a small reusable stop-check helper in the command execution layer and call i
 
 - before `ctx.callAgent(...)`
 - before `ctx.callProcedure(...)`
-- before `ctx.continueDefaultSession(...)`
+- before `ctx.callAgent(..., { session: "default" })`
 - before top-level procedure dispatch into the default conversation when applicable
 
 ### Suggested implementation direction

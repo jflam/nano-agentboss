@@ -198,9 +198,6 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Com
     async callProcedure() {
       throw new Error("Not implemented in test");
     },
-    async continueDefaultSession() {
-      throw new Error("Not implemented in test");
-    },
     print() {},
   };
 }

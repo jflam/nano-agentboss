@@ -372,8 +372,6 @@ export interface CommandContext {
     name: string,
     prompt: string,
   ): Promise<RunResult<T>>;
-  /** Compatibility wrapper for callAgent(prompt, { session: "default" }). */
-  continueDefaultSession(prompt: string): Promise<RunResult<string>>;
   print(text: string): void;
 }
 

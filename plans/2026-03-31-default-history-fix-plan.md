@@ -65,7 +65,7 @@ After this change, `/default` should go through a dedicated continuation path fo
 Conceptually:
 
 ```ts
-continueDefaultSession(sessionId, prompt)
+callAgent(prompt, { session: "default" })
 ```
 
 ---
