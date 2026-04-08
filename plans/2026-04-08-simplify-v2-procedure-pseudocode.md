@@ -2,6 +2,14 @@
 
 This document makes the model-based `/simplify` plan concrete in nanoboss terms.
 
+This is the implementation companion to [plans/2026-04-08-model-based-simplify-loop-plan.md](/Users/jflam/agentboss/workspaces/nanoboss/plans/2026-04-08-model-based-simplify-loop-plan.md).
+
+Use the pair like this:
+
+- read the overview plan for the design goals and operating principles
+- read this document for the deterministic loop, state shape, and prompt patterns
+- keep this document close to the actual implementation as the code evolves
+
 The key constraint is the nanoboss procedure model:
 
 - a procedure is a deterministic state machine
@@ -18,6 +26,25 @@ That means the architecture should separate:
 - structured durable state
 - typed agent subproblems
 - human checkpoints
+
+## Reading guide
+
+This document is organized in four layers:
+
+1. procedure shape
+2. durable state
+3. deterministic helper flow
+4. agent prompt patterns
+
+If you are implementing the feature, the fastest useful reading order is:
+
+1. high-level shape
+2. proposed procedure state
+3. execution path
+4. resume path
+5. test slice selection
+6. design evolution protocol
+7. prompt examples
 
 ---
 
@@ -129,6 +156,10 @@ Important design note:
 
 The state object is not the entire memory system. It is the procedure's working handle on durable artifacts. Large artifacts can live in refs or repo-visible files and be loaded or summarized into the state.
 
+Another important note:
+
+This is intentionally a working v1 shape, not a final schema. The procedure should start with one clear state object even if some sub-objects later move into more specialized durable artifacts.
+
 ---
 
 ## Supporting types
@@ -191,6 +222,12 @@ interface SimplifyCheckpoint {
   options?: string[];
 }
 
+interface SimplifyQuestion {
+  id: string;
+  prompt: string;
+  kind: "human_checkpoint" | "research_followup" | "validation_gap";
+}
+
 interface EvidenceRef {
   kind: "file" | "test" | "doc" | "commit" | "journal";
   ref: string;
@@ -211,6 +248,14 @@ interface TestSliceSelection {
   reason: string;
   confidence: "explicit" | "inferred_high_confidence" | "inferred_low_confidence";
   tier: 1 | 2 | 3;
+}
+
+interface ValidationSummary {
+  tierRun: 1 | 2 | 3;
+  passed: boolean;
+  ran: string[];
+  failed: string[];
+  notes: string[];
 }
 ```
 
@@ -252,6 +297,8 @@ This is the pattern to preserve throughout the implementation:
 
 - agent responses produce structured proposals
 - nanoboss deterministic logic decides what state transition happens next
+
+This is the core guardrail for the whole feature. If the implementation starts letting an agent implicitly choose the next phase, the procedure will become harder to debug, harder to resume, and harder to trust.
 
 ---
 
@@ -296,6 +343,12 @@ async function execute(prompt: string, ctx: CommandContext): Promise<ProcedureRe
 
 This keeps the first iteration productive while still allowing a checkpoint before risky semantic decisions.
 
+In practice, that means `execute(...)` should usually do enough work to produce one of three outcomes:
+
+- a concrete checkpoint for the human
+- one applied low-risk simplification plus reconciliation
+- a principled finish because nothing worthwhile stands out
+
 ---
 
 ## Resume path
@@ -337,6 +390,8 @@ async function resume(prompt: string, rawState: KernelValue, ctx: CommandContext
   return maybePauseOrFinishAfterApply(state);
 }
 ```
+
+The important design choice here is that the human reply is interpreted into a typed decision first. The rest of the flow stays deterministic.
 
 ---
 
@@ -435,6 +490,8 @@ This is two agent calls rather than one on purpose:
 
 That separation makes it easier to debug and iterate.
 
+It also creates a cleaner seam for later experiments. If hypothesis generation is good but ranking is weak, the two can be improved independently.
+
 ### 5. Apply simplification slice
 
 The apply phase should itself be split into deterministic prework, an agent implementation task, and deterministic post-processing.
@@ -466,6 +523,8 @@ The apply prompt should force the agent to:
 - report touched files
 - report conceptual changes
 
+The apply phase should stay narrow. If a hypothesis requires a broad rewrite or starts touching unrelated areas, that is usually a sign that the hypothesis was underspecified or wrongly scoped.
+
 ### 6. Validate and reconcile
 
 ```ts
@@ -495,6 +554,8 @@ This is where the procedure updates:
 - notebook status
 - journal
 - test mapping confidence
+
+This reconciliation step is what keeps the loop cumulative. Without it, the procedure would make edits but fail to improve its own model of the repo.
 
 ---
 
@@ -542,6 +603,8 @@ The pattern remains the same:
 - deterministic selector first
 - agent only as bounded fallback or refinement
 
+That ordering matters. Test selection should be reviewable and explainable. The agent is useful for refinement, but it should not become the only source of test choice.
+
 ---
 
 ## Design evolution protocol
@@ -579,11 +642,15 @@ if (classifyDesignMismatch(state, bestHypothesis) === "evolution") {
 
 This keeps the procedure from smuggling design changes through code-only refactors.
 
+That point is easy to miss. A strong simplifier should not silently "fix" the code by changing the intended design underneath it. If the model needs to change, the procedure should surface that explicitly.
+
 ---
 
 ## Agent prompt examples
 
 The prompts below are deliberately long and opinionated. The point is to constrain the agent tightly so the deterministic loop stays reliable.
+
+Treat these prompts as templates, not sacred text. Their job is to show the shape of the subproblems and the kind of structured outputs the procedure should demand.
 
 ### A. Architecture refresh prompt
 
@@ -895,6 +962,8 @@ Example desired output:
 }
 ```
 
+The apply prompt is where "delete before abstract" has to become operational. If the prompt becomes vague here, the whole feature will drift back toward wrapper-heavy local safety behavior.
+
 ### G. Test slice suggestion prompt
 
 ```text
@@ -980,6 +1049,8 @@ state = mergeRefreshResult(state, typedResult)
 ```
 
 If helper procedures do not yet exist as first-class nested procedure calls, the same decomposition can exist as local helper functions first.
+
+The design should not rush into sub-procedure decomposition. A single clear procedure with good helper functions is a better first implementation than a prematurely fragmented command family.
 
 ---
 
@@ -1108,6 +1179,14 @@ Add reconciliation and memory updates after apply.
 ### Step 6
 
 Only after the above works, consider breaking pieces into helper procedures.
+
+If prioritization becomes necessary, the highest-leverage sequence is:
+
+1. richer state
+2. model-refresh plus hypothesis generation
+3. semantic checkpoints
+4. minimal trusted test slice selection
+5. reconciliation and model updates
 
 ---
 
