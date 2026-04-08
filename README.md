@@ -25,6 +25,9 @@ bun run build
 ```
 
 This compiles the standalone `nanoboss` binary and installs it onto your `PATH`.
+The build output also reports the final emitted binary size plus an estimated
+breakdown of the embedded bundle versus the Bun runtime, including top bundled
+app areas and dependencies.
 
 By default the build installs `nanoboss` into the first suitable user-owned PATH
 location, preferring `~/.local/bin`, then `~/bin`, then `~/.bun/bin`.

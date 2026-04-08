@@ -1,26 +1,34 @@
 import UnpluginTypia from "@ryoppippi/unplugin-typia/bun";
 import { execFileSync } from "node:child_process";
-import { accessSync, chmodSync, constants, copyFileSync, cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { getProcedureRuntimeDir } from "./src/core/config.ts";
+import {
+  attributeSourceMapBytes,
+  formatByteSize,
+  summarizeBundledSources,
+  type SizeGroup,
+} from "./src/core/build-size-report.ts";
 import { resolveNanobossInstallDir } from "./src/core/install-path.ts";
 
 const outfile = "./dist/nanoboss";
 const buildCommit = resolveBuildCommit();
 
 const result = await Bun.build({
-  entrypoints: ["./nanoboss.ts"],
-  define: {
-    "globalThis.__NANOBOSS_BUILD_COMMIT__": JSON.stringify(buildCommit),
-  },
-  plugins: [
-    UnpluginTypia({ log: false }),
-  ],
-  // unplugin-typia has an optional dynamic import of `svelte/compiler` for
-  // Svelte sources. nanoboss command modules are TypeScript-only, so keep that
-  // optional path external instead of forcing Bun to resolve Svelte at bundle time.
-  external: ["svelte/compiler"],
+  ...createBaseBuildConfig(buildCommit),
   compile: {
     outfile,
     autoloadBunfig: false,
@@ -41,6 +49,7 @@ if (!result.success) {
   const target = join(installDir, "nanoboss");
   const typiaRuntimeNodeModulesTarget = join(getProcedureRuntimeDir(), "node_modules");
   const procedureRuntimeSourceTarget = join(getProcedureRuntimeDir(), "src");
+  const sizeReport = await collectBuildSizeReport(buildCommit);
 
   mkdirSync(dirname(outfile), { recursive: true });
   mkdirSync(installDir, { recursive: true });
@@ -49,6 +58,7 @@ if (!result.success) {
   chmodSync(target, 0o755);
 
   console.log(`Built nanoboss-${buildCommit}`);
+  logBuildSizeReport(sizeReport);
   console.log(`Installed nanoboss to ${target}`);
   console.log(`Installed procedure runtime packages to ${typiaRuntimeNodeModulesTarget}`);
   console.log(`Installed procedure runtime source to ${procedureRuntimeSourceTarget}`);
@@ -58,6 +68,18 @@ if (!result.success) {
   } catch {
     console.warn(`Warning: ${installDir} may not be writable/executable in this environment.`);
   }
+}
+
+interface BuildSizeReport {
+  binaryBytes: number;
+  estimatedBundleBytes?: number;
+  estimatedRuntimeBytes?: number;
+  estimatedAppBytes?: number;
+  estimatedDependencyBytes?: number;
+  estimatedUnmappedBytes?: number;
+  appGroups: SizeGroup[];
+  dependencyGroups: SizeGroup[];
+  warnings: string[];
 }
 
 function resolveBuildCommit(): string {
@@ -88,6 +110,158 @@ function isDirtyWorkingTree(): boolean {
   } catch {
     return true;
   }
+}
+
+function createBaseBuildConfig(commit: string): Bun.BuildConfig {
+  return {
+    entrypoints: ["./nanoboss.ts"],
+    define: {
+      "globalThis.__NANOBOSS_BUILD_COMMIT__": JSON.stringify(commit),
+    },
+    plugins: [
+      UnpluginTypia({ log: false }),
+    ],
+    // unplugin-typia has an optional dynamic import of `svelte/compiler` for
+    // Svelte sources. nanoboss command modules are TypeScript-only, so keep that
+    // optional path external instead of forcing Bun to resolve Svelte at bundle time.
+    external: ["svelte/compiler"],
+  };
+}
+
+async function collectBuildSizeReport(
+  commit: string,
+): Promise<BuildSizeReport> {
+  const binaryBytes = statSync(outfile).size;
+  const analysisDir = mkdtempSync(join(tmpdir(), "nanoboss-build-analysis-"));
+
+  try {
+    const analysisResult = await Bun.build({
+      ...createBaseBuildConfig(commit),
+      target: "bun",
+      format: "esm",
+      minify: true,
+      sourcemap: "external",
+      outdir: analysisDir,
+    });
+
+    if (!analysisResult.success) {
+      return {
+        binaryBytes,
+        appGroups: [],
+        dependencyGroups: [],
+        warnings: [`Bundle breakdown unavailable: ${summarizeBuildLogs(analysisResult.logs)}`],
+      };
+    }
+
+    const bundleArtifact = analysisResult.outputs.find((artifact) => artifact.kind === "entry-point");
+    const sourcemapArtifact = analysisResult.outputs.find((artifact) => artifact.kind === "sourcemap");
+    if (!bundleArtifact || !sourcemapArtifact) {
+      return {
+        binaryBytes,
+        appGroups: [],
+        dependencyGroups: [],
+        warnings: ["Bundle breakdown unavailable: analysis build did not emit both a bundle and sourcemap."],
+      };
+    }
+
+    try {
+      const [bundleText, sourceMapText] = await Promise.all([
+        bundleArtifact.text(),
+        sourcemapArtifact.text(),
+      ]);
+      const summary = summarizeBundledSources(
+        attributeSourceMapBytes(bundleText, sourceMapText, sourcemapArtifact.path),
+        process.cwd(),
+      );
+      const estimatedBundleBytes = bundleArtifact.size;
+      const accountedBundleBytes = summary.appBytes + summary.dependencyBytes + summary.unmappedBytes;
+      const residualBytes = estimatedBundleBytes - accountedBundleBytes;
+      const estimatedUnmappedBytes = summary.unmappedBytes + Math.max(residualBytes, 0);
+      const warnings = residualBytes < 0
+        ? [`Bundle breakdown over-attributed the bundle by ${formatByteSize(-residualBytes)}.`]
+        : [];
+
+      return {
+        binaryBytes,
+        estimatedBundleBytes,
+        estimatedRuntimeBytes: Math.max(binaryBytes - estimatedBundleBytes, 0),
+        estimatedAppBytes: summary.appBytes,
+        estimatedDependencyBytes: summary.dependencyBytes,
+        estimatedUnmappedBytes,
+        appGroups: summary.appGroups,
+        dependencyGroups: summary.dependencyGroups,
+        warnings,
+      };
+    } catch (error) {
+      return {
+        binaryBytes,
+        appGroups: [],
+        dependencyGroups: [],
+        warnings: [
+          `Bundle breakdown unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      };
+    }
+  } finally {
+    rmSync(analysisDir, { recursive: true, force: true });
+  }
+}
+
+function logBuildSizeReport(report: BuildSizeReport): void {
+  console.log(`Binary size: ${formatByteSize(report.binaryBytes)}`);
+
+  if (report.estimatedBundleBytes !== undefined) {
+    console.log(
+      `Estimated embedded bundle: ${formatByteSize(report.estimatedBundleBytes)} ` +
+      "(derived from a matching minified Bun bundle)",
+    );
+  }
+  if (report.estimatedRuntimeBytes !== undefined) {
+    console.log(`Estimated Bun runtime/loader: ${formatByteSize(report.estimatedRuntimeBytes)}`);
+  }
+  if (report.estimatedAppBytes !== undefined) {
+    console.log(`Estimated bundled app code: ${formatByteSize(report.estimatedAppBytes)}`);
+  }
+  if (report.estimatedDependencyBytes !== undefined) {
+    console.log(`Estimated bundled dependencies: ${formatByteSize(report.estimatedDependencyBytes)}`);
+  }
+  if (report.estimatedUnmappedBytes !== undefined && report.estimatedUnmappedBytes > 0) {
+    console.log(`Estimated bundler helpers/unmapped: ${formatByteSize(report.estimatedUnmappedBytes)}`);
+  }
+  if (report.appGroups.length > 0) {
+    console.log("Top bundled app areas:");
+    for (const group of report.appGroups) {
+      console.log(`  - ${group.label}: ${formatByteSize(group.bytes)}`);
+    }
+  }
+  if (report.dependencyGroups.length > 0) {
+    console.log("Top bundled dependencies:");
+    for (const group of report.dependencyGroups) {
+      console.log(`  - ${group.label}: ${formatByteSize(group.bytes)}`);
+    }
+  }
+  if (report.estimatedBundleBytes !== undefined) {
+    console.log("Bundle/runtime figures are estimates because Bun does not expose a compiled-binary breakdown here.");
+  }
+  for (const warning of report.warnings) {
+    console.warn(`Build size note: ${warning}`);
+  }
+}
+
+function summarizeBuildLogs(logs: Bun.BuildOutput["logs"]): string {
+  const messages = logs
+    .slice(0, 3)
+    .map((log) => {
+      if (typeof log.message === "string" && log.message.length > 0) {
+        return log.message;
+      }
+      return JSON.stringify(log);
+    })
+    .filter((message) => message.length > 0);
+  if (messages.length === 0) {
+    return "unknown build error";
+  }
+  return messages.join(" | ");
 }
 
 function installProcedureRuntimeAssets(targetNodeModulesDir: string, targetSourceDir: string): void {
