@@ -147,8 +147,13 @@ Relevant files:
 Nanoboss talks to downstream agents using **ACP over stdio**.
 
 This path is used by:
-- one-shot `callAgent(...)`
-- persistent `/default` conversation sessions
+- one-shot `callAgent(...)` with the default `session: "fresh"` mode
+- `callAgent(..., { session: "default" })` and `/default` for persistent conversation reuse
+
+Both session modes share the same prompt-building, named-ref injection, and typed JSON parse/retry machinery. The difference is only the transport:
+
+- **fresh**: starts a new ACP session for an isolated downstream call
+- **default**: reuses the session-wide default ACP conversation when continuity is desired
 
 ```mermaid
 flowchart LR

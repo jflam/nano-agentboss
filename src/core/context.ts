@@ -14,9 +14,11 @@ import {
 import type { SessionStore } from "../session/index.ts";
 import { summarizeText } from "../util/text.ts";
 import type {
+  AgentSessionMode,
   CellAncestorsOptions,
   CellDescendantsOptions,
   CellRef,
+  CallAgentTransport,
   CommandCallAgentOptions,
   CommandContext,
   DownstreamAgentConfig,
@@ -155,19 +157,34 @@ export class CommandContextImpl implements CommandContext {
       ? descriptorOrOptions
       : undefined;
     const options = (descriptor ? maybeOptions : descriptorOrOptions) as CommandCallAgentOptions | undefined;
-    const agentConfig = options?.agent
-      ? resolveDownstreamAgentConfig(this.cwd, options.agent)
-      : this.getDefaultAgentConfigValue();
-    const started = this.beginAgentRun(prompt, {
-      title: `callAgent${formatAgentLabel(options?.agent)}: ${summarizeText(prompt, 60)}`,
-      rawInput: {
-        prompt,
-        agent: options?.agent,
-        refs: options?.refs,
-      },
-      agent: options?.agent,
-    });
+    const sessionMode = options?.session ?? "fresh";
+    const useDefaultSession = sessionMode === "default" && this.defaultConversation !== undefined;
+    const agentConfig = useDefaultSession && options?.agent
+      ? this.setDefaultAgentSelectionValue(options.agent)
+      : options?.agent
+        ? resolveDownstreamAgentConfig(this.cwd, options.agent)
+        : this.getDefaultAgentConfigValue();
+    const started = this.beginAgentRun(prompt, useDefaultSession
+      ? {
+          title: "Calling default procedure",
+          rawInput: {
+            callPreview: {
+              header: "Calling default procedure",
+            },
+          },
+          agent: options?.agent,
+        }
+      : {
+          title: `callAgent${formatAgentLabel(options?.agent)}: ${summarizeText(prompt, 60)}`,
+          rawInput: {
+            prompt,
+            agent: options?.agent,
+            refs: options?.refs,
+          },
+          agent: options?.agent,
+        });
     const namedRefs = resolveNamedRefs(this.store, options?.refs);
+    const transport = this.createCallAgentTransport(sessionMode);
 
     try {
       const result = await invokeAgent(prompt, descriptor, {
@@ -180,7 +197,14 @@ export class CommandContextImpl implements CommandContext {
             this.emitter.emit(update);
           }
         },
-      });
+      }, transport);
+
+      const tokenUsageExtra = result.tokenSnapshot
+        ? {
+            tokenSnapshot: result.tokenSnapshot,
+            tokenUsage: normalizeAgentTokenUsage(result.tokenSnapshot, agentConfig),
+          }
+        : undefined;
 
       return this.completeAgentRun(started, {
         data: result.data,
@@ -188,19 +212,46 @@ export class CommandContextImpl implements CommandContext {
         updates: result.updates,
         durationMs: result.durationMs,
         logFile: result.logFile,
-        summary: summarizeAgentOutput(result.data, result.raw),
+        summary: useDefaultSession && !descriptor
+          ? summarizeText(result.raw)
+          : summarizeAgentOutput(result.data, result.raw),
         streamText: options?.stream !== false,
-        rawOutputExtra: result.tokenSnapshot
+        rawOutputExtra: useDefaultSession
           ? {
-              tokenSnapshot: result.tokenSnapshot,
-              tokenUsage: normalizeAgentTokenUsage(result.tokenSnapshot, agentConfig),
+              sessionId: this.defaultConversation.currentSessionId,
+              ...tokenUsageExtra,
             }
-          : undefined,
+          : tokenUsageExtra,
         agent: options?.agent,
       });
     } catch (error) {
       return this.failAgentRun(started, error, options?.agent);
     }
+  }
+
+  async continueDefaultSession(prompt: string): Promise<RunResult<string>> {
+    return this.callAgent(prompt, { session: "default" });
+  }
+
+  private createCallAgentTransport(sessionMode: AgentSessionMode): CallAgentTransport | undefined {
+    if (sessionMode !== "default" || !this.defaultConversation) {
+      return undefined;
+    }
+
+    return {
+      invoke: async (prompt, options) => {
+        const preparedPrompt = this.prepareDefaultPromptValue?.(prompt) ?? { prompt };
+
+        const result = await this.defaultConversation.prompt(preparedPrompt.prompt, {
+          signal: options.signal,
+          softStopSignal: options.softStopSignal,
+          onUpdate: options.onUpdate,
+        });
+
+        preparedPrompt.markSubmitted?.();
+        return result;
+      },
+    };
   }
 
   async callProcedure<T extends KernelValue = never>(
@@ -274,63 +325,6 @@ export class CommandContextImpl implements CommandContext {
         error: formatErrorMessage(error),
       });
       throw error;
-    }
-  }
-
-  async continueDefaultSession(prompt: string): Promise<RunResult<string>> {
-    if (!this.defaultConversation) {
-      return this.callAgent(prompt);
-    }
-
-    const started = this.beginAgentRun(prompt, {
-      title: "Calling default procedure",
-      rawInput: {
-        callPreview: {
-          header: "Calling default procedure",
-        },
-      },
-    });
-    const preparedPrompt = this.prepareDefaultPromptValue?.(prompt) ?? { prompt };
-
-    try {
-      const result = await this.defaultConversation.prompt(preparedPrompt.prompt, {
-        signal: this.signal,
-        softStopSignal: this.softStopSignal,
-        onUpdate: async (update) => {
-          if (
-            update.sessionUpdate === "agent_message_chunk" ||
-            update.sessionUpdate === "tool_call" ||
-            update.sessionUpdate === "tool_call_update" ||
-            update.sessionUpdate === "usage_update"
-          ) {
-            this.emitter.emit(update);
-          }
-        },
-      });
-
-      const finalized = this.completeAgentRun(started, {
-        data: result.raw,
-        raw: result.raw,
-        updates: result.updates,
-        durationMs: result.durationMs,
-        logFile: result.logFile,
-        summary: summarizeText(result.raw),
-        streamText: true,
-        rawOutputExtra: {
-          sessionId: this.defaultConversation.currentSessionId,
-          ...(result.tokenSnapshot
-            ? {
-                tokenSnapshot: result.tokenSnapshot,
-                tokenUsage: normalizeAgentTokenUsage(result.tokenSnapshot, this.getDefaultAgentConfigValue()),
-              }
-            : {}),
-        },
-      });
-
-      preparedPrompt.markSubmitted?.();
-      return finalized;
-    } catch (error) {
-      return this.failAgentRun(started, error);
     }
   }
 

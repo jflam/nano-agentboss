@@ -326,7 +326,24 @@ export interface ProcedureRegistryLike {
   toAvailableCommands(): acp.AvailableCommand[];
 }
 
+export type AgentSessionMode = "fresh" | "default";
+
 export interface CommandCallAgentOptions {
+  /**
+   * Session selection for the downstream agent call.
+   *
+   * - "fresh" starts an isolated ACP session for this invocation.
+   * - "default" reuses the current nanoboss session's default ACP conversation.
+   *
+   * Defaults to "fresh" so isolated one-shot work remains the safe default.
+   */
+  session?: AgentSessionMode;
+  /**
+   * Downstream agent selection for this call.
+   *
+   * In "default" mode this updates the session's default agent selection before
+   * continuing the reused conversation.
+   */
   agent?: DownstreamAgentSelection;
   stream?: boolean;
   refs?: Record<string, CellRef | ValueRef>;
@@ -355,6 +372,7 @@ export interface CommandContext {
     name: string,
     prompt: string,
   ): Promise<RunResult<T>>;
+  /** Compatibility wrapper for callAgent(prompt, { session: "default" }). */
   continueDefaultSession(prompt: string): Promise<RunResult<string>>;
   print(text: string): void;
 }

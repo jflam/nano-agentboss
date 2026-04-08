@@ -4,7 +4,7 @@ export default {
   name: "default",
   description: "Pass prompt through to the downstream agent",
   async execute(prompt, ctx) {
-    const result = await ctx.continueDefaultSession(prompt);
+    const result = await ctx.callAgent(prompt, { session: "default" });
 
     return {
       display: result.data,
