@@ -7,7 +7,6 @@ export {
 
 export type {
   SessionMetadata,
-  SessionSummary,
 } from "./repository.ts";
 
 export {

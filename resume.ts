@@ -5,11 +5,11 @@ import { parseResumeOptions } from "./src/options/resume.ts";
 import {
   listSessionSummaries,
   readCurrentSessionMetadata,
-  type SessionSummary,
+  type SessionMetadata,
 } from "./src/session/index.ts";
 
 export type StoredSessionSelectionResult =
-  | { kind: "selected"; session: SessionSummary }
+  | { kind: "selected"; session: SessionMetadata }
   | { kind: "cancelled" }
   | { kind: "empty" };
 
@@ -30,7 +30,7 @@ export async function runResumeCommand(
   const cwd = process.cwd();
   (deps.assertInteractiveTty ?? assertInteractiveTty)("resume");
 
-  let selected: SessionSummary | undefined;
+  let selected: SessionMetadata | undefined;
   if (options.sessionId) {
     selected = resolveExplicitSession(options.sessionId);
   } else if (options.list) {
@@ -62,11 +62,11 @@ export async function runResumeCommand(
   });
 }
 
-function resolveExplicitSession(sessionId: string): SessionSummary | undefined {
+function resolveExplicitSession(sessionId: string): SessionMetadata | undefined {
   return listSessionSummaries().find((session) => session.sessionId === sessionId);
 }
 
-function resolveDefaultSession(cwd: string): SessionSummary | undefined {
+function resolveDefaultSession(cwd: string): SessionMetadata | undefined {
   const sessions = listSessionSummaries();
   const currentSessionId = readCurrentSessionMetadata(cwd)?.sessionId;
   if (currentSessionId) {
@@ -91,7 +91,7 @@ async function selectStoredSession(cwd: string): Promise<StoredSessionSelectionR
     : { kind: "cancelled" };
 }
 
-function orderSessions(cwd: string, sessions: SessionSummary[]): SessionSummary[] {
+function orderSessions(cwd: string, sessions: SessionMetadata[]): SessionMetadata[] {
   return [...sessions].sort((left, right) => {
     const cwdRank = Number(right.cwd === cwd) - Number(left.cwd === cwd);
     if (cwdRank !== 0) {

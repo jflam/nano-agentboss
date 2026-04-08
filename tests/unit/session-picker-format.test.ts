@@ -4,16 +4,15 @@ import {
   formatSessionInitialPrompt,
   formatSessionLine,
 } from "../../src/session/picker-format.ts";
-import type { SessionSummary } from "../../src/session/index.ts";
+import type { SessionMetadata } from "../../src/session/index.ts";
 
-function session(overrides: Partial<SessionSummary> = {}): SessionSummary {
+function session(overrides: Partial<SessionMetadata> = {}): SessionMetadata {
   return {
     sessionId: "session-12345678",
     cwd: "/repo",
     rootDir: "/repo/.nanoboss/sessions/session-12345678",
     createdAt: "2026-04-03T10:00:00.000Z",
     updatedAt: "2026-04-03T11:00:00.000Z",
-    hasNativeResume: false,
     ...overrides,
   };
 }

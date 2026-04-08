@@ -31,10 +31,6 @@ export interface SessionMetadata {
   pendingProcedureContinuation?: PendingProcedureContinuation;
 }
 
-export interface SessionSummary extends SessionMetadata {
-  hasNativeResume: boolean;
-}
-
 function getSessionMetadataPath(sessionId: string, rootDir?: string): string {
   return join(rootDir ?? getSessionDir(sessionId), SESSION_METADATA_FILE);
 }
@@ -58,7 +54,7 @@ export function readSessionMetadata(sessionId: string, rootDir?: string): Sessio
   }
 }
 
-export function listSessionSummaries(): SessionSummary[] {
+export function listSessionSummaries(): SessionMetadata[] {
   const sessionsDir = join(getNanobossHome(), "sessions");
   if (!existsSync(sessionsDir)) {
     return [];
@@ -68,7 +64,6 @@ export function listSessionSummaries(): SessionSummary[] {
     .filter((entry) => entry.isDirectory())
     .map((entry) => readSessionMetadata(entry.name, join(sessionsDir, entry.name)))
     .filter((entry): entry is SessionMetadata => entry !== undefined)
-    .map((entry) => toSessionSummary(entry))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
@@ -80,13 +75,6 @@ export function writeCurrentSessionMetadata(metadata: SessionMetadata): SessionM
 
 export function readCurrentSessionMetadata(cwd: string): SessionMetadata | undefined {
   return readCurrentWorkspaceMetadata(cwd);
-}
-
-function toSessionSummary(metadata: SessionMetadata): SessionSummary {
-  return {
-    ...metadata,
-    hasNativeResume: Boolean(metadata.defaultAcpSessionId),
-  };
 }
 
 function getCurrentSessionMetadataIndexPath(): string {

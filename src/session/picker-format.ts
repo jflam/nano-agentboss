@@ -1,12 +1,12 @@
-import type { SessionSummary } from "./index.ts";
+import type { SessionMetadata } from "./index.ts";
 import { summarizeText } from "../util/text.ts";
 
-export function formatSessionLine(session: SessionSummary, cwd: string): string {
+export function formatSessionLine(session: SessionMetadata, cwd: string): string {
   const markers: string[] = [];
   if (session.cwd === cwd) {
     markers.push("here");
   }
-  if (session.hasNativeResume) {
+  if (session.defaultAcpSessionId) {
     markers.push("native");
   }
 
@@ -16,7 +16,7 @@ export function formatSessionLine(session: SessionSummary, cwd: string): string 
   return `${prefix}${timestamp} ${session.sessionId.slice(0, 8)} ${prompt}`;
 }
 
-export function formatSessionDetailLine(session: SessionSummary): string {
+export function formatSessionDetailLine(session: SessionMetadata): string {
   const parts = [session.cwd || "cwd unknown"];
   if (session.defaultAgentSelection) {
     parts.push(
@@ -28,7 +28,7 @@ export function formatSessionDetailLine(session: SessionSummary): string {
   return parts.join(" • ");
 }
 
-export function formatSessionInitialPrompt(session: SessionSummary): string {
+export function formatSessionInitialPrompt(session: SessionMetadata): string {
   return session.initialPrompt?.trim().length
     ? session.initialPrompt.trim()
     : "(no turns yet)";

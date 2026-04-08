@@ -52,7 +52,7 @@ describe("session persistence", () => {
         sessionId: "session-123",
         cwd: "/repo",
         initialPrompt: "first prompt",
-        hasNativeResume: true,
+        defaultAcpSessionId: "acp-123",
       });
     } finally {
       if (originalHome === undefined) {
