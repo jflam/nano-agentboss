@@ -1038,7 +1038,6 @@ describe("NanobossService", () => {
           args: ["run", MOCK_AGENT_PATH],
           cwd: process.cwd(),
         },
-        sessionId: "soft-stop-session",
       });
       const softStopController = new AbortController();
       const promptPromise = session.prompt("cooperative cancel demo", {

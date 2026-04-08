@@ -165,7 +165,6 @@ function createContext(): {
   const config = createMockConfig(cwd);
   const conversation = new DefaultConversationSession({
     config,
-    sessionId: store.sessionId,
   });
 
   const ctx = new CommandContextImpl({

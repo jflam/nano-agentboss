@@ -35,23 +35,17 @@ interface PromptCollector {
 
 interface DefaultConversationSessionParams {
   config: DownstreamAgentConfig;
-  sessionId: string;
-  rootDir?: string;
   persistedSessionId?: acp.SessionId;
 }
 
 export class DefaultConversationSession {
   private persistedSessionId?: acp.SessionId;
   private liveSession?: PersistentAcpSession;
-  private readonly sessionId: string;
-  private readonly rootDir?: string;
   private config: DownstreamAgentConfig;
   private lastTokenSnapshot?: AgentTokenSnapshot;
 
   constructor(params: DefaultConversationSessionParams) {
     this.config = params.config;
-    this.sessionId = params.sessionId;
-    this.rootDir = params.rootDir;
     this.persistedSessionId = params.persistedSessionId;
   }
 
@@ -85,19 +79,14 @@ export class DefaultConversationSession {
     }
 
     if (!session && this.persistedSessionId) {
-      session = await PersistentAcpSession.load(
-        this.config,
-        this.persistedSessionId,
-        this.sessionId,
-        this.rootDir,
-      );
+      session = await PersistentAcpSession.load(this.config, this.persistedSessionId);
       if (session) {
         this.liveSession = session;
       }
     }
 
     if (!session) {
-      session = await PersistentAcpSession.createFresh(this.config, this.sessionId, this.rootDir);
+      session = await PersistentAcpSession.createFresh(this.config);
       this.liveSession = session;
     }
 
@@ -156,8 +145,6 @@ class PersistentAcpSession {
 
   static async createFresh(
     config: DownstreamAgentConfig,
-    _sessionId: string,
-    _rootDir?: string,
   ): Promise<PersistentAcpSession> {
     const state = await openAcpConnection(config);
 
@@ -178,8 +165,6 @@ class PersistentAcpSession {
   static async load(
     config: DownstreamAgentConfig,
     sessionId: acp.SessionId,
-    _nanobossSessionId: string,
-    _rootDir?: string,
   ): Promise<PersistentAcpSession | undefined> {
     const state = await openAcpConnection(config);
 

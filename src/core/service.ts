@@ -255,8 +255,6 @@ export class NanobossService {
       defaultAgentConfig,
       defaultConversation: new DefaultConversationSession({
         config: defaultAgentConfig,
-        sessionId: params.sessionId,
-        rootDir: store.rootDir,
         persistedSessionId: params.defaultAcpSessionId,
       }),
       syncedProcedureMemoryCellIds: new Set(),

@@ -48,7 +48,6 @@ describe("/default native session continuity", () => {
           supportLoadSession: true,
           sessionStoreDir,
         }),
-        sessionId: crypto.randomUUID(),
       });
 
       try {
@@ -76,7 +75,6 @@ describe("/default native session continuity", () => {
           supportLoadSession: true,
           sessionStoreDir,
         }),
-        sessionId: crypto.randomUUID(),
       });
 
       try {
@@ -105,7 +103,6 @@ describe("/default native session continuity", () => {
           supportLoadSession: false,
           sessionStoreDir,
         }),
-        sessionId: crypto.randomUUID(),
       });
 
       try {
@@ -135,7 +132,6 @@ describe("/default native session continuity", () => {
           supportLoadSession: true,
           sessionStoreDir,
         }),
-        sessionId: crypto.randomUUID(),
       });
 
       try {
@@ -176,7 +172,6 @@ describe("/default native session continuity", () => {
             MOCK_AGENT_LATE_PREVIOUS_TURN_CHUNK_MS: "25",
           },
         }),
-        sessionId: crypto.randomUUID(),
       });
 
       try {
