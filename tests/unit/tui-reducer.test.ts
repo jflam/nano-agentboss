@@ -1006,6 +1006,48 @@ describe("tui reducer", () => {
     ]);
   });
 
+  test("dismiss completion clears the pending continuation and leaves the cleared status visible", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("continuation_updated", {
+        continuation: {
+          procedure: "simplify",
+          question: "What would you like instead?",
+        },
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "dismiss",
+        prompt: "",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("continuation_updated", {
+        continuation: undefined,
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_completed", {
+        runId: "run-1",
+        procedure: "dismiss",
+        completedAt: new Date(1).toISOString(),
+        cell: { sessionId: "session-1", cellId: "cell-1" },
+        display: "Cleared the pending continuation for /simplify.",
+      }),
+    });
+
+    expect(state.pendingProcedureContinuation).toBeUndefined();
+    expect(state.statusLine).toBe("[continuation] cleared /simplify");
+  });
+
   test("toggle_tool_output flips the global expansion flag", () => {
     let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
 

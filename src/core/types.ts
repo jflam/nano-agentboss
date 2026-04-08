@@ -26,6 +26,11 @@ export interface PendingProcedureContinuation<TState extends KernelValue = Kerne
   cell: CellRef;
 }
 
+export type FrontendPendingProcedureContinuation = Pick<
+  PendingProcedureContinuation,
+  "procedure" | "question" | "inputHint" | "suggestedReplies"
+>;
+
 export type KernelValue =
   | KernelScalar
   | CellRef

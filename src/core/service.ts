@@ -51,8 +51,10 @@ import type {
   AgentTokenUsage,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
+  FrontendPendingProcedureContinuation,
   PendingProcedureContinuation,
   PersistedFrontendEvent,
+  Procedure,
 } from "./types.ts";
 
 interface ActiveRunState {
@@ -84,6 +86,12 @@ export interface SessionDescriptor {
   agentLabel: string;
   defaultAgentSelection?: DownstreamAgentSelection;
 }
+
+const DISMISS_CONTINUATION_COMMAND_NAME = "dismiss";
+const DISMISS_CONTINUATION_COMMAND: acp.AvailableCommand = {
+  name: DISMISS_CONTINUATION_COMMAND_NAME,
+  description: "Clear the pending paused continuation",
+};
 
 class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
   private streamedText = "";
@@ -152,7 +160,7 @@ export class NanobossService {
   }
 
   getAvailableCommands(): acp.AvailableCommand[] {
-    return this.registry.toAvailableCommands();
+    return buildAvailableCommands(this.registry);
   }
 
   createSession(params: { cwd: string; defaultAgentSelection?: DownstreamAgentSelection; sessionId?: string }): SessionDescriptor {
@@ -173,6 +181,7 @@ export class NanobossService {
       type: "commands_updated",
       commands: state.commands,
     });
+    this.publishPendingProcedureContinuation(sessionId, state);
 
     return this.buildSessionDescriptor(sessionId, state);
   }
@@ -209,6 +218,7 @@ export class NanobossService {
       type: "commands_updated",
       commands: state.commands,
     });
+    this.publishPendingProcedureContinuation(params.sessionId, state);
 
     return this.buildSessionDescriptor(params.sessionId, state);
   }
@@ -229,7 +239,7 @@ export class NanobossService {
     defaultAcpSessionId?: string;
     pendingProcedureContinuation?: PendingProcedureContinuation;
   }): SessionState {
-    const commands = toFrontendCommands(this.registry.toAvailableCommands());
+    const commands = toFrontendCommands(buildAvailableCommands(this.registry));
     const defaultAgentConfig = this.resolveDefaultAgentConfig(params.cwd, params.defaultAgentSelection);
     const store = sessionRepository.openStore({
       sessionId: params.sessionId,
@@ -262,6 +272,22 @@ export class NanobossService {
       agentLabel: formatAgentBanner(state.defaultAgentConfig),
       defaultAgentSelection: toDownstreamAgentSelection(state.defaultAgentConfig),
     };
+  }
+
+  private publishPendingProcedureContinuation(sessionId: string, session: SessionState): void {
+    session.events.publish(sessionId, {
+      type: "continuation_updated",
+      continuation: toFrontendPendingProcedureContinuation(session.pendingProcedureContinuation),
+    });
+  }
+
+  private setPendingProcedureContinuation(
+    sessionId: string,
+    session: SessionState,
+    continuation?: PendingProcedureContinuation,
+  ): void {
+    session.pendingProcedureContinuation = continuation;
+    this.publishPendingProcedureContinuation(sessionId, session);
   }
 
   private restorePersistedSessionHistory(sessionId: string, session: SessionState): void {
@@ -747,7 +773,9 @@ export class NanobossService {
       session.pendingProcedureContinuation,
     );
     this.touchCurrentSessionMetadata(this.persistSessionState(session, { prompt: text }));
-    const procedure = this.registry.get(commandName);
+    const procedure = commandName === DISMISS_CONTINUATION_COMMAND_NAME
+      ? createDismissContinuationProcedure(session)
+      : this.registry.get(commandName);
     const procedureName = procedure?.name ?? commandName;
     const activeRun: ActiveRunState = {
       runId: crypto.randomUUID(),
@@ -818,7 +846,7 @@ export class NanobossService {
           ? `Pending continuation for /${commandName} is no longer available.`
           : `Unknown command: /${commandName}`;
         if (continuation) {
-          session.pendingProcedureContinuation = undefined;
+          this.setPendingProcedureContinuation(sessionId, session, undefined);
         }
         delegate?.emit({
           sessionUpdate: "agent_message_chunk",
@@ -843,7 +871,7 @@ export class NanobossService {
 
       if (continuation && !procedure.resume) {
         const error = `Procedure /${procedure.name} does not support continuation.`;
-        session.pendingProcedureContinuation = undefined;
+        this.setPendingProcedureContinuation(sessionId, session, undefined);
         delegate?.emit({
           sessionUpdate: "agent_message_chunk",
           content: {
@@ -886,9 +914,10 @@ export class NanobossService {
           );
 
           if (dispatched.result.pause) {
-            session.pendingProcedureContinuation = buildPendingProcedureContinuation(
-              procedure.name,
-              dispatched.result,
+            this.setPendingProcedureContinuation(
+              sessionId,
+              session,
+              buildPendingProcedureContinuation(procedure.name, dispatched.result),
             );
             this.publishRunPaused({
               session,
@@ -972,9 +1001,10 @@ export class NanobossService {
           });
 
           if (result.pause) {
-            session.pendingProcedureContinuation = buildPendingProcedureContinuation(
-              procedure.name,
-              result,
+            this.setPendingProcedureContinuation(
+              sessionId,
+              session,
+              buildPendingProcedureContinuation(procedure.name, result),
             );
             this.publishRunPaused({
               session,
@@ -988,7 +1018,9 @@ export class NanobossService {
             });
           } else {
             if (continuation) {
-              session.pendingProcedureContinuation = undefined;
+              this.setPendingProcedureContinuation(sessionId, session, undefined);
+            } else if (procedure.name === DISMISS_CONTINUATION_COMMAND_NAME) {
+              this.setPendingProcedureContinuation(sessionId, session, undefined);
             }
             this.publishRunCompleted({
               session,
@@ -1065,7 +1097,8 @@ export class NanobossService {
       }
     } finally {
       clearInterval(heartbeatTimer);
-      const commands = toFrontendCommands(this.registry.toAvailableCommands());
+      const availableCommands = buildAvailableCommands(this.registry);
+      const commands = toFrontendCommands(availableCommands);
       session.commands = commands;
       session.events.publish(sessionId, {
         type: "commands_updated",
@@ -1073,7 +1106,7 @@ export class NanobossService {
       });
       delegate?.emit({
         sessionUpdate: "available_commands_update",
-        availableCommands: this.registry.toAvailableCommands(),
+        availableCommands,
       });
       await emitter.flush();
       stopReplayCapture();
@@ -1611,6 +1644,49 @@ function parseProcedureDispatchFailureCandidate(value: unknown): string | undefi
   }
 
   return undefined;
+}
+
+function buildAvailableCommands(registry: ProcedureRegistry): acp.AvailableCommand[] {
+  const commands = registry.toAvailableCommands();
+  return commands.some((command) => command.name === DISMISS_CONTINUATION_COMMAND_NAME)
+    ? commands
+    : [...commands, DISMISS_CONTINUATION_COMMAND];
+}
+
+function toFrontendPendingProcedureContinuation(
+  continuation?: PendingProcedureContinuation,
+): FrontendPendingProcedureContinuation | undefined {
+  if (!continuation) {
+    return undefined;
+  }
+
+  return {
+    procedure: continuation.procedure,
+    question: continuation.question,
+    inputHint: continuation.inputHint,
+    suggestedReplies: continuation.suggestedReplies,
+  };
+}
+
+function createDismissContinuationProcedure(session: SessionState): Procedure {
+  return {
+    name: DISMISS_CONTINUATION_COMMAND_NAME,
+    description: DISMISS_CONTINUATION_COMMAND.description,
+    executionMode: "harness",
+    async execute() {
+      const pending = session.pendingProcedureContinuation;
+      session.pendingProcedureContinuation = undefined;
+      return pending
+        ? {
+            display: `Cleared the pending continuation for /${pending.procedure}. Future plain-text replies will go to /default again.`,
+            summary: `Cleared /${pending.procedure} continuation`,
+          }
+        : {
+            display: "No pending continuation was active.",
+            summary: "No continuation to clear",
+          };
+    },
+  };
 }
 
 function buildPendingProcedureContinuation(

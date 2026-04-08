@@ -120,6 +120,9 @@ export class NanobossAppView implements Component {
       this.state.toolCardThemeMode === "dark" ? "/light" : "/dark",
       "/quit",
     ];
+    if (this.state.pendingProcedureContinuation) {
+      parts.push("/dismiss");
+    }
     if (this.state.inputDisabled) {
       parts.push(
         "tab queue",
@@ -135,6 +138,9 @@ function buildActivityBarParts(theme: NanobossTuiTheme, state: UiState): string[
   const parts: string[] = [];
   if (state.inputDisabled) {
     parts.push(theme.warning("● busy"));
+  }
+  if (state.pendingProcedureContinuation) {
+    parts.push(theme.warning(`continuation /${state.pendingProcedureContinuation.procedure}`));
   }
 
   const steeringCount = state.pendingPrompts.filter((prompt) => prompt.kind === "steering").length;

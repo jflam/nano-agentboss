@@ -1105,6 +1105,7 @@ describe("NanobossService", () => {
     expect(session.commands.some((command) => command.name === "top_level_runs")).toBe(true);
     expect(session.commands.some((command) => command.name === "cell_get")).toBe(true);
     expect(session.commands.some((command) => command.name === "ref_read")).toBe(true);
+    expect(session.commands.some((command) => command.name === "dismiss")).toBe(true);
   });
 
   test("session inspection commands can read current-session results", async () => {
@@ -1212,6 +1213,40 @@ describe("NanobossService", () => {
       throw new Error("Expected wizard continuation to remain pending");
     }
     expect(wizardCompleted.data.display).toContain("resumed with resume now");
+  });
+
+  test("/dismiss clears a pending continuation without exiting the session", async () => {
+    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+    registry.register(createPausedWizardProcedure());
+    registry.register({
+      name: "default",
+      description: "test default",
+      async execute(prompt) {
+        return { display: `default: ${prompt}` };
+      },
+    });
+
+    const service = new NanobossService(registry);
+    const session = service.createSession({ cwd: process.cwd() });
+
+    await service.prompt(session.sessionId, "/wizard first");
+    await service.prompt(session.sessionId, "/dismiss");
+    await service.prompt(session.sessionId, "back to default");
+
+    const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+    const dismissCompleted = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "dismiss");
+    const defaultCompleted = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "default");
+
+    expect(dismissCompleted?.type).toBe("run_completed");
+    if (dismissCompleted?.type !== "run_completed") {
+      throw new Error("Expected /dismiss run_completed event");
+    }
+    expect(dismissCompleted.data.display).toContain("Cleared the pending continuation for /wizard.");
+    expect(defaultCompleted?.type).toBe("run_completed");
+    if (defaultCompleted?.type !== "run_completed") {
+      throw new Error("Expected default run after /dismiss");
+    }
+    expect(defaultCompleted.data.display).toContain("default: back to default");
   });
 
   test("resumed sessions keep paused procedure continuations", async () => {

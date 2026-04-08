@@ -8,7 +8,11 @@ import {
   summarizeToolCallUpdate,
   type ToolPreviewBlock,
 } from "../core/tool-call-preview.ts";
-import type { AgentTokenUsage, CellRef } from "../core/types.ts";
+import type {
+  AgentTokenUsage,
+  CellRef,
+  FrontendPendingProcedureContinuation,
+} from "../core/types.ts";
 
 export interface FrontendCommand {
   name: string;
@@ -37,6 +41,10 @@ export type FrontendEvent =
       procedure: string;
       prompt: string;
       startedAt: string;
+    }
+  | {
+      type: "continuation_updated";
+      continuation?: FrontendPendingProcedureContinuation;
     }
   | {
       type: "memory_cards";

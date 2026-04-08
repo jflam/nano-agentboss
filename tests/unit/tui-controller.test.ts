@@ -564,7 +564,13 @@ describe("NanobossTuiController", () => {
     }));
 
     expect(controller.getState().inputDisabled).toBe(false);
-    expect(controller.getState().statusLine).toBe("[run] simplify waiting for your reply");
+    expect(controller.getState().statusLine).toBe("[continuation] /simplify active - waiting for your reply");
+    expect(controller.getState().pendingProcedureContinuation).toEqual({
+      procedure: "simplify",
+      question: "What would you like instead?",
+      inputHint: undefined,
+      suggestedReplies: undefined,
+    });
     expect(controller.getState().turns.at(-1)).toMatchObject({
       role: "assistant",
       markdown: "Try deleting dead code first.\n\nWhat would you like instead?",

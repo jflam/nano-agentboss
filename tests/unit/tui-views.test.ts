@@ -102,6 +102,38 @@ describe("NanobossAppView", () => {
     expect(plain).toContain("[tokens] 512 / 8,192 (6.3%)");
   });
 
+  test("shows the active continuation and the /dismiss escape hatch in the status area", () => {
+    const state = {
+      ...createInitialUiState({ cwd: "/repo" }),
+      sessionId: "session-1",
+      statusLine: "[continuation] /simplify active - waiting for your reply",
+      pendingProcedureContinuation: {
+        procedure: "simplify",
+        question: "What would you like instead?",
+      },
+      defaultAgentSelection: {
+        provider: "copilot" as const,
+        model: "gpt-5.4/xhigh",
+      },
+      agentLabel: "copilot/gpt-5.4/x-high",
+    };
+
+    const view = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      state,
+    );
+
+    const plain = stripAnsi(view.render(120).join("\n"));
+
+    expect(plain).toContain("[continuation] /simplify active - waiting for your reply");
+    expect(plain).toContain("continuation /simplify");
+    expect(plain).toContain("/dismiss");
+  });
+
   test("renders tool cards inline in transcript order without a separate activity panel", () => {
     const state = {
       ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),

@@ -231,6 +231,11 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         availableCommands: mergeAvailableCommands(event.data.commands),
       };
     case "run_restored": {
+      const pendingProcedureContinuation = event.data.status === "paused"
+        ? {
+            procedure: event.data.procedure,
+          }
+        : state.pendingProcedureContinuation;
       const userTurn = createTurn({
         id: nextTurnId("user", state.turns.length),
         role: "user",
@@ -251,6 +256,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
           activeProcedure: event.data.procedure,
           activeAssistantTurnId: undefined,
           assistantParagraphBreakPending: undefined,
+          pendingProcedureContinuation,
         };
       }
 
@@ -269,6 +275,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         ...state,
         turns: [...nextTurns, assistantTurn],
         transcriptItems: appendTranscriptItem(nextTranscriptItems, { type: "turn", id: assistantTurn.id }),
+        pendingProcedureContinuation,
       };
     }
     case "run_started": {
@@ -299,6 +306,11 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         inputDisabled: true,
       };
     }
+    case "continuation_updated":
+      return {
+        ...state,
+        pendingProcedureContinuation: event.data.continuation,
+      };
     case "memory_cards":
       return appendRuntimeLines(state, formatMemoryCardsLines(event.data.cards));
     case "memory_card_stored":
@@ -467,12 +479,15 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         return state;
       }
       const tokenUsageLine = event.data.tokenUsage ? formatTokenUsageLine(event.data.tokenUsage) : state.tokenUsageLine;
+      const statusLine = event.data.procedure === "dismiss"
+        ? buildDismissContinuationStatusLine(event.data.display)
+        : `[run] ${event.data.procedure} completed`;
       return finishRun(state, {
         turnStatus: "complete",
         fallbackText: event.data.display,
         tokenUsageLine,
         completedAt: event.data.completedAt,
-        statusLine: `[run] ${event.data.procedure} completed`,
+        statusLine,
       });
     }
     case "run_paused": {
@@ -480,13 +495,22 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         return state;
       }
       const tokenUsageLine = event.data.tokenUsage ? formatTokenUsageLine(event.data.tokenUsage) : state.tokenUsageLine;
-      return finishRun(state, {
+      const nextState = finishRun(state, {
         turnStatus: "complete",
         fallbackText: event.data.display ?? event.data.question,
         tokenUsageLine,
         completedAt: event.data.pausedAt,
-        statusLine: `[run] ${event.data.procedure} waiting for your reply`,
+        statusLine: buildContinuationStatusLine(event.data.procedure),
       });
+      return {
+        ...nextState,
+        pendingProcedureContinuation: {
+          procedure: event.data.procedure,
+          question: event.data.question,
+          inputHint: event.data.inputHint,
+          suggestedReplies: event.data.suggestedReplies,
+        },
+      };
     }
     case "run_failed":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
@@ -605,6 +629,17 @@ function markAssistantTextBoundary(state: UiState): UiState {
     ...state,
     assistantParagraphBreakPending: true,
   };
+}
+
+function buildContinuationStatusLine(procedure: string): string {
+  return `[continuation] /${procedure} active - waiting for your reply`;
+}
+
+function buildDismissContinuationStatusLine(display?: string): string {
+  const clearedMatch = display?.match(/\/([A-Za-z0-9/_-]+)/);
+  return clearedMatch
+    ? `[continuation] cleared /${clearedMatch[1]}`
+    : "[continuation] nothing to clear";
 }
 
 function finishRun(
