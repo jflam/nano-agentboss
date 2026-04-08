@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { summarizeText } from "../util/text.ts";
+import { summarizeText } from "../../src/util/text.ts";
 
 import { ensureGitLocalExclude, resolveGitRepoRoot } from "./git.ts";
 import type {

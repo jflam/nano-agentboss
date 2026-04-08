@@ -1,13 +1,13 @@
 import typia from "typia";
 
-import { expectData } from "../core/run-result.ts";
-import { formatErrorMessage } from "../core/error-format.ts";
+import { expectData } from "../../src/core/run-result.ts";
+import { formatErrorMessage } from "../../src/core/error-format.ts";
 import {
   jsonType,
   type CommandContext,
   type ProcedureResult,
-} from "../core/types.ts";
-import { summarizeText } from "../util/text.ts";
+} from "../../src/core/types.ts";
+import { summarizeText } from "../../src/util/text.ts";
 
 import { runBenchmark, runChecks } from "./benchmark.ts";
 import {

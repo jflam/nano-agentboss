@@ -47,9 +47,7 @@ export function computeCommandsFingerprint(commandDirs: string[]): string {
       continue;
     }
 
-    const files = readdirSync(commandDir)
-      .filter((entry) => entry.endsWith(".ts"))
-      .sort();
+    const files = listTypeScriptFiles(commandDir);
 
     for (const file of files) {
       const path = join(commandDir, file);
@@ -60,6 +58,30 @@ export function computeCommandsFingerprint(commandDirs: string[]): string {
   }
 
   return hash.digest("hex").slice(0, 12);
+}
+
+function listTypeScriptFiles(rootDir: string, prefix = ""): string[] {
+  const files: string[] = [];
+  const entries = readdirSync(join(rootDir, prefix), { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) {
+      continue;
+    }
+
+    const relativePath = prefix ? join(prefix, entry.name) : entry.name;
+    if (entry.isDirectory()) {
+      files.push(...listTypeScriptFiles(rootDir, relativePath));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith(".ts")) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
 }
 
 function detectRepoRoot(cwd: string): string | undefined {

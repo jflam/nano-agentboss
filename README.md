@@ -50,6 +50,14 @@ commands from these locations by default:
 - `./commands` relative to the nanoboss process working directory
 - `~/.nanoboss/commands`
 
+Those command directories can now contain nested procedure packages such as
+`commands/autoresearch/*.ts`; nanoboss recursively discovers `.ts` files that
+export a default procedure, so helper modules can live alongside procedure
+entrypoints without being registered as slash commands.
+
+See [`docs/procedure-packages.md`](docs/procedure-packages.md) for the package
+layout, discovery rules, and manifest expectations.
+
 The profile directory is the default place for user-defined dynamic commands.
 When `/create` runs inside the nanoboss repo, it writes into the repo's
 `commands/` directory. Otherwise it writes into `~/.nanoboss/commands`.

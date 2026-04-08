@@ -5,12 +5,12 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import autoresearchProcedure from "../../commands/autoresearch.ts";
-import autoresearchContinueProcedure from "../../commands/autoresearch-continue.ts";
-import autoresearchClearProcedure from "../../commands/autoresearch-clear.ts";
-import autoresearchFinalizeProcedure from "../../commands/autoresearch-finalize.ts";
-import autoresearchStartProcedure from "../../commands/autoresearch-start.ts";
-import autoresearchStatusProcedure from "../../commands/autoresearch-status.ts";
+import autoresearchProcedure from "../../commands/autoresearch/index.ts";
+import autoresearchContinueProcedure from "../../commands/autoresearch/continue.ts";
+import autoresearchClearProcedure from "../../commands/autoresearch/clear.ts";
+import autoresearchFinalizeProcedure from "../../commands/autoresearch/finalize.ts";
+import autoresearchStartProcedure from "../../commands/autoresearch/start.ts";
+import autoresearchStatusProcedure from "../../commands/autoresearch/status.ts";
 import commitProcedure from "../../commands/commit.ts";
 import defaultProcedure from "../../commands/default.ts";
 import kbAnswerProcedure from "../../commands/kb-answer.ts";
@@ -47,6 +47,7 @@ interface ProcedureManifest {
 
 interface DiskProcedureEntry {
   path: string;
+  workspaceRoot: string;
   manifest: ProcedureManifest;
   loadPromise?: Promise<Procedure>;
 }
@@ -143,23 +144,14 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
         continue;
       }
 
-      const files = readdirSync(commandsDir)
-        .filter((entry) => entry.endsWith(".ts"))
-        .sort();
-
-      for (const file of files) {
-        const fileStem = file.replace(/\.ts$/, "");
-        if (this.procedures.has(fileStem)) {
-          continue;
-        }
-
-        this.registerDiskProcedure(join(commandsDir, file));
+      for (const filePath of listProcedureSourcePaths(commandsDir)) {
+        this.registerDiskProcedure(filePath, commandsDir);
       }
     }
   }
 
-  async loadProcedureFromPath(path: string): Promise<Procedure> {
-    const moduleUrl = await this.buildProcedureModule(path);
+  async loadProcedureFromPath(path: string, workspaceRoot?: string): Promise<Procedure> {
+    const moduleUrl = await this.buildProcedureModule(path, workspaceRoot);
     const loaded: unknown = await import(moduleUrl);
     const procedure = getDefaultExport(loaded);
     this.assertProcedure(procedure);
@@ -179,14 +171,15 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     return filePath;
   }
 
-  private async buildProcedureModule(path: string): Promise<string> {
-    const cacheKey = buildProcedureCacheKey(path);
+  private async buildProcedureModule(path: string, workspaceRoot?: string): Promise<string> {
+    const resolvedWorkspaceRoot = resolveProcedureWorkspaceRoot(path, workspaceRoot);
+    const cacheKey = buildProcedureCacheKey(path, resolvedWorkspaceRoot);
     const cacheDir = join(getProcedureBuildCacheDir(), cacheKey);
     const cacheModulePath = join(cacheDir, "module.js");
     if (!existsSync(cacheModulePath)) {
       const outdir = mkdtempSync(join(tmpdir(), "nanoboss-procedure-"));
       try {
-        const result = await withProcedureBuildNodeModules(path, async () =>
+        const result = await withProcedureBuildNodeModules(resolvedWorkspaceRoot, async () =>
           await Bun.build({
             entrypoints: [path],
             outdir,
@@ -246,14 +239,15 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     }
   }
 
-  private registerDiskProcedure(path: string): void {
+  private registerDiskProcedure(path: string, workspaceRoot: string): void {
     const manifest = readProcedureManifest(path);
-    if (this.procedures.has(manifest.name)) {
+    if (!manifest || this.procedures.has(manifest.name)) {
       return;
     }
 
     const entry: DiskProcedureEntry = {
       path,
+      workspaceRoot,
       manifest,
     };
     this.diskProcedureEntries.set(manifest.name, entry);
@@ -284,7 +278,7 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     }
 
     if (!entry.loadPromise) {
-      entry.loadPromise = this.loadProcedureFromPath(entry.path)
+      entry.loadPromise = this.loadProcedureFromPath(entry.path, entry.workspaceRoot)
         .then((procedure) => {
           this.diskProcedureEntries.delete(name);
           this.procedures.set(name, procedure);
@@ -340,8 +334,7 @@ function getProcedureBuildCacheDir(): string {
   return join(getProcedureRuntimeDir(), "procedure-builds");
 }
 
-function buildProcedureCacheKey(path: string): string {
-  const workspaceRoot = resolveProcedureWorkspaceRoot(path);
+function buildProcedureCacheKey(path: string, workspaceRoot: string): string {
   const hash = createHash("sha256");
   hash.update(`procedure-cache-version:${String(PROCEDURE_BUILD_CACHE_VERSION)}\n`);
   hash.update(`bun-version:${Bun.version}\n`);
@@ -383,6 +376,12 @@ function resolveProcedureSourceGraph(path: string): ProcedureSourceFile[] {
   return sourceFiles;
 }
 
+function listProcedureSourcePaths(rootDir: string): string[] {
+  const files: string[] = [];
+  walkProcedureSourcePaths(resolve(rootDir), files);
+  return files;
+}
+
 function findLocalImportSpecifiers(source: string): string[] {
   const matches = new Set<string>();
   for (const pattern of LOCAL_IMPORT_PATTERNS) {
@@ -418,8 +417,12 @@ function resolveLocalImportPath(baseDir: string, specifier: string): string | un
   return undefined;
 }
 
-function readProcedureManifest(path: string): ProcedureManifest {
+function readProcedureManifest(path: string): ProcedureManifest | undefined {
   const source = readFileSync(path, "utf8");
+  if (!looksLikeProcedureModule(source)) {
+    return undefined;
+  }
+
   const name = readStaticStringProperty(source, "name") ?? basename(path, ".ts");
   const description = readStaticStringProperty(source, "description") ?? `Lazy-loaded procedure from ${basename(path)}`;
   const inputHint = readStaticStringProperty(source, "inputHint");
@@ -431,6 +434,11 @@ function readProcedureManifest(path: string): ProcedureManifest {
     inputHint,
     executionMode,
   };
+}
+
+function looksLikeProcedureModule(source: string): boolean {
+  return /\bexport\s+default\b/u.test(source)
+    && (/\b(?:async\s+)?execute\s*\(/u.test(source) || /\bexecute\s*:/u.test(source));
 }
 
 function readStaticStringProperty(source: string, propertyName: string): string | undefined {
@@ -473,8 +481,28 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-async function withProcedureBuildNodeModules<T>(path: string, run: () => Promise<T>): Promise<T> {
-  const workspaceRoot = resolveProcedureWorkspaceRoot(path);
+function walkProcedureSourcePaths(dir: string, files: string[]): void {
+  const entries = readdirSync(dir, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) {
+      continue;
+    }
+
+    const entryPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkProcedureSourcePaths(entryPath, files);
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith(".ts")) {
+      files.push(entryPath);
+    }
+  }
+}
+
+async function withProcedureBuildNodeModules<T>(workspaceRoot: string, run: () => Promise<T>): Promise<T> {
   const nodeModulesPath = join(workspaceRoot, "node_modules");
   if (existsSync(nodeModulesPath)) {
     return await run();
@@ -501,11 +529,22 @@ async function withProcedureBuildNodeModules<T>(path: string, run: () => Promise
   }
 }
 
-function resolveProcedureWorkspaceRoot(path: string): string {
+function resolveProcedureWorkspaceRoot(path: string, workspaceRoot?: string): string {
+  if (workspaceRoot) {
+    return resolve(workspaceRoot);
+  }
+
   const fileDir = dirname(resolve(path));
-  return basename(fileDir) === "commands"
-    ? dirname(fileDir)
-    : fileDir;
+  for (let current = fileDir; ; current = dirname(current)) {
+    if (basename(current) === "commands") {
+      return dirname(current);
+    }
+
+    const parent = dirname(current);
+    if (parent === current) {
+      return fileDir;
+    }
+  }
 }
 
 function resolveProcedureBuildNodeModulesPath(): string {

@@ -1,5 +1,5 @@
-import type { Procedure } from "../src/core/types.ts";
-import { executeAutoresearchStartCommand } from "../src/autoresearch/runner.ts";
+import type { Procedure } from "../../src/core/types.ts";
+import { executeAutoresearchStartCommand } from "./runner.ts";
 
 export default {
   name: "autoresearch-start",

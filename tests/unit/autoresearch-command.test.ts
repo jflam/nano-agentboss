@@ -12,14 +12,14 @@ import {
   executeAutoresearchFinalizeCommand,
   executeAutoresearchStartCommand,
   executeAutoresearchStatusCommand,
-} from "../../src/autoresearch/runner.ts";
-import { readExperimentLog } from "../../src/autoresearch/log.ts";
-import { readAutoresearchState, resolveAutoresearchPaths } from "../../src/autoresearch/state.ts";
+} from "../../commands/autoresearch/runner.ts";
+import { readExperimentLog } from "../../commands/autoresearch/log.ts";
+import { readAutoresearchState, resolveAutoresearchPaths } from "../../commands/autoresearch/state.ts";
 import type {
   AutoresearchApplyResult,
   AutoresearchExperimentSpec,
   AutoresearchInitPlan,
-} from "../../src/autoresearch/types.ts";
+} from "../../commands/autoresearch/types.ts";
 import type { CommandContext, DownstreamAgentConfig, RunResult } from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];

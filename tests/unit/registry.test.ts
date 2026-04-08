@@ -27,6 +27,39 @@ describe("ProcedureRegistry", () => {
     await expect(registry.get("hello")?.execute("", {} as never)).resolves.toBe("hi");
   });
 
+  test("loads packaged procedures from nested directories and ignores helpers", async () => {
+    const commandsDir = mkdtempSync(join(tmpdir(), "nab-packaged-commands-"));
+    const packageDir = join(commandsDir, "autoresearch");
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(
+      join(packageDir, "hello.ts"),
+      [
+        "export default {",
+        '  name: "packaged-hello",',
+        '  description: "packaged hello world",',
+        '  async execute() { return "packaged"; },',
+        "};",
+      ].join("\n"),
+      "utf8",
+    );
+    writeFileSync(
+      join(packageDir, "helper.ts"),
+      [
+        "export function helper(): string {",
+        '  return "helper";',
+        "}",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const registry = new ProcedureRegistry(commandsDir);
+    await registry.loadFromDisk();
+
+    expect(registry.get("packaged-hello")?.description).toBe("packaged hello world");
+    expect(registry.get("helper")).toBeUndefined();
+    await expect(registry.get("packaged-hello")?.execute("", {} as never)).resolves.toBe("packaged");
+  });
+
   test("loads procedures from both repo and profile command directories", async () => {
     const repoCommandsDir = mkdtempSync(join(tmpdir(), "nab-repo-commands-"));
     const profileCommandsDir = mkdtempSync(join(tmpdir(), "nab-profile-commands-"));

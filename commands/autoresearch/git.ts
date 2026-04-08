@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 
-import { formatErrorMessage } from "../core/error-format.ts";
+import { formatErrorMessage } from "../../src/core/error-format.ts";
 
 import type { AutoresearchChangedFiles } from "./types.ts";
 
