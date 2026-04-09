@@ -311,7 +311,7 @@ describe("nanoboss/pre-commit-checks procedure", () => {
     expect(seenRefresh).toBe(true);
   });
 
-  test("announces dirty workspaces before streaming fresh output", async () => {
+  test("streams fresh output in verbose mode", async () => {
     const printed: string[] = [];
     const procedure = createPreCommitChecksProcedure({
       async resolveChecks(options) {
@@ -339,7 +339,7 @@ describe("nanoboss/pre-commit-checks procedure", () => {
       },
     });
 
-    await procedure.execute("", createMockContext({
+    await procedure.execute("--verbose", createMockContext({
       cwd: "/repo",
       print(text) {
         printed.push(text);
@@ -347,10 +347,181 @@ describe("nanoboss/pre-commit-checks procedure", () => {
     }));
 
     expect(printed).toEqual([
-      `Dirty repo detected; re-running tests for confidence with \`${PRE_COMMIT_CHECKS_COMMAND}\`.\n`,
+      `Dirty repo detected; re-running checks for confidence with \`${PRE_COMMIT_CHECKS_COMMAND}\`.\n`,
       "line 1\n",
       "line 2\n",
     ]);
+  });
+
+  test("pauses with a fix offer when checks fail", async () => {
+    const procedure = createPreCommitChecksProcedure({
+      async resolveChecks() {
+        return {
+          command: PRE_COMMIT_CHECKS_COMMAND,
+          cacheHit: false,
+          runReason: "cold_cache",
+          exitCode: 2,
+          passed: false,
+          workspaceStateFingerprint: "workspace",
+          runtimeFingerprint: "runtime",
+          createdAt: "2026-04-09T00:00:00.000Z",
+          stdout: "",
+          stderr: "typecheck failed\n",
+          combinedOutput: [
+            '[[nanoboss-precommit]] {"type":"run_result","phases":[{"phase":"lint","status":"passed","exitCode":0},{"phase":"typecheck","status":"failed","exitCode":2},{"phase":"test","status":"not_run"}]}',
+            "procedures/example.ts(12,3): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.",
+          ].join("\n"),
+          summary: "failed",
+          durationMs: 5,
+        };
+      },
+    });
+
+    const result = await procedure.execute("", createMockContext({ cwd: "/repo" }));
+
+    expect(result).toMatchObject({
+      data: {
+        passed: false,
+        exitCode: 2,
+      },
+      pause: {
+        suggestedReplies: ["yes, fix them", "no, leave them"],
+      },
+    });
+    if (typeof result === "string" || !result?.pause) {
+      throw new Error("Expected paused procedure result");
+    }
+    expect(result.display).toContain("Validation summary:");
+    expect(result.display).toContain("- lint: passed");
+    expect(result.display).toContain("- typecheck: failed (exit 2)");
+    expect(result.display).toContain("- test: not run");
+    expect(result.pause.question).toContain("Do you want me to try fixing these automatically?");
+  });
+
+  test("resume can run one automated fix pass and rerun checks", async () => {
+    const calls: string[] = [];
+    let refreshes: boolean[] = [];
+    const procedure = createPreCommitChecksProcedure({
+      async resolveChecks({ refresh }) {
+        refreshes = [...refreshes, refresh === true];
+        if (refresh) {
+          return {
+            command: PRE_COMMIT_CHECKS_COMMAND,
+            cacheHit: false,
+            runReason: "refresh",
+            exitCode: 0,
+            passed: true,
+            workspaceStateFingerprint: "workspace",
+            runtimeFingerprint: "runtime",
+            createdAt: "2026-04-09T00:00:01.000Z",
+            stdout: "all clean\n",
+            stderr: "",
+            combinedOutput: "all clean\n",
+            summary: "passed",
+            durationMs: 5,
+          };
+        }
+
+        return {
+          command: PRE_COMMIT_CHECKS_COMMAND,
+          cacheHit: false,
+          runReason: "cold_cache",
+          exitCode: 2,
+          passed: false,
+          workspaceStateFingerprint: "workspace",
+          runtimeFingerprint: "runtime",
+          createdAt: "2026-04-09T00:00:00.000Z",
+          stdout: "",
+          stderr: "typecheck failed\n",
+          combinedOutput: "typecheck failed\n",
+          summary: "failed",
+          durationMs: 5,
+        };
+      },
+    });
+
+    const initial = await procedure.execute("", createMockContext({ cwd: "/repo" }));
+    if (typeof initial === "string" || !initial?.pause) {
+      throw new Error("Expected paused procedure result");
+    }
+
+    const resumed = await procedure.resume?.(
+      "yes, fix them",
+      initial.pause.state,
+      createMockContext({
+        cwd: "/repo",
+        async callAgent(prompt) {
+          calls.push(prompt);
+          return {
+            cell: { sessionId: "session", cellId: "agent" },
+            data: "Applied focused fixes.\n",
+            dataRef: makeValueRef("agent"),
+          } satisfies RunResult<string>;
+        },
+      }),
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("fix the current pre-commit check failures");
+    expect(calls[0]).toContain("typecheck failed");
+    expect(refreshes).toEqual([false, true]);
+    expect(resumed).toBeDefined();
+    expect(resumed).toMatchObject({
+      data: {
+        passed: true,
+        exitCode: 0,
+      },
+    });
+    if (typeof resumed === "string") {
+      throw new Error("Expected procedure result object");
+    }
+    expect(resumed?.pause).toBeUndefined();
+  });
+
+  test("resume can decline the automated fix pass", async () => {
+    const procedure = createPreCommitChecksProcedure({
+      async resolveChecks() {
+        return {
+          command: PRE_COMMIT_CHECKS_COMMAND,
+          cacheHit: false,
+          runReason: "cold_cache",
+          exitCode: 2,
+          passed: false,
+          workspaceStateFingerprint: "workspace",
+          runtimeFingerprint: "runtime",
+          createdAt: "2026-04-09T00:00:00.000Z",
+          stdout: "",
+          stderr: "lint failed\n",
+          combinedOutput: "lint failed\n",
+          summary: "failed",
+          durationMs: 5,
+        };
+      },
+    });
+
+    const initial = await procedure.execute("", createMockContext({ cwd: "/repo" }));
+    if (typeof initial === "string" || !initial?.pause) {
+      throw new Error("Expected paused procedure result");
+    }
+
+    const resumed = await procedure.resume?.(
+      "no, leave them",
+      initial.pause.state,
+      createMockContext({ cwd: "/repo" }),
+    );
+
+    expect(resumed).toBeDefined();
+    expect(resumed).toMatchObject({
+      data: {
+        passed: false,
+        exitCode: 2,
+      },
+      display: "Pre-commit checks still fail. Automatic fix was skipped.\n",
+    });
+    if (typeof resumed === "string") {
+      throw new Error("Expected procedure result object");
+    }
+    expect(resumed?.pause).toBeUndefined();
   });
 });
 

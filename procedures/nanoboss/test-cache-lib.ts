@@ -5,8 +5,8 @@ import { dirname, join, resolve } from "node:path";
 
 import { formatErrorMessage } from "../../src/core/error-format.ts";
 
-export const PRE_COMMIT_CHECKS_COMMAND = "bun run scripts/compact-test.ts";
-const PRE_COMMIT_CHECKS_CMD = ["bun", "run", "scripts/compact-test.ts"];
+export const PRE_COMMIT_CHECKS_COMMAND = "bun run check:precommit";
+const PRE_COMMIT_CHECKS_CMD = ["bun", "run", "check:precommit"];
 const PRE_COMMIT_PROGRESS_ENV = "NANOBOSS_STREAM_TEST_PROGRESS";
 const PRE_COMMIT_CHECKS_CACHE_RELATIVE_PATH = ".nanoboss/pre-commit-checks.json";
 const EXCLUDED_PATH_SEGMENTS = new Set([".git", "node_modules", ".nanoboss", "dist", "coverage"]);
