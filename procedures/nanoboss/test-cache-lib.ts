@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -7,6 +7,7 @@ import { formatErrorMessage } from "../../src/core/error-format.ts";
 
 export const PRE_COMMIT_CHECKS_COMMAND = "bun run scripts/compact-test.ts";
 const PRE_COMMIT_CHECKS_CMD = ["bun", "run", "scripts/compact-test.ts"];
+const PRE_COMMIT_PROGRESS_ENV = "NANOBOSS_STREAM_TEST_PROGRESS";
 const PRE_COMMIT_CHECKS_CACHE_RELATIVE_PATH = ".nanoboss/pre-commit-checks.json";
 const EXCLUDED_PATH_SEGMENTS = new Set([".git", "node_modules", ".nanoboss", "dist", "coverage"]);
 const TEMP_FILE_PATTERNS = [
@@ -16,7 +17,6 @@ const TEMP_FILE_PATTERNS = [
   /\.(?:swp|swo|tmp|temp)$/i,
   /^\.DS_Store$/,
 ];
-const textDecoder = new TextDecoder();
 type FileStats = NonNullable<ReturnType<typeof lstatSync>>;
 
 export interface CachedPreCommitChecksResult {
@@ -44,12 +44,22 @@ export interface PreCommitChecksResult {
 }
 
 export interface ResolvedPreCommitChecksResult extends PreCommitChecksResult {
+  runReason: PreCommitChecksRunReason;
   stdout: string;
   stderr: string;
   combinedOutput: string;
   summary: string;
   durationMs: number;
 }
+
+export type PreCommitChecksFreshRunReason =
+  | "refresh"
+  | "cold_cache"
+  | "workspace_changed"
+  | "runtime_changed"
+  | "command_changed";
+
+export type PreCommitChecksRunReason = "cache_hit" | PreCommitChecksFreshRunReason;
 
 export interface RuntimeFingerprintInput {
   bunVersion: string;
@@ -71,7 +81,14 @@ export interface ResolvePreCommitChecksOptions {
   cwd: string;
   refresh?: boolean;
   resolveRuntimeFingerprint?: () => string;
-  runValidationCommand?: (cwd: string) => CommandExecutionResult;
+  onFreshRun?: (event: {
+    reason: PreCommitChecksFreshRunReason;
+    command: string;
+  }) => void;
+  onOutputChunk?: (chunk: string) => void;
+  runValidationCommand?: (cwd: string, options?: {
+    onOutputChunk?: (chunk: string) => void;
+  }) => Promise<CommandExecutionResult>;
 }
 
 export function resolveGitRepoRoot(cwd: string): string {
@@ -132,9 +149,9 @@ export function writeCachedPreCommitChecksResult(
   writeFileSync(cachePath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
 }
 
-export function resolvePreCommitChecks(
+export async function resolvePreCommitChecks(
   options: ResolvePreCommitChecksOptions,
-): ResolvedPreCommitChecksResult {
+): Promise<ResolvedPreCommitChecksResult> {
   const cachePath = getPreCommitChecksCachePath(options.cwd);
   const workspaceStateFingerprint = computeWorkspaceStateFingerprint(options.cwd);
   const runtimeFingerprint = (options.resolveRuntimeFingerprint ?? computeRuntimeFingerprint)();
@@ -150,6 +167,7 @@ export function resolvePreCommitChecks(
     return {
       command: cached.command,
       cacheHit: true,
+      runReason: "cache_hit",
       exitCode: cached.exitCode,
       passed: cached.exitCode === 0,
       workspaceStateFingerprint,
@@ -163,7 +181,20 @@ export function resolvePreCommitChecks(
     };
   }
 
-  const fresh = (options.runValidationCommand ?? runPreCommitValidationCommand)(resolveGitRepoRoot(options.cwd));
+  const runReason = resolveFreshRunReason({
+    refresh: options.refresh === true,
+    cached,
+    workspaceStateFingerprint,
+    runtimeFingerprint,
+  });
+  options.onFreshRun?.({
+    reason: runReason,
+    command: PRE_COMMIT_CHECKS_COMMAND,
+  });
+  const fresh = await (options.runValidationCommand ?? runPreCommitValidationCommand)(
+    resolveGitRepoRoot(options.cwd),
+    { onOutputChunk: options.onOutputChunk },
+  );
   const record: CachedPreCommitChecksResult = {
     version: 1,
     command: PRE_COMMIT_CHECKS_COMMAND,
@@ -182,6 +213,7 @@ export function resolvePreCommitChecks(
   return {
     command: record.command,
     cacheHit: false,
+    runReason,
     exitCode: record.exitCode,
     passed: record.exitCode === 0,
     workspaceStateFingerprint,
@@ -202,17 +234,28 @@ export function ensureTrailingNewline(text: string): string {
   return `${text}\n`;
 }
 
-function runPreCommitValidationCommand(cwd: string): CommandExecutionResult {
+async function runPreCommitValidationCommand(
+  cwd: string,
+  options: {
+    onOutputChunk?: (chunk: string) => void;
+  } = {},
+): Promise<CommandExecutionResult> {
   const startedAt = Date.now();
-  let result: Bun.SyncSubprocess;
+  let child: ReturnType<typeof spawn>;
+  const [command, ...args] = PRE_COMMIT_CHECKS_CMD;
+
+  if (!command) {
+    throw new Error("Missing pre-commit validation command");
+  }
 
   try {
-    result = Bun.spawnSync({
-      cmd: PRE_COMMIT_CHECKS_CMD,
+    child = spawn(command, args, {
       cwd,
-      env: process.env,
-      stdout: "pipe",
-      stderr: "pipe",
+      env: {
+        ...process.env,
+        [PRE_COMMIT_PROGRESS_ENV]: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
     throw new Error(
@@ -221,10 +264,28 @@ function runPreCommitValidationCommand(cwd: string): CommandExecutionResult {
     );
   }
 
-  const stdout = textDecoder.decode(result.stdout);
-  const stderr = textDecoder.decode(result.stderr);
+  let stdout = "";
+  let stderr = "";
+
+  child.stdout?.setEncoding("utf8");
+  child.stderr?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk: string) => {
+    stdout += chunk;
+    options.onOutputChunk?.(chunk);
+  });
+  child.stderr?.on("data", (chunk: string) => {
+    stderr += chunk;
+    options.onOutputChunk?.(chunk);
+  });
+
+  const exitCode = await new Promise<number>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => {
+      resolve(code ?? 1);
+    });
+  });
+
   const combinedOutput = `${stdout}${stderr}`;
-  const exitCode = result.exitCode;
 
   return {
     exitCode,
@@ -237,6 +298,35 @@ function runPreCommitValidationCommand(cwd: string): CommandExecutionResult {
     createdAt: new Date(startedAt).toISOString(),
     durationMs: Date.now() - startedAt,
   };
+}
+
+function resolveFreshRunReason(params: {
+  refresh: boolean;
+  cached?: CachedPreCommitChecksResult;
+  workspaceStateFingerprint: string;
+  runtimeFingerprint: string;
+}): PreCommitChecksFreshRunReason {
+  if (params.refresh) {
+    return "refresh";
+  }
+
+  if (!params.cached) {
+    return "cold_cache";
+  }
+
+  if (params.cached.command !== PRE_COMMIT_CHECKS_COMMAND) {
+    return "command_changed";
+  }
+
+  if (params.cached.workspaceStateFingerprint !== params.workspaceStateFingerprint) {
+    return "workspace_changed";
+  }
+
+  if (params.cached.runtimeFingerprint !== params.runtimeFingerprint) {
+    return "runtime_changed";
+  }
+
+  return "cold_cache";
 }
 
 function computeUntrackedRelevantFilesHash(repoRoot: string): string {

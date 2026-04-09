@@ -15,6 +15,14 @@ describe("dispatch-progress", () => {
       const emitter = new ProcedureDispatchProgressEmitter(progressPath);
 
       emitter.emit({
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: "Streaming progress\n",
+        },
+      });
+
+      emitter.emit({
         sessionUpdate: "tool_call",
         toolCallId: "tool-read",
         title: "Read File",
@@ -47,10 +55,18 @@ describe("dispatch-progress", () => {
         size: 456,
       });
 
-      const [started, updated, usage] = readFileSync(progressPath, "utf8")
+      const [chunk, started, updated, usage] = readFileSync(progressPath, "utf8")
         .trim()
         .split("\n")
         .map((line): acp.SessionUpdate => JSON.parse(line) as acp.SessionUpdate);
+
+      expect(chunk).toEqual({
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: "Streaming progress\n",
+        },
+      });
 
       expect(started).toEqual({
         sessionUpdate: "tool_call",

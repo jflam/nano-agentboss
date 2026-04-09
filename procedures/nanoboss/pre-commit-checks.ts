@@ -3,6 +3,7 @@ import type { Procedure } from "../../src/core/types.ts";
 import {
   ensureTrailingNewline,
   resolvePreCommitChecks,
+  type PreCommitChecksFreshRunReason,
   type ResolvedPreCommitChecksResult,
 } from "./test-cache-lib.ts";
 
@@ -20,13 +21,25 @@ export function createPreCommitChecksProcedure(
     description: "Run or replay the repo pre-commit validation command",
     async execute(prompt, ctx) {
       const refresh = hasRefreshFlag(prompt);
-      const result = resolveChecks({
+      let freshRunAnnounced = false;
+      let streamedFreshOutput = false;
+      const result = await resolveChecks({
         cwd: ctx.cwd,
         refresh,
+        onFreshRun(event) {
+          freshRunAnnounced = true;
+          ctx.print(renderFreshRunHeader(event.reason, event.command));
+        },
+        onOutputChunk(chunk) {
+          streamedFreshOutput = true;
+          ctx.print(chunk);
+        },
       });
 
-      ctx.print(renderHeader(result, refresh));
-      if (result.combinedOutput.length > 0) {
+      if (result.cacheHit || !freshRunAnnounced) {
+        ctx.print(renderHeader(result, refresh));
+      }
+      if (result.cacheHit || !streamedFreshOutput) {
         ctx.print(ensureTrailingNewline(result.combinedOutput));
       }
 
@@ -61,6 +74,21 @@ function renderHeader(result: ResolvedPreCommitChecksResult, refresh: boolean): 
   }
 
   return `Running pre-commit checks with \`${result.command}\`.\n`;
+}
+
+function renderFreshRunHeader(reason: PreCommitChecksFreshRunReason, command: string): string {
+  switch (reason) {
+    case "refresh":
+      return `Refresh requested; re-running pre-commit checks with \`${command}\`.\n`;
+    case "cold_cache":
+      return `No cached pre-commit result matched; running \`${command}\`.\n`;
+    case "workspace_changed":
+      return `Dirty repo detected; re-running tests for confidence with \`${command}\`.\n`;
+    case "runtime_changed":
+      return `Runtime changed since the last cached result; re-running \`${command}\`.\n`;
+    case "command_changed":
+      return `Pre-commit command changed; re-running \`${command}\`.\n`;
+  }
 }
 
 function renderDisplay(result: ResolvedPreCommitChecksResult): string {

@@ -21,6 +21,8 @@ interface CompactTestRunPlanEntry {
   args: string[];
 }
 
+const STREAM_PROGRESS_ENV = "NANOBOSS_STREAM_TEST_PROGRESS";
+
 const UNIT_HEAVY_FILES = [
   "tests/unit/default-memory-bridge.test.ts",
   "tests/unit/mcp-server.test.ts",
@@ -94,7 +96,7 @@ function buildUnitPlan(): CompactTestRunPlanEntry[] {
 
   const heavyFiles = UNIT_HEAVY_FILES.filter((path) => allUnitFiles.includes(path));
   const envFiles = UNIT_ENV_FILES.filter((path) => allUnitFiles.includes(path));
-  const isolatedFiles = new Set([...heavyFiles, ...envFiles]);
+  const isolatedFiles = new Set<string>([...heavyFiles, ...envFiles]);
   const parallelFiles = allUnitFiles.filter((path) => !isolatedFiles.has(path));
 
   return [
@@ -132,6 +134,7 @@ function writeResult(result: CompactTestRunResult): void {
 async function runBunTest(args: string[]): Promise<CompactTestRunResult> {
   const tempDir = mkdtempSync(join(tmpdir(), "nanoboss-compact-test-"));
   const junitPath = join(tempDir, "report.xml");
+  const streamProgress = process.env[STREAM_PROGRESS_ENV] === "1";
   const child = spawn("bun", [
     "test",
     "--only-failures",
@@ -154,9 +157,15 @@ async function runBunTest(args: string[]): Promise<CompactTestRunResult> {
   child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk: string) => {
     stdout += chunk;
+    if (streamProgress) {
+      process.stdout.write(chunk);
+    }
   });
   child.stderr.on("data", (chunk: string) => {
     stderr += chunk;
+    if (streamProgress) {
+      process.stderr.write(chunk);
+    }
   });
 
   const exitCode = await new Promise<number>((resolve, reject) => {
