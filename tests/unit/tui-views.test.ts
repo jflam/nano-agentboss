@@ -1046,18 +1046,23 @@ describe("NanobossAppView", () => {
     }).transcript;
     const initialTurnComponent = transcript.turnComponents.get("assistant-1");
     const initialToolComponent = transcript.toolComponents.get("tool-1");
+    const baseTurn = baseState.turns[0];
+    const baseToolCall = baseState.toolCalls[0];
+    if (!baseTurn || !baseToolCall) {
+      throw new Error("Expected initial transcript items");
+    }
 
     view.setState({
       ...baseState,
       turns: [
         {
-          ...baseState.turns[0],
+          ...baseTurn,
           markdown: "Partial response plus more",
         },
       ],
       toolCalls: [
         {
-          ...baseState.toolCalls[0],
+          ...baseToolCall,
           status: "completed",
           resultPreview: { bodyLines: ["done"] },
         },

@@ -81,6 +81,7 @@ function transformTypeScriptWithTypia(path: string, source: string): string {
   const transformer = typiaTransform(program, typiaOptions, {
     addDiagnostic(diagnostic) {
       diagnostics.push(diagnostic);
+      return diagnostics.length;
     },
   });
   const result = ts.transform(sourceFile, [transformer], {

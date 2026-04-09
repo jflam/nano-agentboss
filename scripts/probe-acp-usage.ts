@@ -40,6 +40,10 @@ function parseArgs(argv: string[]): ProbeArgs {
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (arg === undefined) {
+      continue;
+    }
+
     if (arg === "--prompt") {
       const value = argv[index + 1];
       if (!value) {

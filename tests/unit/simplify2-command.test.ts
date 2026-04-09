@@ -619,7 +619,7 @@ function createMockContext(
           cellId: `agent-${callCount}`,
         },
         data: next,
-      } as RunResult<unknown>;
+      } as RunResult;
     }) as CommandContext["callAgent"],
     async callProcedure() {
       throw new Error("Not implemented in test");

@@ -129,6 +129,8 @@ class ComputedTruncatedText implements Component {
 
     return new TruncatedText(text).render(width);
   }
+
+  invalidate(): void {}
 }
 
 class TranscriptComponent implements Component {
@@ -305,6 +307,10 @@ class EmptyTranscriptComponent implements Component {
 
   render(width: number): string[] {
     return this.container.render(width);
+  }
+
+  invalidate(): void {
+    this.container.invalidate();
   }
 }
 

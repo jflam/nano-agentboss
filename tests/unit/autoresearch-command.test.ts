@@ -77,7 +77,11 @@ describe("autoresearch procedures", () => {
     expect(state?.iterationCount).toBe(1);
     expect(state?.currentBestMetric).toBe(90);
     expect(records.map((record) => record.decision.status)).toEqual(["baseline", "kept"]);
-    expect(getCurrentBranch(cwd)).toBe(state?.branchName);
+    expect(state?.branchName).toBeDefined();
+    if (!state?.branchName) {
+      throw new Error("Expected autoresearch branch name");
+    }
+    expect(getCurrentBranch(cwd)).toBe(state.branchName);
     expect(getCommitCount(cwd)).toBe(2);
     const resultData = result.data && typeof result.data === "object" ? result.data as Record<string, unknown> : undefined;
     expect(resultData?.bestMetric).toBe(90);
@@ -721,7 +725,7 @@ function createMockContext(
           cellId: `agent-${callCount}`,
         },
         data: await handler(prompt, callCount),
-      } as RunResult<unknown>;
+      } as RunResult;
     }) as CommandContext["callAgent"],
     async callProcedure() {
       throw new Error("Not implemented in test");

@@ -83,7 +83,11 @@ export function formatToolHeader(theme: NanobossTuiTheme, header: string | undef
     return theme.toolCardTitle(text);
   }
 
-  const [, command, rest] = match;
+  const command = match[1];
+  const rest = match[2];
+  if (!command) {
+    return theme.toolCardTitle(text);
+  }
   const commandText = theme.toolCardTitle(command);
   if (!rest) {
     return commandText;
@@ -91,7 +95,7 @@ export function formatToolHeader(theme: NanobossTuiTheme, header: string | undef
 
   if (command.toLowerCase() === "read") {
     const rangeMatch = rest.match(/^(.*?)(:\d+(?:-\d+)?)$/);
-    if (rangeMatch) {
+    if (rangeMatch && rangeMatch[1] && rangeMatch[2]) {
       return `${commandText} ${theme.toolCardAccent(rangeMatch[1])}${theme.toolCardWarning(rangeMatch[2])}`;
     }
   }

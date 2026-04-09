@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 
 import { getBuildLabel } from "../core/build-info.ts";
@@ -168,7 +168,7 @@ function formatStartupError(message: string, stdout: string, stderr: string): st
     : message;
 }
 
-async function waitForExit(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<boolean> {
+async function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
   if (child.exitCode !== null) {
     return true;
   }

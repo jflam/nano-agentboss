@@ -12,6 +12,7 @@ import { parseDownstreamAgentSelection } from "../core/downstream-agent-selectio
 import { resolveWorkspaceKey } from "../core/workspace-identity.ts";
 import type {
   DownstreamAgentSelection,
+  KernelValue,
   PendingProcedureContinuation,
 } from "../core/types.ts";
 
@@ -158,7 +159,7 @@ function parsePendingProcedureContinuation(value: unknown): PendingProcedureCont
     procedure,
     cell,
     question,
-    state: record.state,
+    state: record?.state as KernelValue,
     inputHint: asNonEmptyString(record?.inputHint),
     suggestedReplies: suggestedReplies && suggestedReplies.length > 0 ? suggestedReplies : undefined,
   };

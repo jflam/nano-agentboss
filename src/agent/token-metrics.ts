@@ -185,12 +185,15 @@ function isUsageUpdate(
 function isTerminalToolCallUpdate(
   update: acp.SessionUpdate,
 ): update is Extract<acp.SessionUpdate, { sessionUpdate: "tool_call_update" }> {
+  const status = update.sessionUpdate === "tool_call_update"
+    ? update.status as string | null | undefined
+    : undefined;
   return (
     update.sessionUpdate === "tool_call_update"
     && (
-      update.status === "completed"
-      || update.status === "failed"
-      || update.status === "cancelled"
+      status === "completed"
+      || status === "failed"
+      || status === "cancelled"
     )
   );
 }

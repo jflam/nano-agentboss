@@ -89,13 +89,14 @@ function runCommandSpec(
   repoRoot: string,
   description: string,
 ): CommandRunResult {
-  if (spec.argv.length === 0) {
+  const [command, ...args] = spec.argv;
+  if (!command) {
     throw new Error(`${description} requires a non-empty argv`);
   }
 
   const cwd = spec.cwd ? resolve(repoRoot, spec.cwd) : repoRoot;
   const startedAt = Date.now();
-  const result = spawnSync(spec.argv[0], spec.argv.slice(1), {
+  const result = spawnSync(command, args, {
     cwd,
     env: {
       ...process.env,
@@ -160,6 +161,9 @@ function parseRegexMetric(text: string, config: AutoresearchMetricConfig): numbe
 
   const captureIndex = config.captureGroup ?? (match.length > 1 ? 1 : 0);
   const rawValue = match[captureIndex];
+  if (rawValue === undefined) {
+    throw new Error(`Metric ${config.name} did not include capture group ${captureIndex}`);
+  }
   const parsed = Number.parseFloat(rawValue);
   if (!Number.isFinite(parsed)) {
     throw new Error(`Metric ${config.name} did not resolve to a finite number: ${rawValue}`);

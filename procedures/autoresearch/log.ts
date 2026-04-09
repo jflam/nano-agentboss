@@ -41,6 +41,10 @@ export function computeConfidenceSummary(
 
   const mean = metrics.reduce((sum, value) => sum + value, 0) / metrics.length;
   const variance = metrics.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / metrics.length;
+  const latest = metrics.at(-1);
+  if (latest === undefined) {
+    return undefined;
+  }
 
   return {
     sampleCount: metrics.length,
@@ -48,6 +52,6 @@ export function computeConfidenceSummary(
     min: Math.min(...metrics),
     max: Math.max(...metrics),
     stddev: Math.sqrt(variance),
-    latest: metrics[metrics.length - 1],
+    latest,
   };
 }

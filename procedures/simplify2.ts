@@ -838,7 +838,7 @@ function applyHumanDecision(
   state: Simplify2State,
   decision: SimplifyHumanDecision,
 ): Simplify2State {
-  const next = {
+  const next: Simplify2State = {
     ...state,
     notebook: {
       ...state.notebook,
@@ -1668,7 +1668,8 @@ function createJournalEntry(params: {
   if (params.validationStatus) {
     entry.validationStatus = params.validationStatus;
   }
-  if (!Simplify2JournalEntryType.validate(entry)) {
+  const isValid = Simplify2JournalEntryType.validate(entry as unknown);
+  if (!isValid) {
     entry.details = [];
   }
   return entry;

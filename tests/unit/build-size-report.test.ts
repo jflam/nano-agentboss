@@ -29,7 +29,7 @@ describe("build size report helpers", () => {
 
     const attribution = attributeSourceMapBytes(
       generated,
-      toEncodedMap(map),
+      toEncodedMap(map) as Parameters<typeof attributeSourceMapBytes>[1],
       join(process.cwd(), ".tmp", "bundle.js.map"),
     );
 

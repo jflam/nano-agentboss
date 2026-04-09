@@ -199,8 +199,6 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
             plugins: [createTypiaBunPlugin()],
             sourcemap: "inline",
             target: "bun",
-            autoloadBunfig: false,
-            autoloadTsconfig: false,
           }));
 
         if (!result.success) {

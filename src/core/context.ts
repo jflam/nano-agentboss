@@ -252,7 +252,8 @@ export class CommandContextImpl implements CommandContext {
   }
 
   private createCallAgentTransport(sessionMode: AgentSessionMode): CallAgentTransport | undefined {
-    if (sessionMode !== "default" || !this.defaultConversation) {
+    const defaultConversation = this.defaultConversation;
+    if (sessionMode !== "default" || !defaultConversation) {
       return undefined;
     }
 
@@ -260,7 +261,7 @@ export class CommandContextImpl implements CommandContext {
       invoke: async (prompt, options) => {
         const preparedPrompt = this.prepareDefaultPromptValue?.(prompt) ?? { prompt };
 
-        const result = await this.defaultConversation.prompt(preparedPrompt.prompt, {
+        const result = await defaultConversation.prompt(preparedPrompt.prompt, {
           signal: options.signal,
           softStopSignal: options.softStopSignal,
           onUpdate: options.onUpdate,
@@ -273,7 +274,7 @@ export class CommandContextImpl implements CommandContext {
     };
   }
 
-  async callProcedure<T extends KernelValue = never>(
+  async callProcedure<T extends KernelValue = KernelValue>(
     name: string,
     prompt: string,
     options?: CommandCallProcedureOptions,
@@ -539,7 +540,7 @@ export class CommandContextImpl implements CommandContext {
         toolCallId: started.toolCallId,
         status: cancelled ? "cancelled" : "failed",
         rawOutput: { error: message },
-      });
+      } as acp.SessionUpdate);
     }
 
     throw cancelled ?? error;

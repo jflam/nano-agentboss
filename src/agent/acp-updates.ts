@@ -19,8 +19,8 @@ export function parseAssistantNoticeText(text: string): AssistantNotice | undefi
   }
 
   return {
-    tone: match[1].toLowerCase() as AssistantNotice["tone"],
-    text: match[2],
+    tone: match[1]?.toLowerCase() as AssistantNotice["tone"],
+    text: match[2] ?? "",
   };
 }
 

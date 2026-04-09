@@ -286,7 +286,8 @@ function normalizeToolPreviewBlock(value: unknown, fallback?: ToolPreviewBlock):
     return fallback ? cleanPreviewBlock(fallback) : undefined;
   }
 
-  const header = summarizeInline(firstString(record.header), MAX_HEADER_LENGTH);
+  const headerText = firstString(record.header);
+  const header = headerText ? summarizeInline(headerText, MAX_HEADER_LENGTH) : undefined;
   const bodyText = firstString(record.body, record.text, record.content);
   const bodyLines = Array.isArray(record.bodyLines)
     ? normalizePreviewLines(record.bodyLines)

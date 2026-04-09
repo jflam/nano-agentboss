@@ -71,7 +71,7 @@ export function serializeStdioJsonRpcMessage(message: unknown, mode: StdioJsonRp
 export async function runStdioJsonRpcServer(
   dispatch: (method: string, params: unknown) => Promise<unknown>,
 ): Promise<void> {
-  let buffer = Buffer.alloc(0);
+  let buffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   let mode: StdioJsonRpcMode = "jsonl";
 
   const writeJsonRpc = (message: unknown) => {

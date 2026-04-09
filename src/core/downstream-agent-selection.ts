@@ -9,7 +9,7 @@ export function parseDownstreamAgentSelection(value: unknown): DownstreamAgentSe
     return undefined;
   }
 
-  const model = asOptionalNonEmptyString(record.model);
+  const model = asOptionalNonEmptyString(record?.model);
   return model === undefined ? { provider } : { provider, model };
 }
 

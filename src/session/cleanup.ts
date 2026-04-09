@@ -224,7 +224,7 @@ function isDirectoryEmpty(dir: string): boolean {
   }
 }
 
-function hasText(value: string | undefined): boolean {
+function hasText(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 

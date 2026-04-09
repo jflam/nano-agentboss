@@ -813,7 +813,12 @@ async function nextSerial(directory: string, datePrefix: string): Promise<number
       continue;
     }
 
-    const serial = Number.parseInt(match[1], 10);
+    const serialValue = match[1];
+    if (!serialValue) {
+      continue;
+    }
+
+    const serial = Number.parseInt(serialValue, 10);
     if (Number.isFinite(serial)) {
       maxSerial = Math.max(maxSerial, serial);
     }

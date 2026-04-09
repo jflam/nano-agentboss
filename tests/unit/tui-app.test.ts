@@ -673,8 +673,14 @@ describe("NanobossTuiApp", () => {
         createView: () => createViewStub(() => {
           setStateCalls += 1;
         }),
-        setInterval(callback: () => void) {
-          intervalCallbacks.push(callback);
+        setInterval(...args: Parameters<typeof globalThis.setInterval>) {
+          const [handler] = args;
+          if (typeof handler === "function") {
+            const callback = handler as () => void;
+            intervalCallbacks.push(() => {
+              callback();
+            });
+          }
           return intervalCallbacks.length as unknown as ReturnType<typeof setInterval>;
         },
         clearInterval(handle) {

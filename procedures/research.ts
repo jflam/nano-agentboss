@@ -176,7 +176,12 @@ async function nextPlanSerial(plansDir: string, datePrefix: string): Promise<num
       continue;
     }
 
-    const serial = Number.parseInt(match[1], 10);
+    const capturedSerial = match[1];
+    if (!capturedSerial) {
+      continue;
+    }
+
+    const serial = Number.parseInt(capturedSerial, 10);
     if (Number.isFinite(serial)) {
       maxSerial = Math.max(maxSerial, serial);
     }

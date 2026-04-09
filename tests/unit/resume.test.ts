@@ -27,7 +27,9 @@ describe("runResumeCommand", () => {
       assertInteractiveTty: () => {},
       selectStoredSession: async (): Promise<StoredSessionSelectionResult> => ({ kind: "cancelled" }),
       runTuiCli: async (params) => {
-        launches.push(params.sessionId);
+        if (params.sessionId) {
+          launches.push(params.sessionId);
+        }
       },
     })).resolves.toBeUndefined();
 

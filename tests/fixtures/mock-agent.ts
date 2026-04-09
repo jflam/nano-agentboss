@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
+import type { McpServerStdioConfig } from "../../src/mcp/registration.ts";
 
 interface StoredTurn {
   role: "user" | "assistant";
@@ -20,7 +21,7 @@ interface LiveSession extends StoredSession {
   mcpServers?: acp.NewSessionRequest["mcpServers"];
 }
 
-interface InternalSlashDispatch {
+interface InternalSlashDispatch extends Record<string, unknown> {
   sessionId?: string;
   name: string;
   prompt: string;
@@ -424,7 +425,7 @@ async function callProcedureDispatchAsync(
 async function callNamedProcedureDispatchTool(
   connection: acp.AgentSideConnection,
   sessionId: string,
-  server: Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }>,
+  server: McpServerStdioConfig,
   params: {
     name: string;
     args: Record<string, unknown>;
@@ -491,7 +492,7 @@ async function emitAssistantChunk(
 }
 
 async function callStdioMcpTool(
-  server: Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }>,
+  server: McpServerStdioConfig,
   toolName: string,
   args: Record<string, unknown>,
   options: {
@@ -606,12 +607,26 @@ async function callStdioMcpTool(
 
 function findNanobossMcpServer(
   session: LiveSession,
-): Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }> | undefined {
-  return session.mcpServers?.find((server) =>
-    server.type === "stdio"
+): McpServerStdioConfig | undefined {
+  return session.mcpServers?.find(isNanobossStdioServer);
+}
+
+function isNanobossStdioServer(server: unknown): server is McpServerStdioConfig {
+  return (
+    typeof server === "object"
+    && server !== null
+    && "type" in server
+    && server.type === "stdio"
+    && "name" in server
     && typeof server.name === "string"
     && server.name.toLowerCase() === "nanoboss"
-  ) as Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }> | undefined;
+    && "command" in server
+    && typeof server.command === "string"
+    && "args" in server
+    && Array.isArray(server.args)
+    && "env" in server
+    && Array.isArray(server.env)
+  );
 }
 
 function extractDispatchId(value: unknown): string | undefined {

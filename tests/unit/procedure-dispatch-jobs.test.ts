@@ -16,6 +16,13 @@ function createManager(
   rootDir: string,
   getRegistry: () => Promise<ProcedureRegistryLike> = async () => ({
     get: () => undefined,
+    register() {},
+    async loadProcedureFromPath() {
+      throw new Error("Not implemented in test");
+    },
+    async persist() {
+      throw new Error("Not implemented in test");
+    },
     toAvailableCommands: () => [],
   }),
 ): ProcedureDispatchJobManager {
@@ -106,6 +113,13 @@ describe("ProcedureDispatchJobManager", () => {
               },
             }
           : undefined,
+        register() {},
+        async loadProcedureFromPath() {
+          throw new Error("Not implemented in test");
+        },
+        async persist() {
+          throw new Error("Not implemented in test");
+        },
         toAvailableCommands: () => [],
       }));
       writeFileSync(buildProcedureDispatchJobPath(rootDir, dispatchId), `${JSON.stringify({

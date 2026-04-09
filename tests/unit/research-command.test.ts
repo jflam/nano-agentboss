@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import researchProcedure from "../../procedures/research.ts";
-import type { CommandContext, DownstreamAgentConfig, RunResult } from "../../src/core/types.ts";
+import type {
+  CommandContext,
+  DownstreamAgentConfig,
+  RunResult,
+} from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];
 
@@ -47,7 +51,7 @@ describe("/research", () => {
         print: (text) => {
           prints.push(text);
         },
-        callAgent: async (prompt, descriptorOrOptions, maybeOptions) => {
+        callAgent: (async (prompt, descriptorOrOptions, maybeOptions) => {
           const descriptor = isDescriptor(descriptorOrOptions) ? descriptorOrOptions : undefined;
           const options = (descriptor ? maybeOptions : descriptorOrOptions) as
             | Record<string, unknown>
@@ -78,7 +82,7 @@ describe("/research", () => {
                 },
                 path: "data",
               },
-            } satisfies RunResult<unknown>;
+            } satisfies RunResult;
           }
 
           return {
@@ -98,8 +102,8 @@ describe("/research", () => {
               },
               path: "data",
             },
-          } satisfies RunResult<unknown>;
-        },
+          } satisfies RunResult;
+        }) as CommandContext["callAgent"],
       }),
     );
 
@@ -120,17 +124,22 @@ describe("/research", () => {
       `Research completed for summarize the pi-tui update. The cited report was also written to ${relativePath}.`,
     );
     expect(calls).toHaveLength(2);
-    expect(calls[0].prompt).toContain("You are preparing a research brief for a separate worker agent.");
-    expect(calls[0].prompt).toContain("User request:\nsummarize the pi-tui update");
-    expect(isDescriptor(calls[0].descriptor)).toBe(true);
-    expect(calls[0].options).toEqual({
+    const firstCall = calls[0];
+    const secondCall = calls[1];
+    if (!firstCall || !secondCall) {
+      throw new Error("Expected two callAgent invocations");
+    }
+    expect(firstCall.prompt).toContain("You are preparing a research brief for a separate worker agent.");
+    expect(firstCall.prompt).toContain("User request:\nsummarize the pi-tui update");
+    expect(isDescriptor(firstCall.descriptor)).toBe(true);
+    expect(firstCall.options).toEqual({
       session: "default",
       stream: false,
     });
-    expect(calls[1].prompt).toContain("You are a research agent working from the referenced brief `brief`.");
-    expect(calls[1].prompt).toContain("Original user request:\nsummarize the pi-tui update");
-    expect(isDescriptor(calls[1].descriptor)).toBe(true);
-    expect(calls[1].options).toEqual({
+    expect(secondCall.prompt).toContain("You are a research agent working from the referenced brief `brief`.");
+    expect(secondCall.prompt).toContain("Original user request:\nsummarize the pi-tui update");
+    expect(isDescriptor(secondCall.descriptor)).toBe(true);
+    expect(secondCall.options).toEqual({
       refs: {
         brief: {
           cell: {

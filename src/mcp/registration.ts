@@ -18,6 +18,14 @@ export interface McpRegistrationResult {
   details: string;
 }
 
+export interface McpServerStdioConfig {
+  type: "stdio";
+  name: string;
+  command: string;
+  args: string[];
+  env: Array<{ name: string; value: string }>;
+}
+
 interface JsonObject {
   [key: string]: JsonValue;
 }
@@ -30,7 +38,7 @@ export function resolveMcpCommand(): SelfCommand {
 
 export function buildGlobalMcpStdioServer(
   command = resolveMcpCommand(),
-): Extract<acp.NewSessionRequest["mcpServers"][number], { type: "stdio" }> {
+): McpServerStdioConfig {
   return {
     type: "stdio",
     name: REGISTERED_MCP_SERVER_NAME,

@@ -426,7 +426,8 @@ function parseFileMessageArrayJsonOutput(
       continue;
     }
 
-    const messages = Array.isArray(record[parser.messagesField]) ? record[parser.messagesField] : [];
+    const rawMessages = record[parser.messagesField];
+    const messages: unknown[] = Array.isArray(rawMessages) ? rawMessages : [];
     for (const message of messages) {
       const messageRecord = asRecord(message);
       if (!messageRecord) {
@@ -493,8 +494,8 @@ function runProcess(
 
   return {
     exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    stdout: result.stdout ?? new Uint8Array(),
+    stderr: result.stderr ?? new Uint8Array(),
   };
 }
 

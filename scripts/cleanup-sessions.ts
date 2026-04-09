@@ -17,16 +17,17 @@ const ALL_REASONS: SessionCleanupReason[] = [
   "fixture_session_id",
   "fixture_prompt",
 ];
-
-const args = parseArgs(Bun.argv.slice(2));
-const baseDir = args.baseDir ?? getSessionCleanupBaseDir();
-const reasons = args.reasons.length > 0 ? args.reasons : [
+const DEFAULT_REASONS: SessionCleanupReason[] = [
   "empty_dir",
   "empty_session",
   "temp_cwd",
   "fixture_session_id",
   "fixture_prompt",
 ];
+
+const args = parseArgs(Bun.argv.slice(2));
+const baseDir = args.baseDir ?? getSessionCleanupBaseDir();
+const reasons = args.reasons.length > 0 ? args.reasons : DEFAULT_REASONS;
 
 const candidates = inspectSessionCleanupCandidates(baseDir);
 const selected = selectCleanupCandidates(candidates, reasons)
@@ -147,13 +148,17 @@ function parseArgs(argv: string[]): {
 }
 
 function parseReasons(value: string): SessionCleanupReason[] {
-  const parsed = value.split(",").map((item) => item.trim()).filter(Boolean) as SessionCleanupReason[];
+  const parsed = value.split(",").map((item) => item.trim()).filter(Boolean);
   for (const reason of parsed) {
-    if (!ALL_REASONS.includes(reason)) {
+    if (!isSessionCleanupReason(reason)) {
       throw new Error(`Unknown cleanup reason: ${reason}`);
     }
   }
-  return parsed;
+  return parsed.filter(isSessionCleanupReason);
+}
+
+function isSessionCleanupReason(value: string): value is SessionCleanupReason {
+  return ALL_REASONS.includes(value as SessionCleanupReason);
 }
 
 function printHelp(): void {

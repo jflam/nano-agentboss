@@ -263,6 +263,9 @@ describe("NanobossService", () => {
       if (completed?.type !== "run_completed" || tokenUsage?.type !== "token_usage") {
         throw new Error("Expected final token_usage and run_completed events");
       }
+      if (!completed.data.tokenUsage) {
+        throw new Error("Expected run_completed token usage");
+      }
 
       expect(tokenUsage.data.sourceUpdate).toBe("run_completed");
       expect(tokenUsage.data.usage).toEqual(completed.data.tokenUsage);
@@ -518,7 +521,10 @@ describe("NanobossService", () => {
         .map((event) => event.data.title);
 
       expect(completed?.type).toBe("run_completed");
-      expect(completed?.data.display).toBe("completed: patch");
+      if (completed?.type !== "run_completed") {
+        throw new Error("Expected run_completed event");
+      }
+      expect(completed.data.display).toBe("completed: patch");
       expect(failed).toBeUndefined();
       expect(toolTitles).not.toContain("procedure_dispatch_start");
       expect(toolTitles).not.toContain("procedure_dispatch_wait");
@@ -615,8 +621,11 @@ describe("NanobossService", () => {
       const promptTexts = stored.turns.filter((turn) => turn.role === "user").map((turn) => turn.text);
 
       expect(completed?.type).toBe("run_completed");
-      expect(completed?.data.display).toBe("completed: patch");
-      expect(completed?.data.tokenUsage).toMatchObject({
+      if (completed?.type !== "run_completed") {
+        throw new Error("Expected run_completed event");
+      }
+      expect(completed.data.display).toBe("completed: patch");
+      expect(completed.data.tokenUsage).toMatchObject({
         source: "acp_usage_update",
         currentContextTokens: 512,
         maxContextTokens: 8192,
@@ -889,7 +898,10 @@ describe("NanobossService", () => {
       expect(startedTitles.some((title) => title.includes("cooperative cancel demo"))).toBe(true);
       expect(startedTitles.some((title) => title.includes("second boundary should never start"))).toBe(false);
       expect(firstUpdate?.type).toBe("tool_updated");
-      expect(firstUpdate?.data.status).toBe("cancelled");
+      if (firstUpdate?.type !== "tool_updated") {
+        throw new Error("Expected tool_updated event");
+      }
+      expect(firstUpdate.data.status).toBe("cancelled");
       expect(cancelledRun?.type).toBe("run_cancelled");
       expect(cancelledRun?.data.message).toBe("Stopped.");
     }, {

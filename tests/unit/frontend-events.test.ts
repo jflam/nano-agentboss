@@ -190,7 +190,7 @@ describe("frontend-events", () => {
       sessionUpdate: "tool_call",
       toolCallId: "tool-bash",
       title: "bash",
-      kind: "bash",
+      kind: "other",
       status: "pending",
       rawInput: {
         command: `printf '${"x".repeat(400)}'`,

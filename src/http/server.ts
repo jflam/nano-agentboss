@@ -269,7 +269,7 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
     },
   });
 
-  const baseUrl = formatBaseUrl(options.host, server.port);
+  const baseUrl = formatBaseUrl(options.host, server.port ?? options.port);
   if (options.readySignal) {
     console.log(`NANOBOSS_SERVER_READY ${JSON.stringify({
       baseUrl,

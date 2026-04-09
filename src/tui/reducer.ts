@@ -234,6 +234,7 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
       const pendingProcedureContinuation = event.data.status === "paused"
         ? {
             procedure: event.data.procedure,
+            question: "",
           }
         : state.pendingProcedureContinuation;
       const userTurn = createTurn({

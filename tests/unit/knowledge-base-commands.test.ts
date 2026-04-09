@@ -63,6 +63,9 @@ describe("knowledge-base procedures", () => {
 
     const index = readFileSync(join(cwd, "wiki", "index.md"), "utf8");
     const log = readFileSync(join(cwd, "wiki", "log.md"), "utf8");
+    if (!sourceId) {
+      throw new Error("Expected source id");
+    }
     expect(index).toContain(sourceId);
     expect(log).toContain("ingest | 1 changed of 1 source(s)");
     expect(harness.prints).toContain("Scanning raw sources...\n");
@@ -673,7 +676,7 @@ function createHarness(params: {
             cellId: `proc-${cellCounter}`,
           },
           data: normalized.data,
-        } as RunResult<unknown>;
+        } as RunResult;
       },
       defaultAgentConfig,
     });
@@ -693,7 +696,7 @@ function createMockContext(params: {
   cwd: string;
   print(text: string): void;
   getNextAgentResult(): unknown;
-  callProcedure(name: string, prompt: string): Promise<RunResult<unknown>>;
+  callProcedure(name: string, prompt: string): Promise<RunResult>;
   defaultAgentConfig: DownstreamAgentConfig;
 }): CommandContext {
   let agentCounter = 0;
@@ -706,7 +709,7 @@ function createMockContext(params: {
         cellId: `agent-${agentCounter}`,
       },
       data: params.getNextAgentResult(),
-    } as RunResult<unknown>;
+    } as RunResult;
   };
 
   return {
