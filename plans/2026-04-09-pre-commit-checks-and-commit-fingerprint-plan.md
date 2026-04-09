@@ -4,93 +4,148 @@ Date: 2026-04-09
 
 ## Goal
 
-Introduce two procedures for this repo:
+Introduce two repo-specific procedures that work as a pair:
 
-- `pre-commit-checks`
-- `commit`
+- `nanoboss/pre-commit-checks`
+- `nanoboss/commit`
 
-Both procedures should share a deterministic `workspaceStateFingerprint` and use it to avoid rerunning identical `bun test` commands when the workspace state has not changed.
+For v1, this should stay purely in the procedure layer.
 
-This plan is intentionally narrow for v1:
+That means:
 
-- repo-specific
-- Bun-specific
-- exact command matching only
-- replay the **full cached output of the previous `bun test` run** for the same workspace state
+- no generic nanoboss core feature
+- no new `src/core/*` fingerprint/cache module
+- no cache awareness added to `scripts/compact-test.ts`
 
-This is not intended to be a generic checks framework yet. The point is to prove the value in nanoboss first.
+This work should also supersede the existing top-level `commit` procedure for this repo.
 
----
+So the implementation should:
 
-## Motivation
+- add `nanoboss/pre-commit-checks`
+- add `nanoboss/commit`
+- remove the current top-level `commit` procedure implementation and registration for this repo
 
-Agents in this repo currently do this pattern often:
-
-1. run `bun test ...`
-2. inspect diffs / think / prepare next step
-3. rerun the same `bun test ...`
-4. get the same output because the repo contents did not change
-
-That wastes:
-- wall-clock time
-- tokens spent waiting on test reruns
-- attention during commit flows
-
-We want nanoboss to recognize:
-
-> “This exact `bun test` command was already run against this exact workspace state under this exact Bun/runtime identity, and the output is already known.”
-
-When that is true, nanoboss should replay the cached output instead of rerunning the test command.
+The procedures should share one repo-specific workspace fingerprint and one repo-specific cache file so they can avoid rerunning the same validation command when the workspace has not changed.
 
 ---
 
-## Product surface
+## Feedback-driven constraints
 
-## Procedure 1: `pre-commit-checks`
+### 1. Keep this out of nanoboss core
+
+This is not a platform feature yet. It is a repo-local workflow optimization for this repo’s commit flow.
+
+So the implementation should live under `procedures/nanoboss/`, for example:
+
+- `procedures/nanoboss/pre-commit-checks.ts`
+- `procedures/nanoboss/commit.ts`
+- `procedures/nanoboss/test-cache-lib.ts`
+
+If this later proves valuable across repos, we can generalize it then. Not in v1.
+
+### 2. `nanoboss/commit` and `nanoboss/pre-commit-checks` must be designed together
+
+The current plan had too much duplicated lookup logic in both procedures.
+
+For v1, `nanoboss/commit` should delegate to `nanoboss/pre-commit-checks` instead of reimplementing check selection or cache lookup itself.
+
+That keeps one source of truth for:
+
+- which validation command runs
+- how the workspace fingerprint is computed
+- how cache hits are decided
+- how cached output is replayed
+
+### 3. This supersedes the repo’s top-level `commit`
+
+This repo-specific workflow should replace the existing top-level `commit` procedure for this repo.
+
+The intent is not to support both flows in parallel.
+
+After this change, the repo-specific commit flow should live under the `nanoboss/*` package.
+
+### 4. Use `compact-test`, not raw `bun test`
+
+The repo’s commit-time validation command should be the compact wrapper, because raw `bun test` is too noisy.
+
+So the command for v1 should be a single repo-defined constant, currently:
+
+`bun run scripts/compact-test.ts`
+
+If we want to swap that later to `bun run test` or another repo-defined command, we should do it in one shared procedure-local constant so both procedures stay aligned.
+
+### 5. Cache retention should be single-entry for v1
+
+The previous plan assumed a growing list of cached entries. That is unnecessary for the workflow you described.
+
+For v1, the cache should store only the last fresh non-cached run of the one pre-commit validation command.
+
+So:
+
+- cache hits do not append anything
+- a fresh run overwrites the previous stored record
+- the cache file does not grow over time except for the size of the one stored output blob
+
+This matches the intended workflow and removes the need for pruning logic.
+
+---
+
+## Product behavior
+
+## Procedure 1: `nanoboss/pre-commit-checks`
 
 Purpose:
-- run or replay the repo’s pre-commit validation command
-- in v1, that means `bun test` (or exact file-scoped `bun test ...` invocations)
+
+- run the repo’s pre-commit validation command
+- or replay the last fresh result if the workspace is unchanged
+
+For v1, the command is:
+
+`bun run scripts/compact-test.ts`
 
 Behavior:
-1. compute `workspaceStateFingerprint`
-2. compute `runtimeFingerprint`
-3. compute `commandFingerprint`
-4. look up cached result
-5. if exact match exists:
-   - replay cached output
-   - return cached exit code and summary
-6. otherwise:
-   - run `bun test ...`
-   - cache output + exit code + metadata
-   - return fresh result
 
-## Procedure 2: `commit`
+1. compute the current workspace fingerprint
+2. compute the runtime fingerprint
+3. load the single cached record
+4. if the cached record matches the current workspace + runtime + command, replay its stored output and return its exit code
+5. otherwise run the command for real, capture full output, and overwrite the cache with that fresh result
+
+Optional escape hatch:
+
+- `--refresh` or equivalent prompt flag should force a real rerun and overwrite the cache
+
+## Procedure 2: `nanoboss/commit`
 
 Purpose:
-- create a commit, but first ensure the current workspace state has a known `bun test` result
+
+- create a commit only after the current workspace has a passing pre-commit-check result
 
 Behavior:
-1. compute same fingerprints
-2. look for cached `bun test` result for current state
-3. if present:
-   - replay cached output
-   - if cached result failed, block commit unless overridden
-   - if cached result passed, continue
-4. if absent:
-   - invoke `pre-commit-checks`
-   - proceed only if result passed
-5. create the commit
+
+1. invoke `nanoboss/pre-commit-checks`
+2. if it returns a failing result, stop
+3. if it returns a passing result, continue with commit creation
+
+Important design point:
+
+`nanoboss/commit` should not do its own cache lookup in parallel with `nanoboss/pre-commit-checks`.
+
+It should rely on `nanoboss/pre-commit-checks` as the sole authority for:
+
+- cache hit vs miss
+- replayed vs fresh output
+- pass/fail status for the current workspace
+
+That is the cleanest way to ensure the two procedures actually work together instead of merely sharing ideas.
 
 ---
 
-## Core design
+## Fingerprint model
 
-## Shared fingerprint model
+We still need a deterministic identity for the current dirty workspace state, but it should remain procedure-local code.
 
-We need a robust workspace-state identity for dirty working trees.
-
-For v1, use the more sophisticated Git-aware fingerprint:
+For v1:
 
 ```text
 workspaceStateFingerprint = hash(
@@ -101,113 +156,93 @@ workspaceStateFingerprint = hash(
 )
 ```
 
-This is stronger than using only `HEAD` or only `git diff`.
-
 ### Components
 
-#### 1. `headCommit`
+#### `headCommit`
 
 Source:
+
 - `git rev-parse HEAD`
 
-Why:
-- identifies the tracked baseline
-
-#### 2. `stagedDiffHash`
+#### `stagedDiffHash`
 
 Source:
+
 - hash of `git diff --cached --binary HEAD`
 
-Why:
-- commit flows care about what is staged
-
-#### 3. `unstagedDiffHash`
+#### `unstagedDiffHash`
 
 Source:
+
 - hash of `git diff --binary`
 
-Why:
-- working-tree changes also affect whether a previously-run test result is still valid
-
-#### 4. `untrackedRelevantFilesHash`
+#### `untrackedRelevantFilesHash`
 
 Source:
-- deterministic listing of untracked files plus their contents
 
-Why:
-- agents often add new tests/files before commit
-- those files would not be captured by `HEAD` + diffs alone
+- deterministic list of untracked, non-ignored files plus contents
 
-### Relevant-file policy for v1
+For v1, keep the policy simple:
 
-Include untracked files that are plausibly source-affecting in this repo, e.g.:
-- `*.ts`
-- `*.tsx`
-- `*.js`
-- `*.jsx`
-- `*.json`
-- `*.md` only if we decide docs can affect checks later
+- include ordinary untracked files
+- exclude `.git/`, `node_modules/`, `.nanoboss/`, `dist/`, `coverage/`, and obvious temp files
 
-For v1, since the focus is `bun test`, we can keep this simple and include:
-- all untracked files except ignored/generated directories
-
-Exclude:
-- `.git/`
-- `node_modules/`
-- `.nanoboss/`
-- `dist/`
-- `coverage/`
-- temp files
+This is enough to invalidate the cache when staged, unstaged, or newly-created relevant files change.
 
 ---
 
-## Additional fingerprints
-
-### `runtimeFingerprint`
+## Runtime fingerprint
 
 For v1, derive from:
+
 - `Bun.version`
 - `process.platform`
 - `process.arch`
 
-This avoids reusing cached output across materially different runtimes.
+This keeps us from replaying a cached result across materially different runtimes.
 
-### `commandFingerprint`
+---
 
-Normalize and hash the exact `bun test` invocation.
+## Command identity
 
-Examples:
-- `bun test`
-- `bun test tests/unit`
-- `bun test tests/unit/service.test.ts`
+Because `nanoboss/commit` and `nanoboss/pre-commit-checks` are supposed to operate together, v1 should use one fixed validation command, not a family of commands.
 
-Each exact command gets a separate cache identity.
+So we do not need a multi-entry command cache in v1.
 
-For v1, do **not** attempt subset/superset coverage reasoning.
+We still persist the command string in the cache record so mismatches are explicit, but the intended model is:
+
+- one repo-defined command
+- one last fresh result
+
+If later we add scoped variants like `nanoboss/pre-commit-checks tests/unit/foo.test.ts`, that would be a separate design step.
 
 ---
 
 ## Cache semantics
 
-The user clarified an important requirement:
+The cache should store the full previous fresh result, including failures.
 
-> do not just cache success; cache the output of the previous Bun test run
+That means:
 
-So the cache must store the **full previous result**, including failures.
+- a previous pass can be replayed as a pass
+- a previous failure can be replayed as a failure
 
-### Cache entry shape
+This is still correct because the cache is keyed to the exact workspace state and runtime.
 
-Suggested repo-local cache file:
+### Cache file
+
+Suggested location:
+
 - `.nanoboss/pre-commit-checks.json`
 
-Suggested schema:
+### Cache shape
 
 ```ts
-interface CachedBunTestResult {
+interface CachedPreCommitChecksResult {
+  version: 1;
+  command: string;
   workspaceStateFingerprint: string;
   runtimeFingerprint: string;
-  commandFingerprint: string;
-  command: string;
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -216,368 +251,217 @@ interface CachedBunTestResult {
   createdAt: string;
   durationMs: number;
 }
-
-interface PreCommitChecksCache {
-  version: 1;
-  updatedAt: string;
-  entries: CachedBunTestResult[];
-}
 ```
+
+There is no `entries[]` list in v1.
+
+The file stores just one record:
+
+- the last fresh run of the repo’s pre-commit validation command
 
 ### Replay policy
 
-If fingerprints match exactly, replay:
-- cached output
-- cached summary
-- cached exit code
+Replay only when all of these match:
 
-That means:
-- a previous pass is replayed as a pass
-- a previous failure is replayed as a failure
-
-This is the correct v1 behavior because the goal is:
-
-> avoid rerunning identical tests for identical contents
-
-not:
-
-> only remember good news
-
-### Refresh escape hatch
-
-Both procedures should allow forcing a real rerun even on a cache hit.
-
-For example:
-- `--refresh`
-- `force: true`
-
-Useful when:
-- investigating flakiness
-- validating after environment suspicion
-- wanting a fresh timing sample
-
----
-
-## Where the shared logic should live
-
-Add a shared helper module, e.g.:
-
-- `src/core/workspace-state-fingerprint.ts`
-
-Responsibilities:
-- compute `workspaceStateFingerprint`
-- normalize exact `bun test` command text
-- compute `commandFingerprint`
-- compute `runtimeFingerprint`
-- expose reusable helpers for both procedures
-
-Potential API:
-
-```ts
-interface WorkspaceStateFingerprintResult {
-  repoRoot: string;
-  headCommit: string | null;
-  stagedDiffHash: string;
-  unstagedDiffHash: string;
-  untrackedRelevantFilesHash: string;
-  workspaceStateFingerprint: string;
-}
-
-function computeWorkspaceStateFingerprint(cwd: string): WorkspaceStateFingerprintResult;
-function computeRuntimeFingerprint(): string;
-function computeCommandFingerprint(command: string): string;
-```
-
----
-
-## `pre-commit-checks` procedure design
-
-### Inputs
-
-For v1:
-- default command: `bun test`
-- optional exact test arguments
-
-Examples:
-- `/pre-commit-checks`
-- `/pre-commit-checks tests/unit/service.test.ts`
-- `/pre-commit-checks tests/unit`
-
-### Execution algorithm
-
-```ts
-1. normalize target command into exact `bun test ...`
-2. compute workspaceStateFingerprint
-3. compute runtimeFingerprint
-4. compute commandFingerprint
-5. load cache
-6. if exact entry exists and not refresh:
-     replay cached output
-     return cached status
-7. else:
-     run `bun test ...`
-     store full output in cache
-     return fresh status
-```
-
-### Output shape
-
-On cache hit, clearly say it is cached:
-
-```text
-pre-commit-checks: cache hit for current workspace state
-command: bun test tests/unit/service.test.ts
-recorded: 2026-04-09T...
-status: failed
-(replaying cached output below)
-```
-
-That explicitness matters for both humans and agents.
-
----
-
-## `commit` procedure design
-
-### Inputs
-
-Likely:
-- commit message
-- optional `--refresh-checks`
-- optional override for failed cached checks if explicitly allowed later
-
-For v1, keep it strict:
-- do not commit if the current exact cached/fresh `bun test` result is failing
-
-### Execution algorithm
-
-```ts
-1. compute fingerprints for default pre-commit command (`bun test` by default)
-2. look up cache entry
-3. if cache hit and result failed:
-     replay cached output
-     stop and report failure
-4. if cache hit and result passed:
-     replay cached output
-     continue to commit
-5. if cache miss:
-     run `pre-commit-checks`
-     if failed, stop
-     if passed, continue
-6. create commit
-```
-
-### Why use cached failure too?
-
-Because if workspace state is unchanged, rerunning the same `bun test` will almost certainly produce the same result.
-
-The cache is being used as a deterministic memoization of:
-- output
-- exit code
-- state identity
-
-So failure replay is just as valuable as pass replay.
-
----
-
-## Interaction with `scripts/compact-test.ts`
-
-There are two implementation options.
-
-### Option A — keep caching inside procedures only
-
-- `pre-commit-checks` runs `bun test` directly and handles replay/cache itself
-- `scripts/compact-test.ts` stays unchanged
-
-Pros:
-- narrower change
-- easier to prove value
-
-Cons:
-- direct script invocations outside the procedures do not benefit
-
-### Option B — add cache awareness to `scripts/compact-test.ts`
-
-- procedures call the script
-- script owns replay/cache logic
-- standalone script use benefits too
-
-Pros:
-- one place for Bun test replay behavior
-- reusable outside procedures
-
-Cons:
-- slightly larger initial change surface
-
-### Recommendation
-
-For v1, prefer **Option B** if the implementation stays small.
-
-Reason:
-- the repo already centralizes Bun test orchestration in `scripts/compact-test.ts`
-- this behavior naturally belongs close to the existing compact test wrapper
-- then `pre-commit-checks` can simply call the script and inherit replay behavior
-
-But the fingerprint helpers should still live in `src/core/` so procedures and scripts share one implementation.
-
----
-
-## Exact-match only for v1
-
-Do **not** overengineer coverage reuse yet.
-
-In v1, only reuse when all of these match exactly:
+- `command`
 - `workspaceStateFingerprint`
 - `runtimeFingerprint`
-- `commandFingerprint`
 
-That means:
-- `bun test tests/unit` does **not** automatically satisfy `bun test tests/unit/service.test.ts`
-- `bun test` does **not** automatically satisfy any narrower command
+On cache hit:
 
-This keeps correctness simple and obvious.
+- print an explicit cache-hit header
+- replay stored output
+- return stored exit code
 
-Coverage/subsumption can come later if this proves effective.
+On cache miss:
+
+- run the command
+- overwrite the cache with the fresh result
+- return the fresh exit code
+
+### Retention
+
+The cache should not grow.
+
+For v1:
+
+- cache hit: do not rewrite
+- fresh run: overwrite previous record
+- refresh run: overwrite previous record
+
+So the only retained data is one result blob.
 
 ---
 
-## Data retention / cache pruning
+## Procedure interaction design
 
-Because the cache stores full output, it can grow.
+This is the key adjustment to make the two procedures actually fit together.
 
-For v1, use a simple policy:
-- keep only the most recent N entries per `commandFingerprint`
-- or cap total entries, e.g. 100
-- replace older exact-match entries
+### `nanoboss/pre-commit-checks` owns validation state
 
-Also:
-- if a new run occurs for the same `(workspaceStateFingerprint, runtimeFingerprint, commandFingerprint)`, overwrite the prior record
+`nanoboss/pre-commit-checks` should return structured data along these lines:
 
-That keeps the cache bounded and easy to reason about.
+```ts
+interface PreCommitChecksResult {
+  command: string;
+  cacheHit: boolean;
+  exitCode: number;
+  passed: boolean;
+  workspaceStateFingerprint: string;
+  runtimeFingerprint: string;
+  createdAt: string;
+}
+```
+
+It should also print the replayed or fresh command output for the human/agent.
+
+### `nanoboss/commit` consumes `nanoboss/pre-commit-checks`
+
+`nanoboss/commit` should:
+
+1. call `ctx.callProcedure("nanoboss/pre-commit-checks", promptOrFlags)`
+2. inspect the returned typed result
+3. stop if `passed === false`
+4. otherwise proceed with the commit flow
+
+This eliminates drift between the procedures.
+
+If we later change:
+
+- the command
+- the fingerprint inputs
+- the cache file
+- the refresh behavior
+
+we change it once in `nanoboss/pre-commit-checks`.
+
+---
+
+## Implementation outline
+
+### Procedure-local shared helper
+
+Add a helper module under `procedures/nanoboss/`, for example:
+
+- `procedures/nanoboss/test-cache-lib.ts`
+
+Responsibilities:
+
+- expose the repo-defined validation command constant
+- compute workspace fingerprint
+- compute runtime fingerprint
+- read/write the single cache file
+- run the command and capture output
+- decide hit vs miss
+
+This is shared by procedures, but it is still repo-local procedure code, not nanoboss core.
+
+### `procedures/nanoboss/pre-commit-checks.ts`
+
+Responsibilities:
+
+- parse `--refresh` if present
+- call the shared helper
+- print cache-hit or fresh-run header
+- replay or print command output
+- return typed result data
+
+### `procedures/nanoboss/commit.ts`
+
+Responsibilities:
+
+- call `nanoboss/pre-commit-checks`
+- stop on failure
+- perform the repo-specific commit flow once checks pass
+- make the agent prompt explicit that checks already ran and do not need to be rerun
+
+The current top-level `commit` procedure already delegates commit authoring to `ctx.callAgent(...)`.
+That basic approach can stay, but it should move into `nanoboss/commit` and be gated by `nanoboss/pre-commit-checks`.
+
+### Remove the old top-level `commit`
+
+This work should also remove the current top-level commit path for this repo, including:
+
+- the procedure implementation file
+- the built-in registration
+- any tests whose only purpose is the superseded top-level command
+
+The replacement command is `nanoboss/commit`.
 
 ---
 
 ## Edge cases
 
-### 1. No Git repo
+### No Git repo
 
-If Git metadata is unavailable:
-- either fail clearly for these procedures
-- or fall back to a deterministic content walker later
+For this repo-specific v1, it is acceptable to fail clearly if Git metadata is unavailable.
 
-For this repo-specific v1, it is acceptable to require Git.
+### Flaky tests
 
-### 2. Untracked files with weird sizes / binaries
+Use `--refresh` to force a real rerun.
 
-We should hash deterministically, but for v1 it is okay to:
-- skip obviously huge generated files
-- exclude known generated dirs
-- hash file contents for ordinary files only
+### Dependency-only changes
 
-### 3. Flaky tests
+If the runtime changes, the runtime fingerprint will invalidate the cache.
 
-Cache replay is still correct for unchanged contents, but users may want a fresh rerun.
-
-That is why `--refresh` / `force: true` matters.
-
-### 4. Dependency changes
-
-If `node_modules` changes without source changes, the cache would not notice unless runtime/config also changed.
-
-For v1, that is acceptable if we scope this to typical local agent flows.
-
-If needed later, we can incorporate lockfile hash into `workspaceStateFingerprint` or `checksFingerprint`.
-
----
-
-## Suggested implementation phases
-
-### Phase 1 — shared fingerprint helpers
-
-1. add `src/core/workspace-state-fingerprint.ts`
-2. compute:
-   - `headCommit`
-   - `stagedDiffHash`
-   - `unstagedDiffHash`
-   - `untrackedRelevantFilesHash`
-   - `workspaceStateFingerprint`
-3. add tests for deterministic behavior
-
-### Phase 2 — cached Bun test result store
-
-1. add repo-local cache reader/writer
-2. add exact-match lookup by:
-   - workspace state
-   - runtime
-   - command
-3. store full output + exit code
-4. add pruning policy
-
-### Phase 3 — wire into compact-test
-
-1. teach `scripts/compact-test.ts` to:
-   - look up cache before running
-   - replay cached output on exact match
-   - store result after running
-2. add a refresh flag
-3. add tests for cache hit/miss behavior
-
-### Phase 4 — add procedures
-
-1. implement `pre-commit-checks`
-2. implement `commit`
-3. make `commit` depend on cached/fresh `pre-commit-checks`
-4. keep v1 strict: block commit on failing cached/fresh result
+If local dependency contents change without affecting Git state or runtime identity, v1 may miss that.
+That is acceptable for this narrow workflow.
 
 ---
 
 ## Tests to add
 
-### Fingerprint helper
+### Shared helper tests
 
 - same workspace state => same fingerprint
 - staged change changes fingerprint
 - unstaged change changes fingerprint
 - untracked file changes fingerprint
 - excluded dirs do not affect fingerprint
-
-### Compact test cache
-
-- exact same command + same state => cache hit
-- changed workspace state => cache miss
+- exact same workspace + runtime + command => cache hit
+- changed workspace => cache miss
 - changed runtime => cache miss
-- cached failure is replayed with nonzero exit code
-- cached pass is replayed with zero exit code
-- `--refresh` bypasses cache
+- fresh run overwrites prior cache record instead of appending
 
-### Procedures
+### `nanoboss/pre-commit-checks` tests
 
-- `pre-commit-checks` replays cached output on exact match
-- `commit` blocks on cached failing result
-- `commit` proceeds on cached passing result
-- `commit` falls back to fresh `pre-commit-checks` when cache missing
+- cache hit replays stored output
+- cache hit returns stored nonzero exit code for a failing prior run
+- cache miss runs `bun run scripts/compact-test.ts`
+- `--refresh` bypasses cache and overwrites stored record
+
+### `nanoboss/commit` tests
+
+- `nanoboss/commit` calls `nanoboss/pre-commit-checks` before commit creation
+- failing `nanoboss/pre-commit-checks` blocks commit
+- passing `nanoboss/pre-commit-checks` allows commit flow to continue
+- cached passing result still allows commit without rerunning checks
+- the old top-level `commit` procedure is removed from this repo’s procedure set
 
 ---
 
 ## Acceptance criteria
 
-1. We can compute a stable `workspaceStateFingerprint` for the current dirty repo state.
-2. Re-running the same `bun test ...` command against unchanged contents replays cached output instead of rerunning.
-3. Both passing and failing prior outputs are replayable.
-4. `pre-commit-checks` uses this cache.
-5. `commit` uses the same cache and shared fingerprint logic.
-6. Changing staged, unstaged, or untracked relevant files invalidates the cached result.
-7. The implementation remains narrow and Bun-specific for v1.
+1. `nanoboss/pre-commit-checks` is implemented entirely in the procedure layer.
+2. `nanoboss/commit` depends on `nanoboss/pre-commit-checks` rather than duplicating its cache logic.
+3. The validation command for v1 is the compact wrapper, not raw `bun test`.
+4. Repeating the same validation against unchanged workspace state replays the last fresh result instead of rerunning.
+5. Both pass and fail results are replayable.
+6. Changing staged, unstaged, or relevant untracked files invalidates the cached result.
+7. The cache file stores only one result record and is overwritten on each fresh run.
+8. The old top-level `commit` procedure is removed for this repo and superseded by `nanoboss/commit`.
 
 ---
 
 ## Recommendation summary
 
-For nanoboss v1, implement:
+For v1, implement the smallest thing that matches the workflow:
 
-- one shared Git-aware `workspaceStateFingerprint`
-- one cached exact-command `bun test` result store
-- one `pre-commit-checks` procedure
-- one `commit` procedure
-- replay of the **full previous `bun test` output**, not just success state
+- one repo-local `nanoboss/pre-commit-checks` procedure
+- one repo-local `nanoboss/commit` procedure that delegates to it
+- one procedure-local helper in `procedures/nanoboss/`
+- one fixed validation command: `bun run scripts/compact-test.ts`
+- one single-entry cache file containing the last fresh result
+- removal of the old top-level `commit`
 
-This is narrow enough to avoid overengineering and directly targets the repeated test churn currently visible in this repo.
+That keeps the feature narrow, keeps it out of nanoboss core, and makes the two scoped procedures behave as one coherent repo-specific commit workflow.
