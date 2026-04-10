@@ -570,7 +570,7 @@ export default {
     ctx.print(`Interpreting simplify2 guidance for iteration ${state.iteration}...\n`);
     const decision = await interpretHumanReply(prompt, state, ctx);
 
-    if (decision.kind === "approve_hypothesis") {
+    if (decision.kind !== "stop") {
       const blocked = buildBlockedDirtyWorktreeResumeResult(state, ctx.cwd);
       if (blocked) {
         return blocked;

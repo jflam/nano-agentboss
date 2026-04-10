@@ -171,6 +171,75 @@ describe("simplify2 procedure", () => {
     expect(normalized.display).toContain("?? dirty.txt");
   });
 
+  test("keeps a paused checkpoint when redirect resume hits a dirty worktree", async () => {
+    const cwd = createFixtureWorkspace();
+
+    const executeResult = await simplify2Procedure.execute(
+      "",
+      createMockContext(cwd, [
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-duplicate-boundary",
+            kind: "boundary_candidate",
+            summary: "Continuation parsing appears to be split across two layers.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            confidence: "medium",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "hyp-boundary-checkpoint",
+            title: "Collapse duplicate continuation parsing ownership",
+            kind: "collapse_boundary",
+            summary: "A fake boundary duplicates continuation parsing logic.",
+            rationale: "One owner should enforce the parsing invariant.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            expectedDelta: {
+              boundariesReduced: 1,
+              duplicateRepresentationsReduced: 1,
+            },
+            risk: "medium",
+            needsHumanCheckpoint: true,
+            checkpointReason: "This changes which layer owns continuation parsing.",
+            implementationScope: ["src/session/repository.ts", "src/core/service.ts"],
+            testImplications: ["strengthen invariant coverage around continuation parsing"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "hyp-boundary-checkpoint",
+            score: 9,
+            reason: "High conceptual reduction but the ownership move needs confirmation.",
+            needsHumanCheckpoint: true,
+          },
+        ]),
+      ]),
+    );
+
+    writeFileSync(join(cwd, "dirty.txt"), "not committed\n", "utf8");
+
+    const resumeResult = await simplify2Procedure.resume(
+      "focus on tests instead",
+      requirePauseState(normalizeProcedureResult(executeResult)),
+      createMockContext(cwd, [
+        {
+          kind: "redirect",
+          reason: "Look for a smaller test cleanup first.",
+          redirect: {
+            goals: ["focus on tests first"],
+            guidance: "Prefer a small test-only slice before changing ownership.",
+          },
+        },
+      ]),
+    );
+
+    const normalized = normalizeProcedureResult(resumeResult);
+    expect(normalized.pause?.question).toContain("Should I approve this slice");
+    expect(normalized.display).toContain("Simplify2 cannot continue until the git worktree is clean again.");
+    expect(normalized.display).toContain("?? dirty.txt");
+  });
+
   test("auto-applies a low-risk slice, continues analysis, and finishes when no next slice stands out", async () => {
     const cwd = createFixtureWorkspace({
       sourceFiles: ["src/session/repository.ts"],

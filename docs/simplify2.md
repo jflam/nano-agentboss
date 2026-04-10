@@ -71,6 +71,21 @@ In the TUI, paused simplify2 checkpoints also expose a focused continuation card
 
 The CLI and TUI also support a local `--simplify2-auto-approve` mode, plus a
 `ctrl+y` toggle, that auto-submits `approve it` for simplify2 checkpoints only.
+
+If you leave a paused simplify2 run and come back later, reopen the saved
+session with:
+
+```text
+nanoboss resume
+```
+
+or `nanoboss resume <session-id>`.
+
+After the session is resumed, the existing paused checkpoint still waits for a
+plain-text continuation reply such as `approve it`, `stop`, or a redirect. Auto-
+approve is not retroactive for an already-paused checkpoint that was restored on
+resume; it only affects later simplify2 pauses or an explicit in-session toggle.
+
 ## WHAT IT LOOKS FOR
 
 `/simplify2` is generic across repositories, but it is not a single generic

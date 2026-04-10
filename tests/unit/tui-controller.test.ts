@@ -639,6 +639,58 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
+  test("does not auto-approve an already-paused simplify2 continuation restored on resume", async () => {
+    const sendCalls: string[] = [];
+    const streams: FakeStreamRecord[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+        simplify2AutoApprove: true,
+        sessionId: "session-1",
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        resumeHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
+          sendCalls.push(prompt);
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream(streams, sessionId, onEvent),
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    streams[0]?.emit(eventEnvelope("continuation_updated", {
+      continuation: {
+        procedure: "simplify2",
+        question: "Approve this simplify2 slice?",
+        continuationUi: {
+          kind: "simplify2_checkpoint",
+          title: "Simplify2 checkpoint",
+          actions: [
+            { id: "approve", label: "Continue", reply: "approve it" },
+            { id: "other", label: "Something Else" },
+          ],
+        },
+      },
+    }));
+
+    await Bun.sleep(10);
+
+    expect(sendCalls).toEqual([]);
+    expect(controller.getState().simplify2AutoApprove).toBe(true);
+    expect(controller.getState().pendingProcedureContinuation).toMatchObject({
+      procedure: "simplify2",
+      question: "Approve this simplify2 slice?",
+    });
+    expect(controller.getState().inputDisabled).toBe(false);
+
+    controller.requestExit();
+    await runPromise;
+  });
+
   test("escape-triggered cancel latches a soft stop and debounces repeated requests", async () => {
     const cancelCalls: Array<{ sessionId: string; runId: string }> = [];
     const streams: FakeStreamRecord[] = [];
