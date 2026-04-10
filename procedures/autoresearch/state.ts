@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { summarizeText } from "../../src/util/text.ts";
+import { resolveRepoArtifactDir, writeTextFileAtomicSync } from "../../src/util/repo-artifacts.ts";
 
 import { ensureGitLocalExclude, resolveGitRepoRoot } from "./git.ts";
 import type {
@@ -16,7 +17,7 @@ const AUTORESEARCH_LOCAL_EXCLUDE_PATTERN = "/.nanoboss/";
 export function resolveAutoresearchPaths(cwd: string): AutoresearchPaths {
   const repoRoot = resolveGitRepoRoot(cwd);
   ensureGitLocalExclude(repoRoot, AUTORESEARCH_LOCAL_EXCLUDE_PATTERN);
-  const storageDir = join(repoRoot, ...AUTORESEARCH_STORAGE_SUBDIR);
+  const storageDir = resolveRepoArtifactDir(repoRoot, ...AUTORESEARCH_STORAGE_SUBDIR);
   return {
     repoRoot,
     storageDir,
@@ -35,13 +36,12 @@ export function readAutoresearchState(paths: AutoresearchPaths): AutoresearchSta
 }
 
 export function writeAutoresearchState(paths: AutoresearchPaths, state: AutoresearchState): AutoresearchState {
-  mkdirSync(paths.storageDir, { recursive: true });
   const nextState: AutoresearchState = {
     ...state,
     updatedAt: new Date().toISOString(),
     pendingContextNotes: normalizeNotes(state.pendingContextNotes),
   };
-  writeAtomic(paths.statePath, `${JSON.stringify(nextState, null, 2)}\n`);
+  writeTextFileAtomicSync(paths.statePath, `${JSON.stringify(nextState, null, 2)}\n`);
   return nextState;
 }
 
@@ -50,8 +50,7 @@ export function writeAutoresearchSummary(
   state: AutoresearchState,
   records: AutoresearchExperimentRecord[],
 ): void {
-  mkdirSync(paths.storageDir, { recursive: true });
-  writeAtomic(paths.summaryPath, renderAutoresearchSummary(paths, state, records));
+  writeTextFileAtomicSync(paths.summaryPath, renderAutoresearchSummary(paths, state, records));
 }
 
 export function clearAutoresearchArtifacts(paths: AutoresearchPaths): void {
@@ -121,12 +120,6 @@ export function formatMetricValue(value: number | undefined, unit?: string): str
 
   const rounded = Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/0+$/u, "").replace(/\.$/u, "");
   return unit ? `${rounded} ${unit}` : rounded;
-}
-
-function writeAtomic(path: string, contents: string): void {
-  const tempPath = `${path}.${process.pid}.tmp`;
-  writeFileSync(tempPath, contents, "utf8");
-  renameSync(tempPath, path);
 }
 
 function normalizeNotes(notes: string[]): string[] {

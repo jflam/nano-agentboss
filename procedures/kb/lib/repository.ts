@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { basename, extname, join, relative, resolve } from "node:path";
 
+import { ensureDirectories, ensureFile, writeJsonFileAtomic } from "../../../src/util/repo-artifacts.ts";
+
 export interface KnowledgeBasePaths {
   rawDir: string;
   wikiDir: string;
@@ -209,17 +211,17 @@ export function getKnowledgeBasePaths(cwd: string): KnowledgeBasePaths {
 
 export async function ensureKnowledgeBaseLayout(cwd: string): Promise<KnowledgeBasePaths> {
   const paths = getKnowledgeBasePaths(cwd);
-  await Promise.all([
-    mkdir(paths.rawDir, { recursive: true }),
-    mkdir(paths.sourcesDir, { recursive: true }),
-    mkdir(paths.conceptsDir, { recursive: true }),
-    mkdir(paths.answersDir, { recursive: true }),
-    mkdir(paths.indexesDir, { recursive: true }),
-    mkdir(paths.manifestsDir, { recursive: true }),
-    mkdir(paths.reportsDir, { recursive: true }),
-    mkdir(paths.slidesDir, { recursive: true }),
-    mkdir(paths.queuesDir, { recursive: true }),
-    mkdir(paths.stateDir, { recursive: true }),
+  await ensureDirectories([
+    paths.rawDir,
+    paths.sourcesDir,
+    paths.conceptsDir,
+    paths.answersDir,
+    paths.indexesDir,
+    paths.manifestsDir,
+    paths.reportsDir,
+    paths.slidesDir,
+    paths.queuesDir,
+    paths.stateDir,
   ]);
 
   await ensureFile(paths.sourcesManifestPath, "[]\n");
@@ -704,14 +706,7 @@ async function readJsonArrayFile<T>(path: string): Promise<T[]> {
 }
 
 async function writeJsonFile(path: string, value: unknown): Promise<void> {
-  await Bun.write(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-async function ensureFile(path: string, content: string): Promise<void> {
-  const file = Bun.file(path);
-  if (!(await file.exists())) {
-    await Bun.write(path, content);
-  }
+  await writeJsonFileAtomic(path, value);
 }
 
 function resolveRequestedRawPath(

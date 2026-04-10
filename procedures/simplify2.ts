@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
 import typia from "typia";
@@ -13,8 +13,9 @@ import {
   type Procedure,
   type ProcedureResult,
 } from "../src/core/types.ts";
-import { summarizeText } from "../src/util/text.ts";
 import { computeRepoFingerprint } from "../src/core/repo-fingerprint.ts";
+import { resolveRepoArtifactDir, writeJsonFileAtomicSync } from "../src/util/repo-artifacts.ts";
+import { summarizeText } from "../src/util/text.ts";
 
 import { ensureGitLocalExclude, resolveGitRepoRoot } from "./autoresearch/git.ts";
 
@@ -1350,7 +1351,7 @@ function resolveSimplify2Paths(cwd: string): Simplify2Paths {
     // The repo-local exclude is best-effort when git metadata is unavailable.
   }
 
-  const storageDir = join(repoRoot, ...SIMPLIFY2_STORAGE_SUBDIR);
+  const storageDir = resolveRepoArtifactDir(repoRoot, ...SIMPLIFY2_STORAGE_SUBDIR);
   return {
     repoRoot,
     storageDir,
@@ -2342,10 +2343,7 @@ function readJsonFile<T>(
 }
 
 function writeJsonFile(path: string, value: unknown): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tempPath = `${path}.${process.pid}.tmp`;
-  writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  renameSync(tempPath, path);
+  writeJsonFileAtomicSync(path, value);
 }
 
 function listFilesRecursive(root: string): string[] {
