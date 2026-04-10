@@ -1,9 +1,28 @@
+import type * as acp from "@agentclientprotocol/sdk";
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+
+function describeLazyMetadata(
+  procedure: ReturnType<ProcedureRegistry["get"]>,
+): {
+  name: string | undefined;
+  description: string | undefined;
+  inputHint: string | undefined;
+  executionMode: "defaultConversation" | "harness" | undefined;
+  supportsResume: boolean;
+} {
+  return {
+    name: procedure?.name,
+    description: procedure?.description,
+    inputHint: procedure?.inputHint,
+    executionMode: procedure?.executionMode,
+    supportsResume: typeof procedure?.resume === "function",
+  };
+}
 
 describe("ProcedureRegistry", () => {
   test("loads procedures from the procedure root", async () => {
@@ -145,6 +164,57 @@ describe("ProcedureRegistry", () => {
     await expect(procedure?.resume?.("again", { note: "saved" } as never, {} as never)).resolves.toBe("again:saved");
   });
 
+  test("exposes the same lazy metadata surface for built-in and disk procedures", async () => {
+    const procedureRoot = mkdtempSync(join(tmpdir(), "nab-descriptor-procedures-"));
+    writeFileSync(
+      join(procedureRoot, "guided.ts"),
+      [
+        "export default {",
+        '  name: "guided",',
+        '  description: "guided command",',
+        '  inputHint: "what to do",',
+        '  executionMode: "defaultConversation",',
+        '  async execute() { return "guided"; },',
+        "};",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const registry = new ProcedureRegistry(procedureRoot);
+    registry.loadBuiltins();
+    await registry.loadFromDisk();
+
+    expect(describeLazyMetadata(registry.get("create"))).toEqual({
+      name: "create",
+      description: "Create a new procedure from natural language",
+      inputHint: "Describe the procedure you want to create",
+      executionMode: undefined,
+      supportsResume: false,
+    });
+    expect(describeLazyMetadata(registry.get("guided"))).toEqual({
+      name: "guided",
+      description: "guided command",
+      inputHint: "what to do",
+      executionMode: "defaultConversation",
+      supportsResume: false,
+    });
+    const expectedCommands: acp.AvailableCommand[] = [
+      {
+        name: "create",
+        description: "Create a new procedure from natural language",
+        input: { hint: "Describe the procedure you want to create" },
+      },
+      {
+        name: "guided",
+        description: "guided command",
+        input: { hint: "what to do" },
+      },
+    ];
+    const availableCommands = registry.toAvailableCommands();
+    expect(availableCommands.find((command) => command.name === "create")).toEqual(expectedCommands[0]);
+    expect(availableCommands.find((command) => command.name === "guided")).toEqual(expectedCommands[1]);
+  });
+
   test("loads typia-based procedures through the runtime build pipeline", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
     const procedure = await registry.loadProcedureFromPath(join(process.cwd(), "procedures", "second-opinion.ts"));
@@ -284,10 +354,26 @@ describe("ProcedureRegistry", () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
     registry.loadBuiltins();
 
-    expect(registry.get("default")).toBeDefined();
-    expect(registry.get("default")?.resume).toBeUndefined();
-    expect(registry.get("create")).toBeDefined();
-    expect(registry.get("simplify")?.resume).toBeDefined();
+    const defaultMetadata = describeLazyMetadata(registry.get("default"));
+    expect(defaultMetadata.name).toBe("default");
+    expect(typeof defaultMetadata.description).toBe("string");
+    expect(defaultMetadata.inputHint).toBeUndefined();
+    expect(defaultMetadata.executionMode).toBeUndefined();
+    expect(defaultMetadata.supportsResume).toBe(false);
+    expect(describeLazyMetadata(registry.get("create"))).toEqual({
+      name: "create",
+      description: "Create a new procedure from natural language",
+      inputHint: "Describe the procedure you want to create",
+      executionMode: undefined,
+      supportsResume: false,
+    });
+    expect(describeLazyMetadata(registry.get("simplify"))).toEqual({
+      name: "simplify",
+      description: "Find and apply simplifications one opportunity at a time",
+      inputHint: "Optional focus or scope",
+      executionMode: "harness",
+      supportsResume: true,
+    });
     expect(registry.get("nanoboss/commit")).toBeDefined();
     expect(registry.get("commit")).toBeUndefined();
 

@@ -43,16 +43,12 @@ interface ProcedureRegistryOptions {
   diskProcedureRoots?: string[];
 }
 
-interface ProcedureManifest {
+interface ProcedureDescriptor {
   name: string;
   description: string;
   inputHint?: string;
   executionMode?: "defaultConversation" | "harness";
   supportsResume?: boolean;
-}
-
-interface ProcedureDescriptor {
-  manifest: ProcedureManifest;
   load: () => Procedure | Promise<Procedure>;
 }
 
@@ -166,7 +162,7 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
 
       const workspaceRoot = resolveDiskProcedureWorkspaceRoot(procedureRoot);
       for (const filePath of listProcedureSourcePaths(procedureRoot)) {
-        const descriptor = createDiskProcedureDescriptor(
+        const descriptor = readProcedureDescriptor(
           filePath,
           () => this.loadProcedureFromPath(filePath, workspaceRoot),
         );
@@ -265,32 +261,32 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
   }
 
   private registerDescriptor(descriptor: ProcedureDescriptor): void {
-    if (this.procedures.has(descriptor.manifest.name)) {
+    if (this.procedures.has(descriptor.name)) {
       return;
     }
 
     const entry: DeferredProcedureEntry = {
       descriptor,
     };
-    this.deferredProcedureEntries.set(descriptor.manifest.name, entry);
-    this.procedures.set(descriptor.manifest.name, this.createDeferredProcedure(entry));
+    this.deferredProcedureEntries.set(descriptor.name, entry);
+    this.procedures.set(descriptor.name, this.createDeferredProcedure(entry));
   }
 
   private createDeferredProcedure(entry: DeferredProcedureEntry): Procedure {
     const procedure: Procedure = {
-      name: entry.descriptor.manifest.name,
-      description: entry.descriptor.manifest.description,
-      inputHint: entry.descriptor.manifest.inputHint,
-      executionMode: entry.descriptor.manifest.executionMode,
+      name: entry.descriptor.name,
+      description: entry.descriptor.description,
+      inputHint: entry.descriptor.inputHint,
+      executionMode: entry.descriptor.executionMode,
       execute: async (prompt, ctx) => {
-        const loaded = await this.ensureProcedureLoaded(entry.descriptor.manifest.name);
+        const loaded = await this.ensureProcedureLoaded(entry.descriptor.name);
         return await loaded.execute(prompt, ctx);
       },
     };
 
-    if (entry.descriptor.manifest.supportsResume) {
+    if (entry.descriptor.supportsResume) {
       procedure.resume = async (prompt, state, ctx) => {
-        const loaded = await this.ensureProcedureLoaded(entry.descriptor.manifest.name);
+        const loaded = await this.ensureProcedureLoaded(entry.descriptor.name);
         if (!loaded.resume) {
           throw new Error(`Procedure /${loaded.name} does not support continuation.`);
         }
@@ -418,11 +414,9 @@ function createBuiltinProcedureDescriptors(registry: ProcedureRegistry): Procedu
   return [
     ...BUILTIN_PROCEDURES.map((procedure) => createLoadedProcedureDescriptor(procedure)),
     {
-      manifest: {
-        name: "create",
-        description: "Create a new procedure from natural language",
-        inputHint: "Describe the procedure you want to create",
-      },
+      name: "create",
+      description: "Create a new procedure from natural language",
+      inputHint: "Describe the procedure you want to create",
       load: () => createCreateProcedure(registry),
     },
   ];
@@ -430,7 +424,7 @@ function createBuiltinProcedureDescriptors(registry: ProcedureRegistry): Procedu
 
 function createLoadedProcedureDescriptor(procedure: Procedure): ProcedureDescriptor {
   return {
-    manifest: describeProcedure(procedure),
+    ...describeProcedure(procedure),
     load: () => procedure,
   };
 }
@@ -476,35 +470,19 @@ function resolveLocalImportPath(baseDir: string, specifier: string): string | un
   return undefined;
 }
 
-function createDiskProcedureDescriptor(path: string, load: () => Promise<Procedure>): ProcedureDescriptor | undefined {
-  const manifest = readProcedureManifest(path);
-  if (!manifest) {
-    return undefined;
-  }
-
-  return {
-    manifest,
-    load,
-  };
-}
-
-function readProcedureManifest(path: string): ProcedureManifest | undefined {
+function readProcedureDescriptor(path: string, load: () => Promise<Procedure>): ProcedureDescriptor | undefined {
   const source = readFileSync(path, "utf8");
   if (!looksLikeProcedureModule(source)) {
     return undefined;
   }
 
-  const name = readStaticStringProperty(source, "name") ?? basename(path, ".ts");
-  const description = readStaticStringProperty(source, "description") ?? `Lazy-loaded procedure from ${basename(path)}`;
-  const inputHint = readStaticStringProperty(source, "inputHint");
-  const executionMode = parseExecutionMode(readStaticStringProperty(source, "executionMode"));
-
   return {
-    name,
-    description,
-    inputHint,
-    executionMode,
+    name: readStaticStringProperty(source, "name") ?? basename(path, ".ts"),
+    description: readStaticStringProperty(source, "description") ?? `Lazy-loaded procedure from ${basename(path)}`,
+    inputHint: readStaticStringProperty(source, "inputHint"),
+    executionMode: parseExecutionMode(readStaticStringProperty(source, "executionMode")),
     supportsResume: looksLikeResumableProcedureModule(source),
+    load,
   };
 }
 
@@ -517,7 +495,7 @@ function looksLikeResumableProcedureModule(source: string): boolean {
   return /\b(?:async\s+)?resume\s*\(/u.test(source) || /\bresume\s*:/u.test(source);
 }
 
-function describeProcedure(procedure: Procedure): ProcedureManifest {
+function describeProcedure(procedure: Procedure): Omit<ProcedureDescriptor, "load"> {
   return {
     name: procedure.name,
     description: procedure.description,
