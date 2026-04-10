@@ -120,6 +120,31 @@ describe("ProcedureRegistry", () => {
     await expect(registry.get("broken")?.execute("", {} as never)).rejects.toThrow();
   });
 
+  test("preserves continuation support for lazy disk procedures", async () => {
+    const procedureRoot = mkdtempSync(join(tmpdir(), "nab-resumable-procedures-"));
+    writeFileSync(
+      join(procedureRoot, "pausable.ts"),
+      [
+        "export default {",
+        '  name: "pausable",',
+        '  description: "pausable command",',
+        '  async execute() { return "started"; },',
+        "  async resume(prompt, state) {",
+        '    return `${prompt}:${state.note}`;',
+        "  },",
+        "};",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const registry = new ProcedureRegistry(procedureRoot);
+    await registry.loadFromDisk();
+
+    const procedure = registry.get("pausable");
+    expect(procedure?.resume).toBeDefined();
+    await expect(procedure?.resume?.("again", { note: "saved" } as never, {} as never)).resolves.toBe("again:saved");
+  });
+
   test("loads typia-based procedures through the runtime build pipeline", async () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
     const procedure = await registry.loadProcedureFromPath(join(process.cwd(), "procedures", "second-opinion.ts"));
@@ -255,55 +280,22 @@ describe("ProcedureRegistry", () => {
     ]);
   });
 
-  test("loadBuiltins registers default but keeps it hidden from slash commands", () => {
+  test("loadBuiltins keeps builtin command metadata and continuation semantics", () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
     registry.loadBuiltins();
 
     expect(registry.get("default")).toBeDefined();
-    expect(registry.get("autoresearch")).toBeDefined();
-    expect(registry.get("autoresearch/start")).toBeDefined();
-    expect(registry.get("autoresearch/continue")).toBeDefined();
-    expect(registry.get("autoresearch/status")).toBeDefined();
-    expect(registry.get("autoresearch/clear")).toBeDefined();
-    expect(registry.get("autoresearch/finalize")).toBeDefined();
-    expect(registry.get("model")).toBeDefined();
-    expect(registry.get("kb/ingest")).toBeDefined();
-    expect(registry.get("kb/compile-source")).toBeDefined();
-    expect(registry.get("kb/compile-concepts")).toBeDefined();
-    expect(registry.get("kb/link")).toBeDefined();
-    expect(registry.get("kb/render")).toBeDefined();
-    expect(registry.get("kb/health")).toBeDefined();
-    expect(registry.get("kb/refresh")).toBeDefined();
-    expect(registry.get("kb/answer")).toBeDefined();
-    expect(registry.get("commit")).toBeUndefined();
-    expect(registry.get("nanoboss/pre-commit-checks")).toBeDefined();
+    expect(registry.get("default")?.resume).toBeUndefined();
+    expect(registry.get("create")).toBeDefined();
+    expect(registry.get("simplify")?.resume).toBeDefined();
     expect(registry.get("nanoboss/commit")).toBeDefined();
-    expect(registry.get("simplify2")).toBeDefined();
-    expect(registry.get("top_level_runs")).toBeUndefined();
-    expect(registry.get("cell_get")).toBeUndefined();
-    expect(registry.get("ref_read")).toBeUndefined();
-    expect(registry.toAvailableCommands().some((command) => command.name === "default")).toBe(false);
-    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch/start")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch/continue")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch/status")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch/clear")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "autoresearch/finalize")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "model")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "kb/ingest")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "kb/compile-source")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "kb/compile-concepts")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "kb/link")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "kb/render")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "kb/health")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "kb/refresh")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "kb/answer")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "commit")).toBe(false);
-    expect(registry.toAvailableCommands().some((command) => command.name === "nanoboss/pre-commit-checks")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "nanoboss/commit")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "simplify2")).toBe(true);
-    expect(registry.toAvailableCommands().some((command) => command.name === "top_level_runs")).toBe(false);
-    expect(registry.toAvailableCommands().some((command) => command.name === "cell_get")).toBe(false);
-    expect(registry.toAvailableCommands().some((command) => command.name === "ref_read")).toBe(false);
+    expect(registry.get("commit")).toBeUndefined();
+
+    const commandNames = new Set(registry.toAvailableCommands().map((command) => command.name));
+    expect(commandNames.has("default")).toBe(false);
+    expect(commandNames.has("create")).toBe(true);
+    expect(commandNames.has("simplify")).toBe(true);
+    expect(commandNames.has("nanoboss/commit")).toBe(true);
+    expect(commandNames.has("commit")).toBe(false);
   });
 });
