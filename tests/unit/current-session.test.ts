@@ -112,3 +112,36 @@ test("ignores current session workspace entries missing createdAt", () => {
     }
   }
 });
+
+test("ignores current session cache entries when the canonical session snapshot is missing", () => {
+  const originalHome = process.env.HOME;
+  tempHome = mkdtempSync(join(tmpdir(), "nanoboss-current-session-stale-"));
+  process.env.HOME = tempHome;
+
+  try {
+    mkdirSync(join(tempHome, ".nanoboss"), { recursive: true });
+    writeFileSync(
+      join(tempHome, ".nanoboss", "current-sessions.json"),
+      `${JSON.stringify({
+        workspaces: {
+          [resolveWorkspaceKey("/repo")]: {
+            sessionId: "session-missing",
+            cwd: "/repo",
+            rootDir: join(tempHome, ".nanoboss", "sessions", "session-missing"),
+            createdAt: "2026-04-01T10:00:00.000Z",
+            updatedAt: "2026-04-01T11:00:00.000Z",
+          },
+        },
+      }, null, 2)}\n`,
+      "utf8",
+    );
+
+    expect(readCurrentSessionMetadata("/repo")).toBeUndefined();
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+  }
+});

@@ -86,14 +86,13 @@ export function listSessionSummaries(): SessionMetadata[] {
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-export function writeCurrentSessionMetadata(metadata: SessionMetadata): SessionMetadata {
-  mkdirSync(getNanobossHome(), { recursive: true });
-  writeCurrentWorkspaceIndex(metadata);
-  return metadata;
-}
-
 export function readCurrentSessionMetadata(cwd: string): SessionMetadata | undefined {
-  return readCurrentWorkspaceMetadata(cwd);
+  const cached = readCurrentWorkspaceMetadata(cwd);
+  if (!cached) {
+    return undefined;
+  }
+
+  return readSessionMetadata(cached.sessionId, cached.rootDir) ?? readSessionMetadata(cached.sessionId);
 }
 
 function getCurrentSessionMetadataIndexPath(): string {

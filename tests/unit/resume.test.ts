@@ -1,14 +1,12 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { runResumeCommand, type StoredSessionSelectionResult } from "../../resume.ts";
-import {
-  writeCurrentSessionMetadata,
-  writeSessionMetadata,
-} from "../../src/session/index.ts";
+import { resolveWorkspaceKey } from "../../src/core/workspace-identity.ts";
+import { writeSessionMetadata } from "../../src/session/index.ts";
 
 let tempHome: string | undefined;
 
@@ -95,13 +93,6 @@ describe("runResumeCommand", () => {
         cwd,
         rootDir: join(tempHome, ".nanoboss", "sessions", "session-current"),
         createdAt: "2026-04-01T09:00:00.000Z",
-        updatedAt: "2026-04-01T11:00:00.000Z",
-      });
-      writeCurrentSessionMetadata({
-        sessionId: "session-current",
-        cwd,
-        rootDir: join(tempHome, ".nanoboss", "sessions", "session-current"),
-        createdAt: "2026-04-01T09:00:00.000Z",
         updatedAt: "2026-04-01T11:30:00.000Z",
       });
 
@@ -151,13 +142,22 @@ describe("runResumeCommand", () => {
         createdAt: "2026-04-01T10:00:00.000Z",
         updatedAt: "2026-04-01T12:00:00.000Z",
       });
-      writeCurrentSessionMetadata({
-        sessionId: "session-missing",
-        cwd,
-        rootDir: join(tempHome, ".nanoboss", "sessions", "session-missing"),
-        createdAt: "2026-04-01T11:00:00.000Z",
-        updatedAt: "2026-04-01T11:30:00.000Z",
-      });
+      mkdirSync(join(tempHome, ".nanoboss"), { recursive: true });
+      writeFileSync(
+        join(tempHome, ".nanoboss", "current-sessions.json"),
+        `${JSON.stringify({
+          workspaces: {
+            [resolveWorkspaceKey(cwd)]: {
+              sessionId: "session-missing",
+              cwd,
+              rootDir: join(tempHome, ".nanoboss", "sessions", "session-missing"),
+              createdAt: "2026-04-01T11:00:00.000Z",
+              updatedAt: "2026-04-01T11:30:00.000Z",
+            },
+          },
+        }, null, 2)}\n`,
+        "utf8",
+      );
 
       await runResumeCommand([], {
         assertInteractiveTty: () => {},
