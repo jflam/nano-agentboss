@@ -33,7 +33,12 @@ import { getProcedureRuntimeDir } from "../core/config.ts";
 import { resolveProfileProcedureRoot, resolveRepoProcedureRoot, resolveWorkspaceProcedureRoot } from "../core/procedure-paths.ts";
 import { CREATE_PROCEDURE_METADATA, createCreateProcedure } from "./create.ts";
 import { resolveProcedureEntryRelativePath } from "./names.ts";
-import type { Procedure, ProcedureRegistryLike } from "../core/types.ts";
+import type {
+  DeferredProcedureMetadata,
+  Procedure,
+  ProcedureExecutionMode,
+  ProcedureRegistryLike,
+} from "../core/types.ts";
 import { createTypiaBunPlugin } from "./typia-bun-plugin.ts";
 
 interface ProcedureRegistryOptions {
@@ -43,21 +48,16 @@ interface ProcedureRegistryOptions {
   diskProcedureRoots?: string[];
 }
 
-interface ProcedureDescriptor {
-  name: string;
-  description: string;
-  inputHint?: string;
-  executionMode?: "defaultConversation" | "harness";
-  supportsResume?: boolean;
+interface DeferredProcedureDefinition extends DeferredProcedureMetadata {
   load: () => Procedure | Promise<Procedure>;
 }
 
 interface DeferredProcedureEntry {
-  descriptor: ProcedureDescriptor;
+  definition: DeferredProcedureDefinition;
   loadPromise?: Promise<Procedure>;
 }
 
-type BuiltinProcedureSource = Omit<ProcedureDescriptor, "load"> & {
+type BuiltinProcedureSource = Omit<DeferredProcedureDefinition, "load"> & {
   load: (registry: ProcedureRegistry) => Procedure | Promise<Procedure>;
 };
 
@@ -108,7 +108,7 @@ const BUILTIN_PROCEDURE_SOURCES: BuiltinProcedureSource[] = [
     tokensProcedure,
     secondOpinionProcedure,
   ].map((procedure) => ({
-    ...describeProcedure(procedure),
+    ...describeDeferredProcedureMetadata(procedure),
     load: () => procedure,
   })),
   {
@@ -163,8 +163,8 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
   }
 
   loadBuiltins(): void {
-    for (const descriptor of createBuiltinProcedureDescriptors(this)) {
-      this.registerDescriptor(descriptor);
+    for (const definition of createBuiltinProcedureDefinitions(this)) {
+      this.registerDeferredProcedure(definition);
     }
   }
 
@@ -176,12 +176,12 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
 
       const workspaceRoot = resolveDiskProcedureWorkspaceRoot(procedureRoot);
       for (const filePath of listProcedureSourcePaths(procedureRoot)) {
-        const descriptor = readProcedureDescriptor(
-          filePath,
-          () => this.loadProcedureFromPath(filePath, workspaceRoot),
-        );
-        if (descriptor) {
-          this.registerDescriptor(descriptor);
+        const metadata = readProcedureMetadata(filePath);
+        if (metadata) {
+          this.registerDeferredProcedure({
+            ...metadata,
+            load: () => this.loadProcedureFromPath(filePath, workspaceRoot),
+          });
         }
       }
     }
@@ -274,33 +274,34 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     }
   }
 
-  private registerDescriptor(descriptor: ProcedureDescriptor): void {
-    if (this.procedures.has(descriptor.name)) {
+  private registerDeferredProcedure(definition: DeferredProcedureDefinition): void {
+    if (this.procedures.has(definition.name)) {
       return;
     }
 
     const entry: DeferredProcedureEntry = {
-      descriptor,
+      definition,
     };
-    this.deferredProcedureEntries.set(descriptor.name, entry);
-    this.procedures.set(descriptor.name, this.createDeferredProcedure(entry));
+    this.deferredProcedureEntries.set(definition.name, entry);
+    this.procedures.set(definition.name, this.createDeferredProcedure(entry));
   }
 
   private createDeferredProcedure(entry: DeferredProcedureEntry): Procedure {
+    const { definition } = entry;
     const procedure: Procedure = {
-      name: entry.descriptor.name,
-      description: entry.descriptor.description,
-      inputHint: entry.descriptor.inputHint,
-      executionMode: entry.descriptor.executionMode,
+      name: definition.name,
+      description: definition.description,
+      inputHint: definition.inputHint,
+      executionMode: definition.executionMode,
       execute: async (prompt, ctx) => {
-        const loaded = await this.ensureProcedureLoaded(entry.descriptor.name);
+        const loaded = await this.ensureProcedureLoaded(definition.name);
         return await loaded.execute(prompt, ctx);
       },
     };
 
-    if (entry.descriptor.supportsResume) {
+    if (definition.supportsResume) {
       procedure.resume = async (prompt, state, ctx) => {
-        const loaded = await this.ensureProcedureLoaded(entry.descriptor.name);
+        const loaded = await this.ensureProcedureLoaded(definition.name);
         if (!loaded.resume) {
           throw new Error(`Procedure /${loaded.name} does not support continuation.`);
         }
@@ -322,7 +323,7 @@ export class ProcedureRegistry implements ProcedureRegistryLike {
     }
 
     if (!entry.loadPromise) {
-      entry.loadPromise = Promise.resolve(entry.descriptor.load())
+      entry.loadPromise = Promise.resolve(entry.definition.load())
         .then((procedure) => {
           this.assertProcedure(procedure);
           return procedure;
@@ -424,9 +425,9 @@ function resolveProcedureSourceGraph(path: string): ProcedureSourceFile[] {
   return sourceFiles;
 }
 
-function createBuiltinProcedureDescriptors(registry: ProcedureRegistry): ProcedureDescriptor[] {
-  return BUILTIN_PROCEDURE_SOURCES.map(({ load, ...descriptor }) => ({
-    ...descriptor,
+function createBuiltinProcedureDefinitions(registry: ProcedureRegistry): DeferredProcedureDefinition[] {
+  return BUILTIN_PROCEDURE_SOURCES.map(({ load, ...metadata }) => ({
+    ...metadata,
     load: () => load(registry),
   }));
 }
@@ -472,7 +473,7 @@ function resolveLocalImportPath(baseDir: string, specifier: string): string | un
   return undefined;
 }
 
-function readProcedureDescriptor(path: string, load: () => Promise<Procedure>): ProcedureDescriptor | undefined {
+function readProcedureMetadata(path: string): DeferredProcedureMetadata | undefined {
   const source = readFileSync(path, "utf8");
   if (!looksLikeProcedureModule(source)) {
     return undefined;
@@ -484,7 +485,6 @@ function readProcedureDescriptor(path: string, load: () => Promise<Procedure>): 
     inputHint: readStaticStringProperty(source, "inputHint"),
     executionMode: parseExecutionMode(readStaticStringProperty(source, "executionMode")),
     supportsResume: looksLikeResumableProcedureModule(source),
-    load,
   };
 }
 
@@ -497,7 +497,7 @@ function looksLikeResumableProcedureModule(source: string): boolean {
   return /\b(?:async\s+)?resume\s*\(/u.test(source) || /\bresume\s*:/u.test(source);
 }
 
-function describeProcedure(procedure: Procedure): Omit<ProcedureDescriptor, "load"> {
+function describeDeferredProcedureMetadata(procedure: Procedure): DeferredProcedureMetadata {
   return {
     name: procedure.name,
     description: procedure.description,
@@ -505,6 +505,14 @@ function describeProcedure(procedure: Procedure): Omit<ProcedureDescriptor, "loa
     executionMode: procedure.executionMode,
     supportsResume: typeof procedure.resume === "function",
   };
+}
+
+function parseExecutionMode(value: string | undefined): ProcedureExecutionMode | undefined {
+  if (value === "defaultConversation" || value === "harness") {
+    return value;
+  }
+
+  return undefined;
 }
 
 function readStaticStringProperty(source: string, propertyName: string): string | undefined {
@@ -537,10 +545,6 @@ function decodeStringLiteral(value: string): string {
         return escaped;
     }
   });
-}
-
-function parseExecutionMode(value: string | undefined): Procedure["executionMode"] | undefined {
-  return value === "defaultConversation" || value === "harness" ? value : undefined;
 }
 
 function escapeRegExp(value: string): string {

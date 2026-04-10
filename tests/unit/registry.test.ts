@@ -4,24 +4,35 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { DeferredProcedureMetadata, ProcedureMetadata } from "../../src/core/types.ts";
 import { CREATE_PROCEDURE_METADATA } from "../../src/procedure/create.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 
 function describeLazyMetadata(
   procedure: ReturnType<ProcedureRegistry["get"]>,
-): {
-  name: string | undefined;
-  description: string | undefined;
-  inputHint: string | undefined;
-  executionMode: "defaultConversation" | "harness" | undefined;
-  supportsResume: boolean;
-} {
+): DeferredProcedureMetadata | undefined {
+  if (!procedure) {
+    return undefined;
+  }
+
   return {
-    name: procedure?.name,
-    description: procedure?.description,
-    inputHint: procedure?.inputHint,
-    executionMode: procedure?.executionMode,
-    supportsResume: typeof procedure?.resume === "function",
+    name: procedure.name,
+    description: procedure.description,
+    inputHint: procedure.inputHint,
+    executionMode: procedure.executionMode,
+    supportsResume: typeof procedure.resume === "function",
+  };
+}
+
+function toAvailableCommand(metadata: ProcedureMetadata): acp.AvailableCommand {
+  return {
+    name: metadata.name,
+    description: metadata.description,
+    input: metadata.inputHint
+      ? {
+          hint: metadata.inputHint,
+        }
+      : undefined,
   };
 }
 
@@ -210,27 +221,18 @@ describe("ProcedureRegistry", () => {
       expect(describeLazyMetadata(registry.get(expected.name))).toEqual(expected);
     }
 
-    const expectedCommands: acp.AvailableCommand[] = [
-      {
-        name: CREATE_PROCEDURE_METADATA.name,
-        description: CREATE_PROCEDURE_METADATA.description,
-        input: { hint: CREATE_PROCEDURE_METADATA.inputHint },
-      },
-      {
-        name: "simplify",
-        description: "Find and apply simplifications one opportunity at a time",
-        input: { hint: "Optional focus or scope" },
-      },
-      {
-        name: "guided",
-        description: "guided command",
-        input: { hint: "what to do" },
-      },
-    ];
+    const expectedCommands: acp.AvailableCommand[] = expectedMetadata.map(({
+      supportsResume: _supportsResume,
+      ...metadata
+    }) => toAvailableCommand(metadata));
     const availableCommands = registry.toAvailableCommands();
     for (const expected of expectedCommands) {
       expect(availableCommands.find((command) => command.name === expected.name)).toEqual(expected);
     }
+
+    await expect(registry.get("guided")?.execute("", {} as never)).resolves.toBe("guided");
+    expect(describeLazyMetadata(registry.get("guided"))).toEqual(expectedMetadata[2]);
+    expect(registry.toAvailableCommands().find((command) => command.name === "guided")).toEqual(expectedCommands[2]);
   });
 
   test("loads typia-based procedures through the runtime build pipeline", async () => {
@@ -372,14 +374,21 @@ describe("ProcedureRegistry", () => {
     const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
     registry.loadBuiltins();
 
-    const expectedMetadata = [
-      {
-        name: "default",
-        description: registry.get("default")?.description,
-        inputHint: undefined,
-        executionMode: undefined,
-        supportsResume: false,
-      },
+    const defaultProcedure = registry.get("default");
+    if (!defaultProcedure) {
+      throw new Error("expected default builtin procedure to be registered");
+    }
+    const defaultMetadata = describeLazyMetadata(defaultProcedure);
+    if (!defaultMetadata) {
+      throw new Error("expected default builtin procedure metadata to be describable");
+    }
+
+    const expectedMetadata: [
+      DeferredProcedureMetadata,
+      DeferredProcedureMetadata,
+      DeferredProcedureMetadata,
+    ] = [
+      defaultMetadata,
       {
         ...CREATE_PROCEDURE_METADATA,
         executionMode: undefined,
@@ -402,16 +411,8 @@ describe("ProcedureRegistry", () => {
 
     const commandsByName = new Map(registry.toAvailableCommands().map((command) => [command.name, command]));
     expect(commandsByName.has("default")).toBe(false);
-    expect(commandsByName.get(CREATE_PROCEDURE_METADATA.name)).toEqual({
-      name: CREATE_PROCEDURE_METADATA.name,
-      description: CREATE_PROCEDURE_METADATA.description,
-      input: { hint: CREATE_PROCEDURE_METADATA.inputHint },
-    });
-    expect(commandsByName.get("simplify")).toEqual({
-      name: "simplify",
-      description: "Find and apply simplifications one opportunity at a time",
-      input: { hint: "Optional focus or scope" },
-    });
+    expect(commandsByName.get(CREATE_PROCEDURE_METADATA.name)).toEqual(toAvailableCommand(CREATE_PROCEDURE_METADATA));
+    expect(commandsByName.get("simplify")).toEqual(toAvailableCommand(expectedMetadata[2]));
     expect(commandsByName.has("nanoboss/commit")).toBe(true);
     expect(commandsByName.has("commit")).toBe(false);
   });

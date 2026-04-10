@@ -331,11 +331,20 @@ export interface AgentRunResult<T extends KernelValue = KernelValue> extends Run
   tokenSnapshot?: AgentTokenSnapshot;
 }
 
-export interface Procedure {
+export type ProcedureExecutionMode = "defaultConversation" | "harness";
+
+export interface ProcedureMetadata {
   name: string;
   description: string;
   inputHint?: string;
-  executionMode?: "defaultConversation" | "harness";
+  executionMode?: ProcedureExecutionMode;
+}
+
+export interface DeferredProcedureMetadata extends ProcedureMetadata {
+  supportsResume: boolean;
+}
+
+export interface Procedure extends ProcedureMetadata {
   execute(prompt: string, ctx: CommandContext): Promise<ProcedureResult | string | void>;
   resume?(prompt: string, state: KernelValue, ctx: CommandContext): Promise<ProcedureResult | string | void>;
 }

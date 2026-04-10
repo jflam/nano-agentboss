@@ -9,6 +9,7 @@ import { jsonType } from "../core/types.ts";
 import { normalizeProcedureName, resolveProcedureImportPrefix } from "./names.ts";
 import type {
   Procedure,
+  ProcedureMetadata,
   ProcedureRegistryLike,
 } from "../core/types.ts";
 
@@ -21,7 +22,7 @@ export const CREATE_PROCEDURE_METADATA = {
   name: "create",
   description: "Create a new procedure from natural language",
   inputHint: "Describe the procedure you want to create",
-} satisfies Pick<Procedure, "name" | "description" | "inputHint">;
+} satisfies ProcedureMetadata;
 
 const GeneratedProcedureType = jsonType<GeneratedProcedure>(
   typia.json.schema<GeneratedProcedure>(),

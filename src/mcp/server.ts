@@ -19,6 +19,7 @@ import type {
   CellRecord,
   CellRef,
   DownstreamAgentSelection,
+  ProcedureMetadata,
   ProcedureRegistryLike,
   SessionRecentOptions,
   TopLevelRunsOptions,
@@ -50,12 +51,6 @@ interface McpToolDefinition extends JsonRpcToolMetadata {
 
 interface ProcedureListResult {
   procedures: ProcedureMetadata[];
-}
-
-interface ProcedureMetadata {
-  name: string;
-  description: string;
-  inputHint?: string;
 }
 
 export type ProcedureDispatchResult = ProcedureExecutionResult;
