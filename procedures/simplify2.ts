@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
@@ -13,6 +14,7 @@ import {
   type ProcedureResult,
 } from "../src/core/types.ts";
 import { summarizeText } from "../src/util/text.ts";
+import { computeRepoFingerprint } from "../src/core/repo-fingerprint.ts";
 
 import { ensureGitLocalExclude, resolveGitRepoRoot } from "./autoresearch/git.ts";
 
@@ -240,6 +242,43 @@ interface Simplify2TestMap {
   tests: TestSliceSelection[];
 }
 
+interface Simplify2ObservationCacheEntry {
+  observation: SimplifyObservation;
+  sourcePaths: string[];
+  evidenceRefs: SimplifyEvidenceRef[];
+  derivedFromArtifacts: string[];
+  stale: boolean;
+}
+
+interface Simplify2ObservationCache {
+  version: 1;
+  updatedAt: string;
+  focusHash: string;
+  analysisFingerprint: string;
+  observations: Simplify2ObservationCacheEntry[];
+}
+
+interface Simplify2OverlapSuppressionEntry {
+  hypothesisId: string;
+  titleTokens: string[];
+  summaryTokens: string[];
+  normalizedScopeTokens: string[];
+  touchedFiles: string[];
+  evidenceRefs: string[];
+}
+
+interface Simplify2AnalysisCache {
+  version: 1;
+  updatedAt: string;
+  focusHash: string;
+  analysisFingerprint: string;
+  lastAppliedHypothesisId?: string;
+  lastTouchedFiles: string[];
+  reusableObservationIds: string[];
+  staleObservationIds: string[];
+  overlapSuppression: Simplify2OverlapSuppressionEntry[];
+}
+
 interface Simplify2State {
   version: 1;
   originalPrompt: string;
@@ -259,6 +298,15 @@ interface Simplify2State {
     architectureMemoryPath?: string;
     journalPath?: string;
     testMapPath?: string;
+    observationsPath?: string;
+    analysisCachePath?: string;
+  };
+  analysisCache: {
+    focusHash: string;
+    analysisFingerprint?: string;
+    observationsLoaded: boolean;
+    reusedObservationIds: string[];
+    staleObservationIds: string[];
   };
   memorySnapshot: {
     concepts: string[];
@@ -297,6 +345,8 @@ interface Simplify2Paths {
   architectureMemoryPath: string;
   journalPath: string;
   testMapPath: string;
+  observationsPath: string;
+  analysisCachePath: string;
 }
 
 interface Simplify2ActionFinish {
@@ -385,11 +435,24 @@ const Simplify2TestMapType = jsonType<Simplify2TestMap>(
   typia.json.schema<Simplify2TestMap>(),
   typia.createValidate<Simplify2TestMap>(),
 );
+const Simplify2ObservationCacheEntryType = jsonType<Simplify2ObservationCacheEntry>(
+  typia.json.schema<Simplify2ObservationCacheEntry>(),
+  typia.createValidate<Simplify2ObservationCacheEntry>(),
+);
+const Simplify2ObservationCacheType = jsonType<Simplify2ObservationCache>(
+  typia.json.schema<Simplify2ObservationCache>(),
+  typia.createValidate<Simplify2ObservationCache>(),
+);
+const Simplify2AnalysisCacheType = jsonType<Simplify2AnalysisCache>(
+  typia.json.schema<Simplify2AnalysisCache>(),
+  typia.createValidate<Simplify2AnalysisCache>(),
+);
 
 const DEFAULT_FOCUS = "simplify the current project";
 const DEFAULT_MAX_ITERATIONS = 3;
 const SIMPLIFY2_STORAGE_SUBDIR = [".nanoboss", "simplify2"] as const;
 const SIMPLIFY2_LOCAL_EXCLUDE_PATTERN = "/.nanoboss/";
+const ANALYSIS_STALE_FULL_REFRESH_THRESHOLD = 0.4;
 const SUGGESTED_REPLIES = [
   "approve it",
   "reject it",
@@ -429,6 +492,10 @@ const TOKEN_STOP_WORDS = new Set([
   "unit",
   "with",
 ]);
+const HIGH_SENSITIVITY_ANALYSIS_PATH_PATTERNS = [
+  /^src\/core\//,
+  /^src\/mcp\//,
+];
 
 export default {
   name: "simplify2",
@@ -499,6 +566,19 @@ function initializeState(prompt: string): Simplify2State {
       guidance: [],
     },
     artifacts: {},
+    analysisCache: {
+      focusHash: hashFocusPayload({
+        originalPrompt: focus,
+        scope: [],
+        exclusions: [],
+        goals: [focus],
+        constraints: [],
+        guidance: [],
+      }),
+      observationsLoaded: false,
+      reusedObservationIds: [],
+      staleObservationIds: [],
+    },
     memorySnapshot: {
       concepts: [],
       invariants: [],
@@ -533,6 +613,10 @@ function loadArtifacts(state: Simplify2State, ctx: CommandContext): Simplify2Sta
   const memory = readOrInitializeArchitectureMemory(paths, state.originalPrompt);
   const journal = readOrInitializeJournal(paths);
   const testMap = refreshTestMap(paths);
+  const focusHash = computeFocusHash(state);
+  const analysisFingerprint = computeRepoFingerprint({ cwd: paths.repoRoot }).fingerprint;
+  const observationCache = readOrInitializeObservationCache(paths, focusHash, analysisFingerprint);
+  const analysisCache = readOrInitializeAnalysisCache(paths, focusHash, analysisFingerprint);
 
   return {
     ...state,
@@ -542,6 +626,15 @@ function loadArtifacts(state: Simplify2State, ctx: CommandContext): Simplify2Sta
       architectureMemoryPath: paths.architectureMemoryPath,
       journalPath: paths.journalPath,
       testMapPath: paths.testMapPath,
+      observationsPath: paths.observationsPath,
+      analysisCachePath: paths.analysisCachePath,
+    },
+    analysisCache: {
+      focusHash,
+      analysisFingerprint,
+      observationsLoaded: observationCache.observations.length > 0,
+      reusedObservationIds: normalizeStrings(analysisCache.reusableObservationIds),
+      staleObservationIds: normalizeStrings(analysisCache.staleObservationIds),
     },
     memorySnapshot: summarizeArchitectureMemory(memory),
     history: {
@@ -602,9 +695,11 @@ async function refreshArchitectureMemory(
 async function collectObservations(
   state: Simplify2State,
   ctx: CommandContext,
+  scopedPaths: string[] = [],
+  reuseCachedObservations = false,
 ): Promise<Simplify2State> {
   const result = await ctx.callAgent(
-    buildObservationPrompt(state),
+    buildObservationPrompt(state, scopedPaths, reuseCachedObservations),
     ObservationBatchType,
     { stream: false },
   );
@@ -732,7 +827,7 @@ async function applySimplificationSlice(
     { stream: false },
   );
   const applied = expectData(applyResult, "Missing simplify2 apply result");
-  return {
+  const nextState: Simplify2State = {
     ...state,
     notebook: {
       ...state.notebook,
@@ -762,6 +857,7 @@ async function applySimplificationSlice(
       changedSubsystems: inferRelevantSubsystems(hypothesis),
     },
   };
+  return recordAppliedHypothesis(nextState, hypothesis);
 }
 
 async function validateAndReconcile(
@@ -1261,6 +1357,8 @@ function resolveSimplify2Paths(cwd: string): Simplify2Paths {
     architectureMemoryPath: join(storageDir, "architecture-memory.json"),
     journalPath: join(storageDir, "journal.json"),
     testMapPath: join(storageDir, "test-map.json"),
+    observationsPath: join(storageDir, "observations.json"),
+    analysisCachePath: join(storageDir, "analysis-cache.json"),
   };
 }
 
@@ -1297,6 +1395,34 @@ function refreshTestMap(paths: Simplify2Paths): Simplify2TestMap {
   const testMap = buildTestMap(paths.repoRoot);
   writeJsonFile(paths.testMapPath, testMap);
   return testMap;
+}
+
+function readOrInitializeObservationCache(
+  paths: Simplify2Paths,
+  focusHash: string,
+  analysisFingerprint: string,
+): Simplify2ObservationCache {
+  const fallback = createDefaultObservationCache(focusHash, analysisFingerprint);
+  const cache = readJsonFile(paths.observationsPath, Simplify2ObservationCacheType, fallback);
+  const normalized = cache.focusHash === focusHash ? cache : fallback;
+  if (!existsSync(paths.observationsPath) || normalized !== cache) {
+    writeJsonFile(paths.observationsPath, normalized);
+  }
+  return normalized;
+}
+
+function readOrInitializeAnalysisCache(
+  paths: Simplify2Paths,
+  focusHash: string,
+  analysisFingerprint: string,
+): Simplify2AnalysisCache {
+  const fallback = createDefaultAnalysisCache(focusHash, analysisFingerprint);
+  const cache = readJsonFile(paths.analysisCachePath, Simplify2AnalysisCacheType, fallback);
+  const normalized = cache.focusHash === focusHash ? cache : fallback;
+  if (!existsSync(paths.analysisCachePath) || normalized !== cache) {
+    writeJsonFile(paths.analysisCachePath, normalized);
+  }
+  return normalized;
 }
 
 function buildTestMap(repoRoot: string): Simplify2TestMap {
@@ -1380,7 +1506,12 @@ function buildArchitectureRefreshPrompt(state: Simplify2State): string {
   ].join("\n");
 }
 
-function buildObservationPrompt(state: Simplify2State): string {
+function buildObservationPrompt(
+  state: Simplify2State,
+  scopedPaths: string[] = [],
+  reuseCachedObservations = false,
+): string {
+  const normalizedScopedPaths = normalizePaths(scopedPaths);
   return [
     "You are scanning the repository for conceptual simplification observations.",
     "Return JSON only with one field: `observations`.",
@@ -1394,6 +1525,12 @@ function buildObservationPrompt(state: Simplify2State): string {
     "- `architecture_drift`",
     "- `design_evolution_signal`",
     "Do not propose code patches yet.",
+    reuseCachedObservations
+      ? "Reuse the notebook context as preserved observations and focus only on refreshing changed or adjacent areas."
+      : "",
+    normalizedScopedPaths.length > 0
+      ? `Scope this observation refresh to these changed paths first: ${normalizedScopedPaths.join(", ")}`
+      : "",
     "",
     `Current focus: ${renderFocusSummary(state)}`,
     `Architecture memory summary:\n${renderMemorySummary(state.memorySnapshot)}`,
@@ -1472,7 +1609,8 @@ function buildApplyPrompt(
     "4. Add or strengthen tests for surviving invariants and real boundaries.",
     "5. Keep the change coherent and limited to the implementation scope.",
     "6. Validate with the provided minimal trusted test slice first.",
-    "7. Return JSON only with `summary`, `touchedFiles`, `conceptualChanges`, `testChanges`, and `validationNotes`.",
+    "7. Validation commands must use `bun test`, never `npm test`.",
+    "8. Return JSON only with `summary`, `touchedFiles`, `conceptualChanges`, `testChanges`, and `validationNotes`.",
     "",
     `Overall simplify focus: ${renderFocusSummary(state)}`,
     `Current architecture memory summary:\n${renderMemorySummary(state.memorySnapshot)}`,
@@ -1503,6 +1641,7 @@ function reconcileRankedHypotheses(
   state: Simplify2State,
 ): SimplifyHypothesis[] {
   const rankingById = new Map(rankings.rankings.map((ranking) => [ranking.hypothesisId, ranking]));
+  const overlapSuppression = readCurrentAnalysisCache(state).overlapSuppression;
   return hypotheses.hypotheses
     .filter((hypothesis) =>
       !state.history.appliedHypothesisIds.includes(hypothesis.id)
@@ -1510,15 +1649,29 @@ function reconcileRankedHypotheses(
       && !state.history.resolvedHypothesisIds.includes(hypothesis.id))
     .map((hypothesis) => {
       const ranking = rankingById.get(hypothesis.id);
+      const overlap = findHighestHypothesisOverlap(hypothesis, overlapSuppression);
+      if (overlap && overlap.score >= 0.85 && overlap.hasNoDistinctScope) {
+        return undefined;
+      }
+
       const score = ranking?.score;
+      const overlapPenalty = overlap && overlap.score >= 0.75 ? Math.ceil(overlap.score * 5) : 0;
+      const rankingReason = [
+        ranking?.reason,
+        overlap && overlap.score >= 0.75
+          ? `Overlaps with applied hypothesis ${overlap.entry.hypothesisId} (${Math.round(overlap.score * 100)}%).`
+          : "",
+      ].filter(Boolean).join(" ");
       return {
         ...hypothesis,
-        score: typeof score === "number" && Number.isFinite(score) ? score : 0,
-        needsHumanCheckpoint: ranking?.needsHumanCheckpoint ?? hypothesis.needsHumanCheckpoint,
-        ...(ranking?.reason ? { rankingReason: ranking.reason } : {}),
+        score: Math.max(0, (typeof score === "number" && Number.isFinite(score) ? score : 0) - overlapPenalty),
+        needsHumanCheckpoint: overlap && overlap.score >= 0.75 && hypothesis.risk !== "low"
+          ? true
+          : (ranking?.needsHumanCheckpoint ?? hypothesis.needsHumanCheckpoint),
+        ...(rankingReason ? { rankingReason } : {}),
       };
     })
-    .filter((hypothesis) => SimplifyHypothesisType.validate(hypothesis))
+    .filter((hypothesis): hypothesis is SimplifyHypothesis => Boolean(hypothesis) && SimplifyHypothesisType.validate(hypothesis))
     .sort((left, right) =>
       right.score - left.score
       || compareRisk(left.risk, right.risk)
@@ -1529,14 +1682,46 @@ async function analyzeCurrentFocus(
   state: Simplify2State,
   ctx: CommandContext,
 ): Promise<Simplify2State> {
-  ctx.print("Refreshing architecture memory for the current focus...\n");
-  state = await refreshArchitectureMemory(state, ctx);
+  const reusePlan = planAnalysisReuse(state);
+  state.analysisCache = {
+    focusHash: computeFocusHash(state),
+    analysisFingerprint: reusePlan.analysisFingerprint,
+    observationsLoaded: reusePlan.reusableEntries.length > 0,
+    reusedObservationIds: reusePlan.reusableEntries.map((entry) => entry.observation.id),
+    staleObservationIds: reusePlan.staleEntries.map((entry) => entry.observation.id),
+  };
+  if (reusePlan.reusableEntries.length > 0) {
+    ctx.print(`Reusing ${reusePlan.reusableEntries.length} cached simplify2 observations...\n`);
+    state = {
+      ...state,
+      notebook: {
+        ...state.notebook,
+        observations: reusePlan.reusableEntries.map((entry) => entry.observation),
+      },
+    };
+  }
 
-  ctx.print("Collecting conceptual simplification observations...\n");
-  state = await collectObservations(state, ctx);
+  if (reusePlan.shouldRunFullRefresh) {
+    ctx.print("Refreshing architecture memory for the current focus...\n");
+    state = await refreshArchitectureMemory(state, ctx);
+
+    ctx.print("Collecting conceptual simplification observations...\n");
+    state = await collectObservations(state, ctx);
+  } else if (reusePlan.staleEntries.length > 0) {
+    ctx.print("Refreshing conceptual observations for touched files...\n");
+    state = await collectObservations(
+      state,
+      ctx,
+      reusePlan.touchedFiles,
+      reusePlan.reusableEntries.length > 0,
+    );
+  } else {
+    ctx.print("Skipping full simplify2 research refresh because cached observations are still valid.\n");
+  }
 
   ctx.print("Generating and ranking simplification hypotheses...\n");
-  return await generateAndRankHypotheses(state, ctx);
+  state = await generateAndRankHypotheses(state, ctx);
+  return persistAnalysisArtifacts(state, reusePlan.analysisFingerprint);
 }
 
 function buildLatestApplyLead(state: Simplify2State): string | undefined {
@@ -1645,6 +1830,35 @@ function createDefaultTestMap(): Simplify2TestMap {
     version: 1,
     updatedAt: nowIso(),
     tests: [],
+  };
+}
+
+function createDefaultObservationCache(
+  focusHash: string,
+  analysisFingerprint: string,
+): Simplify2ObservationCache {
+  return {
+    version: 1,
+    updatedAt: nowIso(),
+    focusHash,
+    analysisFingerprint,
+    observations: [],
+  };
+}
+
+function createDefaultAnalysisCache(
+  focusHash: string,
+  analysisFingerprint: string,
+): Simplify2AnalysisCache {
+  return {
+    version: 1,
+    updatedAt: nowIso(),
+    focusHash,
+    analysisFingerprint,
+    lastTouchedFiles: [],
+    reusableObservationIds: [],
+    staleObservationIds: [],
+    overlapSuppression: [],
   };
 }
 
@@ -1810,6 +2024,288 @@ function renderValidationLine(validation: ValidationSummary | undefined): string
   return `Validation: ${validation.status}. ${validation.outputSummary}`;
 }
 
+function persistAnalysisArtifacts(
+  state: Simplify2State,
+  analysisFingerprint: string,
+): Simplify2State {
+  const focusHash = computeFocusHash(state);
+  const previousObservationCache = readCurrentObservationCache(state, analysisFingerprint);
+  const previousEntriesByKey = new Map(
+    previousObservationCache.observations.map((entry) => [observationCacheKey(entry.observation), entry]),
+  );
+  const observations: Simplify2ObservationCache = {
+    version: 1,
+    updatedAt: nowIso(),
+    focusHash,
+    analysisFingerprint,
+    observations: state.notebook.observations.map((observation) => {
+      const previous = previousEntriesByKey.get(observationCacheKey(observation));
+      const sourcePaths = deriveObservationSourcePaths(observation);
+      return {
+        observation,
+        sourcePaths: sourcePaths.length > 0 ? sourcePaths : (previous?.sourcePaths ?? []),
+        evidenceRefs: observation.evidence,
+        derivedFromArtifacts: previous?.derivedFromArtifacts ?? deriveObservationArtifacts(observation),
+        stale: false,
+      };
+    }),
+  };
+  writeJsonFile(requireArtifactPath(state.artifacts.observationsPath, "observation cache"), observations);
+
+  const previousAnalysisCache = readCurrentAnalysisCache(state);
+  const analysisCache: Simplify2AnalysisCache = {
+    ...previousAnalysisCache,
+    version: 1,
+    updatedAt: nowIso(),
+    focusHash,
+    analysisFingerprint,
+    reusableObservationIds: observations.observations.map((entry) => entry.observation.id),
+    staleObservationIds: [],
+  };
+  writeJsonFile(requireArtifactPath(state.artifacts.analysisCachePath, "analysis cache"), analysisCache);
+
+  return {
+    ...state,
+    analysisCache: {
+      focusHash,
+      analysisFingerprint,
+      observationsLoaded: observations.observations.length > 0,
+      reusedObservationIds: analysisCache.reusableObservationIds,
+      staleObservationIds: [],
+    },
+  };
+}
+
+function recordAppliedHypothesis(
+  state: Simplify2State,
+  hypothesis: SimplifyHypothesis,
+): Simplify2State {
+  const analysisCache = readCurrentAnalysisCache(state);
+  const touchedFiles = normalizePaths(state.notebook.latestApply?.result.touchedFiles ?? hypothesis.implementationScope);
+  const entry: Simplify2OverlapSuppressionEntry = {
+    hypothesisId: hypothesis.id,
+    titleTokens: extractTokens(hypothesis.title),
+    summaryTokens: extractTokens(hypothesis.summary),
+    normalizedScopeTokens: uniqueStrings(hypothesis.implementationScope.flatMap((path) => extractTokens(path))),
+    touchedFiles,
+    evidenceRefs: uniqueStrings(hypothesis.evidence.map((evidence) => normalizePath(evidence.ref))),
+  };
+  const nextAnalysisCache: Simplify2AnalysisCache = {
+    ...analysisCache,
+    updatedAt: nowIso(),
+    focusHash: computeFocusHash(state),
+    analysisFingerprint: state.analysisCache.analysisFingerprint ?? analysisCache.analysisFingerprint,
+    lastAppliedHypothesisId: hypothesis.id,
+    lastTouchedFiles: touchedFiles,
+    overlapSuppression: [
+      ...analysisCache.overlapSuppression.filter((candidate) => candidate.hypothesisId !== hypothesis.id),
+      entry,
+    ].slice(-25),
+  };
+  writeJsonFile(requireArtifactPath(state.artifacts.analysisCachePath, "analysis cache"), nextAnalysisCache);
+  return {
+    ...state,
+    analysisCache: {
+      ...state.analysisCache,
+      analysisFingerprint: nextAnalysisCache.analysisFingerprint,
+    },
+  };
+}
+
+function readCurrentObservationCache(
+  state: Simplify2State,
+  analysisFingerprint = state.analysisCache.analysisFingerprint ?? currentRepoAnalysisFingerprint(state),
+): Simplify2ObservationCache {
+  return readJsonFile(
+    requireArtifactPath(state.artifacts.observationsPath, "observation cache"),
+    Simplify2ObservationCacheType,
+    createDefaultObservationCache(computeFocusHash(state), analysisFingerprint),
+  );
+}
+
+function readCurrentAnalysisCache(state: Simplify2State): Simplify2AnalysisCache {
+  return readJsonFile(
+    requireArtifactPath(state.artifacts.analysisCachePath, "analysis cache"),
+    Simplify2AnalysisCacheType,
+    createDefaultAnalysisCache(
+      computeFocusHash(state),
+      state.analysisCache.analysisFingerprint ?? currentRepoAnalysisFingerprint(state),
+    ),
+  );
+}
+
+function planAnalysisReuse(state: Simplify2State): {
+  analysisFingerprint: string;
+  touchedFiles: string[];
+  reusableEntries: Simplify2ObservationCacheEntry[];
+  staleEntries: Simplify2ObservationCacheEntry[];
+  shouldRunFullRefresh: boolean;
+} {
+  const analysisFingerprint = currentRepoAnalysisFingerprint(state);
+  const focusHash = computeFocusHash(state);
+  const observationCache = readCurrentObservationCache(state, analysisFingerprint);
+  const analysisCache = readCurrentAnalysisCache(state);
+  const touchedFiles = normalizePaths(state.notebook.latestApply?.result.touchedFiles ?? analysisCache.lastTouchedFiles);
+
+  if (observationCache.focusHash !== focusHash || analysisCache.focusHash !== focusHash || observationCache.observations.length === 0) {
+    return {
+      analysisFingerprint,
+      touchedFiles,
+      reusableEntries: [],
+      staleEntries: observationCache.observations,
+      shouldRunFullRefresh: true,
+    };
+  }
+
+  const touchedSet = new Set(touchedFiles);
+  const reusableEntries: Simplify2ObservationCacheEntry[] = [];
+  const staleEntries: Simplify2ObservationCacheEntry[] = [];
+  for (const entry of observationCache.observations) {
+    const isStale = touchedSet.size > 0 && entry.sourcePaths.some((path) => touchedSet.has(path));
+    if (isStale) {
+      staleEntries.push({ ...entry, stale: true });
+      continue;
+    }
+    reusableEntries.push({ ...entry, stale: false });
+  }
+
+  const staleRatio = observationCache.observations.length === 0
+    ? 1
+    : staleEntries.length / observationCache.observations.length;
+  const shouldRunFullRefresh = reusableEntries.length === 0
+    || staleRatio > ANALYSIS_STALE_FULL_REFRESH_THRESHOLD
+    || touchedFiles.some((path) => HIGH_SENSITIVITY_ANALYSIS_PATH_PATTERNS.some((pattern) => pattern.test(path)));
+
+  const nextAnalysisCache: Simplify2AnalysisCache = {
+    ...analysisCache,
+    updatedAt: nowIso(),
+    focusHash,
+    analysisFingerprint,
+    reusableObservationIds: reusableEntries.map((entry) => entry.observation.id),
+    staleObservationIds: staleEntries.map((entry) => entry.observation.id),
+  };
+  writeJsonFile(requireArtifactPath(state.artifacts.analysisCachePath, "analysis cache"), nextAnalysisCache);
+
+  return {
+    analysisFingerprint,
+    touchedFiles,
+    reusableEntries,
+    staleEntries,
+    shouldRunFullRefresh,
+  };
+}
+
+function currentRepoAnalysisFingerprint(state: Simplify2State): string {
+  return computeRepoFingerprint({ cwd: requireArtifactPath(state.artifacts.repoRoot, "repo root") }).fingerprint;
+}
+
+function computeFocusHash(state: Simplify2State): string {
+  return hashFocusPayload({
+    originalPrompt: state.originalPrompt,
+    scope: state.focus.scope,
+    exclusions: state.focus.exclusions,
+    goals: state.focus.goals,
+    constraints: state.focus.constraints,
+    guidance: state.focus.guidance,
+  });
+}
+
+function hashFocusPayload(payload: {
+  originalPrompt: string;
+  scope: string[];
+  exclusions: string[];
+  goals: string[];
+  constraints: string[];
+  guidance: string[];
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify({
+      originalPrompt: payload.originalPrompt.trim(),
+      scope: normalizeStrings(payload.scope),
+      exclusions: normalizeStrings(payload.exclusions),
+      goals: normalizeStrings(payload.goals),
+      constraints: normalizeStrings(payload.constraints),
+      guidance: normalizeStrings(payload.guidance),
+    }))
+    .digest("hex")
+    .slice(0, 12);
+}
+
+function deriveObservationSourcePaths(observation: SimplifyObservation): string[] {
+  return normalizePaths(
+    observation.evidence
+      .filter((evidence) => evidence.kind === "file" || evidence.kind === "test" || evidence.kind === "doc")
+      .map((evidence) => evidence.ref),
+  );
+}
+
+function deriveObservationArtifacts(observation: SimplifyObservation): string[] {
+  return uniqueStrings(observation.evidence.map((evidence) => evidence.kind));
+}
+
+function observationCacheKey(observation: SimplifyObservation): string {
+  return `${observation.kind}\u0000${observation.summary.trim().toLowerCase()}`;
+}
+
+function findHighestHypothesisOverlap(
+  hypothesis: SimplifyHypothesisDraft,
+  priorEntries: Simplify2OverlapSuppressionEntry[],
+): {
+  entry: Simplify2OverlapSuppressionEntry;
+  score: number;
+  hasNoDistinctScope: boolean;
+} | undefined {
+  const scopePaths = normalizePaths(hypothesis.implementationScope);
+  const titleTokens = extractTokens(hypothesis.title);
+  const summaryTokens = extractTokens(hypothesis.summary);
+  const scopeTokens = uniqueStrings(scopePaths.flatMap((path) => extractTokens(path)));
+  const evidenceRefs = uniqueStrings(hypothesis.evidence.map((evidence) => normalizePath(evidence.ref)));
+  let best:
+    | {
+      entry: Simplify2OverlapSuppressionEntry;
+      score: number;
+      hasNoDistinctScope: boolean;
+    }
+    | undefined;
+
+  for (const entry of priorEntries) {
+    const titleSimilarity = jaccardSimilarity(titleTokens, entry.titleTokens);
+    const summarySimilarity = jaccardSimilarity(summaryTokens, entry.summaryTokens);
+    const scopeOverlap = Math.max(
+      jaccardSimilarity(scopeTokens, entry.normalizedScopeTokens),
+      jaccardSimilarity(scopePaths, entry.touchedFiles),
+    );
+    const evidenceOverlap = jaccardSimilarity(evidenceRefs, entry.evidenceRefs);
+    const score = (0.35 * titleSimilarity)
+      + (0.25 * summarySimilarity)
+      + (0.25 * scopeOverlap)
+      + (0.15 * evidenceOverlap);
+    const hasNoDistinctScope = scopePaths.length > 0 && scopePaths.every((path) => entry.touchedFiles.includes(path));
+    if (!best || score > best.score) {
+      best = { entry, score, hasNoDistinctScope };
+    }
+  }
+
+  return best;
+}
+
+function jaccardSimilarity(left: string[], right: string[]): number {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  if (leftSet.size === 0 || rightSet.size === 0) {
+    return 0;
+  }
+
+  let intersection = 0;
+  for (const item of leftSet) {
+    if (rightSet.has(item)) {
+      intersection += 1;
+    }
+  }
+  const union = new Set([...leftSet, ...rightSet]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
 function compareRisk(left: Risk, right: Risk): number {
   const order: Risk[] = ["low", "medium", "high"];
   return order.indexOf(left) - order.indexOf(right);
@@ -1928,3 +2424,6 @@ void SimplifyObservationType;
 void SimplifyHypothesisDraftType;
 void TestSliceSelectionType;
 void ValidationSummaryType;
+void Simplify2ObservationCacheEntryType;
+void Simplify2ObservationCacheType;
+void Simplify2AnalysisCacheType;

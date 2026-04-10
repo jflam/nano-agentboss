@@ -74,6 +74,8 @@ describe("simplify2 procedure", () => {
     expect(existsSync(join(cwd, ".nanoboss", "simplify2", "architecture-memory.json"))).toBe(true);
     expect(existsSync(join(cwd, ".nanoboss", "simplify2", "journal.json"))).toBe(true);
     expect(existsSync(join(cwd, ".nanoboss", "simplify2", "test-map.json"))).toBe(true);
+    expect(existsSync(join(cwd, ".nanoboss", "simplify2", "observations.json"))).toBe(true);
+    expect(existsSync(join(cwd, ".nanoboss", "simplify2", "analysis-cache.json"))).toBe(true);
   });
 
   test("auto-applies a low-risk slice, continues analysis, and finishes when no next slice stands out", async () => {
@@ -501,6 +503,235 @@ describe("simplify2 procedure", () => {
     const memory = readFileSync(join(cwd, ".nanoboss", "simplify2", "architecture-memory.json"), "utf8");
     expect(memory).toContain("Keep the service/session boundary explicit because it maps to deployment reality.");
     expect(memory).toContain("service/session boundary");
+  });
+
+  test("reuses cached observations on a narrow follow-up iteration instead of rerunning a full refresh", async () => {
+    const cwd = createFixtureWorkspace({
+      sourceFiles: [
+        "src/session/repository.ts",
+        "src/session/helpers.ts",
+        "src/session/formatter.ts",
+      ],
+      tests: [
+        {
+          path: "tests/unit/current-session.test.ts",
+          contents: [
+            'import { expect, test } from "bun:test";',
+            'test("current session slice", () => {',
+            "  expect(true).toBe(true);",
+            "});",
+          ].join("\n"),
+        },
+      ],
+    });
+    const prompts: string[] = [];
+
+    const result = await simplify2Procedure.execute(
+      "focus on continuation persistence",
+      createMockContext(cwd, [
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-repo",
+            kind: "duplication",
+            summary: "Continuation parsing is duplicated in the repository path.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            confidence: "high",
+          },
+          {
+            id: "obs-helper",
+            kind: "test_smell",
+            summary: "Helper tests duplicate formatting setup around current sessions.",
+            evidence: [{ kind: "file", ref: "src/session/helpers.ts" }],
+            confidence: "medium",
+          },
+          {
+            id: "obs-formatter",
+            kind: "duplication",
+            summary: "Formatter setup drifts from the repository invariant wording.",
+            evidence: [{ kind: "file", ref: "src/session/formatter.ts" }],
+            confidence: "medium",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "hyp-canonicalize-parsing",
+            title: "Canonicalize continuation parsing",
+            kind: "canonicalize_representation",
+            summary: "Use one representation for continuation parsing across the session flow.",
+            rationale: "This removes duplicate parsing logic and sharpens the invariant.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            expectedDelta: {
+              duplicateRepresentationsReduced: 1,
+            },
+            risk: "low",
+            needsHumanCheckpoint: false,
+            implementationScope: ["src/session/repository.ts"],
+            testImplications: ["keep a narrow invariant test for current session parsing"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "hyp-canonicalize-parsing",
+            score: 8,
+            reason: "Small, coherent, and high-value cleanup.",
+            needsHumanCheckpoint: false,
+          },
+        ]),
+        {
+          summary: "Canonicalized the continuation parsing path around a single representation.",
+          touchedFiles: ["src/session/repository.ts"],
+          conceptualChanges: ["one representation now owns continuation parsing"],
+          testChanges: ["kept the current session invariant test narrow"],
+          validationNotes: ["expected unit test slice should pass"],
+        },
+        {
+          journalSummary: "Recorded the parsing canonicalization as the new baseline.",
+          memorySummary: "Continuation parsing now has one canonical representation.",
+          memoryUpdates: {
+            concepts: ["continuation parsing"],
+            invariants: ["one canonical continuation representation"],
+            boundaries: ["session persistence"],
+            exceptions: [],
+            staleItems: [],
+          },
+          nextQuestions: [],
+          resolvedHypothesisIds: ["hyp-canonicalize-parsing"],
+          followupRecommendations: ["Look for adjacent continuation test smells on the next run."],
+        },
+        observationBatch([]),
+        hypothesisBatch([]),
+        rankingBatch([]),
+      ], prompts),
+    );
+
+    const normalized = normalizeProcedureResult(result);
+    expect(normalized.display).toContain("No worthwhile simplification hypothesis stood out after the current review cycle.");
+    expect(prompts.filter((prompt) => prompt.includes("helping maintain durable architecture memory")).length).toBe(1);
+    expect(prompts.filter((prompt) => prompt.includes("Scope this observation refresh to these changed paths first")).length).toBe(1);
+    expect(prompts.some((prompt) => prompt.includes("Reuse the notebook context as preserved observations"))).toBe(true);
+
+    const analysisCache = readFileSync(join(cwd, ".nanoboss", "simplify2", "analysis-cache.json"), "utf8");
+    expect(analysisCache).toContain("\"reusableObservationIds\"");
+    expect(analysisCache).toContain("\"staleObservationIds\"");
+  });
+
+  test("suppresses a near-duplicate follow-up hypothesis after applying the same seam", async () => {
+    const cwd = createFixtureWorkspace({
+      sourceFiles: ["src/session/repository.ts"],
+      tests: [
+        {
+          path: "tests/unit/current-session.test.ts",
+          contents: [
+            'import { expect, test } from "bun:test";',
+            'test("current session slice", () => {',
+            "  expect(true).toBe(true);",
+            "});",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    const result = await simplify2Procedure.execute(
+      "focus on continuation persistence",
+      createMockContext(cwd, [
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-repo",
+            kind: "duplication",
+            summary: "Continuation parsing is duplicated in the repository path.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            confidence: "high",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "hyp-canonicalize-parsing",
+            title: "Canonicalize continuation parsing",
+            kind: "canonicalize_representation",
+            summary: "Use one representation for continuation parsing across the session flow.",
+            rationale: "This removes duplicate parsing logic and sharpens the invariant.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            expectedDelta: {
+              duplicateRepresentationsReduced: 1,
+            },
+            risk: "low",
+            needsHumanCheckpoint: false,
+            implementationScope: ["src/session/repository.ts"],
+            testImplications: ["keep a narrow invariant test for current session parsing"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "hyp-canonicalize-parsing",
+            score: 8,
+            reason: "Small, coherent, and high-value cleanup.",
+            needsHumanCheckpoint: false,
+          },
+        ]),
+        {
+          summary: "Canonicalized the continuation parsing path around a single representation.",
+          touchedFiles: ["src/session/repository.ts"],
+          conceptualChanges: ["one representation now owns continuation parsing"],
+          testChanges: ["kept the current session invariant test narrow"],
+          validationNotes: ["expected unit test slice should pass"],
+        },
+        {
+          journalSummary: "Recorded the parsing canonicalization as the new baseline.",
+          memorySummary: "Continuation parsing now has one canonical representation.",
+          memoryUpdates: {
+            concepts: ["continuation parsing"],
+            invariants: ["one canonical continuation representation"],
+            boundaries: ["session persistence"],
+            exceptions: [],
+            staleItems: [],
+          },
+          nextQuestions: [],
+          resolvedHypothesisIds: ["hyp-canonicalize-parsing"],
+          followupRecommendations: [],
+        },
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-repo-repeat",
+            kind: "duplication",
+            summary: "Continuation parsing is duplicated in the repository path.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            confidence: "high",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "hyp-canonicalize-parsing-again",
+            title: "Canonicalize continuation parsing",
+            kind: "canonicalize_representation",
+            summary: "Use one representation for continuation parsing across the session flow.",
+            rationale: "This removes duplicate parsing logic and sharpens the invariant.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            expectedDelta: {
+              duplicateRepresentationsReduced: 1,
+            },
+            risk: "medium",
+            needsHumanCheckpoint: false,
+            implementationScope: ["src/session/repository.ts"],
+            testImplications: ["keep a narrow invariant test for current session parsing"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "hyp-canonicalize-parsing-again",
+            score: 9,
+            reason: "Looks strong but is effectively the same seam.",
+            needsHumanCheckpoint: false,
+          },
+        ]),
+      ]),
+    );
+
+    const normalized = normalizeProcedureResult(result);
+    expect(normalized.pause).toBeUndefined();
+    expect(normalized.display).toContain("No worthwhile simplification hypothesis stood out after the current review cycle.");
   });
 });
 

@@ -77,6 +77,8 @@ Files:
 - `architecture-memory.json`
 - `journal.json`
 - `test-map.json`
+- `observations.json`
+- `analysis-cache.json`
 
 These files are intentionally local and are best-effort added to the repo-local
 git exclude list so they do not show up as normal tracked changes.

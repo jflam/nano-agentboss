@@ -9,6 +9,16 @@ import {
   parseJunitReport,
   renderCompactTestOutput,
 } from "../src/util/compact-test.ts";
+import {
+  createCompactTestCacheKey,
+  findPassingCompactTestCacheEntry,
+  getCompactTestCachePath,
+  loadCompactTestCache,
+  normalizeCompactTestCommand,
+  normalizeSelectedTests,
+  upsertCompactTestCacheEntry,
+  writeCompactTestCache,
+} from "../src/util/compact-test-cache.ts";
 
 interface CompactTestRunResult {
   rawOutput: string;
@@ -132,6 +142,19 @@ function writeResult(result: CompactTestRunResult): void {
 }
 
 async function runBunTest(args: string[]): Promise<CompactTestRunResult> {
+  const selectedTests = normalizeSelectedTests(args);
+  const cachePath = getCompactTestCachePath(process.cwd());
+  const cacheKey = createCompactTestCacheKey(process.cwd(), selectedTests);
+  const cached = findPassingCompactTestCacheEntry(loadCompactTestCache(cachePath), cacheKey);
+  if (cached) {
+    const command = cached.command || normalizeCompactTestCommand(selectedTests);
+    return {
+      rawOutput: `test-clean cache hit: ${command} for repo ${cacheKey.repoFingerprint}\n`,
+      report: cached.report,
+      exitCode: 0,
+    };
+  }
+
   const tempDir = mkdtempSync(join(tmpdir(), "nanoboss-compact-test-"));
   const junitPath = join(tempDir, "report.xml");
   const streamProgress = process.env[STREAM_PROGRESS_ENV] === "1";
@@ -179,6 +202,23 @@ async function runBunTest(args: string[]): Promise<CompactTestRunResult> {
     const rawOutput = [stdout, stderr].filter(Boolean).join("\n");
     const xml = existsSync(junitPath) ? readFileSync(junitPath, "utf8") : "";
     const report = xml ? parseJunitReport(xml) : undefined;
+    if (exitCode === 0) {
+      const cache = loadCompactTestCache(cachePath);
+      writeCompactTestCache(cachePath, upsertCompactTestCacheEntry(cache, {
+        repoFingerprint: cacheKey.repoFingerprint,
+        commandFingerprint: cacheKey.commandFingerprint,
+        runtimeFingerprint: cacheKey.runtimeFingerprint,
+        command: normalizeCompactTestCommand(selectedTests),
+        selectedTests,
+        status: "passed",
+        passedAt: new Date().toISOString(),
+        durationMs: Math.round((report?.timeSeconds ?? 0) * 1000),
+        summary: report
+          ? `${report.passed} pass, ${report.skipped} skip, ${report.failed} fail, ${report.total} total`
+          : undefined,
+        report,
+      }));
+    }
     return { rawOutput, report, exitCode };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });

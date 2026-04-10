@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   extractFailureDetails,
@@ -6,6 +9,13 @@ import {
   parseJunitReport,
   renderCompactTestOutput,
 } from "../../src/util/compact-test.ts";
+import {
+  computeCompactTestCommandFingerprint,
+  findPassingCompactTestCacheEntry,
+  loadCompactTestCache,
+  upsertCompactTestCacheEntry,
+  writeCompactTestCache,
+} from "../../src/util/compact-test-cache.ts";
 
 describe("compact test output", () => {
   test("parses pass skip and fail markers from junit xml", () => {
@@ -118,5 +128,40 @@ describe("compact test output", () => {
       failed: 1,
       timeSeconds: 4.2,
     });
+  });
+
+  test("reuses a passing compact-test cache entry only on an exact key match", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "compact-test-cache-"));
+    const cachePath = join(cwd, "test-clean.json");
+    const commandFingerprint = computeCompactTestCommandFingerprint(["tests/unit/a.test.ts"]);
+    writeCompactTestCache(cachePath, upsertCompactTestCacheEntry(loadCompactTestCache(cachePath), {
+      repoFingerprint: "repo-a",
+      commandFingerprint,
+      runtimeFingerprint: "runtime-a",
+      command: "bun test --only-failures tests/unit/a.test.ts",
+      selectedTests: ["tests/unit/a.test.ts"],
+      status: "passed",
+      passedAt: "2026-04-09T00:00:00.000Z",
+      report: {
+        statuses: ["."],
+        total: 1,
+        passed: 1,
+        skipped: 0,
+        failed: 0,
+        timeSeconds: 0.01,
+      },
+    }));
+
+    const cache = loadCompactTestCache(cachePath);
+    expect(findPassingCompactTestCacheEntry(cache, {
+      repoFingerprint: "repo-a",
+      commandFingerprint,
+      runtimeFingerprint: "runtime-a",
+    })?.command).toContain("tests/unit/a.test.ts");
+    expect(findPassingCompactTestCacheEntry(cache, {
+      repoFingerprint: "repo-b",
+      commandFingerprint,
+      runtimeFingerprint: "runtime-a",
+    })).toBeUndefined();
   });
 });
