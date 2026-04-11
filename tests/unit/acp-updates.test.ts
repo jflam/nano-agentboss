@@ -11,7 +11,7 @@ describe("acp-updates", () => {
     expect(parseAssistantNoticeText("normal response")).toBeUndefined();
   });
 
-  test("omits assistant notices from collected raw text", () => {
+  test("omits assistant notices and ui markers from collected raw text", () => {
     expect(collectTextSessionUpdates([
       {
         sessionUpdate: "agent_message_chunk",
@@ -25,6 +25,13 @@ describe("acp-updates", () => {
         content: {
           type: "text",
           text: "Info: Operation cancelled by user",
+        },
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: '[[nanoboss-ui]] {"type":"status","procedure":"research","message":"Gathering sources"}\n',
         },
       },
       {

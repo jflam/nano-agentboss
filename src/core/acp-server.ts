@@ -2,11 +2,13 @@ import * as acp from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 
 import { getBuildLabel } from "./build-info.ts";
+import type { ProcedureUiEvent, SessionUpdateEmitter } from "./context.ts";
 import { parseDownstreamAgentSelection } from "./downstream-agent-selection.ts";
 import { NanobossService } from "./service.ts";
 import type { DownstreamAgentSelection } from "./types.ts";
+import { toProcedureUiSessionUpdate } from "./ui-cli.ts";
 
-class QueuedSessionUpdateEmitter {
+class QueuedSessionUpdateEmitter implements SessionUpdateEmitter {
   private queue = Promise.resolve();
 
   constructor(
@@ -25,6 +27,10 @@ class QueuedSessionUpdateEmitter {
       .catch((error: unknown) => {
         console.error("failed to emit session update", error);
       });
+  }
+
+  emitUiEvent(event: ProcedureUiEvent): void {
+    this.emit(toProcedureUiSessionUpdate(event));
   }
 
   flush(): Promise<void> {

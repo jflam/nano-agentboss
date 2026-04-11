@@ -31,7 +31,7 @@ import type {
 
 type ActiveCell = ReturnType<SessionStore["startCell"]>;
 
-export type { PreparedDefaultPrompt, SessionUpdateEmitter } from "./context-shared.ts";
+export type { PreparedDefaultPrompt, ProcedureUiEvent, SessionUpdateEmitter } from "./context-shared.ts";
 
 interface CommandContextParams {
   cwd: string;

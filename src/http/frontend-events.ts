@@ -1,6 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { parseAssistantNoticeText } from "../agent/acp-updates.ts";
+import { parseProcedureUiMarker } from "../core/ui-cli.ts";
 import type { ProcedureMemoryCard } from "../core/memory-cards.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
 import {
@@ -262,6 +263,11 @@ export function mapSessionUpdateToFrontendEvents(
         return [];
       }
 
+      const procedureUi = parseProcedureUiMarker(update.content.text);
+      if (procedureUi) {
+        return [mapProcedureUiEventToFrontendEvent(runId, procedureUi)];
+      }
+
       const notice = parseAssistantNoticeText(update.content.text);
       if (notice) {
         return [
@@ -361,6 +367,34 @@ export function mapSessionUpdateToFrontendEvents(
       }
     default:
       return [];
+  }
+}
+
+function mapProcedureUiEventToFrontendEvent(
+  runId: string,
+  event: ReturnType<typeof parseProcedureUiMarker> extends infer T ? Exclude<T, undefined> : never,
+): FrontendEvent {
+  switch (event.type) {
+    case "status":
+      return {
+        type: "procedure_status",
+        runId,
+        procedure: event.procedure,
+        phase: event.phase,
+        message: event.message,
+        iteration: event.iteration,
+        autoApprove: event.autoApprove,
+        waiting: event.waiting,
+      };
+    case "card":
+      return {
+        type: "procedure_card",
+        runId,
+        procedure: event.procedure,
+        kind: event.kind,
+        title: event.title,
+        markdown: event.markdown,
+      };
   }
 }
 

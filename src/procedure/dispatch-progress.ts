@@ -3,8 +3,9 @@ import type * as acp from "@agentclientprotocol/sdk";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import type { SessionUpdateEmitter } from "../core/context.ts";
+import type { ProcedureUiEvent, SessionUpdateEmitter } from "../core/context.ts";
 import type { AgentTokenUsage } from "../core/types.ts";
+import { toProcedureUiSessionUpdate } from "../core/ui-cli.ts";
 
 const PROCEDURE_DISPATCH_PROGRESS_DIR = "procedure-dispatch-progress";
 
@@ -90,6 +91,10 @@ export class ProcedureDispatchProgressEmitter implements SessionUpdateEmitter {
     if (tokenUsage) {
       this.latestTokenUsage = tokenUsage;
     }
+  }
+
+  emitUiEvent(event: ProcedureUiEvent): void {
+    this.emit(toProcedureUiSessionUpdate(event));
   }
 
   flush(): Promise<void> {

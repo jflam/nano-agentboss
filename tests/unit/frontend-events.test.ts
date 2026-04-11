@@ -214,6 +214,48 @@ describe("frontend-events", () => {
     expect(updated?.type === "tool_updated" && updated.errorPreview?.bodyLines?.[0]?.length).toBeLessThanOrEqual(160);
   });
 
+  test("maps nanoboss ui markers into structured procedure status and card events", () => {
+    expect(
+      mapSessionUpdateToFrontendEvents("run-1", {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: '[[nanoboss-ui]] {"type":"status","procedure":"research","phase":"collect","message":"Gathering sources","iteration":"2/3","waiting":true}\n',
+        },
+      }),
+    ).toEqual([
+      {
+        type: "procedure_status",
+        runId: "run-1",
+        procedure: "research",
+        phase: "collect",
+        message: "Gathering sources",
+        iteration: "2/3",
+        autoApprove: undefined,
+        waiting: true,
+      },
+    ]);
+
+    expect(
+      mapSessionUpdateToFrontendEvents("run-1", {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: '[[nanoboss-ui]] {"type":"card","procedure":"research","kind":"report","title":"Checkpoint","markdown":"- cited source"}\n',
+        },
+      }),
+    ).toEqual([
+      {
+        type: "procedure_card",
+        runId: "run-1",
+        procedure: "research",
+        kind: "report",
+        title: "Checkpoint",
+        markdown: "- cited source",
+      },
+    ]);
+  });
+
   test("normalizes provider-specific read payloads into consistent previews", () => {
     const [started] = mapSessionUpdateToFrontendEvents("run-1", {
       sessionUpdate: "tool_call",
