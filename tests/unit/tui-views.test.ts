@@ -623,6 +623,37 @@ describe("NanobossAppView", () => {
     expect(stoppedLine).toContain("\u001b[38;2;253;186;116mStopped.\u001b[39m");
   });
 
+  test("renders markdown inside assistant cards instead of raw markdown syntax", () => {
+    const view = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo" }),
+        sessionId: "session-1",
+        turns: [
+          {
+            id: "assistant-1",
+            role: "assistant" as const,
+            markdown: "## Research checkpoint\n\n_report_\n\n- cited source",
+            status: "complete" as const,
+            displayStyle: "card" as const,
+            cardTone: "info" as const,
+          },
+        ],
+        transcriptItems: [{ type: "turn" as const, id: "assistant-1" }],
+      },
+    );
+
+    const plain = stripAnsi(view.render(120).join("\n"));
+
+    expect(plain).toContain("Research checkpoint");
+    expect(plain).not.toContain("## Research checkpoint");
+    expect(plain).not.toContain("_report_");
+  });
+
   test("renders info assistant notices as cards", () => {
     const view = new NanobossAppView(
       {

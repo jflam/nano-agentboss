@@ -475,6 +475,40 @@ describe("tui reducer", () => {
     expect(state.activeAssistantTurnId).toBe("assistant-3");
   });
 
+  test("renders procedure cards as markdown-oriented assistant cards", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "research",
+        prompt: "hello",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("procedure_card", {
+        runId: "run-1",
+        procedure: "research",
+        kind: "report",
+        title: "Research checkpoint",
+        markdown: "- cited source\n- open question",
+      }),
+    });
+
+    expect(state.turns.at(-1)).toMatchObject({
+      role: "assistant",
+      displayStyle: "card",
+      cardTone: "info",
+      markdown: "## Research checkpoint\n\n_report_\n\n- cited source\n- open question",
+      meta: {
+        procedure: "research",
+      },
+    });
+  });
+
   test("ignores stale run events after a newer run has started", () => {
     let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
 

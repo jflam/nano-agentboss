@@ -828,7 +828,9 @@ function appendProcedureCard(
 
 function renderProcedureCardMarkdown(card: Extract<FrontendEventEnvelope, { type: "procedure_card" }>['data']): string {
   return [
-    `[${card.kind}] ${card.title}`,
+    `## ${card.title}`,
+    "",
+    `_${card.kind}_`,
     "",
     card.markdown.trim(),
   ].filter((line, index, lines) => line.length > 0 || index < lines.length - 1).join("\n");
