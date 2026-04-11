@@ -1209,7 +1209,7 @@ function createMockContext(
       },
       data: next,
     } as RunResult;
-  }) as CommandContext["callAgent"];
+  }) as CommandContext["agent"]["run"];
   const callProcedure = (async (name: string, prompt: string) => {
     options.procedureCalls?.push({ name, prompt });
     const next = options.procedureResults?.shift();
@@ -1253,8 +1253,8 @@ function createMockContext(
     }
 
     throw new Error(`Unexpected callProcedure ${name}`);
-  }) as CommandContext["callProcedure"];
-  const refs: CommandContext["refs"] = {
+  }) as CommandContext["procedures"]["run"];
+  const refs: CommandContext["state"]["refs"] = {
     async read() {
       throw new Error("Not implemented in test");
     },
@@ -1265,7 +1265,7 @@ function createMockContext(
       throw new Error("Not implemented in test");
     },
   };
-  const session: CommandContext["session"] = {
+  const runs: CommandContext["state"]["runs"] = {
     async recent() {
       return [];
     },
@@ -1292,10 +1292,10 @@ function createMockContext(
     },
   };
   const agent: CommandContext["agent"] = {
-    run: callAgent as CommandContext["agent"]["run"],
+    run: callAgent,
     session() {
       return {
-        run: callAgent as CommandContext["agent"]["run"],
+        run: callAgent,
       };
     },
   };
@@ -1305,7 +1305,7 @@ function createMockContext(
     sessionId: "test-session",
     agent,
     state: {
-      runs: session,
+      runs,
       refs,
     },
     ui: {
@@ -1317,26 +1317,23 @@ function createMockContext(
       card() {},
     },
     procedures: {
-      run: callProcedure as CommandContext["procedures"]["run"],
+      run: callProcedure,
     },
-    refs,
-    session,
+    session: {
+      getDefaultAgentConfig() {
+        return defaultAgentConfig;
+      },
+      setDefaultAgentSelection() {
+        return defaultAgentConfig;
+      },
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
+      },
+      async getDefaultAgentTokenUsage() {
+        return undefined;
+      },
+    },
     assertNotCancelled() {},
-    getDefaultAgentConfig() {
-      return defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    callAgent,
-    callProcedure,
-    print() {},
   };
 }
 

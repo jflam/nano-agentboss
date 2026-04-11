@@ -305,20 +305,6 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
     }
   }
 
-  async callAgent(
-    prompt: string,
-    descriptorOrOptions?: TypeDescriptor<KernelValue> | CommandCallAgentOptions,
-    maybeOptions?: CommandCallAgentOptions,
-  ) {
-    const descriptor = isTypeDescriptor(descriptorOrOptions)
-      ? descriptorOrOptions
-      : undefined;
-    const options = (descriptor ? maybeOptions : descriptorOrOptions) as CommandCallAgentOptions | undefined;
-
-    return descriptor
-      ? await this.run(prompt, descriptor, options)
-      : await this.run(prompt, options);
-  }
 }
 
 class BoundAgentInvocationApiImpl implements BoundAgentInvocationApi {

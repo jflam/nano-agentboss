@@ -170,7 +170,7 @@ function createMockContext(params: {
     args: [],
     cwd: params.cwd,
   };
-  const refs: CommandContext["refs"] = {
+  const refs: CommandContext["state"]["refs"] = {
     async read() {
       throw new Error("Not implemented in test");
     },
@@ -181,7 +181,7 @@ function createMockContext(params: {
       throw new Error("Not implemented in test");
     },
   };
-  const session: CommandContext["session"] = {
+  const runs: CommandContext["state"]["runs"] = {
     async recent() {
       return [];
     },
@@ -239,7 +239,7 @@ function createMockContext(params: {
     sessionId: "test-session",
     agent,
     state: {
-      runs: session,
+      runs,
       refs,
     },
     ui,
@@ -248,30 +248,21 @@ function createMockContext(params: {
         throw new Error("Not implemented in test");
       },
     },
-    refs,
-    session,
+    session: {
+      getDefaultAgentConfig() {
+        return defaultAgentConfig;
+      },
+      setDefaultAgentSelection() {
+        return defaultAgentConfig;
+      },
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
+      },
+      async getDefaultAgentTokenUsage() {
+        return undefined;
+      },
+    },
     assertNotCancelled() {},
-    getDefaultAgentConfig() {
-      return defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    async callAgent() {
-      throw new Error("Legacy ctx.callAgent shim should not be used in this test");
-    },
-    async callProcedure() {
-      throw new Error("Not implemented in test");
-    },
-    print() {
-      throw new Error("Legacy ctx.print shim should not be used in this test");
-    },
   };
 }
 

@@ -33,7 +33,7 @@ export default {
       };
     }
 
-    const firstPassAgent = ctx.getDefaultAgentConfig();
+    const firstPassAgent = ctx.session.getDefaultAgentConfig();
     const firstPassAgentLabel = formatAgentBanner(firstPassAgent);
 
     ctx.ui.text("Starting second-opinion workflow...\n");

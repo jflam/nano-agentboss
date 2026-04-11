@@ -7,6 +7,7 @@ import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { SessionStore } from "../../src/session/index.ts";
+import type { DownstreamAgentConfig, DownstreamAgentSelection } from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];
 
@@ -20,56 +21,39 @@ afterEach(() => {
 });
 
 describe("CommandContextImpl named procedure API", () => {
-  test("exposes agent, state, ui, and procedures alongside legacy aliases", () => {
-    const ctx = createContext();
+  test("exposes agent, state, ui, procedures, and session surfaces", () => {
+    const expectedConfig: DownstreamAgentConfig = {
+      provider: "codex",
+      command: "bun",
+      args: ["run", "mock-agent.ts"],
+      model: "gpt-5.4/high",
+    };
+    let currentConfig = expectedConfig;
+    const ctx = createContext({
+      getDefaultAgentConfig: () => currentConfig,
+      setDefaultAgentSelection: (selection) => {
+        currentConfig = {
+          ...expectedConfig,
+          provider: selection.provider,
+          model: selection.model,
+        };
+        return currentConfig;
+      },
+    });
 
     expect(ctx.agent).toBeDefined();
     expect(ctx.state).toBeDefined();
     expect(ctx.ui).toBeDefined();
     expect(ctx.procedures).toBeDefined();
-    expect(ctx.state.refs).toBe(ctx.refs);
-    expect(ctx.state.runs).toBe(ctx.session);
-  });
-
-  test("compatibility shims delegate to the named sub-apis", async () => {
-    const ctx = createContext();
-    const agentResult = {
-      cell: {
-        sessionId: "session",
-        cellId: "agent-1",
-      },
-      data: "ok",
-    };
-    const procedureResult = {
-      cell: {
-        sessionId: "session",
-        cellId: "proc-1",
-      },
-      data: { done: true },
-    };
-    const seen: string[] = [];
-
-    Reflect.set(ctx.agent as object, "run", async () => {
-      seen.push("agent.run");
-      return agentResult;
+    expect(ctx.session).toBeDefined();
+    expect(ctx.state.refs).toBeDefined();
+    expect(ctx.state.runs).toBeDefined();
+    expect(ctx.session.getDefaultAgentConfig()).toEqual(expectedConfig);
+    expect(ctx.session.setDefaultAgentSelection({ provider: "copilot", model: "gpt-5.4/xhigh" })).toEqual({
+      ...expectedConfig,
+      provider: "copilot",
+      model: "gpt-5.4/xhigh",
     });
-    Reflect.set(ctx.procedures as object, "run", async () => {
-      seen.push("procedures.run");
-      return procedureResult;
-    });
-    Reflect.set(ctx.ui as object, "text", (text: string) => {
-      seen.push(`ui.text:${text}`);
-    });
-
-    expect(await ctx.callAgent("hello")).toBe(agentResult);
-    expect(await ctx.callProcedure("child", "hello")).toBe(procedureResult);
-    ctx.print("progress");
-
-    expect(seen).toEqual([
-      "agent.run",
-      "procedures.run",
-      "ui.text:progress",
-    ]);
   });
 
   test("ctx.agent.session(mode).run binds the session mode for convenience", async () => {
@@ -101,7 +85,10 @@ describe("CommandContextImpl named procedure API", () => {
   });
 });
 
-function createContext(): CommandContextImpl {
+function createContext(overrides: {
+  getDefaultAgentConfig?: () => DownstreamAgentConfig;
+  setDefaultAgentSelection?: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+} = {}): CommandContextImpl {
   const cwd = mkdtempSync(join(tmpdir(), "nab-context-api-"));
   tempDirs.push(cwd);
 
@@ -128,5 +115,7 @@ function createContext(): CommandContextImpl {
       input: "hello",
       kind: "top_level",
     }),
+    getDefaultAgentConfig: overrides.getDefaultAgentConfig,
+    setDefaultAgentSelection: overrides.setDefaultAgentSelection,
   });
 }

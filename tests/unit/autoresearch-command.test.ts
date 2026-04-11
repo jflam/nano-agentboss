@@ -678,8 +678,8 @@ function createMockContext(
       },
       data: await handler(prompt, callCount),
     } as RunResult;
-  }) as CommandContext["callAgent"];
-  const refs: CommandContext["refs"] = {
+  }) as CommandContext["agent"]["run"];
+  const refs: CommandContext["state"]["refs"] = {
     async read() {
       throw new Error("Not implemented in test");
     },
@@ -690,7 +690,7 @@ function createMockContext(
       throw new Error("Not implemented in test");
     },
   };
-  const session: CommandContext["session"] = {
+  const runs: CommandContext["state"]["runs"] = {
     async recent() {
       return [];
     },
@@ -717,10 +717,10 @@ function createMockContext(
     },
   };
   const agent: CommandContext["agent"] = {
-    run: callAgent as CommandContext["agent"]["run"],
+    run: callAgent,
     session() {
       return {
-        run: callAgent as CommandContext["agent"]["run"],
+        run: callAgent,
       };
     },
   };
@@ -730,7 +730,7 @@ function createMockContext(
     sessionId: options.sessionId ?? "test-session",
     agent,
     state: {
-      runs: session,
+      runs,
       refs,
     },
     ui: {
@@ -754,30 +754,23 @@ function createMockContext(
         throw new Error("Not implemented in test");
       },
     },
-    refs,
-    session,
+    session: {
+      getDefaultAgentConfig() {
+        return defaultAgentConfig;
+      },
+      setDefaultAgentSelection() {
+        return defaultAgentConfig;
+      },
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
+      },
+      async getDefaultAgentTokenUsage() {
+        return undefined;
+      },
+    },
     assertNotCancelled() {
       cancellationCheckCount += 1;
       options.assertNotCancelled?.(cancellationCheckCount);
-    },
-    getDefaultAgentConfig() {
-      return defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    callAgent,
-    async callProcedure() {
-      throw new Error("Not implemented in test");
-    },
-    print(text: string) {
-      printed.push(text);
     },
   };
 }

@@ -14,19 +14,13 @@ import type { RunLogger } from "./logger.ts";
 import type { RunTimingTrace } from "./timing-trace.ts";
 import type {
   AgentInvocationApi,
-  CommandCallAgentOptions,
-  CommandCallProcedureOptions,
   CommandContext,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
-  KernelValue,
   ProcedureInvocationApi,
   ProcedureRegistryLike,
-  RefsApi,
-  RunResult,
   SessionApi,
   StateApi,
-  TypeDescriptor,
 } from "./types.ts";
 
 type ActiveCell = ReturnType<SessionStore["startCell"]>;
@@ -65,7 +59,6 @@ export class CommandContextImpl implements CommandContext {
   readonly state: StateApi;
   readonly ui: UiApi;
   readonly procedures: ProcedureInvocationApi;
-  readonly refs: RefsApi;
   readonly session: SessionApi;
 
   private readonly logger: RunLogger;
@@ -88,10 +81,6 @@ export class CommandContextImpl implements CommandContext {
   private readonly assertCanStartBoundaryValue?: () => void;
   private readonly timingTrace?: RunTimingTrace;
   private readonly agentRuntimeCapabilityMode: AgentRuntimeCapabilityMode;
-
-  private readonly contextSessionApi: ContextSessionApiImpl;
-  private readonly agentInvocationApi: AgentInvocationApiImpl;
-  private readonly procedureInvocationApi: ProcedureInvocationApiImpl;
 
   constructor(params: CommandContextParams) {
     this.cwd = params.cwd;
@@ -119,10 +108,8 @@ export class CommandContextImpl implements CommandContext {
     this.timingTrace = params.timingTrace;
     this.agentRuntimeCapabilityMode = params.agentRuntimeCapabilityMode ?? "mcp";
     this.state = new CommandState(this.store, this.cwd, this.cell.cell.cellId);
-    this.refs = this.state.refs;
-    this.session = this.state.runs;
 
-    this.contextSessionApi = new ContextSessionApiImpl({
+    const contextSessionApi = new ContextSessionApiImpl({
       cwd: this.cwd,
       defaultConversation: () => this.defaultConversation,
       getDefaultAgentConfig: () => this.getDefaultAgentConfigValue,
@@ -134,6 +121,7 @@ export class CommandContextImpl implements CommandContext {
       rootPrepareDefaultPrompt: () => this.rootPrepareDefaultPromptValue,
       runtimeCapabilityMode: () => this.agentRuntimeCapabilityMode,
     });
+    this.session = contextSessionApi;
 
     const recorder = new AgentRunRecorder({
       logger: this.logger,
@@ -145,20 +133,19 @@ export class CommandContextImpl implements CommandContext {
       softStopSignal: this.softStopSignal,
       timingTrace: this.timingTrace,
     });
-    this.agentInvocationApi = new AgentInvocationApiImpl({
+    this.agent = new AgentInvocationApiImpl({
       cwd: this.cwd,
       signal: this.signal,
       softStopSignal: this.softStopSignal,
       store: this.store,
       emitter: this.emitter,
-      sessionManager: this.contextSessionApi,
+      sessionManager: contextSessionApi,
       assertCanStartBoundary: () => this.assertCanStartBoundary(),
       recorder,
       timingTrace: this.timingTrace,
     });
-    this.agent = this.agentInvocationApi;
 
-    this.procedureInvocationApi = new ProcedureInvocationApiImpl({
+    this.procedures = new ProcedureInvocationApiImpl({
       cwd: this.cwd,
       sessionId: this.sessionId,
       logger: this.logger,
@@ -167,14 +154,13 @@ export class CommandContextImpl implements CommandContext {
       store: this.store,
       signal: this.signal,
       softStopSignal: this.softStopSignal,
-      sessionManager: this.contextSessionApi,
+      sessionManager: contextSessionApi,
       assertCanStartBoundary: () => this.assertCanStartBoundary(),
       timingTrace: this.timingTrace,
       spanId: this.spanId,
       cell: this.cell,
       createChildContext: (binding) => this.createChildContext(binding),
     });
-    this.procedures = this.procedureInvocationApi;
     this.ui = new UiApiImpl(
       this.store,
       this.cell,
@@ -185,60 +171,8 @@ export class CommandContextImpl implements CommandContext {
     );
   }
 
-  getDefaultAgentConfig(): DownstreamAgentConfig {
-    return this.contextSessionApi.getDefaultAgentConfig();
-  }
-
-  setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig {
-    return this.contextSessionApi.setDefaultAgentSelection(selection);
-  }
-
-  async getDefaultAgentTokenSnapshot() {
-    return await this.contextSessionApi.getDefaultAgentTokenSnapshot();
-  }
-
-  async getDefaultAgentTokenUsage() {
-    return await this.contextSessionApi.getDefaultAgentTokenUsage();
-  }
-
   assertNotCancelled(): void {
     this.assertCanStartBoundary();
-  }
-
-  async callAgent(
-    prompt: string,
-    options?: CommandCallAgentOptions,
-  ): Promise<RunResult<string>>;
-  async callAgent<T extends KernelValue>(
-    prompt: string,
-    descriptor: TypeDescriptor<T>,
-    options?: CommandCallAgentOptions,
-  ): Promise<RunResult<T>>;
-  async callAgent<T extends KernelValue>(
-    prompt: string,
-    descriptorOrOptions?: TypeDescriptor<T> | CommandCallAgentOptions,
-    maybeOptions?: CommandCallAgentOptions,
-  ): Promise<RunResult<T> | RunResult<string>> {
-    const descriptor = isTypeDescriptor(descriptorOrOptions)
-      ? descriptorOrOptions
-      : undefined;
-    const options = (descriptor ? maybeOptions : descriptorOrOptions) as CommandCallAgentOptions | undefined;
-
-    return descriptor
-      ? await this.agent.run(prompt, descriptor, options) as RunResult<T>
-      : await this.agent.run(prompt, options) as RunResult<string>;
-  }
-
-  async callProcedure<T extends KernelValue = KernelValue>(
-    name: string,
-    prompt: string,
-    options?: CommandCallProcedureOptions,
-  ): Promise<RunResult<T>> {
-    return await this.procedures.run<T>(name, prompt, options) as RunResult<T>;
-  }
-
-  print(text: string): void {
-    this.ui.text(text);
   }
 
   private createChildContext(binding: ChildContextBindingParams): CommandContextImpl {
@@ -279,14 +213,4 @@ export class CommandContextImpl implements CommandContext {
       throw new RunCancelledError(defaultCancellationMessage("abort"), "abort");
     }
   }
-}
-
-function isTypeDescriptor<T>(value: unknown): value is TypeDescriptor<T> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "schema" in value &&
-    "validate" in value &&
-    typeof (value as { validate: unknown }).validate === "function"
-  );
 }

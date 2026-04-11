@@ -48,22 +48,21 @@ describe("create procedure", () => {
         runs: {} as never,
         refs: {} as never,
       },
-      print() {},
-      getDefaultAgentConfig() {
-        throw new Error("getDefaultAgentConfig should not be called");
-      },
-      setDefaultAgentSelection() {
-        throw new Error("setDefaultAgentSelection should not be called");
+      session: {
+        getDefaultAgentConfig() {
+          throw new Error("session.getDefaultAgentConfig should not be called");
+        },
+        setDefaultAgentSelection() {
+          throw new Error("session.setDefaultAgentSelection should not be called");
+        },
+        async getDefaultAgentTokenSnapshot() {
+          return undefined;
+        },
+        async getDefaultAgentTokenUsage() {
+          return undefined;
+        },
       },
       assertNotCancelled() {},
-      callProcedure() {
-        throw new Error("callProcedure should not be called");
-      },
-      session: {} as never,
-      refs: {} as never,
-      async callAgent() {
-        throw new Error("callAgent should not be called");
-      },
     } as never)).rejects.toThrow("Generated procedure name was invalid: Procedure name segment was invalid");
   });
 });

@@ -143,7 +143,7 @@ describe("ProcedureDispatchJobManager", () => {
               name: "review",
               description: "test review",
               async execute(_prompt, ctx) {
-                await ctx.callAgent("cooperative cancel demo", { stream: false });
+                await ctx.agent.run("cooperative cancel demo", { stream: false });
                 return { display: "done" };
               },
             }

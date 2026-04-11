@@ -233,9 +233,9 @@ flowchart TD
   Reset --> Analyze
 ```
 
-## CALLAGENT SESSION CONTEXT
+## AGENT SESSION CONTEXT
 
-All direct `ctx.callAgent(...)` invocations inside `procedures/simplify2.ts` omit
+All direct `ctx.agent.run(...)` invocations inside `procedures/simplify2.ts` omit
 `session`, so they use the default agent session mode: `"fresh"`. In nanoboss,
 that means each call runs in a new isolated downstream ACP session rather than
 continuing the parent/default conversation.
@@ -243,12 +243,12 @@ continuing the parent/default conversation.
 This behavior comes from the core API:
 
 - `CommandCallAgentOptions.session` defaults to `"fresh"` ([src/core/types.ts](/Users/jflam/agentboss/workspaces/nanoboss/src/core/types.ts))
-- `CommandContextImpl.callAgent()` resolves `const sessionMode = options?.session ?? "fresh"` ([src/core/context.ts](/Users/jflam/agentboss/workspaces/nanoboss/src/core/context.ts))
+- `AgentInvocationApiImpl.run()` resolves `const sessionMode = options?.session ?? "fresh"` ([src/core/context-agent.ts](/Users/jflam/agentboss/workspaces/nanoboss/src/core/context-agent.ts))
 
 So `/simplify2` is a multi-step loop in *procedure state*, but not a single
 continuous downstream-agent conversation.
 
-### Direct `callAgent()` sites in `/simplify2`
+### Direct `ctx.agent.run()` sites in `/simplify2`
 
 | Phase | Source | Output type | Session context |
 | --- | --- | --- | --- |
@@ -264,12 +264,12 @@ continuous downstream-agent conversation.
 
 The commit step is slightly different:
 
-1. `/simplify2` calls `ctx.callProcedure("nanoboss/commit", ...)` at
+1. `/simplify2` calls `ctx.procedures.run("nanoboss/commit", ...)` at
    `procedures/simplify2.ts:964`
-2. `callProcedure()` defaults to `session: "inherit"`, so the child procedure
+2. `ctx.procedures.run()` defaults to `session: "inherit"`, so the child procedure
    inherits the caller's default-conversation binding
 3. inside `nanoboss/commit`, the actual commit-authoring agent call is still
-   `ctx.callAgent(..., { stream: false })` with no explicit `session`, so that
+   `ctx.agent.run(..., { stream: false })` with no explicit `session`, so that
    nested call is also `fresh` -> a new child ACP session
 
 That means the procedure context is inherited, but the commit authoring agent

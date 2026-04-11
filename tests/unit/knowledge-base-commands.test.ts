@@ -392,7 +392,7 @@ describe("knowledge-base procedures", () => {
     expect(harness.prints).toContain("Knowledge base refresh complete.\n");
   });
 
-  test("/kb/refresh can use ctx.procedures and ctx.ui without legacy shims", async () => {
+  test("/kb/refresh can use ctx.procedures and ctx.ui directly", async () => {
     const cwd = createWorkspace();
     const prints: string[] = [];
     const procedureCalls: Array<{ name: string; prompt: string }> = [];
@@ -402,7 +402,7 @@ describe("knowledge-base procedures", () => {
       args: [],
       cwd,
     };
-    const refs: CommandContext["refs"] = {
+    const refs: CommandContext["state"]["refs"] = {
       async read() {
         throw new Error("Not implemented in test");
       },
@@ -413,7 +413,7 @@ describe("knowledge-base procedures", () => {
         throw new Error("Not implemented in test");
       },
     };
-    const session: CommandContext["session"] = {
+    const runs: CommandContext["state"]["runs"] = {
       async recent() {
         return [];
       },
@@ -456,7 +456,7 @@ describe("knowledge-base procedures", () => {
         },
       },
       state: {
-        runs: session,
+        runs,
         refs,
       },
       ui: {
@@ -523,30 +523,21 @@ describe("knowledge-base procedures", () => {
           }
         }) as CommandContext["procedures"]["run"],
       },
-      refs,
-      session,
+      session: {
+        getDefaultAgentConfig() {
+          return defaultAgentConfig;
+        },
+        setDefaultAgentSelection() {
+          return defaultAgentConfig;
+        },
+        async getDefaultAgentTokenSnapshot() {
+          return undefined;
+        },
+        async getDefaultAgentTokenUsage() {
+          return undefined;
+        },
+      },
       assertNotCancelled() {},
-      getDefaultAgentConfig() {
-        return defaultAgentConfig;
-      },
-      setDefaultAgentSelection() {
-        return defaultAgentConfig;
-      },
-      async getDefaultAgentTokenSnapshot() {
-        return undefined;
-      },
-      async getDefaultAgentTokenUsage() {
-        return undefined;
-      },
-      async callAgent() {
-        throw new Error("Legacy ctx.callAgent shim should not be used in this test");
-      },
-      async callProcedure() {
-        throw new Error("Legacy ctx.callProcedure shim should not be used in this test");
-      },
-      print() {
-        throw new Error("Legacy ctx.print shim should not be used in this test");
-      },
     };
 
     const result = await kbRefreshProcedure.execute("", context);
@@ -886,7 +877,7 @@ function createMockContext(params: {
       data: params.getNextAgentResult(),
     } as RunResult;
   };
-  const refs: CommandContext["refs"] = {
+  const refs: CommandContext["state"]["refs"] = {
     async read() {
       throw new Error("Not implemented in test");
     },
@@ -897,7 +888,7 @@ function createMockContext(params: {
       throw new Error("Not implemented in test");
     },
   };
-  const session: CommandContext["session"] = {
+  const runs: CommandContext["state"]["runs"] = {
     async recent() {
       return [];
     },
@@ -958,29 +949,26 @@ function createMockContext(params: {
     sessionId: "test-session",
     agent,
     state: {
-      runs: session,
+      runs,
       refs,
     },
     ui,
     procedures,
-    refs,
-    session,
+    session: {
+      getDefaultAgentConfig() {
+        return params.defaultAgentConfig;
+      },
+      setDefaultAgentSelection() {
+        return params.defaultAgentConfig;
+      },
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
+      },
+      async getDefaultAgentTokenUsage() {
+        return undefined;
+      },
+    },
     assertNotCancelled() {},
-    getDefaultAgentConfig() {
-      return params.defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return params.defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    callAgent: callAgent as CommandContext["callAgent"],
-    callProcedure: params.callProcedure as CommandContext["callProcedure"],
-    print: params.print,
   };
 }
 

@@ -27,7 +27,7 @@ describeE2E("callProcedure composition (real agent)", () => {
         name: "double",
         description: "Double a number",
         async execute(prompt, ctx) {
-          const result = await ctx.callAgent(
+          const result = await ctx.agent.run(
             `Double this number and return JSON with result only: ${prompt}`,
             MathResultType,
           );
@@ -50,13 +50,13 @@ describeE2E("callProcedure composition (real agent)", () => {
         name: "quadruple",
         description: "Quadruple a number",
         async execute(prompt, ctx) {
-          const doubled = await ctx.callProcedure<{ result: number }>("double", prompt);
+          const doubled = await ctx.procedures.run<{ result: number }>("double", prompt);
           const doubledData = doubled.data;
           if (!doubledData) {
             throw new Error("Missing doubled data");
           }
 
-          const quadrupled = await ctx.callProcedure<{ result: number }>(
+          const quadrupled = await ctx.procedures.run<{ result: number }>(
             "double",
             String(doubledData.result),
           );

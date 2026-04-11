@@ -149,8 +149,8 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Com
       },
       data: next,
     } as RunResult;
-  }) as CommandContext["callAgent"];
-  const refs: CommandContext["refs"] = {
+  }) as CommandContext["agent"]["run"];
+  const refs: CommandContext["state"]["refs"] = {
     async read() {
       throw new Error("Not implemented in test");
     },
@@ -161,7 +161,7 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Com
       throw new Error("Not implemented in test");
     },
   };
-  const session: CommandContext["session"] = {
+  const runs: CommandContext["state"]["runs"] = {
     async recent() {
       return [];
     },
@@ -188,10 +188,10 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Com
     },
   };
   const agent: CommandContext["agent"] = {
-    run: callAgent as CommandContext["agent"]["run"],
+    run: callAgent,
     session() {
       return {
-        run: callAgent as CommandContext["agent"]["run"],
+        run: callAgent,
       };
     },
   };
@@ -201,7 +201,7 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Com
     sessionId: "test-session",
     agent,
     state: {
-      runs: session,
+      runs,
       refs,
     },
     ui: {
@@ -217,26 +217,21 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Com
         throw new Error("Not implemented in test");
       },
     },
-    refs,
-    session,
+    session: {
+      getDefaultAgentConfig() {
+        return defaultAgentConfig;
+      },
+      setDefaultAgentSelection() {
+        return defaultAgentConfig;
+      },
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
+      },
+      async getDefaultAgentTokenUsage() {
+        return undefined;
+      },
+    },
     assertNotCancelled() {},
-    getDefaultAgentConfig() {
-      return defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    callAgent,
-    async callProcedure() {
-      throw new Error("Not implemented in test");
-    },
-    print() {},
   };
 }
 

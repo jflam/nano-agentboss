@@ -1066,7 +1066,7 @@ export class NanobossService {
           },
           prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId, timingTrace),
           onError: (ctx, errorText) => {
-            ctx.print(errorText);
+            ctx.ui.text(errorText);
           },
           assertCanStartBoundary,
           timingTrace,

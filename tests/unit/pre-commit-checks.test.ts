@@ -858,8 +858,8 @@ function createMockContext(
   const print = (text: string) => {
     overrides.print?.(text);
   };
-  const refs = {} as CommandContext["refs"];
-  const session = {} as CommandContext["session"];
+  const refs = {} as CommandContext["state"]["refs"];
+  const runs = {} as CommandContext["state"]["runs"];
 
   return {
     cwd: overrides.cwd,
@@ -873,7 +873,7 @@ function createMockContext(
       },
     },
     state: {
-      runs: session,
+      runs,
       refs,
     },
     ui: {
@@ -887,24 +887,21 @@ function createMockContext(
     procedures: {
       run: callProcedure as CommandContext["procedures"]["run"],
     },
-    refs,
-    session,
-    getDefaultAgentConfig() {
-      throw new Error("not used");
-    },
-    setDefaultAgentSelection() {
-      throw new Error("not used");
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
+    session: {
+      getDefaultAgentConfig() {
+        throw new Error("not used");
+      },
+      setDefaultAgentSelection() {
+        throw new Error("not used");
+      },
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
+      },
+      async getDefaultAgentTokenUsage() {
+        return undefined;
+      },
     },
     assertNotCancelled() {},
-    callAgent: callAgent as CommandContext["callAgent"],
-    callProcedure: callProcedure as CommandContext["callProcedure"],
-    print,
   };
 }
 

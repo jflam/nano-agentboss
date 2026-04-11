@@ -24,7 +24,7 @@ function createMockContext(): CommandContext {
     model: "gpt-5.2-codex",
     reasoningEffort: "xhigh",
   };
-  const refs: CommandContext["refs"] = {
+  const refs: CommandContext["state"]["refs"] = {
     async read() {
       throw new Error("Not implemented in test");
     },
@@ -35,7 +35,7 @@ function createMockContext(): CommandContext {
       throw new Error("Not implemented in test");
     },
   };
-  const session: CommandContext["session"] = {
+  const runs: CommandContext["state"]["runs"] = {
     async recent() {
       return [];
     },
@@ -92,34 +92,29 @@ function createMockContext(): CommandContext {
     sessionId: "test-session",
     agent,
     state: {
-      runs: session,
+      runs,
       refs,
     },
     ui,
     procedures,
-    refs,
-    session,
+    session: {
+      getDefaultAgentConfig() {
+        return defaultAgentConfig;
+      },
+      setDefaultAgentSelection() {
+        return defaultAgentConfig;
+      },
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
+      },
+      async getDefaultAgentTokenUsage() {
+        return {
+          source: "acp_usage_update",
+          currentContextTokens: 12824,
+          maxContextTokens: 258400,
+        };
+      },
+    },
     assertNotCancelled() {},
-    getDefaultAgentConfig() {
-      return defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return {
-        source: "acp_usage_update",
-        currentContextTokens: 12824,
-        maxContextTokens: 258400,
-      };
-    },
-    callAgent: agent.run as CommandContext["callAgent"],
-    async callProcedure() {
-      throw new Error("Not implemented in test");
-    },
-    print() {},
   };
 }

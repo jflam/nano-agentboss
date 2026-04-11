@@ -105,12 +105,4 @@ export class ProcedureInvocationApiImpl implements ProcedureInvocationApi {
       throw error;
     }
   }
-
-  async callProcedure<T extends KernelValue = KernelValue>(
-    name: string,
-    prompt: string,
-    options?: CommandCallProcedureOptions,
-  ): Promise<RunResult<T>> {
-    return await this.run<T>(name, prompt, options);
-  }
 }

@@ -247,7 +247,7 @@ describe("NanobossService", () => {
       name: "default",
       description: "test default",
       async execute(_prompt, ctx) {
-        ctx.print("4");
+        ctx.ui.text("4");
         return {
           display: "4",
         };
@@ -443,7 +443,7 @@ describe("NanobossService", () => {
           '  name: "probe",',
           '  description: "test procedure dispatch",',
           '  async execute(_prompt, ctx) {',
-          '    await ctx.callAgent("nested tool trace demo", { stream: false });',
+          '    await ctx.agent.run("nested tool trace demo", { stream: false });',
           '    return { display: "done" };',
           '  },',
           "};",
@@ -489,7 +489,7 @@ describe("NanobossService", () => {
         '  name: "slowreview",',
         '  description: "slow direct procedure",',
         '  async execute(prompt, ctx) {',
-        '    ctx.print(`starting: ${prompt}\\n`);',
+        '    ctx.ui.text(`starting: ${prompt}\\n`);',
         '    await Bun.sleep(50);',
         '    return {',
         '      display: `completed: ${prompt}`,',
@@ -570,7 +570,7 @@ describe("NanobossService", () => {
           '  name: "probe",',
           '  description: "reuse the master default session",',
           '  async execute(_prompt, ctx) {',
-          '    const reply = await ctx.callAgent("nested default session demo", { session: "default", stream: false });',
+          '    const reply = await ctx.agent.run("nested default session demo", { session: "default", stream: false });',
           '    return { display: String(reply.data) };',
           '  },',
           "};",
@@ -832,7 +832,7 @@ describe("NanobossService", () => {
           '  name: "review",',
           '  description: "test review cancellation",',
           '  async execute(_prompt, ctx) {',
-          '    await ctx.callAgent("cooperative cancel demo", { stream: false });',
+          '    await ctx.agent.run("cooperative cancel demo", { stream: false });',
           '    return { display: "done" };',
           '  },',
           "};",
@@ -880,11 +880,11 @@ describe("NanobossService", () => {
         description: "test soft stop boundaries",
         async execute(_prompt, ctx) {
           try {
-            await ctx.callAgent("cooperative cancel demo", { stream: false });
+            await ctx.agent.run("cooperative cancel demo", { stream: false });
           } catch {
             // Expected: the active boundary is cancelled before the next one can start.
           }
-          await ctx.callAgent("second boundary should never start", { stream: false });
+          await ctx.agent.run("second boundary should never start", { stream: false });
           return { display: "done" };
         },
       });
@@ -944,7 +944,7 @@ describe("NanobossService", () => {
           '  name: "review",',
           '  description: "test review",',
           "  async execute(_prompt, ctx) {",
-          '    await ctx.callAgent("cooperative cancel demo", { stream: false });',
+          '    await ctx.agent.run("cooperative cancel demo", { stream: false });',
           '    return { display: "done" };',
           "  },",
           "};",

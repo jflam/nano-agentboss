@@ -164,12 +164,12 @@ export interface StateRunsApi {
   descendants(cellRef: CellRef, options?: CellDescendantsOptions): Promise<CellSummary[]>;
 }
 
-/**
- * Backward-compatible history/query surface exposed at `ctx.session`.
- *
- * Note: this still represents durable run history in this migration pass.
- */
-export interface SessionApi extends StateRunsApi {}
+export interface SessionApi {
+  getDefaultAgentConfig(): DownstreamAgentConfig;
+  setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig;
+  getDefaultAgentTokenSnapshot(): Promise<AgentTokenSnapshot | undefined>;
+  getDefaultAgentTokenUsage(): Promise<AgentTokenUsage | undefined>;
+}
 
 export interface StateApi {
   readonly runs: StateRunsApi;
@@ -510,28 +510,8 @@ export interface CommandContext {
   readonly state: StateApi;
   readonly ui: UiApi;
   readonly procedures: ProcedureInvocationApi;
-  readonly refs: RefsApi;
   readonly session: SessionApi;
-  getDefaultAgentConfig(): DownstreamAgentConfig;
-  setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig;
-  getDefaultAgentTokenSnapshot(): Promise<AgentTokenSnapshot | undefined>;
-  getDefaultAgentTokenUsage(): Promise<AgentTokenUsage | undefined>;
   assertNotCancelled(): void;
-  callAgent(
-    prompt: string,
-    options?: CommandCallAgentOptions,
-  ): Promise<RunResult<string>>;
-  callAgent<T extends KernelValue>(
-    prompt: string,
-    descriptor: TypeDescriptor<T>,
-    options?: CommandCallAgentOptions,
-  ): Promise<RunResult<T>>;
-  callProcedure<T extends KernelValue = KernelValue>(
-    name: string,
-    prompt: string,
-    options?: CommandCallProcedureOptions,
-  ): Promise<RunResult<T>>;
-  print(text: string): void;
 }
 
 export interface LogEntry {

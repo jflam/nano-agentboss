@@ -6,9 +6,9 @@ export default {
   name: "tokens",
   description: "Show the latest token/context metrics for the default agent session",
   async execute(_prompt, ctx) {
-    const config = ctx.getDefaultAgentConfig();
+    const config = ctx.session.getDefaultAgentConfig();
     const banner = formatAgentBanner(config);
-    const usage = await ctx.getDefaultAgentTokenUsage();
+    const usage = await ctx.session.getDefaultAgentTokenUsage();
 
     if (!usage) {
       return {

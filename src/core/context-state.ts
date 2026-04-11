@@ -3,7 +3,6 @@ import type {
   CellDescendantsOptions,
   CellRef,
   RefsApi,
-  SessionApi,
   SessionRecentOptions,
   StateApi,
   StateRunsApi,
@@ -78,7 +77,7 @@ export class CommandSession implements StateRunsApi {
 
 export class CommandState implements StateApi {
   readonly refs: RefsApi;
-  readonly runs: SessionApi;
+  readonly runs: StateRunsApi;
 
   constructor(store: SessionStore, cwd: string, currentCellId: string) {
     this.refs = new CommandRefs(store, cwd);

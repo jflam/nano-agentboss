@@ -21,10 +21,10 @@ afterEach(() => {
 });
 
 describe("CommandContextImpl UI", () => {
-  test("print delegates through the UI layer without changing stream, log, or emitted update behavior", () => {
+  test("ui.text emits the stream, log, and frontend update", () => {
     const { ctx, cell, updates, logger } = createContext();
 
-    ctx.print("streamed text");
+    ctx.ui.text("streamed text");
 
     expect(cell.streamChunks.join("")).toBe("streamed text");
     expect(updates).toEqual([

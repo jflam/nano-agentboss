@@ -9,6 +9,7 @@ import type {
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   ProcedureSessionMode,
+  SessionApi,
 } from "./types.ts";
 import type { RunTimingTrace } from "./timing-trace.ts";
 
@@ -33,7 +34,7 @@ interface ContextSessionApiImplParams {
   runtimeCapabilityMode: () => AgentRuntimeCapabilityMode;
 }
 
-export class ContextSessionApiImpl {
+export class ContextSessionApiImpl implements SessionApi {
   constructor(private readonly params: ContextSessionApiImplParams) {}
 
   getDefaultAgentConfig(): DownstreamAgentConfig {
