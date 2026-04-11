@@ -376,7 +376,7 @@ describe("nanoboss MCP API", () => {
     mkdirSync(reviewPackageDir, { recursive: true });
     tempDirs.push(rootDir, cwd);
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     registry.loadBuiltins();
     await Bun.write(join(reviewPackageDir, "index.ts"), [
       "export default {",
@@ -448,7 +448,7 @@ describe("nanoboss MCP API", () => {
     mkdirSync(reviewPackageDir, { recursive: true });
     tempDirs.push(rootDir, cwd);
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     registry.loadBuiltins();
     await Bun.write(join(reviewPackageDir, "index.ts"), [
       "export default {",

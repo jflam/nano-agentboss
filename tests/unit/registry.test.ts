@@ -7,7 +7,7 @@ import type { DeferredProcedureMetadata } from "../../src/core/types.ts";
 import { CREATE_PROCEDURE_METADATA } from "../../src/procedure/create.ts";
 import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from "../../src/procedure/registry.ts";
 
-function describeLazyMetadata(
+function describeProcedureMetadata(
   procedure: ReturnType<ProcedureRegistry["get"]>,
 ): DeferredProcedureMetadata | undefined {
   if (!procedure) {
@@ -38,7 +38,7 @@ describe("ProcedureRegistry", () => {
       "utf8",
     );
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     await registry.loadFromDisk();
 
     expect(registry.get("hello")?.description).toBe("hello world");
@@ -70,7 +70,7 @@ describe("ProcedureRegistry", () => {
       "utf8",
     );
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     await registry.loadFromDisk();
 
     expect(registry.get("packaged-hello")?.description).toBe("packaged hello world");
@@ -106,14 +106,48 @@ describe("ProcedureRegistry", () => {
     );
 
     const registry = new ProcedureRegistry({
-      localProcedureRoot: repoProcedureRoot,
+      procedureRoots: [repoProcedureRoot, profileProcedureRoot],
       profileProcedureRoot,
-      diskProcedureRoots: [repoProcedureRoot, profileProcedureRoot],
     });
     await registry.loadFromDisk();
 
     expect(registry.get("repo-only")?.description).toBe("repo command");
     expect(registry.get("profile-only")?.description).toBe("profile command");
+  });
+
+  test("persists generated procedures into the profile procedure root outside a repo", async () => {
+    const profileProcedureRoot = mkdtempSync(join(tmpdir(), "nab-profile-procedures-"));
+    const workspaceDir = mkdtempSync(join(tmpdir(), "nab-workspace-"));
+    const registry = new ProcedureRegistry({
+      procedureRoots: [profileProcedureRoot],
+      profileProcedureRoot,
+    });
+
+    const filePath = await registry.persist(
+      "generated-profile",
+      "export default { name: \"generated-profile\", description: \"generated\", async execute() { return {}; } };",
+      workspaceDir,
+    );
+
+    expect(filePath).toBe(join(profileProcedureRoot, "generated-profile.ts"));
+  });
+
+  test("persists generated procedures into the repo-local procedure root inside a repo", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "nab-repo-root-"));
+    const profileProcedureRoot = mkdtempSync(join(tmpdir(), "nab-profile-procedures-"));
+    Bun.spawnSync(["git", "init"], { cwd: repoRoot, stdio: ["ignore", "ignore", "ignore"] });
+    const registry = new ProcedureRegistry({
+      procedureRoots: [profileProcedureRoot],
+      profileProcedureRoot,
+    });
+
+    const filePath = await registry.persist(
+      "generated-repo",
+      "export default { name: \"generated-repo\", description: \"generated\", async execute() { return {}; } };",
+      repoRoot,
+    );
+
+    expect(filePath.endsWith("/.nanoboss/procedures/generated-repo.ts")).toBe(true);
   });
 
   test("defers disk procedure compilation until first execution", async () => {
@@ -131,7 +165,7 @@ describe("ProcedureRegistry", () => {
       "utf8",
     );
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     await expect(registry.loadFromDisk()).resolves.toBeUndefined();
 
     expect(registry.get("broken")?.description).toBe("broken command");
@@ -155,7 +189,7 @@ describe("ProcedureRegistry", () => {
       "utf8",
     );
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     await registry.loadFromDisk();
 
     const procedure = registry.get("pausable");
@@ -163,7 +197,7 @@ describe("ProcedureRegistry", () => {
     await expect(procedure?.resume?.("again", { note: "saved" } as never, {} as never)).resolves.toBe("again:saved");
   });
 
-  test("exposes the same lazy metadata surface for built-in and disk procedures", async () => {
+  test("exposes the same metadata surface for built-in and disk procedures", async () => {
     const procedureRoot = mkdtempSync(join(tmpdir(), "nab-descriptor-procedures-"));
     writeFileSync(
       join(procedureRoot, "guided.ts"),
@@ -179,7 +213,7 @@ describe("ProcedureRegistry", () => {
       "utf8",
     );
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     registry.loadBuiltins();
     await registry.loadFromDisk();
 
@@ -205,7 +239,7 @@ describe("ProcedureRegistry", () => {
       },
     ];
     for (const expected of expectedMetadata) {
-      expect(describeLazyMetadata(registry.get(expected.name))).toEqual(expected);
+      expect(describeProcedureMetadata(registry.get(expected.name))).toEqual(expected);
     }
 
     const expectedCommands = expectedMetadata.map(({
@@ -218,7 +252,7 @@ describe("ProcedureRegistry", () => {
     }
 
     await expect(registry.get("guided")?.execute("", {} as never)).resolves.toBe("guided");
-    expect(describeLazyMetadata(registry.get("guided"))).toEqual(expectedMetadata[2]);
+    expect(describeProcedureMetadata(registry.get("guided"))).toEqual(expectedMetadata[2]);
     expect(projectProcedureMetadata(registry.listMetadata()).find((procedure) => procedure.name === "guided")).toEqual({
       name: "guided",
       description: "guided command",
@@ -227,7 +261,7 @@ describe("ProcedureRegistry", () => {
     });
   });
 
-  test("keeps canonical metadata stable when lazy loading reveals runtime-only fields", async () => {
+  test("listMetadata reflects loaded runtime fields after a lazy procedure is realized", async () => {
     const procedureRoot = mkdtempSync(join(tmpdir(), "nab-runtime-metadata-procedures-"));
     writeFileSync(
       join(procedureRoot, "runtime-shaped.ts"),
@@ -242,7 +276,7 @@ describe("ProcedureRegistry", () => {
       "utf8",
     );
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     await registry.loadFromDisk();
 
     expect(registry.get("runtime-shaped")?.inputHint).toBeUndefined();
@@ -259,18 +293,18 @@ describe("ProcedureRegistry", () => {
     expect(registry.listMetadata().find((procedure) => procedure.name === "runtime-shaped")).toEqual({
       name: "runtime-shaped",
       description: "runtime metadata procedure",
-      inputHint: undefined,
+      inputHint: "runtime only hint",
       executionMode: undefined,
     });
   });
 
   test("get returns undefined for unknown procedures", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-procedures-"))] });
     expect(registry.get("missing")).toBeUndefined();
   });
 
   test("register makes procedures available", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-procedures-"))] });
     registry.register({
       name: "double",
       description: "double a number",
@@ -283,7 +317,7 @@ describe("ProcedureRegistry", () => {
   });
 
   test("listMetadata remains canonical while discovery projection hides /default", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-procedures-"))] });
     registry.register({
       name: "default",
       description: "default command",
@@ -330,14 +364,14 @@ describe("ProcedureRegistry", () => {
   });
 
   test("loadBuiltins keeps builtin pre-load metadata and slash command exposure aligned", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-procedures-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-procedures-"))] });
     registry.loadBuiltins();
 
     const defaultProcedure = registry.get("default");
     if (!defaultProcedure) {
       throw new Error("expected default builtin procedure to be registered");
     }
-    const defaultMetadata = describeLazyMetadata(defaultProcedure);
+    const defaultMetadata = describeProcedureMetadata(defaultProcedure);
     if (!defaultMetadata) {
       throw new Error("expected default builtin procedure metadata to be describable");
     }
@@ -362,7 +396,7 @@ describe("ProcedureRegistry", () => {
       },
     ];
     for (const expected of expectedMetadata) {
-      expect(describeLazyMetadata(registry.get(expected.name))).toEqual(expected);
+      expect(describeProcedureMetadata(registry.get(expected.name))).toEqual(expected);
     }
 
     expect(registry.get("nanoboss/commit")).toBeDefined();

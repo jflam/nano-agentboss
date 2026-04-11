@@ -222,9 +222,7 @@ export function createCurrentSessionBackedNanobossRuntimeService(cwd = process.c
 }
 
 async function loadRuntimeRegistry(cwd: string): Promise<ProcedureRegistryLike> {
-  const registry = new ProcedureRegistry({
-    workspaceDir: cwd,
-  });
+  const registry = new ProcedureRegistry({ cwd });
   registry.loadBuiltins();
   if (shouldLoadDiskCommands()) {
     await registry.loadFromDisk();

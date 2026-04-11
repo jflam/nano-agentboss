@@ -93,7 +93,7 @@ async function createRegistryWithWorkspace(commandFiles: Record<string, string> 
     writeFileSync(join(packageDir, "index.ts"), content, "utf8");
   }
 
-  const registry = new ProcedureRegistry(procedureRoot);
+  const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
   registry.loadBuiltins();
   await registry.loadFromDisk();
   return { cwd, registry };
@@ -242,7 +242,7 @@ describe("NanobossService", () => {
   });
 
   test("does not duplicate final display when the same text was already streamed", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-"))] });
     registry.register({
       name: "default",
       description: "test default",
@@ -268,7 +268,7 @@ describe("NanobossService", () => {
 
   test("publishes a final token usage event before run completion for assistant replies", async () => {
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-token-usage-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-token-usage-"))] });
       registry.loadBuiltins();
 
       const service = new NanobossService(registry);
@@ -304,7 +304,7 @@ describe("NanobossService", () => {
     const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-resume-history-agent-"));
 
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-resume-history-reg-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-resume-history-reg-"))] });
       registry.loadBuiltins();
       const createService = () => new NanobossService(registry);
 
@@ -366,7 +366,7 @@ describe("NanobossService", () => {
     const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-resume-cancelled-agent-"));
 
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-resume-cancelled-reg-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-resume-cancelled-reg-"))] });
       registry.loadBuiltins();
       const createService = () => new NanobossService(registry);
 
@@ -757,7 +757,7 @@ describe("NanobossService", () => {
   test("includes retrieval guidance without a memory-card preamble when recovery guidance is active", async () => {
     const mockSessionStoreDir = mkdtempSync(join(tmpdir(), "nab-service-guidance-agent-"));
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-guidance-reg-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-guidance-reg-"))] });
       registry.loadBuiltins();
 
       const service = new NanobossService(
@@ -874,7 +874,7 @@ describe("NanobossService", () => {
 
   test("soft stop cancels the in-flight agent and blocks the next boundary", async () => {
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-stop-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-stop-"))] });
       registry.register({
         name: "default",
         description: "test soft stop boundaries",
@@ -980,7 +980,7 @@ describe("NanobossService", () => {
   }, 30_000);
 
   test("run-scoped cancel ignores stale run ids", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-stop-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-stop-"))] });
     registry.register({
       name: "default",
       description: "test stale stop ids",
@@ -1039,7 +1039,7 @@ describe("NanobossService", () => {
   }, 30_000);
 
   test("createSession accepts an inherited default agent selection", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-"))] });
     registry.loadBuiltins();
 
     const service = new NanobossService(registry);
@@ -1059,7 +1059,7 @@ describe("NanobossService", () => {
   });
 
   test("createSession honors an explicit session id", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-"))] });
     registry.loadBuiltins();
 
     const service = new NanobossService(registry);
@@ -1073,7 +1073,7 @@ describe("NanobossService", () => {
   });
 
   test("createSession does not expose duplicate session inspection commands on the parent command surface", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-"))] });
     registry.loadBuiltins();
 
     const service = new NanobossService(registry);
@@ -1087,7 +1087,7 @@ describe("NanobossService", () => {
   });
 
   test("plain-text replies resume a paused procedure", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-"))] });
     registry.register(createPausedWizardProcedure());
     registry.register({
       name: "default",
@@ -1122,7 +1122,7 @@ describe("NanobossService", () => {
   });
 
   test("publishes continuation UI metadata for paused procedures", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-ui-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-ui-"))] });
     registry.register(createPausedSimplify2LikeProcedure());
 
     const service = new NanobossService(registry);
@@ -1148,7 +1148,7 @@ describe("NanobossService", () => {
   });
 
   test("explicit slash commands do not consume a pending continuation", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-"))] });
     registry.register(createPausedWizardProcedure());
     registry.register({
       name: "default",
@@ -1178,7 +1178,7 @@ describe("NanobossService", () => {
   });
 
   test("/dismiss clears a pending continuation without exiting the session", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-"))] });
     registry.register(createPausedWizardProcedure());
     registry.register({
       name: "default",
@@ -1216,7 +1216,7 @@ describe("NanobossService", () => {
     process.env.HOME = mkdtempSync(join(tmpdir(), "nab-paused-resume-home-"));
 
     try {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-"))] });
       registry.register(createPausedWizardProcedure());
       registry.register({
         name: "default",

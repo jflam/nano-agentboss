@@ -601,9 +601,7 @@ export async function runProcedureDispatchWorkerCommand(argv: string[]): Promise
 }
 
 async function loadProcedureDispatchRegistry(cwd: string): Promise<ProcedureRegistryLike> {
-  const registry = new ProcedureRegistry({
-    workspaceDir: cwd,
-  });
+  const registry = new ProcedureRegistry({ cwd });
   registry.loadBuiltins();
   await registry.loadFromDisk();
   return registry;

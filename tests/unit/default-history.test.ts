@@ -196,7 +196,7 @@ describe("/default native session continuity", () => {
       process.env.HOME = mkdtempSync(join(tmpdir(), "nab-default-copilot-home-"));
 
       try {
-        const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-default-copilot-registry-")));
+        const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-default-copilot-registry-"))] });
         registry.loadBuiltins();
 
         const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-copilot-agent-"));
@@ -258,7 +258,7 @@ describe("/default native session continuity", () => {
   test(
     "the built-in /default command is conversational across turns",
     async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-default-registry-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-default-registry-"))] });
       registry.loadBuiltins();
 
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-service-"));
@@ -295,7 +295,7 @@ describe("/default native session continuity", () => {
       process.env.HOME = mkdtempSync(join(tmpdir(), "nab-default-resume-home-"));
 
       try {
-        const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-default-resume-registry-")));
+        const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-default-resume-registry-"))] });
         registry.loadBuiltins();
 
         const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-resume-agent-"));

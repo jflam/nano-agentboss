@@ -97,17 +97,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
       const procedureName = sanitizeProcedureName(generatedData.name);
       const source = normalizeGeneratedProcedureSource(generatedData.source, procedureName);
 
-      const filePath = await registry.persist(
-        {
-          name: procedureName,
-          description: "Generated procedure placeholder",
-          async execute() {
-            return {};
-          },
-        },
-        source,
-        ctx.cwd,
-      );
+      const filePath = await registry.persist(procedureName, source, ctx.cwd);
 
       const procedure = await registry.loadProcedureFromPath(filePath);
       registry.register(procedure);

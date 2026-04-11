@@ -289,7 +289,7 @@ function createContext(options: {
   tempDirs.push(cwd);
 
   const registryRoot = join(cwd, ".nanoboss", "procedures");
-  const registry = new ProcedureRegistry(registryRoot);
+  const registry = new ProcedureRegistry({ procedureRoots: [registryRoot] });
   const logger = new RunLogger();
   const store = new SessionStore({
     sessionId: crypto.randomUUID(),

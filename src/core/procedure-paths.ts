@@ -22,7 +22,28 @@ export function resolveRepoProcedureRoot(cwd: string): string | undefined {
   return repoRoot ? join(repoRoot, ".nanoboss", "procedures") : undefined;
 }
 
-export function resolveWorkspaceProcedureRoot(cwd: string): string {
+export function resolveProfileProcedureRoot(): string {
+  return join(getNanobossHome(), "procedures");
+}
+
+export function resolveWorkspaceProcedureRoots(
+  cwd: string,
+  profileProcedureRoot = resolveProfileProcedureRoot(),
+): string[] {
+  return uniquePaths([
+    resolveLocalProcedureRoot(cwd),
+    profileProcedureRoot,
+  ]);
+}
+
+export function resolvePersistProcedureRoot(
+  cwd: string,
+  profileProcedureRoot = resolveProfileProcedureRoot(),
+): string {
+  return resolve(resolveRepoProcedureRoot(cwd) ?? profileProcedureRoot);
+}
+
+function resolveLocalProcedureRoot(cwd: string): string {
   const resolvedCwd = resolve(cwd);
   const cwdProcedureRoot = join(resolvedCwd, ".nanoboss", "procedures");
   if (existsSync(cwdProcedureRoot)) {
@@ -30,17 +51,6 @@ export function resolveWorkspaceProcedureRoot(cwd: string): string {
   }
 
   return join(detectRepoRoot(resolvedCwd) ?? resolvedCwd, ".nanoboss", "procedures");
-}
-
-export function resolveProfileProcedureRoot(): string {
-  return join(getNanobossHome(), "procedures");
-}
-
-export function resolveWorkspaceProcedureRoots(cwd: string): string[] {
-  return uniquePaths([
-    resolveWorkspaceProcedureRoot(cwd),
-    resolveProfileProcedureRoot(),
-  ]);
 }
 
 function uniquePaths(paths: string[]): string[] {

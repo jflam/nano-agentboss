@@ -92,7 +92,7 @@ function createContext(overrides: {
   const cwd = mkdtempSync(join(tmpdir(), "nab-context-api-"));
   tempDirs.push(cwd);
 
-  const registry = new ProcedureRegistry(join(cwd, ".nanoboss", "procedures"));
+  const registry = new ProcedureRegistry({ procedureRoots: [join(cwd, ".nanoboss", "procedures")] });
   const logger = new RunLogger();
   const store = new SessionStore({
     sessionId: crypto.randomUUID(),
