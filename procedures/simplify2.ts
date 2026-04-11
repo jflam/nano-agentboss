@@ -14,6 +14,7 @@ import {
   type ProcedureResult,
   type RunResult,
   type Simplify2CheckpointContinuationUi,
+  type Simplify2FocusPickerContinuationUi,
 } from "../src/core/types.ts";
 import { formatErrorMessage } from "../src/core/error-format.ts";
 import { computeRepoFingerprint } from "../src/core/repo-fingerprint.ts";
@@ -298,12 +299,61 @@ interface Simplify2AnalysisCache {
   overlapSuppression: Simplify2OverlapSuppressionEntry[];
 }
 
-interface Simplify2State {
+type Simplify2FocusStatus = "active" | "paused" | "finished" | "archived";
+
+interface Simplify2FocusPendingContinuation {
+  question: string;
+  updatedAt: string;
+}
+
+interface Simplify2FocusIndexEntry {
+  id: string;
+  title: string;
+  normalizedFocus: string;
+  rawPrompt: string;
+  createdAt: string;
+  updatedAt: string;
+  status: Simplify2FocusStatus;
+  lastCheckpointQuestion?: string;
+  lastCommitSummary?: string;
+  lastTouchedFiles?: string[];
+  pendingContinuation?: Simplify2FocusPendingContinuation;
+}
+
+interface Simplify2FocusIndex {
   version: 1;
+  updatedAt: string;
+  entries: Simplify2FocusIndexEntry[];
+}
+
+interface Simplify2FocusMetadata {
+  version: 1;
+  id: string;
+  title: string;
+  normalizedFocus: string;
+  rawPrompt: string;
+  createdAt: string;
+  updatedAt: string;
+  status: Simplify2FocusStatus;
+  lastSummary?: string;
+  lastCheckpointQuestion?: string;
+  lastCommitSummary?: string;
+  lastTouchedFiles: string[];
+  pendingContinuation?: Simplify2FocusPendingContinuation;
+}
+
+interface Simplify2State {
+  version: 2;
   originalPrompt: string;
   iteration: number;
   maxIterations: number;
-  mode: SimplifyMode;
+  mode: SimplifyMode | "focus_picker";
+  focusRef: {
+    id?: string;
+    title?: string;
+    normalizedFocus?: string;
+    status?: Simplify2FocusStatus;
+  };
   focus: {
     scope: string[];
     exclusions: string[];
@@ -314,6 +364,11 @@ interface Simplify2State {
   artifacts: {
     repoRoot?: string;
     storageDir?: string;
+    indexPath?: string;
+    focusesDir?: string;
+    focusDir?: string;
+    focusPath?: string;
+    statePath?: string;
     architectureMemoryPath?: string;
     journalPath?: string;
     testMapPath?: string;
@@ -341,8 +396,11 @@ interface Simplify2State {
     candidateHypotheses: SimplifyHypothesis[];
     openQuestions: SimplifyQuestion[];
     refreshNotes: string[];
-    currentCheckpoint?: SimplifyCheckpoint;
-    latestApply?: SimplifyAppliedSlice;
+      currentCheckpoint?: SimplifyCheckpoint;
+      latestApply?: SimplifyAppliedSlice;
+  };
+  picker?: {
+    entries: Simplify2FocusIndexEntry[];
   };
   testContext: {
     changedSubsystems: string[];
@@ -361,6 +419,11 @@ interface Simplify2State {
 interface Simplify2Paths {
   repoRoot: string;
   storageDir: string;
+  indexPath: string;
+  focusesDir: string;
+  focusDir: string;
+  focusPath: string;
+  statePath: string;
   architectureMemoryPath: string;
   journalPath: string;
   testMapPath: string;
@@ -466,11 +529,24 @@ const Simplify2AnalysisCacheType = jsonType<Simplify2AnalysisCache>(
   typia.json.schema<Simplify2AnalysisCache>(),
   typia.createValidate<Simplify2AnalysisCache>(),
 );
+const Simplify2FocusIndexEntryType = jsonType<Simplify2FocusIndexEntry>(
+  typia.json.schema<Simplify2FocusIndexEntry>(),
+  typia.createValidate<Simplify2FocusIndexEntry>(),
+);
+const Simplify2FocusIndexType = jsonType<Simplify2FocusIndex>(
+  typia.json.schema<Simplify2FocusIndex>(),
+  typia.createValidate<Simplify2FocusIndex>(),
+);
+const Simplify2FocusMetadataType = jsonType<Simplify2FocusMetadata>(
+  typia.json.schema<Simplify2FocusMetadata>(),
+  typia.createValidate<Simplify2FocusMetadata>(),
+);
 
-const DEFAULT_FOCUS = "simplify the current project";
-const DEFAULT_MAX_ITERATIONS = 3;
+const DEFAULT_FOCUS_TITLE = "Imported legacy simplify2 focus";
+const DEFAULT_MAX_ITERATIONS = 1;
 const MAX_ALLOWED_ITERATIONS = 20;
 const SIMPLIFY2_STORAGE_SUBDIR = [".nanoboss", "simplify2"] as const;
+const SIMPLIFY2_FOCUSES_SUBDIR = "focuses";
 const SIMPLIFY2_LOCAL_EXCLUDE_PATTERN = "/.nanoboss/";
 const ANALYSIS_STALE_FULL_REFRESH_THRESHOLD = 0.4;
 const SUGGESTED_REPLIES = [
@@ -516,6 +592,17 @@ const HIGH_SENSITIVITY_ANALYSIS_PATH_PATTERNS = [
   /^src\/core\//,
   /^src\/mcp\//,
 ];
+const SIMPLIFY2_FOCUS_PICKER_UI: Simplify2FocusPickerContinuationUi = {
+  kind: "simplify2_focus_picker",
+  title: "Simplify2 focuses",
+  entries: [],
+  actions: [
+    { id: "continue", label: "Continue" },
+    { id: "archive", label: "Archive" },
+    { id: "new", label: "New Focus" },
+    { id: "cancel", label: "Cancel" },
+  ],
+};
 const SIMPLIFY2_CONTINUATION_UI: Simplify2CheckpointContinuationUi = {
   kind: "simplify2_checkpoint",
   title: "Simplify2 checkpoint",
@@ -549,15 +636,23 @@ const SIMPLIFY2_CONTINUATION_UI: Simplify2CheckpointContinuationUi = {
 export default {
   name: "simplify2",
   description: "Model conceptual simplification with explicit checkpoints and a bounded multi-step loop",
-  inputHint: 'Optional focus or scope; e.g. "max 5 iterations focus on session state"',
+  inputHint: "Optional simplify focus; omit to choose a saved focus",
   executionMode: "harness",
   async execute(prompt, ctx) {
+    const initial = prepareSimplify2Execution(prompt, ctx.cwd);
+    if (!isSimplify2State(initial)) {
+      return initial;
+    }
+
+    let state = initial;
+    if (state.notebook.status === "awaiting_human" && state.notebook.currentCheckpoint) {
+      return buildPausedResult(syncPersistedFocusState(state), state.notebook.currentCheckpoint.question);
+    }
+
     const blocked = buildBlockedDirtyWorktreeStartResult(ctx.cwd);
     if (blocked) {
       return blocked;
     }
-
-    let state = initializeState(prompt);
 
     ctx.print("Loading simplify2 artifacts...\n");
     state = loadArtifacts(state, ctx);
@@ -567,6 +662,9 @@ export default {
   },
   async resume(prompt, rawState, ctx) {
     let state = requireSimplify2State(rawState);
+    if (state.mode === "focus_picker") {
+      return await resumeFocusPicker(prompt, state, ctx);
+    }
 
     ctx.print(`Interpreting simplify2 guidance for ${formatIterationProgress(state.iteration, state.maxIterations)}...\n`);
     const decision = await interpretHumanReply(prompt, state, ctx);
@@ -617,14 +715,258 @@ export default {
   },
 } satisfies Procedure;
 
-function initializeState(prompt: string): Simplify2State {
+function isSimplify2State(value: Simplify2State | ProcedureResult): value is Simplify2State {
+  return "notebook" in value;
+}
+
+function prepareSimplify2Execution(prompt: string, cwd: string): Simplify2State | ProcedureResult {
   const parsed = parseSimplify2Prompt(prompt);
-  const focus = parsed.focus;
+  if (parsed.focus) {
+    return openFocusState(parsed.focus, parsed.maxIterations, cwd);
+  }
+
+  const root = resolveSimplify2StorageRoot(cwd);
+  const index = readOrInitializeFocusIndex(root);
+  const entries = listVisibleFocusEntries(index);
+  const [onlyEntry] = entries;
+  if (entries.length === 1 && onlyEntry) {
+    return openStoredFocus(onlyEntry, parsed.maxIterations, root);
+  }
+
+  return buildFocusPickerResult(root, entries, parsed.maxIterations);
+}
+
+async function resumeFocusPicker(
+  prompt: string,
+  state: Simplify2State,
+  ctx: CommandContext,
+): Promise<ProcedureResult | string | void> {
+  const root = requireSimplify2StorageRoot(state);
+  const reply = prompt.trim();
+  const selection = interpretFocusPickerReply(reply, state.picker?.entries ?? []);
+
+  if (selection.kind === "cancel") {
+    return {
+      display: "Simplify2 focus selection cancelled.\n",
+      summary: "simplify2: focus picker cancelled",
+      memory: "Simplify2 focus selection cancelled.",
+    };
+  }
+
+  if (selection.kind === "invalid") {
+    return buildFocusPickerResult(root, listVisibleFocusEntries(readOrInitializeFocusIndex(root)), state.maxIterations, selection.reason);
+  }
+
+  if (selection.kind === "archive") {
+    archiveFocusEntry(root, selection.entry.id);
+    return buildFocusPickerResult(
+      root,
+      listVisibleFocusEntries(readOrInitializeFocusIndex(root)),
+      state.maxIterations,
+      `Archived focus "${selection.entry.title}".`,
+    );
+  }
+
+  const nextState = selection.kind === "new"
+    ? openFocusState(selection.focus, state.maxIterations, root.repoRoot)
+    : openStoredFocus(selection.entry, state.maxIterations, root);
+
+  if (nextState.notebook.status === "awaiting_human" && nextState.notebook.currentCheckpoint) {
+    return buildPausedResult(syncPersistedFocusState(nextState), nextState.notebook.currentCheckpoint.question);
+  }
+
+  const blocked = buildBlockedDirtyWorktreeStartResult(ctx.cwd);
+  if (blocked) {
+    return blocked;
+  }
+
+  ctx.print("Loading simplify2 artifacts...\n");
+  let loaded = loadArtifacts(nextState, ctx);
+  loaded = await analyzeCurrentFocus(loaded, ctx);
+  return continueFromAnalysis(loaded, ctx);
+}
+
+function openFocusState(focus: string, maxIterations: number, cwd: string): Simplify2State {
+  const root = resolveSimplify2StorageRoot(cwd);
+  const index = readOrInitializeFocusIndex(root);
+  const normalizedFocus = normalizeFocusText(focus);
+  const existing = index.entries.find((entry) => entry.normalizedFocus === normalizedFocus);
+  if (existing) {
+    return openStoredFocus(existing, maxIterations, root);
+  }
+
+  const createdAt = nowIso();
+  const entry: Simplify2FocusIndexEntry = {
+    id: createFocusId(normalizedFocus),
+    title: summarizeText(focus.trim(), 80) || DEFAULT_FOCUS_TITLE,
+    normalizedFocus,
+    rawPrompt: focus.trim(),
+    createdAt,
+    updatedAt: createdAt,
+    status: "active",
+  };
+  const nextIndex: Simplify2FocusIndex = {
+    ...index,
+    updatedAt: createdAt,
+    entries: [...index.entries, entry],
+  };
+  writeJsonFile(root.indexPath, nextIndex);
+  const paths = buildSimplify2Paths(root, entry.id);
+  writeJsonFile(paths.focusPath, createDefaultFocusMetadata(entry));
+
+  const state = attachFocusArtifacts(initializeState(entry.rawPrompt, maxIterations), paths, entry);
+  return syncPersistedFocusState(state);
+}
+
+function openStoredFocus(
+  entry: Simplify2FocusIndexEntry,
+  maxIterations: number,
+  root: ReturnType<typeof resolveSimplify2StorageRoot>,
+): Simplify2State {
+  const reopenedEntry = entry.status === "archived"
+    ? {
+        ...entry,
+        status: "active" as const,
+        updatedAt: nowIso(),
+      }
+    : entry;
+  const paths = buildSimplify2Paths(root, reopenedEntry.id);
+  const persisted = readPersistedFocusState(paths);
+  const baseState: Simplify2State = persisted
+    ? {
+        ...persisted,
+        maxIterations,
+        mode: persisted.notebook.currentCheckpoint ? "checkpoint" : "explore",
+        picker: undefined,
+      }
+    : initializeState(reopenedEntry.rawPrompt, maxIterations);
+  const state = attachFocusArtifacts(baseState, paths, reopenedEntry);
+  if (state.notebook.status !== "awaiting_human") {
+    return syncPersistedFocusState(resetNotebookForFocusReuse(state));
+  }
+  return syncPersistedFocusState(state);
+}
+
+function buildFocusPickerResult(
+  root: ReturnType<typeof resolveSimplify2StorageRoot>,
+  entries: Simplify2FocusIndexEntry[],
+  maxIterations: number,
+  note?: string,
+): ProcedureResult {
+  const pickerEntries = sortFocusEntries(entries);
+  const state: Simplify2State = {
+    ...initializeState("", maxIterations),
+    mode: "focus_picker",
+    artifacts: {
+      repoRoot: root.repoRoot,
+      storageDir: root.storageDir,
+      indexPath: root.indexPath,
+      focusesDir: root.focusesDir,
+    },
+    picker: {
+      entries: pickerEntries,
+    },
+  };
+  const question = pickerEntries.length === 0
+    ? "No saved simplify focuses. Reply with `new <focus>` or `stop`."
+    : "Choose a simplify focus to continue, archive, or replace.";
   return {
-    version: 1,
+    display: renderFocusPickerDisplay(pickerEntries, note),
+    summary: "simplify2: choose focus",
+    memory: "Simplify2 is waiting for a focus selection.",
+    pause: {
+      question,
+      state,
+      inputHint: "Reply with a number, `new <focus>`, `archive <number>`, or `stop`",
+      suggestedReplies: pickerEntries.length === 0
+        ? ["new session metadata cleanup", "stop"]
+        : ["1", "archive 1", "new session metadata cleanup", "stop"],
+      continuationUi: {
+        ...SIMPLIFY2_FOCUS_PICKER_UI,
+        entries: pickerEntries.map((entry) => ({
+          id: entry.id,
+          title: entry.title,
+          subtitle: entry.rawPrompt === entry.title ? undefined : entry.rawPrompt,
+          status: entry.status,
+          updatedAt: entry.updatedAt,
+          lastSummary: entry.lastCheckpointQuestion ?? entry.lastCommitSummary,
+        })),
+      },
+    },
+  };
+}
+
+function renderFocusPickerDisplay(entries: Simplify2FocusIndexEntry[], note?: string): string {
+  if (entries.length === 0) {
+    return [
+      note,
+      "No saved simplify focuses.",
+      "Reply with `new <focus>` to create one or `stop` to cancel.",
+    ].filter(Boolean).join("\n") + "\n";
+  }
+
+  return [
+    note,
+    "Saved simplify focuses:",
+    ...sortFocusEntries(entries).map((entry, index) =>
+      `${index + 1}. ${entry.title} | ${entry.status} | updated ${entry.updatedAt}${entry.lastCheckpointQuestion ? ` | checkpoint: ${entry.lastCheckpointQuestion}` : ""}${entry.lastCommitSummary ? ` | last commit: ${entry.lastCommitSummary}` : ""}`),
+    "",
+    "Reply with a number to continue, `archive <number>` to archive, `new <focus>` to start a new focus, or `stop`.",
+  ].filter(Boolean).join("\n") + "\n";
+}
+
+function resetNotebookForFocusReuse(state: Simplify2State): Simplify2State {
+  const reset = resetNotebookForFreshAnalysis(state);
+  return {
+    ...reset,
+    notebook: {
+      ...reset.notebook,
+      status: "active",
+    },
+  };
+}
+
+function attachFocusArtifacts(
+  state: Simplify2State,
+  paths: Simplify2Paths,
+  entry: Simplify2FocusIndexEntry,
+): Simplify2State {
+  return {
+    ...state,
+    originalPrompt: entry.rawPrompt,
+    maxIterations: state.maxIterations,
+    focusRef: {
+      id: entry.id,
+      title: entry.title,
+      normalizedFocus: entry.normalizedFocus,
+      status: entry.status,
+    },
+    artifacts: {
+      ...state.artifacts,
+      repoRoot: paths.repoRoot,
+      storageDir: paths.storageDir,
+      indexPath: paths.indexPath,
+      focusesDir: paths.focusesDir,
+      focusDir: paths.focusDir,
+      focusPath: paths.focusPath,
+      statePath: paths.statePath,
+      architectureMemoryPath: paths.architectureMemoryPath,
+      journalPath: paths.journalPath,
+      testMapPath: paths.testMapPath,
+      observationsPath: paths.observationsPath,
+      analysisCachePath: paths.analysisCachePath,
+    },
+  };
+}
+
+function initializeState(prompt: string, maxIterations = DEFAULT_MAX_ITERATIONS): Simplify2State {
+  const focus = prompt.trim();
+  return {
+    version: 2,
     originalPrompt: focus,
     iteration: 1,
-    maxIterations: parsed.maxIterations,
+    maxIterations,
+    focusRef: {},
     mode: "explore",
     focus: {
       scope: [],
@@ -662,6 +1004,7 @@ function initializeState(prompt: string): Simplify2State {
       openQuestions: [],
       refreshNotes: [],
     },
+    picker: undefined,
     testContext: {
       changedSubsystems: [],
       selectedSlice: [],
@@ -678,7 +1021,7 @@ function initializeState(prompt: string): Simplify2State {
 
 function parseSimplify2Prompt(
   prompt: string,
-): { focus: string; maxIterations: number } {
+): { focus?: string; maxIterations: number } {
   const trimmed = prompt.trim();
   const patterns = [
     /\bmax(?:imum)?\s+iterations?\s*[:=]?\s*(\d+)\b/i,
@@ -709,7 +1052,7 @@ function parseSimplify2Prompt(
     .trim();
 
   return {
-    focus: focus || DEFAULT_FOCUS,
+    focus: focus || undefined,
     maxIterations,
   };
 }
@@ -719,7 +1062,14 @@ function formatIterationProgress(iteration: number, maxIterations: number): stri
 }
 
 function loadArtifacts(state: Simplify2State, ctx: CommandContext): Simplify2State {
-  const paths = resolveSimplify2Paths(ctx.cwd);
+  const focusId = state.focusRef.id;
+  if (!focusId) {
+    throw new Error("Simplify2 focus state is missing a focus id.");
+  }
+  const paths = resolveSimplify2Paths(
+    state.artifacts.repoRoot ?? ctx.cwd,
+    focusId,
+  );
   const memory = readOrInitializeArchitectureMemory(paths, state.originalPrompt);
   const journal = readOrInitializeJournal(paths);
   const testMap = refreshTestMap(paths);
@@ -731,8 +1081,14 @@ function loadArtifacts(state: Simplify2State, ctx: CommandContext): Simplify2Sta
   return {
     ...state,
     artifacts: {
+      ...state.artifacts,
       repoRoot: paths.repoRoot,
       storageDir: paths.storageDir,
+      indexPath: paths.indexPath,
+      focusesDir: paths.focusesDir,
+      focusDir: paths.focusDir,
+      focusPath: paths.focusPath,
+      statePath: paths.statePath,
       architectureMemoryPath: paths.architectureMemoryPath,
       journalPath: paths.journalPath,
       testMapPath: paths.testMapPath,
@@ -1057,9 +1413,13 @@ function maybeFinishAfterCommit(state: Simplify2State): ProcedureResult | undefi
   if (state.history.appliedHypothesisIds.length >= state.maxIterations) {
     return buildFinishedResult(
       markFinished(state),
-      latestApply
-        ? `Reached simplify2 iteration budget (${state.maxIterations}) after applying ${latestApply.title}.`
-        : `Reached simplify2 iteration budget (${state.maxIterations}).`,
+      state.maxIterations === 1
+        ? (latestApply
+          ? `Landed one simplify2 slice for this focus after applying ${latestApply.title}.`
+          : "Landed one simplify2 slice for this focus.")
+        : (latestApply
+          ? `Reached simplify2 iteration budget (${state.maxIterations}) after applying ${latestApply.title}.`
+          : `Reached simplify2 iteration budget (${state.maxIterations}).`),
       lead,
     );
   }
@@ -1393,9 +1753,16 @@ function buildPausedResult(
   state: Simplify2State,
   question: string,
 ): ProcedureResult {
-  const best = getSelectedCheckpointHypothesis(state);
+  const persisted = syncPersistedFocusState({
+    ...state,
+    notebook: {
+      ...state.notebook,
+      status: "awaiting_human",
+    },
+  });
+  const best = getSelectedCheckpointHypothesis(persisted);
   return {
-    display: renderPausedDisplay(state, question),
+    display: renderPausedDisplay(persisted, question),
     summary: best
       ? `simplify2: paused on ${best.title}`
       : "simplify2: paused for checkpoint",
@@ -1404,7 +1771,7 @@ function buildPausedResult(
       : "Simplify2 paused for a checkpoint.",
     pause: {
       question,
-      state,
+      state: persisted,
       inputHint: "Reply with approve, reject, redirect the search, revise the design, or stop",
       suggestedReplies: SUGGESTED_REPLIES,
       continuationUi: SIMPLIFY2_CONTINUATION_UI,
@@ -1417,15 +1784,16 @@ function buildFinishedResult(
   reason: string,
   lead?: string,
 ): ProcedureResult {
-  const latestApply = state.notebook.latestApply;
-  const validation = state.testContext.lastValidation;
-  const appliedCount = state.history.appliedHypothesisIds.length;
-  const rejectedCount = state.history.rejectedHypothesisIds.length;
+  const persisted = syncPersistedFocusState(state);
+  const latestApply = persisted.notebook.latestApply;
+  const validation = persisted.testContext.lastValidation;
+  const appliedCount = persisted.history.appliedHypothesisIds.length;
+  const rejectedCount = persisted.history.rejectedHypothesisIds.length;
   return {
     data: {
-      focus: state.originalPrompt,
-      iteration: state.iteration,
-      maxIterations: state.maxIterations,
+      focus: persisted.originalPrompt,
+      iteration: persisted.iteration,
+      maxIterations: persisted.maxIterations,
       appliedCount,
       rejectedCount,
       validationStatus: validation?.status,
@@ -1434,14 +1802,14 @@ function buildFinishedResult(
     display: [
       lead,
       "Simplify2 is done for now.",
-      `${formatIterationProgress(state.iteration, state.maxIterations)}.`,
+      `${formatIterationProgress(persisted.iteration, persisted.maxIterations)}.`,
       `Reason: ${reason}`,
       `Applied hypotheses: ${appliedCount}.`,
       `Rejected hypotheses: ${rejectedCount}.`,
       renderValidationLine(validation),
     ].filter(Boolean).join("\n") + "\n",
-    summary: `simplify2: finished after ${state.iteration} iteration${state.iteration === 1 ? "" : "s"}`,
-    memory: `Simplify2 finished after ${state.iteration} iteration${state.iteration === 1 ? "" : "s"}.`,
+    summary: `simplify2: finished after ${persisted.iteration} iteration${persisted.iteration === 1 ? "" : "s"}`,
+    memory: `Simplify2 finished after ${persisted.iteration} iteration${persisted.iteration === 1 ? "" : "s"}.`,
   };
 }
 
@@ -1573,7 +1941,12 @@ function runSelectedValidation(state: Simplify2State): ValidationSummary {
   };
 }
 
-function resolveSimplify2Paths(cwd: string): Simplify2Paths {
+function resolveSimplify2StorageRoot(cwd: string): {
+  repoRoot: string;
+  storageDir: string;
+  indexPath: string;
+  focusesDir: string;
+} {
   const repoRoot = resolveRepoRootOrCwd(cwd);
   try {
     ensureGitLocalExclude(repoRoot, SIMPLIFY2_LOCAL_EXCLUDE_PATTERN);
@@ -1582,14 +1955,39 @@ function resolveSimplify2Paths(cwd: string): Simplify2Paths {
   }
 
   const storageDir = resolveRepoArtifactDir(repoRoot, ...SIMPLIFY2_STORAGE_SUBDIR);
-  return {
+  const root = {
     repoRoot,
     storageDir,
-    architectureMemoryPath: join(storageDir, "architecture-memory.json"),
-    journalPath: join(storageDir, "journal.json"),
-    testMapPath: join(storageDir, "test-map.json"),
-    observationsPath: join(storageDir, "observations.json"),
-    analysisCachePath: join(storageDir, "analysis-cache.json"),
+    indexPath: join(storageDir, "index.json"),
+    focusesDir: join(storageDir, SIMPLIFY2_FOCUSES_SUBDIR),
+  };
+  migrateLegacySingletonArtifacts(root);
+  return root;
+}
+
+function resolveSimplify2Paths(cwd: string, focusId: string): Simplify2Paths {
+  const root = resolveSimplify2StorageRoot(cwd);
+  return buildSimplify2Paths(root, focusId);
+}
+
+function buildSimplify2Paths(
+  root: ReturnType<typeof resolveSimplify2StorageRoot>,
+  focusId: string,
+): Simplify2Paths {
+  const focusDir = join(root.focusesDir, focusId);
+  return {
+    repoRoot: root.repoRoot,
+    storageDir: root.storageDir,
+    indexPath: root.indexPath,
+    focusesDir: root.focusesDir,
+    focusDir,
+    focusPath: join(focusDir, "focus.json"),
+    statePath: join(focusDir, "state.json"),
+    architectureMemoryPath: join(focusDir, "architecture-memory.json"),
+    journalPath: join(focusDir, "journal.json"),
+    testMapPath: join(focusDir, "test-map.json"),
+    observationsPath: join(focusDir, "observations.json"),
+    analysisCachePath: join(focusDir, "analysis-cache.json"),
   };
 }
 
@@ -1599,6 +1997,143 @@ function resolveRepoRootOrCwd(cwd: string): string {
   } catch {
     return resolve(cwd);
   }
+}
+
+function requireSimplify2StorageRoot(state: Simplify2State): ReturnType<typeof resolveSimplify2StorageRoot> {
+  const repoRoot = requireArtifactPath(state.artifacts.repoRoot, "repo root");
+  return resolveSimplify2StorageRoot(repoRoot);
+}
+
+function readOrInitializeFocusIndex(
+  root: ReturnType<typeof resolveSimplify2StorageRoot>,
+): Simplify2FocusIndex {
+  const fallback = createDefaultFocusIndex();
+  const index = readJsonFile(root.indexPath, Simplify2FocusIndexType, fallback);
+  if (!existsSync(root.indexPath)) {
+    writeJsonFile(root.indexPath, index);
+  }
+  return index;
+}
+
+function writeFocusIndex(
+  root: ReturnType<typeof resolveSimplify2StorageRoot>,
+  index: Simplify2FocusIndex,
+): void {
+  writeJsonFile(root.indexPath, {
+    ...index,
+    updatedAt: nowIso(),
+    entries: sortFocusEntries(index.entries),
+  });
+}
+
+function listVisibleFocusEntries(index: Simplify2FocusIndex): Simplify2FocusIndexEntry[] {
+  return sortFocusEntries(index.entries.filter((entry) => entry.status !== "archived"));
+}
+
+function sortFocusEntries(entries: Simplify2FocusIndexEntry[]): Simplify2FocusIndexEntry[] {
+  return [...entries].sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt)
+    || left.title.localeCompare(right.title));
+}
+
+function archiveFocusEntry(
+  root: ReturnType<typeof resolveSimplify2StorageRoot>,
+  focusId: string,
+): void {
+  const index = readOrInitializeFocusIndex(root);
+  const entry = index.entries.find((candidate) => candidate.id === focusId);
+  if (!entry) {
+    return;
+  }
+  entry.status = "archived";
+  entry.updatedAt = nowIso();
+  entry.pendingContinuation = undefined;
+  writeFocusIndex(root, index);
+
+  const paths = buildSimplify2Paths(root, focusId);
+  const metadata = readJsonFile(paths.focusPath, Simplify2FocusMetadataType, createDefaultFocusMetadata(entry));
+  writeJsonFile(paths.focusPath, {
+    ...metadata,
+    status: "archived",
+    updatedAt: entry.updatedAt,
+    pendingContinuation: undefined,
+  });
+}
+
+function migrateLegacySingletonArtifacts(
+  root: ReturnType<typeof resolveSimplify2StorageRoot>,
+): void {
+  if (existsSync(root.indexPath)) {
+    return;
+  }
+
+  const legacyPaths = {
+    architectureMemoryPath: join(root.storageDir, "architecture-memory.json"),
+    journalPath: join(root.storageDir, "journal.json"),
+    testMapPath: join(root.storageDir, "test-map.json"),
+    observationsPath: join(root.storageDir, "observations.json"),
+    analysisCachePath: join(root.storageDir, "analysis-cache.json"),
+  };
+  if (!Object.values(legacyPaths).some((path) => existsSync(path))) {
+    return;
+  }
+
+  const legacyMemory = readJsonFile(
+    legacyPaths.architectureMemoryPath,
+    Simplify2ArchitectureMemoryType,
+    createDefaultArchitectureMemory(DEFAULT_FOCUS_TITLE),
+  );
+  const rawPrompt = legacyMemory.focus.trim() || DEFAULT_FOCUS_TITLE;
+  const normalizedFocus = normalizeFocusText(rawPrompt);
+  const createdAt = nowIso();
+  const entry: Simplify2FocusIndexEntry = {
+    id: createFocusId(normalizedFocus),
+    title: summarizeText(rawPrompt, 80) || DEFAULT_FOCUS_TITLE,
+    normalizedFocus,
+    rawPrompt,
+    createdAt,
+    updatedAt: createdAt,
+    status: "active",
+  };
+  const paths = buildSimplify2Paths(root, entry.id);
+  writeJsonFile(paths.focusPath, createDefaultFocusMetadata(entry));
+  if (existsSync(legacyPaths.architectureMemoryPath)) {
+    writeJsonFile(paths.architectureMemoryPath, legacyMemory);
+  }
+  if (existsSync(legacyPaths.journalPath)) {
+    writeJsonFile(paths.journalPath, readJsonFile(legacyPaths.journalPath, Simplify2JournalType, createDefaultJournal()));
+  }
+  if (existsSync(legacyPaths.testMapPath)) {
+    writeJsonFile(paths.testMapPath, readJsonFile(legacyPaths.testMapPath, Simplify2TestMapType, createDefaultTestMap()));
+  }
+  if (existsSync(legacyPaths.observationsPath)) {
+    writeJsonFile(
+      paths.observationsPath,
+      readJsonFile(
+        legacyPaths.observationsPath,
+        Simplify2ObservationCacheType,
+        createDefaultObservationCache(hashFocusPayload({
+          originalPrompt: rawPrompt,
+          scope: [],
+          exclusions: [],
+          goals: [rawPrompt],
+          constraints: [],
+          guidance: [],
+        }), ""),
+      ),
+    );
+  }
+  if (existsSync(legacyPaths.analysisCachePath)) {
+    writeJsonFile(
+      paths.analysisCachePath,
+      readJsonFile(legacyPaths.analysisCachePath, Simplify2AnalysisCacheType, createDefaultAnalysisCache("", "")),
+    );
+  }
+  writeFocusIndex(root, {
+    version: 1,
+    updatedAt: createdAt,
+    entries: [entry],
+  });
 }
 
 function readOrInitializeArchitectureMemory(
@@ -2011,16 +2546,23 @@ function buildBlockedDirtyWorktreeResumeResult(
     "Simplify2 cannot continue until the git worktree is clean again.",
     renderDirtyWorktreeMessage(status.repoRoot, status.output).trim(),
   ].join("\n\n");
-  const best = getSelectedCheckpointHypothesis(state);
+  const persisted = syncPersistedFocusState({
+    ...state,
+    notebook: {
+      ...state.notebook,
+      status: "awaiting_human",
+    },
+  });
+  const best = getSelectedCheckpointHypothesis(persisted);
   return {
-    display: renderPausedDisplay(state, question, lead),
+    display: renderPausedDisplay(persisted, question, lead),
     summary: best
       ? `simplify2: blocked by dirty worktree while paused on ${best.title}`
       : "simplify2: blocked by dirty worktree while paused",
     memory: "Simplify2 stayed paused because the worktree was dirty.",
     pause: {
       question,
-      state,
+      state: persisted,
       inputHint: "Reply with approve, reject, redirect the search, revise the design, or stop",
       suggestedReplies: SUGGESTED_REPLIES,
       continuationUi: SIMPLIFY2_CONTINUATION_UI,
@@ -2169,6 +2711,241 @@ function createDefaultAnalysisCache(
     staleObservationIds: [],
     overlapSuppression: [],
   };
+}
+
+function createDefaultFocusIndex(): Simplify2FocusIndex {
+  return {
+    version: 1,
+    updatedAt: nowIso(),
+    entries: [],
+  };
+}
+
+function createDefaultFocusMetadata(entry: Simplify2FocusIndexEntry): Simplify2FocusMetadata {
+  return {
+    version: 1,
+    id: entry.id,
+    title: entry.title,
+    normalizedFocus: entry.normalizedFocus,
+    rawPrompt: entry.rawPrompt,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+    status: entry.status,
+    lastSummary: entry.lastCheckpointQuestion ?? entry.lastCommitSummary,
+    lastCheckpointQuestion: entry.lastCheckpointQuestion,
+    lastCommitSummary: entry.lastCommitSummary,
+    lastTouchedFiles: normalizePaths(entry.lastTouchedFiles ?? []),
+    pendingContinuation: entry.pendingContinuation,
+  };
+}
+
+function readPersistedFocusState(paths: Simplify2Paths): Simplify2State | undefined {
+  if (!existsSync(paths.statePath)) {
+    return undefined;
+  }
+  const raw = JSON.parse(readFileSync(paths.statePath, "utf8")) as unknown;
+  if (!Simplify2StateType.validate(raw)) {
+    return undefined;
+  }
+  return {
+    ...raw,
+    version: 2,
+  };
+}
+
+function syncPersistedFocusState(state: Simplify2State): Simplify2State {
+  if (!state.focusRef.id || !state.artifacts.statePath || !state.artifacts.focusPath || !state.artifacts.indexPath) {
+    return state;
+  }
+
+  const statePath = state.artifacts.statePath;
+  const syncedState: Simplify2State = {
+    ...state,
+    focusRef: {
+      ...state.focusRef,
+      status: inferFocusStatus(state),
+    },
+  };
+  writeJsonFile(statePath, syncedState);
+  syncFocusCatalogFromState(syncedState);
+  return syncedState;
+}
+
+function syncFocusCatalogFromState(state: Simplify2State): void {
+  const root = requireSimplify2StorageRoot(state);
+  const index = readOrInitializeFocusIndex(root);
+  const status = inferFocusStatus(state);
+  const entry = buildFocusIndexEntryFromState(state, status);
+  const existingIndex = index.entries.findIndex((candidate) => candidate.id === entry.id);
+  const entries = [...index.entries];
+  if (existingIndex >= 0) {
+    entries[existingIndex] = entry;
+  } else {
+    entries.push(entry);
+  }
+  writeFocusIndex(root, {
+    ...index,
+    entries,
+  });
+
+  const paths = buildSimplify2Paths(root, entry.id);
+  const existingFocus = readJsonFile(paths.focusPath, Simplify2FocusMetadataType, createDefaultFocusMetadata(entry));
+  const nextMetadata: Simplify2FocusMetadata = {
+    ...existingFocus,
+    version: 1,
+    id: entry.id,
+    title: entry.title,
+    normalizedFocus: entry.normalizedFocus,
+    rawPrompt: entry.rawPrompt,
+    createdAt: existingFocus.createdAt || entry.createdAt,
+    updatedAt: entry.updatedAt,
+    status,
+    lastSummary: entry.lastCheckpointQuestion ?? entry.lastCommitSummary ?? state.notebook.latestApply?.result.summary,
+    lastCheckpointQuestion: entry.lastCheckpointQuestion,
+    lastCommitSummary: entry.lastCommitSummary,
+    lastTouchedFiles: normalizePaths(entry.lastTouchedFiles ?? existingFocus.lastTouchedFiles),
+    pendingContinuation: entry.pendingContinuation,
+  };
+  writeJsonFile(paths.focusPath, nextMetadata);
+}
+
+function buildFocusIndexEntryFromState(
+  state: Simplify2State,
+  status: Simplify2FocusStatus,
+): Simplify2FocusIndexEntry {
+  const existingMetadata = state.artifacts.focusPath
+    ? readJsonFile(
+      state.artifacts.focusPath,
+      Simplify2FocusMetadataType,
+      createDefaultFocusMetadata({
+        id: requireFocusId(state),
+        title: state.focusRef.title ?? (summarizeText(state.originalPrompt, 80) || DEFAULT_FOCUS_TITLE),
+        normalizedFocus: state.focusRef.normalizedFocus ?? normalizeFocusText(state.originalPrompt),
+        rawPrompt: state.originalPrompt,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        status,
+      }),
+    )
+    : undefined;
+  const latestApply = state.notebook.latestApply;
+  const checkpointQuestion = state.notebook.currentCheckpoint?.question;
+  return {
+    id: requireFocusId(state),
+    title: state.focusRef.title ?? existingMetadata?.title ?? (summarizeText(state.originalPrompt, 80) || DEFAULT_FOCUS_TITLE),
+    normalizedFocus: state.focusRef.normalizedFocus ?? existingMetadata?.normalizedFocus ?? normalizeFocusText(state.originalPrompt),
+    rawPrompt: state.originalPrompt,
+    createdAt: existingMetadata?.createdAt ?? nowIso(),
+    updatedAt: nowIso(),
+    status,
+    lastCheckpointQuestion: checkpointQuestion,
+    lastCommitSummary: latestApply?.commit?.summary ?? existingMetadata?.lastCommitSummary,
+    lastTouchedFiles: normalizePaths(latestApply?.result.touchedFiles ?? existingMetadata?.lastTouchedFiles ?? []),
+    pendingContinuation: checkpointQuestion
+      ? {
+          question: checkpointQuestion,
+          updatedAt: nowIso(),
+        }
+      : undefined,
+  };
+}
+
+function inferFocusStatus(state: Simplify2State): Simplify2FocusStatus {
+  if (state.focusRef.status === "archived") {
+    return "archived";
+  }
+  if (state.notebook.status === "awaiting_human" && state.notebook.currentCheckpoint) {
+    return "paused";
+  }
+  if (state.mode === "finished" || state.notebook.status === "closed") {
+    return "finished";
+  }
+  return "active";
+}
+
+function requireFocusId(state: Simplify2State): string {
+  if (!state.focusRef.id) {
+    throw new Error("Simplify2 state is missing a focus id.");
+  }
+  return state.focusRef.id;
+}
+
+function normalizeFocusText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^[\s,;:!?.-]+/u, "")
+    .replace(/[\s,;:!?.-]+$/u, "")
+    .replace(/\s+/gu, " ");
+}
+
+function createFocusId(normalizedFocus: string): string {
+  return `focus-${createHash("sha256").update(normalizedFocus).digest("hex").slice(0, 12)}`;
+}
+
+function interpretFocusPickerReply(
+  reply: string,
+  entries: Simplify2FocusIndexEntry[],
+):
+  | { kind: "cancel" }
+  | { kind: "invalid"; reason: string }
+  | { kind: "archive"; entry: Simplify2FocusIndexEntry }
+  | { kind: "continue"; entry: Simplify2FocusIndexEntry }
+  | { kind: "new"; focus: string } {
+  const trimmed = reply.trim();
+  if (trimmed.length === 0) {
+    return { kind: "invalid", reason: "Reply with a focus choice, `new <focus>`, or `stop`." };
+  }
+  if (trimmed === "stop" || trimmed === "cancel") {
+    return { kind: "cancel" };
+  }
+
+  const archiveMatch = trimmed.match(/^archive\s+(.+)$/i);
+  if (archiveMatch) {
+    const entry = resolveFocusPickerEntry(archiveMatch[1] ?? "", entries);
+    return entry
+      ? { kind: "archive", entry }
+      : { kind: "invalid", reason: `Could not find focus ${JSON.stringify((archiveMatch[1] ?? "").trim())}.` };
+  }
+
+  const continueMatch = trimmed.match(/^continue\s+(.+)$/i);
+  if (continueMatch) {
+    const entry = resolveFocusPickerEntry(continueMatch[1] ?? "", entries);
+    return entry
+      ? { kind: "continue", entry }
+      : { kind: "invalid", reason: `Could not find focus ${JSON.stringify((continueMatch[1] ?? "").trim())}.` };
+  }
+
+  const newMatch = trimmed.match(/^new\s+(.+)$/i);
+  if (newMatch) {
+    const focus = (newMatch[1] ?? "").trim();
+    return focus.length > 0
+      ? { kind: "new", focus }
+      : { kind: "invalid", reason: "Provide a focus after `new`." };
+  }
+
+  const entry = resolveFocusPickerEntry(trimmed, entries);
+  if (entry) {
+    return { kind: "continue", entry };
+  }
+
+  return { kind: "new", focus: trimmed };
+}
+
+function resolveFocusPickerEntry(
+  selector: string,
+  entries: Simplify2FocusIndexEntry[],
+): Simplify2FocusIndexEntry | undefined {
+  const trimmed = selector.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  const ordered = sortFocusEntries(entries);
+  const parsedIndex = Number.parseInt(trimmed, 10);
+  if (Number.isInteger(parsedIndex) && parsedIndex >= 1 && parsedIndex <= ordered.length) {
+    return ordered[parsedIndex - 1];
+  }
+  return ordered.find((entry) => entry.id === trimmed || entry.title === trimmed || entry.rawPrompt === trimmed);
 }
 
 function createJournalEntry(params: {
@@ -2791,3 +3568,6 @@ void ValidationSummaryType;
 void Simplify2ObservationCacheEntryType;
 void Simplify2ObservationCacheType;
 void Simplify2AnalysisCacheType;
+void Simplify2FocusIndexEntryType;
+void Simplify2FocusIndexType;
+void Simplify2FocusMetadataType;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -18,7 +18,7 @@ describe("simplify2 procedure", () => {
     writeFileSync(join(cwd, "dirty.txt"), "not committed\n", "utf8");
 
     const result = await simplify2Procedure.execute(
-      "",
+      "focus on continuation persistence",
       createMockContext(cwd, []),
     );
 
@@ -33,7 +33,7 @@ describe("simplify2 procedure", () => {
     const prompts: string[] = [];
 
     const result = await simplify2Procedure.execute(
-      "",
+      "simplify the current project",
       createMockContext(cwd, [
         emptyRefreshProposal(),
         observationBatch([
@@ -77,7 +77,7 @@ describe("simplify2 procedure", () => {
 
     const normalized = normalizeProcedureResult(result);
     expect(normalized.pause?.question).toContain("Collapse duplicate continuation parsing ownership");
-    expect(normalized.display).toContain("Iteration 1/3");
+    expect(normalized.display).toContain("Iteration 1/1");
     expect(normalized.display).toContain("I have a simplification proposal:");
     expect(normalized.display).toContain("I have proposed 1 hypotheses for this simplification:");
     expect(normalized.display).toContain("I have selected hypothesis \"Collapse duplicate continuation parsing ownership\":");
@@ -99,11 +99,13 @@ describe("simplify2 procedure", () => {
       ],
     });
 
-    expect(existsSync(join(cwd, ".nanoboss", "simplify2", "architecture-memory.json"))).toBe(true);
-    expect(existsSync(join(cwd, ".nanoboss", "simplify2", "journal.json"))).toBe(true);
-    expect(existsSync(join(cwd, ".nanoboss", "simplify2", "test-map.json"))).toBe(true);
-    expect(existsSync(join(cwd, ".nanoboss", "simplify2", "observations.json"))).toBe(true);
-    expect(existsSync(join(cwd, ".nanoboss", "simplify2", "analysis-cache.json"))).toBe(true);
+    const focusDir = findOnlyFocusDir(cwd);
+    expect(existsSync(join(cwd, ".nanoboss", "simplify2", "index.json"))).toBe(true);
+    expect(existsSync(join(focusDir, "architecture-memory.json"))).toBe(true);
+    expect(existsSync(join(focusDir, "journal.json"))).toBe(true);
+    expect(existsSync(join(focusDir, "test-map.json"))).toBe(true);
+    expect(existsSync(join(focusDir, "observations.json"))).toBe(true);
+    expect(existsSync(join(focusDir, "analysis-cache.json"))).toBe(true);
   });
 
   test("accepts a max-iterations directive in the prompt", async () => {
@@ -164,7 +166,7 @@ describe("simplify2 procedure", () => {
     const cwd = createFixtureWorkspace();
 
     const executeResult = await simplify2Procedure.execute(
-      "",
+      "focus on continuation persistence",
       createMockContext(cwd, [
         emptyRefreshProposal(),
         observationBatch([
@@ -230,7 +232,7 @@ describe("simplify2 procedure", () => {
     const cwd = createFixtureWorkspace();
 
     const executeResult = await simplify2Procedure.execute(
-      "",
+      "focus on continuation persistence",
       createMockContext(cwd, [
         emptyRefreshProposal(),
         observationBatch([
@@ -370,10 +372,6 @@ describe("simplify2 procedure", () => {
           resolvedHypothesisIds: ["hyp-canonicalize-parsing"],
           followupRecommendations: ["Look for adjacent continuation test smells on the next run."],
         },
-        emptyRefreshProposal(),
-        observationBatch([]),
-        hypothesisBatch([]),
-        rankingBatch([]),
       ]),
     );
 
@@ -381,9 +379,9 @@ describe("simplify2 procedure", () => {
     expect(normalized.pause).toBeUndefined();
     expect(normalized.display).toContain("Applied: Canonicalize continuation parsing.");
     expect(normalized.display).toContain("Validation: passed.");
-    expect(normalized.display).toContain("No worthwhile simplification hypothesis stood out after the current review cycle.");
+    expect(normalized.display).toContain("Landed one simplify2 slice for this focus after applying Canonicalize continuation parsing.");
 
-    const testMap = readFileSync(join(cwd, ".nanoboss", "simplify2", "test-map.json"), "utf8");
+    const testMap = readFileSync(join(findOnlyFocusDir(cwd), "test-map.json"), "utf8");
     expect(testMap).toContain("tests/unit/current-session.test.ts");
   });
 
@@ -404,7 +402,7 @@ describe("simplify2 procedure", () => {
     });
 
     const result = await simplify2Procedure.execute(
-      "focus on continuation persistence",
+      "max 2 iterations focus on continuation persistence",
       createMockContext(cwd, [
         emptyRefreshProposal(),
         observationBatch([
@@ -523,7 +521,7 @@ describe("simplify2 procedure", () => {
     });
 
     const executeResult = await simplify2Procedure.execute(
-      "",
+      "focus on continuation persistence",
       createMockContext(cwd, [
         emptyRefreshProposal(),
         observationBatch([
@@ -596,10 +594,6 @@ describe("simplify2 procedure", () => {
           resolvedHypothesisIds: ["hyp-approve-me"],
           followupRecommendations: [],
         },
-        emptyRefreshProposal(),
-        observationBatch([]),
-        hypothesisBatch([]),
-        rankingBatch([]),
       ], [], {
         procedureCalls,
       }),
@@ -609,7 +603,7 @@ describe("simplify2 procedure", () => {
     expect(normalized.display).toContain("Applied: Collapse continuation parsing ownership.");
     expect(normalized.display).toContain("Validation: passed.");
     expect(normalized.display).toContain("Commit: created.");
-    expect(normalized.display).toContain("No worthwhile simplification hypothesis stood out after the current review cycle.");
+    expect(normalized.display).toContain("Landed one simplify2 slice for this focus after applying Collapse continuation parsing ownership.");
     expect(procedureCalls).toHaveLength(1);
     const commitCall = procedureCalls[0];
     expect(commitCall).toBeDefined();
@@ -729,7 +723,7 @@ describe("simplify2 procedure", () => {
     const cwd = createFixtureWorkspace();
 
     const executeResult = await simplify2Procedure.execute(
-      "",
+      "focus on service boundary semantics",
       createMockContext(cwd, [
         emptyRefreshProposal(),
         observationBatch([
@@ -829,7 +823,7 @@ describe("simplify2 procedure", () => {
     expect(normalized.pause?.question).toContain("Simplify duplicated boundary test setup");
     expect(resumePrompts[0]).toContain("Current checkpoint:");
 
-    const memory = readFileSync(join(cwd, ".nanoboss", "simplify2", "architecture-memory.json"), "utf8");
+    const memory = readFileSync(join(findOnlyFocusDir(cwd), "architecture-memory.json"), "utf8");
     expect(memory).toContain("Keep the service/session boundary explicit because it maps to deployment reality.");
     expect(memory).toContain("service/session boundary");
   });
@@ -856,7 +850,7 @@ describe("simplify2 procedure", () => {
     const prompts: string[] = [];
 
     const result = await simplify2Procedure.execute(
-      "focus on continuation persistence",
+      "max 2 iterations focus on continuation persistence",
       createMockContext(cwd, [
         emptyRefreshProposal(),
         observationBatch([
@@ -940,7 +934,7 @@ describe("simplify2 procedure", () => {
     expect(prompts.filter((prompt) => prompt.includes("Scope this observation refresh to these changed paths first")).length).toBe(1);
     expect(prompts.some((prompt) => prompt.includes("Reuse the notebook context as preserved observations"))).toBe(true);
 
-    const analysisCache = readFileSync(join(cwd, ".nanoboss", "simplify2", "analysis-cache.json"), "utf8");
+    const analysisCache = readFileSync(join(findOnlyFocusDir(cwd), "analysis-cache.json"), "utf8");
     expect(analysisCache).toContain("\"reusableObservationIds\"");
     expect(analysisCache).toContain("\"staleObservationIds\"");
   });
@@ -962,7 +956,7 @@ describe("simplify2 procedure", () => {
     });
 
     const result = await simplify2Procedure.execute(
-      "focus on continuation persistence",
+      "max 2 iterations focus on continuation persistence",
       createMockContext(cwd, [
         emptyRefreshProposal(),
         observationBatch([
@@ -1062,6 +1056,62 @@ describe("simplify2 procedure", () => {
     expect(normalized.pause).toBeUndefined();
     expect(normalized.display).toContain("No worthwhile simplification hypothesis stood out after the current review cycle.");
   });
+
+  test("bare simplify2 opens a focus picker when no saved focuses exist", async () => {
+    const cwd = createFixtureWorkspace();
+
+    const result = await simplify2Procedure.execute(
+      "",
+      createMockContext(cwd, []),
+    );
+
+    const normalized = normalizeProcedureResult(result);
+    expect(normalized.summary).toBe("simplify2: choose focus");
+    expect(normalized.pause?.continuationUi).toMatchObject({
+      kind: "simplify2_focus_picker",
+      actions: [
+        { id: "continue" },
+        { id: "archive" },
+        { id: "new" },
+        { id: "cancel" },
+      ],
+    });
+    expect(normalized.pause?.question).toContain("No saved simplify focuses");
+  });
+
+  test("stores different focuses in separate per-focus directories", async () => {
+    const cwd = createFixtureWorkspace();
+
+    const first = await simplify2Procedure.execute(
+      "focus on session metadata",
+      createMockContext(cwd, [
+        emptyRefreshProposal(),
+        observationBatch([]),
+        hypothesisBatch([]),
+        rankingBatch([]),
+      ]),
+    );
+    const second = await simplify2Procedure.execute(
+      "focus on continuation persistence",
+      createMockContext(cwd, [
+        emptyRefreshProposal(),
+        observationBatch([]),
+        hypothesisBatch([]),
+        rankingBatch([]),
+      ]),
+    );
+
+    expect(normalizeProcedureResult(first).summary).toContain("simplify2: finished");
+    expect(normalizeProcedureResult(second).summary).toContain("simplify2: finished");
+
+    const focusesRoot = join(cwd, ".nanoboss", "simplify2", "focuses");
+    const focusDirs = readdirSync(focusesRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+    expect(focusDirs).toHaveLength(2);
+
+    const index = readFileSync(join(cwd, ".nanoboss", "simplify2", "index.json"), "utf8");
+    expect(index).toContain("focus on session metadata");
+    expect(index).toContain("focus on continuation persistence");
+  });
 });
 
 function createFixtureWorkspace(params?: {
@@ -1090,6 +1140,19 @@ function createFixtureWorkspace(params?: {
   runGitInFixture(cwd, ["commit", "-m", "Initial fixture"]);
 
   return cwd;
+}
+
+function findOnlyFocusDir(cwd: string): string {
+  const focusesRoot = join(cwd, ".nanoboss", "simplify2", "focuses");
+  const entries = readdirSync(focusesRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(focusesRoot, entry.name));
+  expect(entries).toHaveLength(1);
+  const [focusDir] = entries;
+  if (!focusDir) {
+    throw new Error("Expected exactly one simplify2 focus directory");
+  }
+  return focusDir;
 }
 
 function emptyRefreshProposal() {

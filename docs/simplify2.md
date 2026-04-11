@@ -7,7 +7,7 @@
 ## SYNOPSIS
 
 ```text
-/simplify2 [focus text]
+/simplify2 [focus]
 ```
 
 ## DESCRIPTION
@@ -15,6 +15,11 @@
 `/simplify2` is a built-in nanoboss procedure that looks for conceptual
 simplifications in the current repository, applies small coherent slices when
 the design is clear, and pauses for human input when the boundary is ambiguous.
+
+Focus is the durable unit of simplify2 state. A named focus reopens its own
+research cache, architecture memory, journal, and continuation state. Bare
+`/simplify2` opens a focus picker so you can continue, archive, or replace
+saved focuses without remembering old session ids.
 
 Unlike `/simplify`, which asks the agent for one next opportunity at a time,
 `/simplify2` runs a structured loop with durable state:
@@ -28,13 +33,13 @@ Unlike `/simplify`, which asks the agent for one next opportunity at a time,
    - pause for a checkpoint
    - apply one low-risk slice
    - finish because no worthwhile next slice stands out
-7. after an apply, run a narrow validation slice, reconcile memory, auto-commit
-   the finished slice through `nanoboss/commit`, and repeat
+7. after an apply, run a narrow validation slice, reconcile memory, and
+   auto-commit the finished slice through `nanoboss/commit`
 
-The current implementation uses a bounded foreground loop with a default budget
-of 3 applied hypotheses per run.
+By default, simplify2 lands at most one slice per invocation. The older
+multi-iteration foreground loop is now opt-in.
 
-You can override that budget in the prompt with phrases like:
+You can override that budget with phrases like:
 
 ```text
 /simplify2 max 5 iterations focus on session metadata ownership
@@ -48,6 +53,12 @@ or:
 
 If the worktree becomes dirty after a paused checkpoint, `/simplify2` stays
 paused and refuses to continue the apply path until the tree is clean again.
+
+If you omit the focus:
+
+- no saved focuses: simplify2 asks for `new <focus>`
+- one saved focus: simplify2 reopens it directly
+- multiple saved focuses: simplify2 opens a focus picker
 
 ## AUTO-COMMIT
 
@@ -85,8 +96,9 @@ In the TUI, paused simplify2 checkpoints also expose a focused continuation card
 The CLI and TUI also support a local `--simplify2-auto-approve` mode, plus a
 `ctrl+g` toggle, that auto-submits `approve it` for simplify2 checkpoints only.
 
-If you leave a paused simplify2 run and come back later, reopen the saved
-session with:
+If you leave a paused simplify2 run and come back later, reopening the same
+focus surfaces the checkpoint again. You can still reopen the saved session
+with:
 
 ```text
 nanoboss resume
@@ -128,15 +140,17 @@ When paused, plain-text user replies are interpreted into one of these decisions
 
 ```text
 .nanoboss/simplify2/
+  index.json
+  focuses/
+    <focus-id>/
+      focus.json
+      state.json
+      architecture-memory.json
+      journal.json
+      test-map.json
+      observations.json
+      analysis-cache.json
 ```
-
-Files:
-
-- `architecture-memory.json`
-- `journal.json`
-- `test-map.json`
-- `observations.json`
-- `analysis-cache.json`
 
 These files are intentionally local and are best-effort added to the repo-local
 git exclude list so they do not show up as normal tracked changes.

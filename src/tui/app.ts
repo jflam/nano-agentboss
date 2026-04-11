@@ -17,6 +17,7 @@ import type {
   FrontendPendingProcedureContinuation,
   Simplify2CheckpointContinuationUi,
   Simplify2CheckpointContinuationUiAction,
+  Simplify2FocusPickerContinuationUi,
 } from "../core/types.ts";
 import {
   type AutocompleteItem,
@@ -29,6 +30,10 @@ import {
 } from "./pi-tui.ts";
 import { SelectOverlay, type SelectOverlayOptions } from "./overlays/select-overlay.ts";
 import { Simplify2ContinuationOverlay } from "./overlays/simplify2-continuation-overlay.ts";
+import {
+  Simplify2FocusPickerOverlay,
+  type Simplify2FocusPickerOverlayAction,
+} from "./overlays/simplify2-focus-picker-overlay.ts";
 import type { UiState } from "./state.ts";
 import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
 import { NanobossAppView } from "./views.ts";
@@ -101,6 +106,10 @@ export interface NanobossTuiAppDeps {
 
 type FrontendSimplify2CheckpointContinuation = FrontendPendingProcedureContinuation & {
   continuationUi: Simplify2CheckpointContinuationUi;
+};
+
+type FrontendSimplify2FocusPickerContinuation = FrontendPendingProcedureContinuation & {
+  continuationUi: Simplify2FocusPickerContinuationUi;
 };
 
 const TOOL_OUTPUT_TOGGLE_COOLDOWN_MS = 150;
@@ -413,7 +422,7 @@ export class NanobossTuiApp {
   }
 
   private syncSimplify2ContinuationComposer(): void {
-    const continuation = getSimplify2CheckpointContinuation(this.state.pendingProcedureContinuation);
+    const continuation = getSimplify2Continuation(this.state.pendingProcedureContinuation);
     const signature = continuation ? buildSimplify2ContinuationSignature(continuation) : undefined;
     if (signature !== this.lastSeenSimplify2ContinuationSignature) {
       this.lastSeenSimplify2ContinuationSignature = signature;
@@ -430,7 +439,11 @@ export class NanobossTuiApp {
     );
 
     if (shouldShow && continuation && signature && this.inlineComposerMode !== "simplify2") {
-      this.showSimplify2ContinuationOverlay(continuation, signature);
+      if (isSimplify2CheckpointContinuation(continuation)) {
+        this.showSimplify2ContinuationOverlay(continuation, signature);
+      } else {
+        this.showSimplify2FocusPickerOverlay(continuation, signature);
+      }
       return;
     }
 
@@ -459,6 +472,26 @@ export class NanobossTuiApp {
     this.tui.requestRender(true);
   }
 
+  private showSimplify2FocusPickerOverlay(
+    continuation: FrontendSimplify2FocusPickerContinuation,
+    signature: string,
+  ): void {
+    this.inlineComposerMode = "simplify2";
+    this.openSimplify2ContinuationSignature = signature;
+    const component = new Simplify2FocusPickerOverlay(
+      this.tui as TUI,
+      this.theme,
+      continuation.continuationUi.title,
+      continuation.continuationUi.entries,
+      (action) => {
+        this.handleSimplify2FocusPickerAction(action);
+      },
+    );
+    this.view.showComposer(component);
+    this.tui.setFocus(component);
+    this.tui.requestRender(true);
+  }
+
   private handleSimplify2ContinuationAction(action: Simplify2CheckpointContinuationUiAction | undefined): void {
     const signature = this.openSimplify2ContinuationSignature;
     this.restoreEditorComposer();
@@ -472,6 +505,30 @@ export class NanobossTuiApp {
     if (action.reply) {
       void this.controller.handleSubmit(action.reply);
     }
+  }
+
+  private handleSimplify2FocusPickerAction(action: Simplify2FocusPickerOverlayAction): void {
+    const signature = this.openSimplify2ContinuationSignature;
+    this.restoreEditorComposer();
+    if (action.kind === "cancel") {
+      if (signature) {
+        this.dismissedSimplify2ContinuationSignature = signature;
+      }
+      return;
+    }
+
+    if (action.kind === "new") {
+      this.editor.setText("new ");
+      if (signature) {
+        this.dismissedSimplify2ContinuationSignature = signature;
+      }
+      return;
+    }
+
+    const command = action.kind === "archive"
+      ? `archive ${action.focusId}`
+      : `continue ${action.focusId}`;
+    void this.controller.handleSubmit(command);
   }
 
   private async stop(): Promise<void> {
@@ -518,18 +575,29 @@ export class NanobossTuiApp {
   }
 }
 
-function getSimplify2CheckpointContinuation(
+function getSimplify2Continuation(
   continuation: FrontendPendingProcedureContinuation | undefined,
-): FrontendSimplify2CheckpointContinuation | undefined {
+): FrontendSimplify2CheckpointContinuation | FrontendSimplify2FocusPickerContinuation | undefined {
   if (
     !continuation
     || continuation.procedure !== "simplify2"
-    || continuation.continuationUi?.kind !== "simplify2_checkpoint"
+    || (
+      continuation.continuationUi?.kind !== "simplify2_checkpoint"
+      && continuation.continuationUi?.kind !== "simplify2_focus_picker"
+    )
   ) {
     return undefined;
   }
 
-  return continuation as FrontendSimplify2CheckpointContinuation;
+  return continuation.continuationUi.kind === "simplify2_checkpoint"
+    ? continuation as FrontendSimplify2CheckpointContinuation
+    : continuation as FrontendSimplify2FocusPickerContinuation;
+}
+
+function isSimplify2CheckpointContinuation(
+  continuation: FrontendSimplify2CheckpointContinuation | FrontendSimplify2FocusPickerContinuation,
+): continuation is FrontendSimplify2CheckpointContinuation {
+  return continuation.continuationUi.kind === "simplify2_checkpoint";
 }
 
 function buildSimplify2ContinuationSignature(

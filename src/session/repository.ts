@@ -17,6 +17,9 @@ import type {
   PendingProcedureContinuation,
   ProcedureContinuationUi,
   Simplify2CheckpointContinuationUiAction,
+  Simplify2FocusPickerContinuationUi,
+  Simplify2FocusPickerContinuationUiAction,
+  Simplify2FocusPickerContinuationUiEntry,
 } from "../core/types.ts";
 
 const SESSION_METADATA_FILE = "session.json";
@@ -184,26 +187,30 @@ function parsePendingProcedureContinuation(value: unknown): PendingProcedureCont
 
 function parseContinuationUi(value: unknown): ProcedureContinuationUi | undefined {
   const record = asRecord(value);
-  if (record?.kind !== "simplify2_checkpoint") {
+  if (record?.kind === "simplify2_checkpoint") {
+    const title = asNonEmptyString(record.title);
+    const actions = Array.isArray(record.actions)
+      ? record.actions
+        .map((entry) => parseSimplify2ContinuationAction(asRecord(entry)))
+        .filter((entry): entry is NonNullable<ReturnType<typeof parseSimplify2ContinuationAction>> => entry !== undefined)
+      : [];
+
+    if (!title || actions.length === 0) {
+      return undefined;
+    }
+
+    return {
+      kind: "simplify2_checkpoint",
+      title,
+      actions,
+    };
+  }
+
+  if (record?.kind !== "simplify2_focus_picker") {
     return undefined;
   }
 
-  const title = asNonEmptyString(record.title);
-  const actions = Array.isArray(record.actions)
-    ? record.actions
-      .map((entry) => parseSimplify2ContinuationAction(asRecord(entry)))
-      .filter((entry): entry is NonNullable<ReturnType<typeof parseSimplify2ContinuationAction>> => entry !== undefined)
-    : [];
-
-  if (!title || actions.length === 0) {
-    return undefined;
-  }
-
-  return {
-    kind: "simplify2_checkpoint",
-    title,
-    actions,
-  };
+  return parseSimplify2FocusPickerContinuationUi(record);
 }
 
 function parseSimplify2ContinuationAction(
@@ -224,6 +231,78 @@ function parseSimplify2ContinuationAction(
     label,
     reply: asNonEmptyString(record?.reply),
     description: asNonEmptyString(record?.description),
+  };
+}
+
+function parseSimplify2FocusPickerContinuationUi(
+  record: Record<string, unknown>,
+): Simplify2FocusPickerContinuationUi | undefined {
+  const title = asNonEmptyString(record.title);
+  const entries = Array.isArray(record.entries)
+    ? record.entries
+      .map((entry) => parseSimplify2FocusPickerEntry(asRecord(entry)))
+      .filter((entry): entry is Simplify2FocusPickerContinuationUiEntry => entry !== undefined)
+    : [];
+  const actions = Array.isArray(record.actions)
+    ? record.actions
+      .map((entry) => parseSimplify2FocusPickerAction(asRecord(entry)))
+      .filter((entry): entry is Simplify2FocusPickerContinuationUiAction => entry !== undefined)
+    : [];
+
+  if (!title || actions.length === 0) {
+    return undefined;
+  }
+
+  return {
+    kind: "simplify2_focus_picker",
+    title,
+    entries,
+    actions,
+  };
+}
+
+function parseSimplify2FocusPickerEntry(
+  record: Record<string, unknown> | undefined,
+): Simplify2FocusPickerContinuationUiEntry | undefined {
+  const id = asNonEmptyString(record?.id);
+  const title = asNonEmptyString(record?.title);
+  const updatedAt = asNonEmptyString(record?.updatedAt);
+  const status = asNonEmptyString(record?.status);
+  if (
+    !id
+    || !title
+    || !updatedAt
+    || (status !== "active" && status !== "paused" && status !== "finished" && status !== "archived")
+  ) {
+    return undefined;
+  }
+
+  return {
+    id,
+    title,
+    updatedAt,
+    status,
+    subtitle: asNonEmptyString(record?.subtitle),
+    lastSummary: asNonEmptyString(record?.lastSummary),
+  };
+}
+
+function parseSimplify2FocusPickerAction(
+  record: Record<string, unknown> | undefined,
+): Simplify2FocusPickerContinuationUiAction | undefined {
+  const id = asNonEmptyString(record?.id);
+  if (id !== "continue" && id !== "archive" && id !== "new" && id !== "cancel") {
+    return undefined;
+  }
+
+  const label = asNonEmptyString(record?.label);
+  if (!label) {
+    return undefined;
+  }
+
+  return {
+    id,
+    label,
   };
 }
 

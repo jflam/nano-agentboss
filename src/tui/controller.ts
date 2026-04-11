@@ -472,7 +472,12 @@ export class NanobossTuiController {
   }
 
   private async maybeAutoApproveSimplify2Pause(event: FrontendEventEnvelope): Promise<void> {
-    if (event.type !== "run_paused" || event.data.procedure !== "simplify2" || !this.state.simplify2AutoApprove) {
+    if (
+      event.type !== "run_paused"
+      || event.data.procedure !== "simplify2"
+      || event.data.continuationUi?.kind !== "simplify2_checkpoint"
+      || !this.state.simplify2AutoApprove
+    ) {
       return;
     }
 
@@ -487,7 +492,12 @@ export class NanobossTuiController {
 
   private async maybeAutoApproveCurrentContinuation(): Promise<void> {
     const continuation = this.state.pendingProcedureContinuation;
-    if (!continuation || continuation.procedure !== "simplify2" || this.state.inputDisabled) {
+    if (
+      !continuation
+      || continuation.procedure !== "simplify2"
+      || continuation.continuationUi?.kind !== "simplify2_checkpoint"
+      || this.state.inputDisabled
+    ) {
       return;
     }
 

@@ -40,7 +40,30 @@ export interface Simplify2CheckpointContinuationUi {
   actions: Simplify2CheckpointContinuationUiAction[];
 }
 
-export type ProcedureContinuationUi = Simplify2CheckpointContinuationUi;
+export interface Simplify2FocusPickerContinuationUiEntry {
+  id: string;
+  title: string;
+  subtitle?: string;
+  status: "active" | "paused" | "finished" | "archived";
+  updatedAt: string;
+  lastSummary?: string;
+}
+
+export interface Simplify2FocusPickerContinuationUiAction {
+  id: "continue" | "archive" | "new" | "cancel";
+  label: string;
+}
+
+export interface Simplify2FocusPickerContinuationUi {
+  kind: "simplify2_focus_picker";
+  title: string;
+  entries: Simplify2FocusPickerContinuationUiEntry[];
+  actions: Simplify2FocusPickerContinuationUiAction[];
+}
+
+export type ProcedureContinuationUi =
+  | Simplify2CheckpointContinuationUi
+  | Simplify2FocusPickerContinuationUi;
 
 export type FrontendPendingProcedureContinuation = Pick<
   PendingProcedureContinuation,

@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>nanoboss deep dive</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --bg2: #0f1c31;
+      --panel: rgba(14, 24, 42, 0.82);
+      --panel-2: rgba(19, 32, 57, 0.9);
+      --text: #e9f0ff;
+      --muted: #9db0d5;
+      --soft: #6f83aa;
+      --line: rgba(173, 196, 255, 0.18);
+      --accent: #79a9ff;
+      --accent-2: #7ef0cf;
+      --warn: #ffbf69;
+      --danger: #ff7b8f;
+      --ok: #77e58c;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      --radius: 22px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(84, 132, 255, 0.18), transparent 32%),
+        radial-gradient(circle at 80% 0%, rgba(126, 240, 207, 0.12), transparent 28%),
+        linear-gradient(135deg, var(--bg), #060b15 54%, var(--bg2));
+      color: var(--text);
+      font-family: var(--sans);
+      overflow: hidden;
+    }
+
+    body {
+      letter-spacing: 0.01em;
+    }
+
+    .deck {
+      position: relative;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .progress {
+      position: fixed;
+      inset: 0 0 auto 0;
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      z-index: 50;
+    }
+    .progress > div {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 20px rgba(121,169,255,0.55);
+      transition: width 180ms ease;
+    }
+
+    .hud {
+      position: fixed;
+      top: 14px;
+      right: 18px;
+      z-index: 50;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(6, 12, 24, 0.68);
+      backdrop-filter: blur(8px);
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 48px 56px 56px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+      opacity: 0;
+      transform: translateX(40px) scale(0.98);
+      pointer-events: none;
+      transition: opacity 220ms ease, transform 220ms ease;
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .slide-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 20px;
+    }
+    .slide h1, .slide h2 {
+      margin: 0;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+    .slide h1 { font-size: 60px; }
+    .slide h2 { font-size: 40px; }
+    .eyebrow {
+      color: var(--accent-2);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 20px;
+      max-width: 980px;
+      line-height: 1.35;
+    }
+
+    .content {
+      min-height: 0;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; min-height: 0; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .rows { display: grid; gap: 14px; }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(21,34,61,0.72), rgba(10,17,31,0.82));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px 22px;
+      min-width: 0;
+    }
+
+    .panel h3 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      letter-spacing: -0.02em;
+    }
+
+    .panel p, .panel li, .panel td, .panel th {
+      font-size: 16px;
+      line-height: 1.42;
+    }
+
+    .lead {
+      font-size: 24px;
+      line-height: 1.32;
+      color: #f3f7ff;
+      max-width: 1100px;
+    }
+
+    .bullets {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .bullets li { margin: 8px 0; }
+    .bullets li::marker { color: var(--accent-2); }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .kpi {
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(20,33,57,0.94), rgba(12,20,35,0.88));
+    }
+    .kpi .n {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin-bottom: 6px;
+    }
+    .kpi .l {
+      color: var(--muted);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      border: 1px solid var(--line);
+      background: rgba(20, 35, 61, 0.75);
+      color: #dce7ff;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .chip.warn { color: #ffe1ab; border-color: rgba(255,191,105,0.35); }
+    .chip.ok { color: #cdf8d3; border-color: rgba(119,229,140,0.35); }
+    .chip.danger { color: #ffd2d8; border-color: rgba(255,123,143,0.35); }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+    }
+    .table th, .table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    .table th {
+      color: var(--accent-2);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      font-weight: 700;
+    }
+    .table tr:last-child td { border-bottom: 0; }
+
+    .mono, code, pre {
+      font-family: var(--mono);
+    }
+    .code {
+      background: rgba(6, 12, 24, 0.76);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+      color: #d6e4ff;
+      font-size: 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow: auto;
+    }
+
+    .bars { display: grid; gap: 10px; }
+    .bar { display: grid; grid-template-columns: 260px 1fr 72px; gap: 12px; align-items: center; }
+    .bar .label { color: #dce7ff; font-size: 15px; }
+    .bar .track {
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.07);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .bar .fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+    .bar .value { color: var(--muted); font-size: 14px; text-align: right; }
+
+    .flow {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .flow-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      min-height: 86px;
+      background: linear-gradient(180deg, rgba(18,30,54,0.95), rgba(10,18,33,0.86));
+    }
+    .node strong { display: block; font-size: 16px; margin-bottom: 6px; }
+    .node span { color: var(--muted); font-size: 14px; line-height: 1.35; }
+    .arrow {
+      text-align: center;
+      color: var(--accent-2);
+      font-size: 24px;
+      opacity: 0.9;
+    }
+
+    .schema {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 18px;
+    }
+    .tree {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px 18px;
+      background: rgba(9, 16, 29, 0.7);
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.55;
+      color: #d8e4ff;
+      white-space: pre;
+      overflow: auto;
+    }
+
+    .small { font-size: 13px; color: var(--muted); }
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 20px;
+      color: var(--soft);
+      font-size: 13px;
+    }
+    .footer .refs {
+      font-family: var(--mono);
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .callout {
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(14,24,42,0.7);
+      border-left: 4px solid var(--accent-2);
+      color: #edf4ff;
+      line-height: 1.42;
+    }
+    .callout.warn { border-left-color: var(--warn); }
+    .callout.danger { border-left-color: var(--danger); }
+    .callout.ok { border-left-color: var(--ok); }
+
+    .nav {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(6, 12, 24, 0.68);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(8px);
+      z-index: 50;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.18);
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+    }
+    .dot.active { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+
+    .two-col-list {
+      columns: 2;
+      column-gap: 24px;
+      margin: 0;
+      padding-left: 20px;
+    }
+    .two-col-list li { break-inside: avoid; margin: 8px 0; }
+
+    .big-quote {
+      font-size: 34px;
+      line-height: 1.18;
+      font-weight: 750;
+      max-width: 1180px;
+      letter-spacing: -0.03em;
+    }
+
+    @media (max-width: 1200px) {
+      .slide { padding: 40px 36px 60px; }
+      .grid-2, .schema { grid-template-columns: 1fr; }
+      .grid-3, .grid-4, .kpis { grid-template-columns: repeat(2, 1fr); }
+      .bar { grid-template-columns: 1fr; }
+      .flow-row { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      .two-col-list { columns: 1; }
+    }
+
+    @media print {
+      html, body { overflow: visible; background: white; color: black; }
+      .progress, .hud, .nav { display: none !important; }
+      .deck { height: auto; width: auto; }
+      .slide {
+        position: relative;
+        opacity: 1 !important;
+        transform: none !important;
+        pointer-events: auto !important;
+        min-height: 100vh;
+        page-break-after: always;
+        background: white;
+        color: black;
+      }
+      .panel, .kpi, .code, .tree, .callout, .node {
+        box-shadow: none;
+        background: white;
+        color: black;
+        border-color: #bbb;
+      }
+      .subtitle, .small, .footer, .chip, .kpi .l { color: #333; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress"><div id="progress-bar"></div></div>
+  <div class="hud">
+    <span id="slide-counter">1 / 14</span>
+    <span>← → navigate</span>
+  </div>
+
+  <main class="deck" id="deck">
+    <section class="slide active" data-title="Cover">
+      <header class="slide-title">
+        <div>
+          <div class="eyebrow">Deep dive technical analysis</div>
+          <h1>nanoboss</h1>
+          <div class="subtitle">A procedure-oriented agent orchestration system built on a deliberately mixed transport stack: HTTP/SSE for frontends, ACP over stdio for downstream agents, and a globally registered MCP server for durable session inspection and slash-command dispatch.</div>
+        </div>
+      </header>
+      <div class="content">
+        <div class="big-quote">nanoboss is not just “a CLI for an LLM.” It is a compact agent runtime with durable provenance, pluggable procedures, session-aware multi-agent composition, and an unusually strong emphasis on inspectable state.</div>
+        <div class="kpis">
+          <div class="kpi"><div class="n">32.6k</div><div class="l">app LOC</div></div>
+          <div class="kpi"><div class="n">18.7k</div><div class="l">test LOC</div></div>
+          <div class="kpi"><div class="n">70 MB</div><div class="l">compiled binary</div></div>
+          <div class="kpi"><div class="n">395/1/0</div><div class="l">tests pass/skip/fail</div></div>
+        </div>
+        <div class="panel">
+          <h3>What this deck covers</h3>
+          <ul class="bullets">
+            <li>architecture, protocol boundaries, and session model</li>
+            <li>procedure runtime, extension story, and durable provenance design</li>
+            <li>TUI/frontend mechanics, quality posture, complexity hotspots, and strategic recommendations</li>
+          </ul>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Snapshot date: 2026-04-10 · working tree is dirty, so “current snapshot” observations reflect in-flight changes too.</div>
+        <div class="refs">Evidence: README.md · docs/architecture.md · src/core/service.ts · src/session/store.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Repo snapshot">
+      <header>
+        <div class="eyebrow">1 · repo snapshot</div>
+        <h2>Codebase shape: compact product surface, heavy orchestration core</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Measured footprint</h3>
+          <div class="kpis" style="grid-template-columns:repeat(2,1fr)">
+            <div class="kpi"><div class="n">134</div><div class="l">app files</div></div>
+            <div class="kpi"><div class="n">90</div><div class="l">test files</div></div>
+            <div class="kpi"><div class="n">24</div><div class="l">built-in procedure files</div></div>
+            <div class="kpi"><div class="n">6 / 7</div><div class="l">runtime / dev deps</div></div>
+          </div>
+          <table class="table">
+            <thead><tr><th>Area</th><th>Files</th><th>Lines</th></tr></thead>
+            <tbody>
+              <tr><td><code>src/</code></td><td>90</td><td>19,986</td></tr>
+              <tr><td><code>procedures/</code></td><td>35</td><td>11,166</td></tr>
+              <tr><td><code>tests/</code></td><td>90</td><td>18,742</td></tr>
+              <tr><td><code>plans/</code></td><td>48</td><td>19,776</td></tr>
+              <tr><td><code>docs/</code></td><td>3</td><td>668</td></tr>
+            </tbody>
+          </table>
+          <div class="callout">Interpretation: nanoboss is small enough to reason about, but its complexity is concentrated in orchestration rather than framework sprawl.</div>
+        </div>
+        <div class="panel rows">
+          <h3>Where the code mass lives</h3>
+          <div class="bars">
+            <div class="bar"><div class="label"><code>src/core</code></div><div class="track"><div class="fill" style="width:100%"></div></div><div class="value">6,036</div></div>
+            <div class="bar"><div class="label"><code>src/tui</code></div><div class="track"><div class="fill" style="width:75%"></div></div><div class="value">4,537</div></div>
+            <div class="bar"><div class="label"><code>src/procedure</code></div><div class="track"><div class="fill" style="width:43%"></div></div><div class="value">2,599</div></div>
+            <div class="bar"><div class="label"><code>src/agent</code></div><div class="track"><div class="fill" style="width:38%"></div></div><div class="value">2,317</div></div>
+            <div class="bar"><div class="label"><code>src/mcp</code></div><div class="track"><div class="fill" style="width:24%"></div></div><div class="value">1,459</div></div>
+            <div class="bar"><div class="label"><code>src/http</code></div><div class="track"><div class="fill" style="width:21%"></div></div><div class="value">1,288</div></div>
+          </div>
+          <h3>Largest hotspots</h3>
+          <ul class="bullets mono">
+            <li>procedures/simplify2.ts — 3,570 LOC</li>
+            <li>src/core/service.ts — 1,789 LOC</li>
+            <li>src/tui/reducer.ts — 949 LOC</li>
+            <li>src/mcp/server.ts — 931 LOC</li>
+            <li>src/procedure/dispatch-jobs.ts — 737 LOC</li>
+          </ul>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Tests are ~57% of app LOC, which is high for a tool in this size band.</div>
+        <div class="refs">Evidence: package.json · line counts from src/, procedures/, tests/</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Mental model">
+      <header>
+        <div class="eyebrow">2 · mental model</div>
+        <h2>nanoboss is a procedure runtime with chat UX, not a chat UI with a few commands</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel">
+          <h3>Core abstraction stack</h3>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><strong>Frontend</strong><span>TUI CLI and HTTP clients consume event streams and submit prompts.</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>Service</strong><span><code>NanobossService</code> owns sessions, active runs, cancellation, replay, continuations, and prompt assembly.</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>Procedures</strong><span>Slash commands are typed, composable procedures that can call agents and other procedures.</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><strong>Downstream agents</strong><span>Claude, Gemini, Codex, Copilot via ACP over stdio.</span></div>
+              <div class="arrow">↔</div>
+              <div class="node"><strong>Global MCP</strong><span>One <code>nanoboss</code> MCP server exposes durable session inspection and async dispatch tools.</span></div>
+              <div class="arrow">↔</div>
+              <div class="node"><strong>Durable store</strong><span>Cells, refs, session metadata, replay events, and repo-local workflow artifacts.</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Why this matters</h3>
+          <ul class="bullets">
+            <li><strong>Plain text is just the default command path.</strong> The real product surface is the procedure system.</li>
+            <li><strong>State is first-class.</strong> The system persists intermediate work as inspectable cells/refs rather than relying only on model memory.</li>
+            <li><strong>Composition is explicit.</strong> Procedures can nest, share or isolate conversation state, and recover async dispatches.</li>
+            <li><strong>Frontends are thin.</strong> The TUI is sophisticated, but the architectural center of gravity is still the service + session store.</li>
+          </ul>
+          <div class="chips">
+            <span class="chip">hidden <code>/default</code> plain-text fallback</span>
+            <span class="chip">24 built-in procedure files</span>
+            <span class="chip">synthetic <code>/dismiss</code> continuation command</span>
+            <span class="chip">workspace/profile disk procedures</span>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>This is the right mental model for reading the repo: service + procedures + durable state, then transports/UI.</div>
+        <div class="refs">Evidence: src/core/service.ts · src/procedure/runner.ts · src/procedure/registry.ts · procedures/default.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Protocol architecture">
+      <header>
+        <div class="eyebrow">3 · protocol architecture</div>
+        <h2>An intentionally mixed transport stack</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel">
+          <h3>Runtime path</h3>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><strong>User</strong><span>terminal or remote client</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>TUI / HTTP client</strong><span>CLI starts a private loopback server by default; external clients use shared HTTP mode.</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>HTTP/SSE server</strong><span>request/response for control, SSE for live events.</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><strong>Service</strong><span>session creation, prompt handling, event fanout, cancellation, continuations</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>ACP runtime</strong><span>spawn child agent, stream ACP updates, enrich with token metrics</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>Downstream agent</strong><span>Claude / Gemini / Codex / Copilot</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><strong>MCP</strong><span>agent calls global <code>nanoboss</code> server over stdio</span></div>
+              <div class="arrow">↔</div>
+              <div class="node"><strong>Session inspection</strong><span>cells, refs, schemas, top-level runs, async procedure dispatch</span></div>
+              <div class="arrow">↔</div>
+              <div class="node"><strong>SessionStore</strong><span>durable JSON state</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Protocol matrix</h3>
+          <table class="table">
+            <thead><tr><th>Layer</th><th>Protocol</th><th>Transport</th></tr></thead>
+            <tbody>
+              <tr><td>CLI ↔ nanoboss</td><td>frontend API</td><td>HTTP + SSE</td></tr>
+              <tr><td>HTTP client ↔ nanoboss</td><td>frontend API</td><td>HTTP + SSE</td></tr>
+              <tr><td>nanoboss ↔ downstream agent</td><td>ACP</td><td>stdio</td></tr>
+              <tr><td>downstream agent ↔ session tools</td><td>MCP</td><td>stdio</td></tr>
+            </tbody>
+          </table>
+          <div class="callout">Best design choice here: the CLI does <em>not</em> directly own a private in-process orchestration path. It dogfoods the same HTTP/SSE service surface that external frontends use.</div>
+          <div class="callout warn">Tradeoff: boundary reasoning is harder. Engineers need to keep three distinct mental models in sync: frontend transport, agent transport, and durable-state inspection.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Default CLI mode = private loopback server + TUI client, not “local shortcut mode”.</div>
+        <div class="refs">Evidence: docs/architecture.md · cli.ts · src/http/server.ts · src/http/private-server.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Durable state">
+      <header>
+        <div class="eyebrow">4 · durable state</div>
+        <h2>Durable provenance is one of nanoboss’s strongest architectural decisions</h2>
+      </header>
+      <div class="content schema">
+        <div class="panel rows">
+          <h3>State topology</h3>
+          <div class="tree">~/.nanoboss/
+  sessions/&lt;sessionId&gt;/
+    session.json
+    cells/
+      &lt;timestamp&gt;-&lt;cellId&gt;.json
+    procedure-dispatch-jobs/
+    procedure-dispatch-progress/
+
+cell kinds:
+  top_level  → user-visible command runs
+  procedure  → nested procedure calls
+  agent      → downstream agent invocations
+
+cell.output may contain:
+  data
+  display
+  stream
+  summary
+  memory
+  pause
+  replayEvents
+  explicitDataSchema</div>
+          <ul class="bullets">
+            <li><strong>Value refs</strong> point into durable cell payloads, so procedures and MCP tools can pass precise references instead of copying blobs.</li>
+            <li><strong>Replay events</strong> let the TUI restore prior runs with transcript/tool-card fidelity.</li>
+            <li><strong>Session metadata</strong> is canonical in <code>session.json</code>; <code>current-sessions.json</code> is a workspace cache used for lookup/resume.</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>Why it is architecturally important</h3>
+          <ul class="bullets">
+            <li>It breaks the usual “agent state only exists in chat context” trap.</li>
+            <li>It enables post-hoc provenance: agents can answer “how did you reach that?” by querying durable cells/refs over MCP.</li>
+            <li>It supports nested composition without overloading the parent chat transcript.</li>
+            <li>It cleanly separates <strong>discovery summaries</strong> (memory cards) from <strong>authoritative stored state</strong> (cells/refs).</li>
+          </ul>
+          <div class="callout ok">This is the repository’s sharpest systems idea: durable, inspectable state is treated as a product feature, not just an implementation detail.</div>
+          <div class="chips">
+            <span class="chip">memory cards for compact recall</span>
+            <span class="chip">MCP tools for exact retrieval</span>
+            <span class="chip">recovery from async dispatch timeouts</span>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>nanoboss prefers MCP-based retrieval over filesystem spelunking and even injects guidance telling agents to do so.</div>
+        <div class="refs">Evidence: src/session/store.ts · src/session/repository.ts · src/core/memory-cards.ts · src/core/service.ts · src/mcp/server.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Procedure platform">
+      <header>
+        <div class="eyebrow">5 · procedure platform</div>
+        <h2>Procedures are the programmable substrate</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>What the platform supports</h3>
+          <ul class="bullets">
+            <li><strong>Built-ins:</strong> loaded lazily via deferred metadata entries in <code>ProcedureRegistry</code>.</li>
+            <li><strong>Disk procedures:</strong> discovered recursively under repo-local and profile roots with no manifest file.</li>
+            <li><strong>Generated procedures:</strong> <code>/create</code> prompts an agent to emit TypeScript, persists it, then registers it live.</li>
+            <li><strong>Typed outputs:</strong> procedures are encouraged to use <code>typia</code> + <code>jsonType(...)</code> for schema-backed agent results.</li>
+          </ul>
+          <h3>Visible built-in families</h3>
+          <div class="chips">
+            <span class="chip">general: create, model, tokens, research, linter, simplify, simplify2, second-opinion</span>
+            <span class="chip">kb/*: ingest, compile-source, compile-concepts, link, render, health, refresh, answer</span>
+            <span class="chip">autoresearch/*: start, continue, status, clear, finalize</span>
+            <span class="chip">nanoboss/*: commit, pre-commit-checks</span>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Most unusual implementation detail</h3>
+          <ul class="bullets">
+            <li>Disk-procedure metadata is inferred by static source parsing: <code>name</code>, <code>description</code>, <code>inputHint</code>, <code>executionMode</code>.</li>
+            <li>Actual module loading happens later via <code>Bun.build(...)</code> with a typia plugin and a content-hash build cache.</li>
+            <li>If the target workspace lacks the required runtime bits, nanoboss temporarily symlinks runtime <code>node_modules</code> and <code>src/</code> into place.</li>
+          </ul>
+          <div class="callout">Strength: very low ceremony for extensibility. Risk: the loader path is powerful but non-trivial, and the static metadata inference is intentionally heuristic.</div>
+          <div class="code">Registry hot spots
+- src/procedure/registry.ts   27 outbound imports
+- src/procedure/disk-loader.ts handles discovery, build cache, temp symlinks, persistence routing
+- docs/procedure-packages.md explicitly avoids manifests</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>This is a “procedures as code modules” system, not a prompt-template registry.</div>
+        <div class="refs">Evidence: src/procedure/registry.ts · src/procedure/disk-loader.ts · src/procedure/create.ts · docs/procedure-packages.md</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Session semantics">
+      <header>
+        <div class="eyebrow">6 · downstream session semantics</div>
+        <h2>The fresh/default/inherit split is subtle, but it is one of nanoboss’s best API ideas</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel">
+          <h3>Conversation-binding model</h3>
+          <table class="table">
+            <thead><tr><th>Call shape</th><th>Default</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ctx.callAgent(...)</code></td><td><code>fresh</code></td><td>new isolated ACP session</td></tr>
+              <tr><td><code>ctx.callAgent(..., { session: "default" })</code></td><td>explicit</td><td>reuse the session’s persistent master conversation</td></tr>
+              <tr><td><code>ctx.callProcedure(name, prompt)</code></td><td><code>inherit</code></td><td>child procedure keeps caller’s default-binding behavior</td></tr>
+              <tr><td><code>ctx.callProcedure(..., { session: "fresh" })</code></td><td>explicit</td><td>child gets a private default conversation</td></tr>
+              <tr><td><code>ctx.callProcedure(..., { session: "default" })</code></td><td>explicit</td><td>child rebinds to the master session</td></tr>
+            </tbody>
+          </table>
+          <div class="callout ok">This lets nanoboss separate <strong>workflow state</strong> from <strong>conversation state</strong>. That is a big deal.</div>
+        </div>
+        <div class="panel rows">
+          <h3>How flagship procedures use it</h3>
+          <ul class="bullets">
+            <li><strong>/default</strong> is just <code>ctx.callAgent(prompt, { session: "default" })</code> — persistent chat continuity.</li>
+            <li><strong>/research</strong> creates a brief in the default conversation, then dispatches a fresh isolated research worker.</li>
+            <li><strong>/simplify2</strong> intentionally keeps most direct agent calls fresh so each analysis phase is isolated and typed.</li>
+            <li><strong>/second-opinion</strong> gets a first pass from the default model, then a fresh typed critique from Codex using refs.</li>
+          </ul>
+          <div class="code">Why this matters:
+continuity where it helps
++ deterministic isolated substeps where it matters
++ typed JSON parse/retry on both paths
+= fewer “chat memory accidentally contaminated the workflow” failures</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>There is real design depth here: nanoboss makes session selection an explicit part of the programming model.</div>
+        <div class="refs">Evidence: src/core/types.ts · src/core/context.ts · src/agent/default-session.ts · procedures/default.ts · procedures/research.ts · docs/simplify2.md</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Frontend and TUI">
+      <header>
+        <div class="eyebrow">7 · frontend and TUI</div>
+        <h2>The UI stack is sophisticated, but still downstream of the service model</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>TUI decomposition</h3>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><strong>App</strong><span>keyboard bindings, overlays, composition mode, focus management</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>Controller</strong><span>HTTP session creation, SSE subscription, pending prompt queue, stop requests</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>Reducer</strong><span>pure-ish state transitions for turns, tool cards, continuations, runtime notes</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><strong>Views</strong><span>render transcript + tool cards</span></div>
+              <div class="arrow">↔</div>
+              <div class="node"><strong>pi-tui</strong><span>terminal widgets, editor, overlays, focus</span></div>
+              <div class="arrow">↔</div>
+              <div class="node"><strong>Server</strong><span>shared HTTP/SSE contract used by both private and shared modes</span></div>
+            </div>
+          </div>
+          <div class="chips">
+            <span class="chip">ESC = soft stop at next tool boundary</span>
+            <span class="chip">Tab while busy = queue prompt</span>
+            <span class="chip">ctrl+o = tool output</span>
+            <span class="chip">ctrl+g = simplify2 auto-approve</span>
+            <span class="chip">inline model picker + focus-picker overlays</span>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Architectural read</h3>
+          <ul class="bullets">
+            <li><strong>Good:</strong> the controller is network-aware and the reducer is event-driven, so the view layer does not own orchestration.</li>
+            <li><strong>Good:</strong> the CLI runs against the same HTTP/SSE API as remote clients; private mode is just deployment, not a separate code path.</li>
+            <li><strong>Risk:</strong> TUI complexity is rising fast. <code>src/tui/</code> is 4.5k LOC, and <code>reducer.ts</code> alone is 949 LOC.</li>
+            <li><strong>Current snapshot risk cluster:</strong> dirty-tree changes are concentrated in simplify2 focus-picker work across <code>procedures/simplify2.ts</code>, <code>src/tui/app.ts</code>, <code>src/tui/controller.ts</code>, <code>src/session/repository.ts</code>, and related tests.</li>
+          </ul>
+          <div class="callout warn">The product experience is clearly important, but TUI interaction logic is becoming one of the repo’s major complexity centers.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Private-server mode is a particularly smart choice: it keeps UX friendly while preserving one service contract.</div>
+        <div class="refs">Evidence: cli.ts · src/tui/run.ts · src/tui/app.ts · src/tui/controller.ts · src/tui/reducer.ts · src/http/private-server.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Flagship workflows">
+      <header>
+        <div class="eyebrow">8 · flagship workflows</div>
+        <h2>nanoboss already contains several “agentic product” patterns, not just utilities</h2>
+      </header>
+      <div class="content grid-4">
+        <div class="panel rows">
+          <h3>/simplify2</h3>
+          <p><strong>Flagship workflow.</strong> 3,570 LOC of focus-scoped repo simplification with durable notebook state, human checkpoints, validation slices, and auto-commit integration.</p>
+          <ul class="bullets">
+            <li>focus index + state + architecture memory + journal + test map</li>
+            <li>typed phase prompts</li>
+            <li>pause/resume UI</li>
+            <li>dogfoods nanoboss on nanoboss</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>/linter</h3>
+          <p>Discovers a machine-runnable linter, normalizes diagnostics, fixes files in waves, reruns, and commits each successful round.</p>
+          <ul class="bullets">
+            <li>adapter-aware JSON parsing</li>
+            <li>error delta tracking</li>
+            <li>bounded rounds</li>
+            <li>procedural commit handoff</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>/kb/*</h3>
+          <p>Knowledge-base pipeline that ingests raw files, compiles summaries/concepts, links pages, renders outputs, and writes manifests/indexes under repo-local state.</p>
+          <ul class="bullets">
+            <li>wiki-style corpus</li>
+            <li>answer pages + renders</li>
+            <li>backlinks + maintenance reports</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>/autoresearch/*</h3>
+          <p>Experiment-loop surface for optimization sessions with benchmark commands, logs, and keep/discard control flow.</p>
+          <ul class="bullets">
+            <li>stateful experiment runner</li>
+            <li>foreground loop orchestration</li>
+            <li>ties into repo workflow</li>
+          </ul>
+        </div>
+      </div>
+      <div class="content">
+        <div class="callout ok">The repo proves nanoboss is a <em>workflow platform</em>. The interesting question is not “can it chat?” but “how many structured agent workflows can be expressed cleanly before orchestration complexity wins?”</div>
+      </div>
+      <footer class="footer">
+        <div>The product vision is already visible in code: structured, resumable, typed, repo-aware workflows.</div>
+        <div class="refs">Evidence: procedures/simplify2.ts · docs/simplify2.md · procedures/linter.ts · procedures/kb/lib/repository.ts · procedures/autoresearch/runner.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Build and ops">
+      <header>
+        <div class="eyebrow">9 · build, distribution, operations</div>
+        <h2>Packaging and operator ergonomics are unusually mature for a project this size</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Distribution choices</h3>
+          <ul class="bullets">
+            <li><code>build.ts</code> uses <code>Bun.build(... compile ...)</code> to emit a standalone <code>dist/nanoboss</code> binary.</li>
+            <li>The build embeds the git commit into the runtime banner and into server/CLI health.</li>
+            <li>Build logic also estimates bundle/runtime size attribution and installs runtime assets for disk procedures into <code>~/.nanoboss/runtime</code>.</li>
+            <li>The CLI can warn when the installed binary appears stale relative to build-relevant files in the source tree.</li>
+          </ul>
+          <div class="chips">
+            <span class="chip">binary size observed: ~70 MB</span>
+            <span class="chip">build freshness detection</span>
+            <span class="chip">workspace fingerprinting</span>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Operational controls</h3>
+          <ul class="bullets">
+            <li><strong><code>doctor --register</code></strong> repairs global MCP registration for Claude, Codex, Gemini, and Copilot.</li>
+            <li><strong>Server health checks</strong> include workspace identity and procedure fingerprint so external CLI connections can reject incompatible servers.</li>
+            <li><strong>Agent transcripts</strong> are logged under <code>~/.nanoboss/agent-logs</code>, while direct recursive access to that area is explicitly blocked.</li>
+            <li><strong>Token metrics</strong> are enriched from ACP usage updates, prompt responses, and provider-specific side channels.</li>
+          </ul>
+          <div class="callout">This is a strong “toolsmith” codebase: the developer/operator experience has been considered as a first-class feature.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Operational maturity is ahead of what the small dependency footprint would suggest.</div>
+        <div class="refs">Evidence: build.ts · src/core/build-freshness.ts · src/core/doctor.ts · src/http/server-supervisor.ts · src/agent/token-metrics.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Quality snapshot">
+      <header>
+        <div class="eyebrow">10 · quality snapshot</div>
+        <h2>Strong test culture, but the current working tree is mid-refactor</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>What I ran</h3>
+          <div class="code">$ bun run test
+395 pass, 1 skip, 0 fail, 396 total [91.15s]
+
+$ bun run typecheck
+TS errors in procedures/simplify2.ts and src/tui/app.ts
+
+$ bun run lint
+4 ESLint errors in procedures/simplify2.ts
+
+$ git status --short
+modified: docs/simplify2.md
+modified: procedures/simplify2.ts
+modified: src/core/types.ts
+modified: src/session/repository.ts
+modified: src/tui/app.ts
+modified: src/tui/controller.ts
+... plus related tests and a new focus-picker overlay</div>
+          <div class="chips">
+            <span class="chip ok">runtime tests green</span>
+            <span class="chip danger">static analysis red</span>
+            <span class="chip warn">dirty tree / in-flight change set</span>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>What that means</h3>
+          <ul class="bullets">
+            <li><strong>The baseline engineering posture is good.</strong> There are 71 unit-test files and 10 e2e files, including real-agent flows gated by environment flags.</li>
+            <li><strong>Pre-commit checks are automated and cached.</strong> <code>scripts/precommit-check.ts</code> runs lint → typecheck → test, and <code>procedures/nanoboss/test-cache-lib.ts</code> fingerprints the workspace/runtime to reuse results.</li>
+            <li><strong>The current snapshot is not clean.</strong> The failing files line up with ongoing simplify2 focus-picker work, so I would treat this as a work-in-progress branch state rather than a reliable signal that mainline quality is poor.</li>
+          </ul>
+          <div class="callout warn">The repo’s quality system is strong enough that the current red static-analysis state is conspicuous. That is a positive sign about the process, not just a negative sign about the code.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>In other words: good guardrails, temporarily open circuit.</div>
+        <div class="refs">Evidence: bun run test/typecheck/lint outputs · scripts/precommit-check.ts · procedures/nanoboss/test-cache-lib.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Complexity hotspots">
+      <header>
+        <div class="eyebrow">11 · complexity hotspots</div>
+        <h2>Where the design is excellent — and where it is starting to bend</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Architectural strengths</h3>
+          <ul class="bullets">
+            <li><strong>Durable provenance model</strong> is better than most agent tools.</li>
+            <li><strong>Explicit session-binding semantics</strong> avoid a lot of hidden-chat-state bugs.</li>
+            <li><strong>Procedure composition</strong> gives the system a real programming model.</li>
+            <li><strong>Shared service contract</strong> across private CLI and remote clients keeps architecture honest.</li>
+            <li><strong>Operator ergonomics</strong> — doctor, build freshness, server compatibility, cached pre-commit checks — are excellent.</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>Primary risks</h3>
+          <ul class="bullets">
+            <li><strong><code>NanobossService</code> is overloaded.</strong> It manages session lifecycle, event logging, prompt augmentation, continuation state, dispatch bridging, cancellation, recovery, and command projection.</li>
+            <li><strong><code>/simplify2</code> is a product inside the product.</strong> It is powerful, but the sheer size means conceptual drift can hide inside a single file.</li>
+            <li><strong>TUI state complexity is rising.</strong> Focus-picker and checkpoint flows are now spanning core types, repository serialization, controller logic, app overlays, and tests.</li>
+            <li><strong>Disk procedure loading is clever but fragile.</strong> Static metadata inference + runtime compilation + temp symlinks is a lot of machinery for one subsystem.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="content">
+        <div class="bars">
+          <div class="bar"><div class="label">orchestration hotspot: <code>procedures/simplify2.ts</code></div><div class="track"><div class="fill" style="width:100%"></div></div><div class="value">3,570 LOC</div></div>
+          <div class="bar"><div class="label">service hotspot: <code>src/core/service.ts</code></div><div class="track"><div class="fill" style="width:50%"></div></div><div class="value">1,789 LOC</div></div>
+          <div class="bar"><div class="label">frontend state hotspot: <code>src/tui/reducer.ts</code></div><div class="track"><div class="fill" style="width:27%"></div></div><div class="value">949 LOC</div></div>
+          <div class="bar"><div class="label">inspection hotspot: <code>src/mcp/server.ts</code></div><div class="track"><div class="fill" style="width:26%"></div></div><div class="value">931 LOC</div></div>
+          <div class="bar"><div class="label">async recovery hotspot: <code>src/procedure/dispatch-jobs.ts</code></div><div class="track"><div class="fill" style="width:21%"></div></div><div class="value">737 LOC</div></div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>The repo’s next major challenge is not feature creation; it is boundary preservation.</div>
+        <div class="refs">Evidence: src/core/service.ts · procedures/simplify2.ts · src/tui/reducer.ts · src/mcp/server.ts · src/procedure/dispatch-jobs.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Recommendations">
+      <header>
+        <div class="eyebrow">12 · recommendations</div>
+        <h2>If I were steering nanoboss next, I would optimize for conceptual compression</h2>
+      </header>
+      <div class="content grid-3">
+        <div class="panel rows">
+          <h3>1. Decompose the service core</h3>
+          <ul class="bullets">
+            <li>extract prompt-composition / memory-card logic</li>
+            <li>extract continuation manager</li>
+            <li>extract async dispatch/recovery coordinator</li>
+          </ul>
+          <p class="small">Goal: keep <code>NanobossService</code> as a session façade, not a mega-orchestrator.</p>
+        </div>
+        <div class="panel rows">
+          <h3>2. Split simplify2 by concern</h3>
+          <ul class="bullets">
+            <li>focus state & persistence</li>
+            <li>analysis/ranking pipeline</li>
+            <li>apply/validate/commit path</li>
+            <li>continuation UI mapping</li>
+          </ul>
+          <p class="small">Goal: preserve the feature while making it legible enough to keep evolving.</p>
+        </div>
+        <div class="panel rows">
+          <h3>3. Harden the procedure boundary</h3>
+          <ul class="bullets">
+            <li>formalize pre-load metadata vs loaded procedure types</li>
+            <li>consider a cached descriptor index for disk procedures</li>
+            <li>reduce regex-only metadata inference over time</li>
+          </ul>
+          <p class="small">Goal: keep extensibility without making loader behavior too magical.</p>
+        </div>
+      </div>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>4. Keep dogfooding — but with stronger seams</h3>
+          <ul class="bullets">
+            <li>The repo-local <code>.nanoboss/</code> artifacts and simplify2 journals are evidence that nanoboss is already improving itself.</li>
+            <li>That is a strategic advantage; keep it. But push more of that capability behind smaller, separately testable library boundaries.</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>5. Add one canonical “state topology” doc</h3>
+          <ul class="bullets">
+            <li>global home state under <code>~/.nanoboss</code></li>
+            <li>repo-local workflow state under <code>.nanoboss</code> and <code>.kb</code></li>
+            <li>protocol paths: HTTP/SSE, ACP stdio, MCP stdio</li>
+          </ul>
+          <p class="small">The architecture is strong enough that it deserves a first-class map.</p>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>My advice is evolutionary, not corrective: preserve the architecture, shrink the conceptual blast radius.</div>
+        <div class="refs">Evidence: all previously cited files, plus git history emphasis on simplify2 / procedure simplification</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Verdict">
+      <header>
+        <div class="eyebrow">13 · verdict</div>
+        <h2>Overall assessment</h2>
+      </header>
+      <div class="content">
+        <div class="big-quote">nanoboss is an unusually thoughtful agent harness: it combines durable provenance, composable typed procedures, multi-agent orchestration, and a unified frontend/service contract in a codebase that is still small enough to reshape.</div>
+        <div class="grid-3">
+          <div class="panel rows">
+            <h3>What is best in class</h3>
+            <ul class="bullets">
+              <li>stateful provenance via cells/refs</li>
+              <li>session-binding API design</li>
+              <li>workflow-oriented procedure surface</li>
+              <li>operator ergonomics</li>
+            </ul>
+          </div>
+          <div class="panel rows">
+            <h3>What will determine success</h3>
+            <ul class="bullets">
+              <li>whether service/simplify2/TUI complexity keeps decomposing</li>
+              <li>whether procedure extensibility stays simple as the platform matures</li>
+              <li>whether durable state remains the architectural center</li>
+            </ul>
+          </div>
+          <div class="panel rows">
+            <h3>Bottom line</h3>
+            <p class="lead" style="font-size:22px">This is a serious systems design, not a thin wrapper. Its main risk is not lack of ambition — it is carrying too much successful ambition in too few files.</p>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Prepared as a single-file HTML deck from direct repository inspection and command execution.</div>
+        <div class="refs">File: docs/nanoboss-deepdive.html</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Evidence appendix">
+      <header>
+        <div class="eyebrow">Appendix</div>
+        <h2>Evidence and commands used</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Files inspected</h3>
+          <ul class="two-col-list mono">
+            <li>README.md</li>
+            <li>docs/architecture.md</li>
+            <li>docs/procedure-packages.md</li>
+            <li>docs/simplify2.md</li>
+            <li>nanoboss.ts</li>
+            <li>cli.ts</li>
+            <li>build.ts</li>
+            <li>src/core/service.ts</li>
+            <li>src/core/context.ts</li>
+            <li>src/core/types.ts</li>
+            <li>src/session/store.ts</li>
+            <li>src/session/repository.ts</li>
+            <li>src/procedure/registry.ts</li>
+            <li>src/procedure/disk-loader.ts</li>
+            <li>src/procedure/runner.ts</li>
+            <li>src/procedure/dispatch-jobs.ts</li>
+            <li>src/mcp/server.ts</li>
+            <li>src/http/server.ts</li>
+            <li>src/http/private-server.ts</li>
+            <li>src/tui/app.ts</li>
+            <li>src/tui/controller.ts</li>
+            <li>src/tui/reducer.ts</li>
+            <li>procedures/default.ts</li>
+            <li>procedures/research.ts</li>
+            <li>procedures/linter.ts</li>
+            <li>procedures/second-opinion.ts</li>
+            <li>procedures/simplify2.ts</li>
+            <li>procedures/kb/answer.ts</li>
+            <li>procedures/kb/lib/repository.ts</li>
+            <li>procedures/nanoboss/commit.ts</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>Commands executed</h3>
+          <div class="code">pwd
+ls -la
+find src procedures tests docs plans ...
+python line-count summaries
+python import-centrality summary
+bun run test
+bun run typecheck
+bun run lint
+git status --short
+git log --oneline --decorate -10
+ls -lh dist/nanoboss
+read .nanoboss/pre-commit-checks.json</div>
+          <h3>Interpretation note</h3>
+          <p>The working tree contains active simplify2/TUI focus-picker changes, so the deck distinguishes between durable architectural traits and the current in-progress static-analysis failures.</p>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Use arrow keys, space, PgUp/PgDn, Home/End, or click the dots to navigate.</div>
+        <div class="refs">End of deck</div>
+      </footer>
+    </section>
+  </main>
+
+  <div class="nav" id="nav"></div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const nav = document.getElementById('nav');
+    const counter = document.getElementById('slide-counter');
+    const progress = document.getElementById('progress-bar');
+    let index = 0;
+
+    function clamp(n) {
+      return Math.max(0, Math.min(slides.length - 1, n));
+    }
+
+    function buildNav() {
+      slides.forEach((slide, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'dot';
+        btn.title = `${i + 1}. ${slide.dataset.title || 'Slide'}`;
+        btn.addEventListener('click', () => go(i));
+        nav.appendChild(btn);
+      });
+    }
+
+    function go(next, push = true) {
+      index = clamp(next);
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+      [...nav.children].forEach((dot, i) => dot.classList.toggle('active', i === index));
+      counter.textContent = `${index + 1} / ${slides.length}`;
+      progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+      if (push) {
+        history.replaceState(null, '', `#${index + 1}`);
+      }
+    }
+
+    function fromHash() {
+      const n = parseInt(location.hash.replace('#', ''), 10);
+      return Number.isFinite(n) ? clamp(n - 1) : 0;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      const k = e.key;
+      if (['ArrowRight', 'PageDown', ' ', 'j', 'J'].includes(k)) {
+        e.preventDefault();
+        go(index + 1);
+      } else if (['ArrowLeft', 'PageUp', 'k', 'K'].includes(k)) {
+        e.preventDefault();
+        go(index - 1);
+      } else if (k === 'Home') {
+        e.preventDefault();
+        go(0);
+      } else if (k === 'End') {
+        e.preventDefault();
+        go(slides.length - 1);
+      }
+    });
+
+    window.addEventListener('hashchange', () => go(fromHash(), false));
+    buildNav();
+    go(fromHash(), false);
+  </script>
+</body>
+</html>

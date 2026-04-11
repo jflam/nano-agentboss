@@ -413,6 +413,90 @@ describe("NanobossTuiApp", () => {
     expect(submitted).toEqual(["approve it"]);
   });
 
+  test("opens the simplify2 focus picker overlay and n seeds a new focus reply", async () => {
+    const editor = new FakeEditor();
+    let currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    let capturedOnStateChange: ((state: UiState) => void) | undefined;
+    let shownComposer: { handleInput?: (data: string) => void } | undefined;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener() {},
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: (_params, deps) => {
+          capturedOnStateChange = deps.onStateChange;
+          return {
+            getState: () => currentState,
+            async handleSubmit() {},
+            async queuePrompt() {},
+            async cancelActiveRun() {},
+            toggleToolOutput() {},
+            toggleSimplify2AutoApprove() {},
+            requestExit() {},
+            async run() {
+              return undefined;
+            },
+            async stop() {},
+          };
+        },
+        createView: () => ({
+          setState() {},
+          showComposer(component: unknown) {
+            shownComposer = component as { handleInput?: (data: string) => void };
+          },
+          showEditor() {},
+        }),
+      },
+    );
+
+    currentState = {
+      ...currentState,
+      sessionId: "session-1",
+      pendingProcedureContinuation: {
+        procedure: "simplify2",
+        question: "Choose a focus",
+        continuationUi: {
+          kind: "simplify2_focus_picker",
+          title: "Simplify2 focuses",
+          entries: [
+            {
+              id: "focus-1",
+              title: "Session metadata",
+              status: "active",
+              updatedAt: "2026-04-10T10:00:00.000Z",
+            },
+          ],
+          actions: [
+            { id: "continue", label: "Continue" },
+            { id: "archive", label: "Archive" },
+            { id: "new", label: "New Focus" },
+            { id: "cancel", label: "Cancel" },
+          ],
+        },
+      },
+    };
+    capturedOnStateChange?.(currentState);
+
+    shownComposer?.handleInput?.("n");
+
+    expect(editor.getText()).toBe("new ");
+  });
+
   test("pressing ctrl+c once clears the editor without exiting", async () => {
     const editor = new FakeEditor();
     const exits: string[] = [];

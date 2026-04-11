@@ -691,6 +691,64 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
+  test("does not auto-approve simplify2 focus picker continuations", async () => {
+    const sendCalls: string[] = [];
+    const streams: FakeStreamRecord[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+        simplify2AutoApprove: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
+          sendCalls.push(prompt);
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream(streams, sessionId, onEvent),
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    streams[0]?.emit(eventEnvelope("run_paused", {
+      runId: "run-1",
+      procedure: "simplify2",
+      pausedAt: new Date(1).toISOString(),
+      cell: { sessionId: "session-1", cellId: "cell-1" },
+      question: "Choose a focus",
+      display: "paused",
+      continuationUi: {
+        kind: "simplify2_focus_picker",
+        title: "Simplify2 focuses",
+        entries: [
+          {
+            id: "focus-1",
+            title: "Session metadata",
+            status: "active",
+            updatedAt: new Date(0).toISOString(),
+          },
+        ],
+        actions: [
+          { id: "continue", label: "Continue" },
+          { id: "archive", label: "Archive" },
+          { id: "new", label: "New Focus" },
+          { id: "cancel", label: "Cancel" },
+        ],
+      },
+    }));
+
+    await Bun.sleep(10);
+
+    expect(sendCalls).toEqual([]);
+    expect(controller.getState().simplify2AutoApprove).toBe(true);
+
+    controller.requestExit();
+    await runPromise;
+  });
+
   test("toggling auto-approve on submits the current simplify2 continuation", async () => {
     const sendCalls: string[] = [];
     const streams: FakeStreamRecord[] = [];
