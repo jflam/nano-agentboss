@@ -8,10 +8,9 @@ import {
   type ProcedureDispatchResult,
   type ProcedureDispatchStartToolResult,
   type ProcedureDispatchStatusToolResult,
-  type RuntimeSchemaResult,
   type RuntimeService,
-  isProcedureDispatchResult as isRuntimeProcedureDispatchResult,
-  isProcedureDispatchStatusResult as isRuntimeProcedureDispatchStatusResult,
+  isProcedureDispatchResult,
+  isProcedureDispatchStatusResult,
 } from "../runtime/api.ts";
 import type {
   CellKind,
@@ -34,8 +33,6 @@ interface McpToolDefinition extends JsonRpcToolMetadata {
   parseArgs(args: Record<string, unknown>): unknown;
   call(runtime: RuntimeService, args: unknown): Promise<unknown>;
 }
-
-export type McpSchemaResult = RuntimeSchemaResult;
 
 const CELL_REF_SCHEMA = {
   type: "object",
@@ -556,14 +553,6 @@ function isProcedureDispatchStartResult(value: unknown): value is ProcedureDispa
       (value as { status?: unknown }).status === "running" ||
       (value as { status?: unknown }).status === "completed")
   );
-}
-
-export function isProcedureDispatchStatusResult(value: unknown): value is ProcedureDispatchStatusToolResult {
-  return isRuntimeProcedureDispatchStatusResult(value);
-}
-
-export function isProcedureDispatchResult(value: unknown): value is ProcedureDispatchResult {
-  return isRuntimeProcedureDispatchResult(value);
 }
 
 function serializeProcedureDispatchResult(result: ProcedureDispatchResult): string {
