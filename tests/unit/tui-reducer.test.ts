@@ -820,28 +820,19 @@ describe("tui reducer", () => {
       event: eventEnvelope("tool_started", {
         runId: "run-1",
         toolCallId: "nested-child",
+        parentToolCallId: "dispatch-wait",
         title: "Mock read README.md",
         kind: "read",
       }),
     });
 
-    expect(state.toolCalls).toEqual([
-      {
-        id: "nested-child",
-        runId: "run-1",
-        title: "Mock read README.md",
-        kind: "read",
-        status: "pending",
-        depth: 1,
-        isWrapper: false,
-        callPreview: undefined,
-        resultPreview: undefined,
-        errorPreview: undefined,
-        durationMs: undefined,
-      },
-    ]);
+    expect(state.transcriptItems).not.toContainEqual({ type: "tool_call", id: "dispatch-wait" });
+    expect(state.toolCalls.find((toolCall) => toolCall.id === "nested-child")).toMatchObject({
+      id: "nested-child",
+      parentToolCallId: "dispatch-wait",
+      depth: 1,
+    });
     expect(state.hiddenToolCallIds).toEqual(["dispatch-wait"]);
-    expect(state.activeWrapperToolCallIds).toEqual(["dispatch-wait"]);
 
     state = reduceUiState(state, {
       type: "frontend_event",
@@ -853,8 +844,11 @@ describe("tui reducer", () => {
     });
 
     expect(state.hiddenToolCallIds).toEqual([]);
-    expect(state.activeWrapperToolCallIds).toEqual([]);
-    expect(state.toolCalls[0]).toMatchObject({ id: "nested-child", depth: 0 });
+    expect(state.toolCalls.find((toolCall) => toolCall.id === "nested-child")).toMatchObject({
+      id: "nested-child",
+      depth: 0,
+    });
+    expect(state.toolCalls.find((toolCall) => toolCall.id === "nested-child")?.parentToolCallId).toBeUndefined();
   });
 
   test("tracks invoked procedures in status state instead of requiring a default wrapper card", () => {
@@ -901,6 +895,7 @@ describe("tui reducer", () => {
       event: eventEnvelope("tool_started", {
         runId: "run-1",
         toolCallId: "leaf",
+        parentToolCallId: "wrapper",
         title: "Mock read README.md",
         kind: "read",
       }),
@@ -916,6 +911,7 @@ describe("tui reducer", () => {
 
     expect(state.toolCalls.map((toolCall) => toolCall.id)).toEqual(["leaf"]);
     expect(state.toolCalls[0]).toMatchObject({ depth: 0 });
+    expect(state.toolCalls[0]?.parentToolCallId).toBeUndefined();
     expect(state.transcriptItems).not.toContainEqual({ type: "tool_call", id: "wrapper" });
     expect(state.transcriptItems).toContainEqual({ type: "tool_call", id: "leaf" });
   });

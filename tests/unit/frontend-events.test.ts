@@ -415,6 +415,14 @@ describe("frontend-events", () => {
       prompt: "hello",
       startedAt: "2026-03-31T00:00:00.000Z",
     });
+    const toolStarted = log.publish("session-1", {
+      type: "tool_started",
+      runId: "run-1",
+      toolCallId: "tool-1",
+      parentToolCallId: "wrapper-1",
+      title: "Mock read README.md",
+      kind: "read",
+    });
     const completed = log.publish("session-1", {
       type: "run_completed",
       runId: "run-1",
@@ -430,6 +438,14 @@ describe("frontend-events", () => {
 
     expect(toReplayableFrontendEvent(started, "run-1")).toBeUndefined();
     expect(toReplayableFrontendEvent(completed, "other-run")).toBeUndefined();
+    expect(toReplayableFrontendEvent(toolStarted, "run-1")).toEqual({
+      type: "tool_started",
+      runId: "run-1",
+      toolCallId: "tool-1",
+      parentToolCallId: "wrapper-1",
+      title: "Mock read README.md",
+      kind: "read",
+    });
     expect(toReplayableFrontendEvent(completed, "run-1")).toEqual({
       type: "run_completed",
       runId: "run-1",

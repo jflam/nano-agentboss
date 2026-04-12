@@ -15,11 +15,13 @@ import {
   renderProcedureMemoryCardsSection,
 } from "./memory-cards.ts";
 import {
+  isWrapperToolTitle,
   mapProcedureUiEventToFrontendEvent,
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
   toReplayableFrontendEvent,
   toFrontendCommands,
+  type FrontendEvent,
   type FrontendCommand,
 } from "../http/frontend-events.ts";
 import {
@@ -117,9 +119,15 @@ function renderSessionToolGuidance(): string {
   return SESSION_TOOL_GUIDANCE;
 }
 
+function isTerminalToolStatus(status: string): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
+
 class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
   private streamedText = "";
   private latestTokenUsage?: AgentTokenUsage;
+  private readonly activeWrapperToolCallIds: string[] = [];
+  private readonly toolCallParentIds = new Map<string, string | undefined>();
 
   constructor(
     private readonly sessionId: string,
@@ -137,10 +145,11 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
     }
 
     for (const event of mapSessionUpdateToFrontendEvents(this.runId, update)) {
-      if (event.type === "token_usage") {
-        this.latestTokenUsage = event.usage;
+      const frontendEvent = this.withToolCallHierarchy(event);
+      if (frontendEvent.type === "token_usage") {
+        this.latestTokenUsage = frontendEvent.usage;
       }
-      this.eventLog.publish(this.sessionId, event);
+      this.eventLog.publish(this.sessionId, frontendEvent);
     }
 
     this.delegate?.emit(update);
@@ -165,6 +174,42 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
 
   flush(): Promise<void> {
     return this.delegate?.flush() ?? Promise.resolve();
+  }
+
+  private withToolCallHierarchy(event: FrontendEvent): FrontendEvent {
+    switch (event.type) {
+      case "tool_started": {
+        const parentToolCallId = this.activeWrapperToolCallIds.at(-1);
+        this.toolCallParentIds.set(event.toolCallId, parentToolCallId);
+        if (isWrapperToolTitle(event.title)) {
+          this.activeWrapperToolCallIds.push(event.toolCallId);
+        }
+
+        return parentToolCallId ? { ...event, parentToolCallId } : event;
+      }
+      case "tool_updated": {
+        const parentToolCallId = this.toolCallParentIds.has(event.toolCallId)
+          ? this.toolCallParentIds.get(event.toolCallId)
+          : this.activeWrapperToolCallIds.at(-1);
+        if (!this.toolCallParentIds.has(event.toolCallId)) {
+          this.toolCallParentIds.set(event.toolCallId, parentToolCallId);
+        }
+
+        const isWrapper = event.title
+          ? isWrapperToolTitle(event.title)
+          : this.activeWrapperToolCallIds.includes(event.toolCallId);
+        if (isWrapper && isTerminalToolStatus(event.status)) {
+          const index = this.activeWrapperToolCallIds.lastIndexOf(event.toolCallId);
+          if (index >= 0) {
+            this.activeWrapperToolCallIds.splice(index, 1);
+          }
+        }
+
+        return parentToolCallId ? { ...event, parentToolCallId } : event;
+      }
+      default:
+        return event;
+    }
   }
 }
 

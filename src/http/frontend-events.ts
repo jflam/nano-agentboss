@@ -98,6 +98,7 @@ export type FrontendEvent =
       type: "tool_started";
       runId: string;
       toolCallId: string;
+      parentToolCallId?: string;
       title: string;
       kind: string;
       status?: string;
@@ -108,6 +109,7 @@ export type FrontendEvent =
       type: "tool_updated";
       runId: string;
       toolCallId: string;
+      parentToolCallId?: string;
       title?: string;
       status: string;
       resultPreview?: ToolPreviewBlock;
@@ -265,6 +267,15 @@ export function isToolStartedEvent(event: FrontendEventEnvelope): event is ToolS
 
 export function isToolUpdatedEvent(event: FrontendEventEnvelope): event is ToolUpdatedEventEnvelope {
   return event.type === "tool_updated";
+}
+
+export function isWrapperToolTitle(title: string): boolean {
+  return (
+    title.startsWith("callAgent") ||
+    title.startsWith("defaultSession:") ||
+    title.startsWith("Calling default procedure") ||
+    title.includes("procedure_dispatch")
+  );
 }
 
 export function isTokenUsageEvent(event: FrontendEventEnvelope): event is TokenUsageEventEnvelope {

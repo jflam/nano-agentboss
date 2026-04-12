@@ -466,17 +466,33 @@ describe("NanobossService", () => {
       await service.prompt(session.sessionId, "/probe");
 
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const storedRun = getInternalSessionState(service, session.sessionId).store.topLevelRuns({ limit: 1 })[0];
       const toolTitles = events
         .filter((event) => event.type === "tool_started")
         .map((event) => event.data.title);
+      const startedToolEvents = events.filter((event) => event.type === "tool_started");
+      const agentWrapper = startedToolEvents.find((event) => event.data.title.startsWith("callAgent"));
+      const nestedRead = startedToolEvents.find((event) => event.data.title === "Mock read README.md");
       const textEvents = events
         .filter((event) => event.type === "text_delta")
         .map((event) => event.data.text);
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "probe");
+      const replayEvents = storedRun
+        ? getInternalSessionState(service, session.sessionId).store.readCell(storedRun.cell).output.replayEvents
+        : undefined;
+      const replayedNestedRead = replayEvents?.find((event) =>
+        event.type === "tool_started" && event.title === "Mock read README.md"
+      );
 
       expect(toolTitles).not.toContain("procedure_dispatch_start");
       expect(toolTitles).not.toContain("procedure_dispatch_wait");
       expect(toolTitles).toContain("Mock read README.md");
+      expect(agentWrapper?.data.toolCallId).toBeTruthy();
+      expect(nestedRead?.data.parentToolCallId).toBe(agentWrapper?.data.toolCallId);
+      expect(replayedNestedRead?.type).toBe("tool_started");
+      if (replayedNestedRead?.type === "tool_started") {
+        expect(replayedNestedRead.parentToolCallId).toBe(agentWrapper?.data.toolCallId);
+      }
       expect(textEvents).toContain("done");
       expect(completed?.type).toBe("run_completed");
       if (completed?.type !== "run_completed") {

@@ -1,12 +1,15 @@
 import type { ProcedureUiEvent } from "../core/context-shared.ts";
-import type { FrontendCommand, RenderedFrontendEventEnvelope } from "../http/frontend-events.ts";
+import {
+  isWrapperToolTitle,
+  type FrontendCommand,
+  type RenderedFrontendEventEnvelope,
+} from "../http/frontend-events.ts";
 import type { DownstreamAgentSelection } from "../core/types.ts";
 import { formatProcedureStatusText } from "../core/ui-cli.ts";
 import type { ToolCardThemeMode } from "./state.ts";
 
 import {
   formatTokenUsageLine,
-  isWrapperToolTitle,
   shouldRemoveCompletedWrapperCard,
   shouldSuppressToolTraceTitle,
 } from "./format.ts";
@@ -117,7 +120,6 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         ...state,
         turns: [...state.turns, nextTurn],
         transcriptItems: appendTranscriptItem(state.transcriptItems, { type: "turn", id: nextTurn.id }),
-        activeWrapperToolCallIds: [],
         hiddenToolCallIds: [],
         activeRunId: undefined,
         activeProcedure: undefined,
@@ -151,7 +153,6 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         activeAssistantTurnId: undefined,
         assistantParagraphBreakPending: undefined,
         runStartedAtMs: undefined,
-        activeWrapperToolCallIds: [],
         hiddenToolCallIds: [],
         activeRunAttemptedToolCallIds: [],
         activeRunSucceededToolCallIds: [],
@@ -300,7 +301,6 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
         : state.runStartedAtMs ?? Date.now();
       return {
         ...state,
-        activeWrapperToolCallIds: [],
         hiddenToolCallIds: [],
         activeRunId: event.data.runId,
         activeProcedure: event.data.procedure,
@@ -371,36 +371,33 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
       }
-      const depth = state.activeWrapperToolCallIds.length;
+      const existing = state.toolCalls.find((toolCall) => toolCall.id === event.data.toolCallId);
+      const parentToolCallId = event.data.parentToolCallId ?? existing?.parentToolCallId;
       const isWrapper = isWrapperToolTitle(event.data.title);
       const suppressed = shouldSuppressToolTraceTitle(event.data.title);
       const activeRunAttemptedToolCallIds = state.activeRunId === event.data.runId
         ? appendUniqueString(state.activeRunAttemptedToolCallIds, event.data.toolCallId)
         : state.activeRunAttemptedToolCallIds;
-      const activeWrapperToolCallIds = isWrapper && !state.activeWrapperToolCallIds.includes(event.data.toolCallId)
-        ? [...state.activeWrapperToolCallIds, event.data.toolCallId]
-        : state.activeWrapperToolCallIds;
       const hiddenToolCallIds = suppressed && !state.hiddenToolCallIds.includes(event.data.toolCallId)
         ? [...state.hiddenToolCallIds, event.data.toolCallId]
         : state.hiddenToolCallIds;
 
-      if (!state.showToolCalls || suppressed) {
+      if (!state.showToolCalls) {
         return {
           ...state,
           activeRunAttemptedToolCallIds,
-          activeWrapperToolCallIds,
           hiddenToolCallIds,
         };
       }
 
-      const existing = state.toolCalls.find((toolCall) => toolCall.id === event.data.toolCallId);
       const nextToolCall: UiToolCall = {
         id: event.data.toolCallId,
         runId: event.data.runId,
+        ...(parentToolCallId ? { parentToolCallId } : {}),
         title: event.data.title,
         kind: event.data.kind,
         status: event.data.status ?? existing?.status ?? "pending",
-        depth: existing?.depth ?? depth,
+        depth: existing?.depth ?? 0,
         isWrapper: existing?.isWrapper ?? isWrapper,
         callPreview: mergeToolPreview(existing?.callPreview, event.data.callPreview),
         resultPreview: existing?.resultPreview,
@@ -412,25 +409,21 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
 
       const nextState = {
         ...state,
-        toolCalls: upsertToolCall(state.toolCalls, nextToolCall),
-        transcriptItems: appendTranscriptItem(state.transcriptItems, { type: "tool_call", id: nextToolCall.id }),
+        toolCalls: recomputeToolCallDepths(upsertToolCall(state.toolCalls, nextToolCall)),
+        transcriptItems: suppressed
+          ? state.transcriptItems
+          : appendTranscriptItem(state.transcriptItems, { type: "tool_call", id: nextToolCall.id }),
         activeRunAttemptedToolCallIds,
-        activeWrapperToolCallIds,
         hiddenToolCallIds,
       };
-      return existing ? nextState : markAssistantTextBoundary(nextState);
+      return existing || suppressed ? nextState : markAssistantTextBoundary(nextState);
     }
     case "tool_updated": {
       const existing = state.toolCalls.find((toolCall) => toolCall.id === event.data.toolCallId);
       const title = event.data.title ?? existing?.title ?? event.data.toolCallId;
-      const depth = existing?.depth ?? getActiveWrapperDepth(state.activeWrapperToolCallIds, event.data.toolCallId);
-      const isWrapper = existing?.isWrapper ?? (
-        state.activeWrapperToolCallIds.includes(event.data.toolCallId) || isWrapperToolTitle(title)
-      );
+      const parentToolCallId = event.data.parentToolCallId ?? existing?.parentToolCallId;
+      const isWrapper = existing?.isWrapper ?? (existing?.kind === "wrapper" || isWrapperToolTitle(title));
       const suppressed = state.hiddenToolCallIds.includes(event.data.toolCallId) || shouldSuppressToolTraceTitle(title);
-      const activeWrapperToolCallIds = isWrapper && isTerminalToolStatus(event.data.status)
-        ? state.activeWrapperToolCallIds.filter((toolCallId) => toolCallId !== event.data.toolCallId)
-        : state.activeWrapperToolCallIds;
       const activeRunSucceededToolCallIds = state.activeRunId === event.data.runId && event.data.status === "completed"
         ? appendUniqueString(state.activeRunSucceededToolCallIds, event.data.toolCallId)
         : state.activeRunSucceededToolCallIds;
@@ -440,18 +433,10 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
           ? [...state.hiddenToolCallIds, event.data.toolCallId]
           : state.hiddenToolCallIds;
 
-      let toolCalls = suppressed && isWrapper && isTerminalToolStatus(event.data.status)
-        ? collapseToolCallBranch(state.toolCalls, depth)
-        : state.toolCalls;
-      let transcriptItems = state.transcriptItems;
-
-      if (!state.showToolCalls || suppressed) {
+      if (!state.showToolCalls) {
         return {
           ...state,
-          toolCalls,
-          transcriptItems,
           activeRunSucceededToolCallIds,
-          activeWrapperToolCallIds,
           hiddenToolCallIds,
         };
       }
@@ -459,10 +444,11 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
       const nextToolCall: UiToolCall = {
         id: event.data.toolCallId,
         runId: event.data.runId,
+        ...(parentToolCallId ? { parentToolCallId } : {}),
         title,
         kind: existing?.kind ?? "other",
         status: event.data.status,
-        depth,
+        depth: existing?.depth ?? 0,
         isWrapper,
         callPreview: existing?.callPreview,
         resultPreview: mergeToolPreview(existing?.resultPreview, event.data.resultPreview),
@@ -472,12 +458,21 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
         durationMs: event.data.durationMs ?? existing?.durationMs,
       };
 
-      if (isWrapper && event.data.status === "completed" && shouldRemoveCompletedWrapperCard(title)) {
-        toolCalls = collapseToolCallBranch(removeToolCall(toolCalls, event.data.toolCallId), depth);
+      let toolCalls = state.toolCalls;
+      let transcriptItems = state.transcriptItems;
+      const shouldDropWrapperCard = isWrapper
+        && event.data.status === "completed"
+        && shouldRemoveCompletedWrapperCard(title);
+      const shouldDiscardHiddenWrapper = suppressed && isWrapper && isTerminalToolStatus(event.data.status);
+
+      if (shouldDropWrapperCard || shouldDiscardHiddenWrapper) {
+        toolCalls = removeToolCallAndReparent(toolCalls, event.data.toolCallId);
         transcriptItems = removeTranscriptItem(transcriptItems, "tool_call", event.data.toolCallId);
       } else {
-        toolCalls = upsertToolCall(toolCalls, nextToolCall);
-        transcriptItems = appendTranscriptItem(transcriptItems, { type: "tool_call", id: nextToolCall.id });
+        toolCalls = recomputeToolCallDepths(upsertToolCall(toolCalls, nextToolCall));
+        transcriptItems = suppressed
+          ? transcriptItems
+          : appendTranscriptItem(transcriptItems, { type: "tool_call", id: nextToolCall.id });
       }
 
       const nextState = {
@@ -485,10 +480,9 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
         toolCalls,
         transcriptItems,
         activeRunSucceededToolCallIds,
-        activeWrapperToolCallIds,
         hiddenToolCallIds,
       };
-      return existing || (isWrapper && event.data.status === "completed" && shouldRemoveCompletedWrapperCard(title))
+      return existing || suppressed || shouldDropWrapperCard || shouldDiscardHiddenWrapper
         ? nextState
         : markAssistantTextBoundary(nextState);
     }
@@ -690,7 +684,6 @@ function finishRun(
     activeAssistantTurnId: undefined,
     assistantParagraphBreakPending: undefined,
     runStartedAtMs: undefined,
-    activeWrapperToolCallIds: [],
     hiddenToolCallIds: [],
     activeRunAttemptedToolCallIds: [],
     activeRunSucceededToolCallIds: [],
@@ -872,15 +865,6 @@ function mergeToolPreview(
   };
 }
 
-function collapseToolCallBranch(toolCalls: UiToolCall[], depth: number): UiToolCall[] {
-  return toolCalls.map((toolCall) => toolCall.depth > depth
-    ? {
-        ...toolCall,
-        depth: toolCall.depth - 1,
-      }
-    : toolCall);
-}
-
 function upsertToolCall(toolCalls: UiToolCall[], nextToolCall: UiToolCall): UiToolCall[] {
   const existingIndex = toolCalls.findIndex((toolCall) => toolCall.id === nextToolCall.id);
   if (existingIndex < 0) {
@@ -890,8 +874,60 @@ function upsertToolCall(toolCalls: UiToolCall[], nextToolCall: UiToolCall): UiTo
   return toolCalls.map((toolCall, index) => index === existingIndex ? nextToolCall : toolCall);
 }
 
-function removeToolCall(toolCalls: UiToolCall[], toolCallId: string): UiToolCall[] {
-  return toolCalls.filter((toolCall) => toolCall.id !== toolCallId);
+function removeToolCallAndReparent(toolCalls: UiToolCall[], toolCallId: string): UiToolCall[] {
+  const removed = toolCalls.find((toolCall) => toolCall.id === toolCallId);
+  if (!removed) {
+    return toolCalls;
+  }
+
+  return recomputeToolCallDepths(
+    toolCalls
+      .filter((toolCall) => toolCall.id !== toolCallId)
+      .map((toolCall) => toolCall.parentToolCallId === toolCallId
+        ? setToolCallParent(toolCall, removed.parentToolCallId)
+        : toolCall),
+  );
+}
+
+function setToolCallParent(toolCall: UiToolCall, parentToolCallId: string | undefined): UiToolCall {
+  if (parentToolCallId) {
+    return {
+      ...toolCall,
+      parentToolCallId,
+    };
+  }
+
+  const { parentToolCallId: _parentToolCallId, ...rest } = toolCall;
+  void _parentToolCallId;
+  return rest;
+}
+
+function recomputeToolCallDepths(toolCalls: UiToolCall[]): UiToolCall[] {
+  const byId = new Map(toolCalls.map((toolCall) => [toolCall.id, toolCall]));
+  const cachedDepths = new Map<string, number>();
+
+  const resolveDepth = (toolCall: UiToolCall, lineage = new Set<string>()): number => {
+    const cached = cachedDepths.get(toolCall.id);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    if (lineage.has(toolCall.id)) {
+      return 0;
+    }
+
+    lineage.add(toolCall.id);
+    const parent = toolCall.parentToolCallId ? byId.get(toolCall.parentToolCallId) : undefined;
+    const depth = parent ? resolveDepth(parent, lineage) + 1 : 0;
+    lineage.delete(toolCall.id);
+    cachedDepths.set(toolCall.id, depth);
+    return depth;
+  };
+
+  return toolCalls.map((toolCall) => ({
+    ...toolCall,
+    depth: resolveDepth(toolCall),
+  }));
 }
 
 function appendTranscriptItem(items: UiTranscriptItem[], nextItem: UiTranscriptItem): UiTranscriptItem[] {
@@ -913,11 +949,6 @@ function uniqueStrings(values: string[]): string[] {
 
 function appendUniqueString(values: string[], nextValue: string): string[] {
   return values.includes(nextValue) ? values : [...values, nextValue];
-}
-
-function getActiveWrapperDepth(activeWrapperToolCallIds: string[], toolCallId: string): number {
-  const depth = activeWrapperToolCallIds.indexOf(toolCallId);
-  return depth >= 0 ? depth : activeWrapperToolCallIds.length;
 }
 
 function isTerminalToolStatus(status: string): boolean {
