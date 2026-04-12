@@ -491,10 +491,13 @@ describe("tui reducer", () => {
       type: "frontend_event",
       event: eventEnvelope("procedure_card", {
         runId: "run-1",
-        procedure: "research",
-        kind: "report",
-        title: "Research checkpoint",
-        markdown: "- cited source\n- open question",
+        card: {
+          type: "card",
+          procedure: "research",
+          kind: "report",
+          title: "Research checkpoint",
+          markdown: "- cited source\n- open question",
+        },
       }),
     });
 

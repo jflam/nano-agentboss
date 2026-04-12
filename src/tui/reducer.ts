@@ -1,3 +1,4 @@
+import type { ProcedureUiEvent } from "../core/context-shared.ts";
 import type { FrontendCommand, FrontendEventEnvelope } from "../http/frontend-events.ts";
 import type { DownstreamAgentSelection } from "../core/types.ts";
 import { formatProcedureStatusText } from "../core/ui-cli.ts";
@@ -795,13 +796,13 @@ function appendProcedureCard(
   const turn = createTurn({
     id: nextTurnId("assistant", turns.length),
     role: "assistant",
-    markdown: renderProcedureCardMarkdown(card),
+    markdown: renderProcedureCardMarkdown(card.card),
     status: "complete",
     runId: card.runId,
     displayStyle: "card",
-    cardTone: procedureCardTone(card.kind),
+    cardTone: procedureCardTone(card.card.kind),
     meta: buildAssistantTurnMeta({
-      procedure: card.procedure,
+      procedure: card.card.procedure,
     }),
   });
 
@@ -814,7 +815,7 @@ function appendProcedureCard(
   };
 }
 
-function renderProcedureCardMarkdown(card: Extract<FrontendEventEnvelope, { type: "procedure_card" }>['data']): string {
+function renderProcedureCardMarkdown(card: Extract<ProcedureUiEvent, { type: "card" }>): string {
   return [
     `## ${card.title}`,
     "",
@@ -824,7 +825,7 @@ function renderProcedureCardMarkdown(card: Extract<FrontendEventEnvelope, { type
   ].filter((line, index, lines) => line.length > 0 || index < lines.length - 1).join("\n");
 }
 
-function procedureCardTone(kind: Extract<FrontendEventEnvelope, { type: "procedure_card" }>['data']['kind']): NonNullable<UiTurn["cardTone"]> {
+function procedureCardTone(kind: Extract<ProcedureUiEvent, { type: "card" }>["kind"]): NonNullable<UiTurn["cardTone"]> {
   switch (kind) {
     case "summary":
       return "success";

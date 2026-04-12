@@ -15,6 +15,7 @@ import {
   renderProcedureMemoryCardsSection,
 } from "./memory-cards.ts";
 import {
+  mapProcedureUiEventToFrontendEvent,
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
   toFrontendCommands,
@@ -147,26 +148,7 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
 
   emitUiEvent(event: ProcedureUiEvent): void {
     this.onActivity();
-
-    switch (event.type) {
-      case "status":
-        this.eventLog.publish(this.sessionId, {
-          type: "procedure_status",
-          runId: this.runId,
-          status: event,
-        });
-        return;
-      case "card":
-        this.eventLog.publish(this.sessionId, {
-          type: "procedure_card",
-          runId: this.runId,
-          procedure: event.procedure,
-          kind: event.kind,
-          title: event.title,
-          markdown: event.markdown,
-        });
-        return;
-    }
+    this.eventLog.publish(this.sessionId, mapProcedureUiEventToFrontendEvent(this.runId, event));
   }
 
   get currentTokenUsage(): AgentTokenUsage | undefined {
@@ -1343,10 +1325,7 @@ function toPersistedReplayEvent(
       return {
         type: "procedure_card",
         runId: event.data.runId,
-        procedure: event.data.procedure,
-        kind: event.data.kind,
-        title: event.data.title,
-        markdown: event.data.markdown,
+        card: event.data.card,
       };
     case "tool_started":
       return {

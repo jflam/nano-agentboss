@@ -17,6 +17,13 @@ describe("frontend-events", () => {
     iteration: "2/3",
     waiting: true,
   } satisfies Extract<ProcedureUiEvent, { type: "status" }>;
+  const cardEvent = {
+    type: "card",
+    procedure: "research",
+    kind: "report",
+    title: "Checkpoint",
+    markdown: "- cited source",
+  } satisfies Extract<ProcedureUiEvent, { type: "card" }>;
 
   test("maps commands, chunks, token snapshots, and compact tool previews into render events", () => {
     const commands = toFrontendCommands([
@@ -247,17 +254,14 @@ describe("frontend-events", () => {
         sessionUpdate: "agent_message_chunk",
         content: {
           type: "text",
-          text: '[[nanoboss-ui]] {"type":"card","procedure":"research","kind":"report","title":"Checkpoint","markdown":"- cited source"}\n',
+          text: `[[nanoboss-ui]] ${JSON.stringify(cardEvent)}\n`,
         },
       }),
     ).toEqual([
       {
         type: "procedure_card",
         runId: "run-1",
-        procedure: "research",
-        kind: "report",
-        title: "Checkpoint",
-        markdown: "- cited source",
+        card: cardEvent,
       },
     ]);
   });
@@ -297,6 +301,22 @@ describe("frontend-events", () => {
     expect(event?.type === "procedure_status" && formatProcedureStatusText(event.status)).toBe(
       "[status] /research collect 2/3 - Gathering sources (waiting)",
     );
+  });
+
+  test("preserves the shared procedure card payload without transport-specific reshaping", () => {
+    const [event] = mapSessionUpdateToFrontendEvents("run-1", {
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "text",
+        text: `[[nanoboss-ui]] ${JSON.stringify(cardEvent)}\n`,
+      },
+    });
+
+    expect(event).toEqual({
+      type: "procedure_card",
+      runId: "run-1",
+      card: cardEvent,
+    });
   });
 
   test("normalizes provider-specific read payloads into consistent previews", () => {

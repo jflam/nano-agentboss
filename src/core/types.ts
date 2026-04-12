@@ -261,10 +261,7 @@ export type PersistedFrontendEvent =
   | {
       type: "procedure_card";
       runId: string;
-      procedure: string;
-      kind: UiCardKind;
-      title: string;
-      markdown: string;
+      card: Extract<ProcedureUiEvent, { type: "card" }>;
     }
   | {
       type: "tool_started";

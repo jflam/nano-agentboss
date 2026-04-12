@@ -15,7 +15,6 @@ import type {
   CellRef,
   FrontendPendingProcedureContinuation,
   ProcedureContinuationUi,
-  UiCardKind,
 } from "../core/types.ts";
 
 export interface FrontendCommand {
@@ -80,10 +79,7 @@ export type FrontendEvent =
   | {
       type: "procedure_card";
       runId: string;
-      procedure: string;
-      kind: UiCardKind;
-      title: string;
-      markdown: string;
+      card: Extract<ProcedureUiEvent, { type: "card" }>;
     }
   | {
       type: "token_usage";
@@ -366,10 +362,10 @@ export function mapSessionUpdateToFrontendEvents(
   }
 }
 
-function mapProcedureUiEventToFrontendEvent(
+export function mapProcedureUiEventToFrontendEvent(
   runId: string,
-  event: ReturnType<typeof parseProcedureUiMarker> extends infer T ? Exclude<T, undefined> : never,
-): FrontendEvent {
+  event: ProcedureUiEvent,
+): Extract<FrontendEvent, { type: "procedure_status" | "procedure_card" }> {
   switch (event.type) {
     case "status":
       return {
@@ -381,10 +377,7 @@ function mapProcedureUiEventToFrontendEvent(
       return {
         type: "procedure_card",
         runId,
-        procedure: event.procedure,
-        kind: event.kind,
-        title: event.title,
-        markdown: event.markdown,
+        card: event,
       };
   }
 }

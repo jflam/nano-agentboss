@@ -1153,6 +1153,16 @@ function createTranscriptContractReplayEvents(): FrontendEventEnvelope[] {
       text: "I checked the code.",
       stream: "agent",
     }),
+    eventEnvelope("procedure_card", {
+      runId: "run-1",
+      card: {
+        type: "card",
+        procedure: "default",
+        kind: "report",
+        title: "Checkpoint",
+        markdown: "- README reviewed",
+      },
+    }),
     eventEnvelope("run_completed", {
       runId: "run-1",
       procedure: "default",
