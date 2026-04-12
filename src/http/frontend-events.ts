@@ -1,7 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { parseAssistantNoticeText } from "../agent/acp-updates.ts";
-import { parseProcedureUiMarker } from "../core/ui-cli.ts";
 import type { ProcedureUiEvent } from "../core/context-shared.ts";
 import type { ProcedureMemoryCard } from "../core/memory-cards.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
@@ -284,11 +283,6 @@ export function mapSessionUpdateToFrontendEvents(
     case "agent_message_chunk": {
       if (update.content.type !== "text") {
         return [];
-      }
-
-      const procedureUi = parseProcedureUiMarker(update.content.text);
-      if (procedureUi) {
-        return [mapProcedureUiEventToFrontendEvent(runId, procedureUi)];
       }
 
       const notice = parseAssistantNoticeText(update.content.text);

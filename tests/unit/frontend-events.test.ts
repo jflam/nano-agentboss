@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { ProcedureUiEvent } from "../../src/core/context-shared.ts";
 import { formatProcedureStatusText } from "../../src/core/ui-cli.ts";
 import {
+  mapProcedureUiEventToFrontendEvent,
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
   toFrontendCommands,
@@ -232,7 +233,7 @@ describe("frontend-events", () => {
     expect(updated?.type === "tool_updated" && updated.errorPreview?.bodyLines?.[0]?.length).toBeLessThanOrEqual(160);
   });
 
-  test("maps nanoboss ui markers into structured procedure status and card events", () => {
+  test("treats raw procedure ui marker text as plain text at the frontend event boundary", () => {
     expect(
       mapSessionUpdateToFrontendEvents("run-1", {
         sessionUpdate: "agent_message_chunk",
@@ -243,9 +244,10 @@ describe("frontend-events", () => {
       }),
     ).toEqual([
       {
-        type: "procedure_status",
+        type: "text_delta",
         runId: "run-1",
-        status: statusEvent,
+        text: '[[nanoboss-ui]] {"type":"status","procedure":"research","phase":"collect","message":"Gathering sources","iteration":"2/3","waiting":true}\n',
+        stream: "agent",
       },
     ]);
 
@@ -259,9 +261,10 @@ describe("frontend-events", () => {
       }),
     ).toEqual([
       {
-        type: "procedure_card",
+        type: "text_delta",
         runId: "run-1",
-        card: cardEvent,
+        text: `[[nanoboss-ui]] ${JSON.stringify(cardEvent)}\n`,
+        stream: "agent",
       },
     ]);
   });
@@ -284,33 +287,19 @@ describe("frontend-events", () => {
     })).toBe("[status] /research collect 2/3 - Gathering sources (auto-approve, waiting)");
   });
 
-  test("preserves the shared procedure status payload without transport-specific reshaping", () => {
-    const [event] = mapSessionUpdateToFrontendEvents("run-1", {
-      sessionUpdate: "agent_message_chunk",
-      content: {
-        type: "text",
-        text: `[[nanoboss-ui]] ${JSON.stringify(statusEvent)}\n`,
-      },
-    });
+  test("maps typed procedure status events into shared frontend events without transport reshaping", () => {
+    const event = mapProcedureUiEventToFrontendEvent("run-1", statusEvent);
 
     expect(event).toEqual({
       type: "procedure_status",
       runId: "run-1",
       status: statusEvent,
     });
-    expect(event?.type === "procedure_status" && formatProcedureStatusText(event.status)).toBe(
-      "[status] /research collect 2/3 - Gathering sources (waiting)",
-    );
+    expect(event.type === "procedure_status" && formatProcedureStatusText(event.status)).toBe("[status] /research collect 2/3 - Gathering sources (waiting)");
   });
 
-  test("preserves the shared procedure card payload without transport-specific reshaping", () => {
-    const [event] = mapSessionUpdateToFrontendEvents("run-1", {
-      sessionUpdate: "agent_message_chunk",
-      content: {
-        type: "text",
-        text: `[[nanoboss-ui]] ${JSON.stringify(cardEvent)}\n`,
-      },
-    });
+  test("maps typed procedure card events into shared frontend events without transport reshaping", () => {
+    const event = mapProcedureUiEventToFrontendEvent("run-1", cardEvent);
 
     expect(event).toEqual({
       type: "procedure_card",
