@@ -59,10 +59,6 @@ const FIXTURE_PROMPTS = new Set([
 ]);
 
 const FIXTURE_PROMPT_PREFIXES = [
-  "/callAgent compute",
-  "/callAgent hello",
-  "/callAgent markdown demo",
-  "/callAgent Answer the user's request directly.",
   "/second-opinion What is 2 + 2? Reply with only the number.",
   "/second-opinion Review this TypeScript function.",
   "/research how to write fizzbuzz",
@@ -71,7 +67,7 @@ const FIXTURE_PROMPT_PREFIXES = [
   "/research what is 2+2",
   "/research how does nanoboss use mcp",
   "/research how the new mcp server implementation works in nanoboss",
-  "/research how we use typia to enforce types in callAgent() calls in nanoboss procedures",
+  "/research how we use typia to enforce types in ctx.agent.run() calls in nanoboss procedures",
 ];
 
 export function getSessionCleanupBaseDir(): string {

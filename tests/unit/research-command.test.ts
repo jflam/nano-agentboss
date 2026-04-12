@@ -28,7 +28,7 @@ describe("/research", () => {
     tempDirs.push(cwd);
 
     const prints: string[] = [];
-    const calls: Array<{
+    const agentRuns: Array<{
       prompt: string;
       descriptor?: unknown;
       options?: unknown;
@@ -57,13 +57,13 @@ describe("/research", () => {
             | Record<string, unknown>
             | undefined;
 
-          calls.push({
+          agentRuns.push({
             prompt,
             descriptor,
             options,
           });
 
-          if (calls.length === 1) {
+          if (agentRuns.length === 1) {
             return {
               cell: {
                 sessionId: "test-session",
@@ -123,11 +123,11 @@ describe("/research", () => {
     expect(result.memory).toBe(
       `Research completed for summarize the pi-tui update. The cited report was also written to ${relativePath}.`,
     );
-    expect(calls).toHaveLength(2);
-    const firstCall = calls[0];
-    const secondCall = calls[1];
+    expect(agentRuns).toHaveLength(2);
+    const firstCall = agentRuns[0];
+    const secondCall = agentRuns[1];
     if (!firstCall || !secondCall) {
-      throw new Error("Expected two callAgent invocations");
+      throw new Error("Expected brief and report agent runs");
     }
     expect(firstCall.prompt).toContain("You are preparing a research brief for a separate worker agent.");
     expect(firstCall.prompt).toContain("User request:\nsummarize the pi-tui update");

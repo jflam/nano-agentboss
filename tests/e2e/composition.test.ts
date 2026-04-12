@@ -17,7 +17,7 @@ const MathResultType = jsonType<MathResult>(
   typia.createValidate<MathResult>(),
 );
 
-describeE2E("callProcedure composition (real agent)", () => {
+describeE2E("ctx.procedures.run composition (real agent)", () => {
   test(
     "quadruple composes double",
     async () => {

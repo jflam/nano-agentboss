@@ -1,8 +1,14 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import typia from "typia";
 
-import { callAgent } from "../../src/agent/call-agent.ts";
-import { jsonType } from "../../src/core/types.ts";
+import { CommandContextImpl } from "../../src/core/context.ts";
+import { RunLogger } from "../../src/core/logger.ts";
+import { jsonType, type ProcedureApi } from "../../src/core/types.ts";
+import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { SessionStore } from "../../src/session/index.ts";
 import { describeE2E } from "./helpers.ts";
 
 interface MathResult {
@@ -27,11 +33,36 @@ const WordAnalysisType = jsonType<WordAnalysis>(
   typia.createValidate<WordAnalysis>(),
 );
 
-describeE2E("callAgent typed (real agent)", () => {
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const path = tempDirs.pop();
+    if (path) {
+      rmSync(path, { recursive: true, force: true });
+    }
+  }
+});
+
+describeE2E("ProcedureApi agent runs (real agent)", () => {
   test(
-    "returns typed math results",
+    "returns untyped string results through ctx.agent.run",
     async () => {
-      const result = await callAgent("Compute 17 * 23", MathResultType);
+      const ctx: ProcedureApi = createContext();
+      const result = await ctx.agent.run("What is 2 + 2? Reply with just the number.");
+
+      expect(result.data?.trim()).toBe("4");
+      expect(result.dataRef).toBeDefined();
+    },
+    60_000,
+  );
+
+  test(
+    "returns typed math results through ctx.agent.run",
+    async () => {
+      const ctx: ProcedureApi = createContext();
+      const result = await ctx.agent.run("Compute 17 * 23", MathResultType);
+
       expect(result.data?.result).toBe(391);
       expect(result.data?.expression).toContain("17");
       expect(result.dataRef).toBeDefined();
@@ -40,9 +71,11 @@ describeE2E("callAgent typed (real agent)", () => {
   );
 
   test(
-    "returns typed word analysis",
+    "returns typed word analysis through ctx.agent.run",
     async () => {
-      const result = await callAgent("Analyze the word 'hello'", WordAnalysisType);
+      const ctx: ProcedureApi = createContext();
+      const result = await ctx.agent.run("Analyze the word 'hello'", WordAnalysisType);
+
       expect(result.data?.word).toBe("hello");
       expect(result.data?.length).toBe(5);
       expect(result.data?.vowels).toBe(2);
@@ -52,15 +85,45 @@ describeE2E("callAgent typed (real agent)", () => {
   );
 
   test(
-    "rejects responses that never match the schema",
+    "rejects schema mismatches through ctx.agent.run",
     async () => {
+      const ctx: ProcedureApi = createContext();
       const impossibleType = {
         schema: typia.json.schema<{ uuid: string; timestamp: number }>(),
         validate: (_input: unknown): _input is { uuid: string; timestamp: number } => false,
       };
 
-      await expect(callAgent("Say hello", impossibleType)).rejects.toThrow();
+      await expect(ctx.agent.run("Say hello", impossibleType)).rejects.toThrow();
     },
     60_000,
   );
 });
+
+function createContext(): CommandContextImpl {
+  const cwd = mkdtempSync(join(tmpdir(), "nab-procedure-api-"));
+  tempDirs.push(cwd);
+
+  const logger = new RunLogger();
+  const store = new SessionStore({
+    sessionId: crypto.randomUUID(),
+    cwd,
+  });
+
+  return new CommandContextImpl({
+    cwd,
+    logger,
+    registry: new ProcedureRegistry(),
+    procedureName: "typed-e2e",
+    spanId: logger.newSpan(),
+    emitter: {
+      emit() {},
+      async flush() {},
+    },
+    store,
+    cell: store.startCell({
+      procedure: "typed-e2e",
+      input: "typed-e2e",
+      kind: "top_level",
+    }),
+  });
+}
