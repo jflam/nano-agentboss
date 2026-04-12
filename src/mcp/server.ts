@@ -4,23 +4,18 @@ import { parseRequiredDownstreamAgentSelection } from "../core/downstream-agent-
 import { dispatchMcpToolsMethod, type JsonRpcToolMetadata } from "./jsonrpc.ts";
 import { runStdioJsonRpcServer } from "./stdio-jsonrpc.ts";
 import {
-  createNanobossRuntimeService,
-  type NanobossRuntimeService,
-} from "../runtime/service.ts";
-import {
+  type ProcedureListResult,
   type ProcedureDispatchResult,
   type ProcedureDispatchStartToolResult,
   type ProcedureDispatchStatusToolResult,
   type RuntimeSchemaResult,
-  type RuntimeServiceParams,
+  type RuntimeService,
   isProcedureDispatchResult as isRuntimeProcedureDispatchResult,
   isProcedureDispatchStatusResult as isRuntimeProcedureDispatchStatusResult,
 } from "../runtime/api.ts";
 import type {
-  CellDescendantsOptions,
   CellKind,
   CellRef,
-  DownstreamAgentSelection,
   ProcedureMetadata,
   ValueRef,
 } from "../core/types.ts";
@@ -35,104 +30,12 @@ export interface McpServerOptions {
   serverName?: string;
 }
 
-type McpApiParams = RuntimeServiceParams;
-
 interface McpToolDefinition extends JsonRpcToolMetadata {
   parseArgs(args: Record<string, unknown>): unknown;
-  call(api: NanobossMcpApi, args: unknown): Promise<unknown>;
-}
-
-interface ProcedureListResult {
-  procedures: ProcedureMetadata[];
+  call(runtime: RuntimeService, args: unknown): Promise<unknown>;
 }
 
 export type McpSchemaResult = RuntimeSchemaResult;
-
-export class NanobossMcpApi {
-  constructor(private readonly runtime: NanobossRuntimeService) {}
-
-  sessionRecent(args: Parameters<NanobossRuntimeService["sessionRecent"]>[0] = {}) {
-    return this.runtime.sessionRecent(args);
-  }
-
-  topLevelRuns(args: Parameters<NanobossRuntimeService["topLevelRuns"]>[0] = {}) {
-    return this.runtime.topLevelRuns(args);
-  }
-
-  cellGet(cellRef: CellRef) {
-    return this.runtime.cellGet(cellRef);
-  }
-
-  cellAncestors(
-    cellRef: CellRef,
-    args: Parameters<NanobossRuntimeService["cellAncestors"]>[1] = {},
-  ) {
-    return this.runtime.cellAncestors(cellRef, args);
-  }
-
-  cellDescendants(
-    cellRef: CellRef,
-    args: CellDescendantsOptions = {},
-  ) {
-    return this.runtime.cellDescendants(cellRef, args);
-  }
-
-  refRead(valueRef: ValueRef): unknown {
-    return this.runtime.refRead(valueRef);
-  }
-
-  refStat(valueRef: ValueRef) {
-    return this.runtime.refStat(valueRef);
-  }
-
-  refWriteToFile(valueRef: ValueRef, path: string): { path: string } {
-    return this.runtime.refWriteToFile(valueRef, path);
-  }
-
-  getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): McpSchemaResult {
-    return this.runtime.getSchema(args);
-  }
-
-  async procedureList(args: { includeHidden?: boolean; sessionId?: string } = {}): Promise<ProcedureListResult> {
-    return await this.runtime.procedureList(args);
-  }
-
-  async procedureGet(args: { name: string; sessionId?: string }): Promise<ProcedureMetadata> {
-    return await this.runtime.procedureGet(args);
-  }
-
-  async procedureDispatchStart(args: {
-    sessionId?: string;
-    name: string;
-    prompt: string;
-    defaultAgentSelection?: DownstreamAgentSelection;
-    dispatchCorrelationId?: string;
-  }): Promise<ProcedureDispatchStartToolResult> {
-    return await this.runtime.procedureDispatchStart(args);
-  }
-
-  async procedureDispatchStatus(args: { dispatchId: string }): Promise<ProcedureDispatchStatusToolResult> {
-    return await this.runtime.procedureDispatchStatus(args);
-  }
-
-  async procedureDispatchWait(args: {
-    dispatchId: string;
-    waitMs?: number;
-  }): Promise<ProcedureDispatchStatusToolResult> {
-    return await this.runtime.procedureDispatchWait(args);
-  }
-}
-
-export function createNanobossMcpApi(params: McpApiParams): NanobossMcpApi {
-  return new NanobossMcpApi(createNanobossRuntimeService(params));
-}
-
-export function createCurrentSessionBackedNanobossMcpApi(cwd = process.cwd()): NanobossMcpApi {
-  return createNanobossMcpApi({
-    cwd,
-    allowCurrentSessionFallback: true,
-  });
-}
 
 const CELL_REF_SCHEMA = {
   type: "object",
@@ -164,7 +67,7 @@ function defineTool<Args>(definition: {
   description: string;
   inputSchema: object;
   parseArgs(args: Record<string, unknown>): Args;
-  call(api: NanobossMcpApi, args: Args): Promise<unknown>;
+  call(runtime: RuntimeService, args: Args): Promise<unknown>;
 }): McpToolDefinition {
   return {
     name: definition.name,
@@ -519,7 +422,7 @@ export function listMcpTools(): JsonRpcToolMetadata[] {
 }
 
 export async function callMcpTool(
-  api: NanobossMcpApi,
+  runtime: RuntimeService,
   name: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
@@ -528,17 +431,17 @@ export async function callMcpTool(
     throw new Error(`Unknown tool: ${name}`);
   }
 
-  return await tool.call(api, tool.parseArgs(args));
+  return await tool.call(runtime, tool.parseArgs(args));
 }
 
 export async function dispatchMcpMethod(
-  api: NanobossMcpApi,
+  runtime: RuntimeService,
   method: string,
   params: unknown,
   options: McpServerOptions = {},
 ): Promise<unknown> {
   return await dispatchMcpToolsMethod({
-    api,
+    api: runtime,
     method,
     messageParams: params,
     protocolVersion: options.protocolVersion ?? MCP_PROTOCOL_VERSION,
@@ -552,10 +455,10 @@ export async function dispatchMcpMethod(
 }
 
 export async function runMcpServer(
-  api: NanobossMcpApi,
+  runtime: RuntimeService,
   options: McpServerOptions = {},
 ): Promise<void> {
-  await runStdioJsonRpcServer((method, messageParams) => dispatchMcpMethod(api, method, messageParams, options));
+  await runStdioJsonRpcServer((method, messageParams) => dispatchMcpMethod(runtime, method, messageParams, options));
 }
 
 export function formatMcpToolResult(
