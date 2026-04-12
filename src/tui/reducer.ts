@@ -1,5 +1,5 @@
 import type { ProcedureUiEvent } from "../core/context-shared.ts";
-import type { FrontendCommand, FrontendEventEnvelope } from "../http/frontend-events.ts";
+import type { FrontendCommand, RenderedFrontendEventEnvelope } from "../http/frontend-events.ts";
 import type { DownstreamAgentSelection } from "../core/types.ts";
 import { formatProcedureStatusText } from "../core/ui-cli.ts";
 import type { ToolCardThemeMode } from "./state.ts";
@@ -83,7 +83,7 @@ export type UiAction =
     }
   | {
       type: "frontend_event";
-      event: FrontendEventEnvelope;
+      event: RenderedFrontendEventEnvelope;
     };
 
 export function reduceUiState(state: UiState, action: UiAction): UiState {
@@ -232,7 +232,7 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
   }
 }
 
-function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiState {
+function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelope): UiState {
   switch (event.type) {
     case "commands_updated":
       return {
@@ -320,9 +320,6 @@ function reduceFrontendEvent(state: UiState, event: FrontendEventEnvelope): UiSt
         ...state,
         pendingProcedureContinuation: event.data.continuation,
       };
-    case "memory_cards":
-    case "memory_card_stored":
-      return state;
     case "assistant_notice":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
@@ -786,7 +783,7 @@ function finalizeAssistantTurn(
 
 function appendProcedureCard(
   state: UiState,
-  card: Extract<FrontendEventEnvelope, { type: "procedure_card" }>['data'],
+  card: Extract<RenderedFrontendEventEnvelope, { type: "procedure_card" }>["data"],
 ): UiState {
   const turns = state.activeAssistantTurnId
     ? state.turns.map((turn) => turn.id === state.activeAssistantTurnId && turn.status === "streaming"

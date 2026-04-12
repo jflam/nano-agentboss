@@ -156,6 +156,9 @@ export type FrontendEvent =
       cell?: CellRef;
     };
 
+export type MemorySyncFrontendEvent = Extract<FrontendEvent, { type: "memory_cards" | "memory_card_stored" }>;
+export type RenderedFrontendEvent = Exclude<FrontendEvent, MemorySyncFrontendEvent>;
+
 export type FrontendEventEnvelope = {
   [EventType in FrontendEvent["type"]]: {
     sessionId: string;
@@ -164,6 +167,24 @@ export type FrontendEventEnvelope = {
     data: Omit<Extract<FrontendEvent, { type: EventType }>, "type">;
   };
 }[FrontendEvent["type"]];
+
+export type MemorySyncFrontendEventEnvelope = {
+  [EventType in MemorySyncFrontendEvent["type"]]: {
+    sessionId: string;
+    seq: number;
+    type: EventType;
+    data: Omit<Extract<MemorySyncFrontendEvent, { type: EventType }>, "type">;
+  };
+}[MemorySyncFrontendEvent["type"]];
+
+export type RenderedFrontendEventEnvelope = {
+  [EventType in RenderedFrontendEvent["type"]]: {
+    sessionId: string;
+    seq: number;
+    type: EventType;
+    data: Omit<Extract<RenderedFrontendEvent, { type: EventType }>, "type">;
+  };
+}[RenderedFrontendEvent["type"]];
 
 export type CommandsUpdatedEventEnvelope = Extract<FrontendEventEnvelope, { type: "commands_updated" }>;
 export type TextDeltaEventEnvelope = Extract<FrontendEventEnvelope, { type: "text_delta" }>;
@@ -235,6 +256,16 @@ export function isTokenUsageEvent(event: FrontendEventEnvelope): event is TokenU
 
 export function isRunFailedEvent(event: FrontendEventEnvelope): event is RunFailedEventEnvelope {
   return event.type === "run_failed";
+}
+
+export function isMemorySyncFrontendEvent(
+  event: FrontendEventEnvelope,
+): event is MemorySyncFrontendEventEnvelope {
+  return event.type === "memory_cards" || event.type === "memory_card_stored";
+}
+
+export function isRenderedFrontendEvent(event: FrontendEventEnvelope): event is RenderedFrontendEventEnvelope {
+  return !isMemorySyncFrontendEvent(event);
 }
 
 export function toFrontendCommands(commands: acp.AvailableCommand[]): FrontendCommand[] {

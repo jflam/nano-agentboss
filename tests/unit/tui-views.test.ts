@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { summarizeToolCallStart, summarizeToolCallUpdate } from "../../src/core/tool-call-preview.ts";
-import type { FrontendEventEnvelope } from "../../src/http/frontend-events.ts";
+import type { RenderedFrontendEventEnvelope } from "../../src/http/frontend-events.ts";
 import { reduceUiState } from "../../src/tui/reducer.ts";
 import { createInitialUiState } from "../../src/tui/state.ts";
 import { createNanobossTuiTheme } from "../../src/tui/theme.ts";
@@ -1054,16 +1054,16 @@ describe("NanobossAppView", () => {
 
 });
 
-function eventEnvelope<EventType extends FrontendEventEnvelope["type"]>(
+function eventEnvelope<EventType extends RenderedFrontendEventEnvelope["type"]>(
   type: EventType,
-  data: Extract<FrontendEventEnvelope, { type: EventType }>["data"],
-): FrontendEventEnvelope {
+  data: Extract<RenderedFrontendEventEnvelope, { type: EventType }>["data"],
+): RenderedFrontendEventEnvelope {
   return {
     sessionId: "session-1",
     seq: 1,
     type,
     data,
-  } as FrontendEventEnvelope;
+  } as RenderedFrontendEventEnvelope;
 }
 
 function createTranscriptContractState(mode: "live" | "restored") {
@@ -1107,7 +1107,7 @@ function createTranscriptContractState(mode: "live" | "restored") {
   return state;
 }
 
-function createTranscriptContractReplayEvents(): FrontendEventEnvelope[] {
+function createTranscriptContractReplayEvents(): RenderedFrontendEventEnvelope[] {
   return [
     eventEnvelope("run_started", {
       runId: "run-1",
@@ -1127,26 +1127,6 @@ function createTranscriptContractReplayEvents(): FrontendEventEnvelope[] {
       toolCallId: "tool-1",
       status: "completed",
       resultPreview: { bodyLines: ["Project instructions"] },
-    }),
-    eventEnvelope("memory_cards", {
-      runId: "run-1",
-      cards: [{
-        cell: { sessionId: "session-1", cellId: "cell-1" },
-        procedure: "default",
-        input: "review the repo",
-        summary: "stored summary",
-        createdAt: "2026-04-11T00:00:00.000Z",
-      }],
-    }),
-    eventEnvelope("memory_card_stored", {
-      runId: "run-1",
-      card: {
-        cell: { sessionId: "session-1", cellId: "cell-1" },
-        procedure: "default",
-        input: "review the repo",
-        memory: "stored memory",
-        createdAt: "2026-04-11T00:00:00.000Z",
-      },
     }),
     eventEnvelope("text_delta", {
       runId: "run-1",
