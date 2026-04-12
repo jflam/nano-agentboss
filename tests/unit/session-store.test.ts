@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 
+import type { ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
 import { SessionStore } from "../../src/session/index.ts";
 
 const tempDirs: string[] = [];
@@ -220,5 +221,62 @@ describe("SessionStore", () => {
       "linter",
       "second-opinion",
     ]);
+  });
+
+  test("round-trips persisted replay events as canonical frontend payloads", () => {
+    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-store-"));
+    tempDirs.push(rootDir);
+
+    const original = new SessionStore({
+      sessionId: "session-replay",
+      cwd: process.cwd(),
+      rootDir,
+    });
+
+    const cell = original.startCell({
+      procedure: "demo",
+      input: "hello",
+      kind: "top_level",
+    });
+    const replayEvents: ReplayableFrontendEvent[] = [
+      {
+        type: "text_delta",
+        runId: "run-1",
+        text: "hello\n",
+        stream: "agent" as const,
+      },
+      {
+        type: "run_completed",
+        runId: "run-1",
+        procedure: "demo",
+        completedAt: "2026-04-01T10:00:00.000Z",
+        cell: {
+          sessionId: "session-replay",
+          cellId: cell.cell.cellId,
+        },
+        summary: "done",
+        display: "hello\n",
+      },
+    ];
+
+    original.finalizeCell(cell, {
+      display: "hello\n",
+      summary: "done",
+    }, {
+      replayEvents,
+    });
+
+    const reloaded = new SessionStore({
+      sessionId: "session-replay",
+      cwd: process.cwd(),
+      rootDir,
+    });
+
+    const stored = reloaded.topLevelRuns({ limit: 1 })[0];
+    if (!stored) {
+      throw new Error("Missing stored top-level run");
+    }
+
+    expect(reloaded.readCell(stored.cell).output.replayEvents).toEqual(replayEvents);
   });
 });

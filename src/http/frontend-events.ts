@@ -157,6 +157,10 @@ export type FrontendEvent =
 
 export type MemorySyncFrontendEvent = Extract<FrontendEvent, { type: "memory_cards" | "memory_card_stored" }>;
 export type RenderedFrontendEvent = Exclude<FrontendEvent, MemorySyncFrontendEvent>;
+export type ReplayableFrontendEvent = Exclude<
+  Extract<RenderedFrontendEvent, { runId: string }>,
+  { type: "run_started" | "run_restored" | "run_heartbeat" }
+>;
 
 export type FrontendEventEnvelope = {
   [EventType in FrontendEvent["type"]]: {
@@ -191,6 +195,20 @@ export type ToolStartedEventEnvelope = Extract<FrontendEventEnvelope, { type: "t
 export type ToolUpdatedEventEnvelope = Extract<FrontendEventEnvelope, { type: "tool_updated" }>;
 export type TokenUsageEventEnvelope = Extract<FrontendEventEnvelope, { type: "token_usage" }>;
 export type RunFailedEventEnvelope = Extract<FrontendEventEnvelope, { type: "run_failed" }>;
+
+const REPLAYABLE_FRONTEND_EVENT_TYPES = new Set<ReplayableFrontendEvent["type"]>([
+  "text_delta",
+  "assistant_notice",
+  "procedure_status",
+  "procedure_card",
+  "tool_started",
+  "tool_updated",
+  "token_usage",
+  "run_completed",
+  "run_paused",
+  "run_failed",
+  "run_cancelled",
+]);
 
 export class SessionEventLog {
   private readonly listeners = new Set<(event: FrontendEventEnvelope) => void>();
@@ -265,6 +283,24 @@ export function isMemorySyncFrontendEvent(
 
 export function isRenderedFrontendEvent(event: FrontendEventEnvelope): event is RenderedFrontendEventEnvelope {
   return !isMemorySyncFrontendEvent(event);
+}
+
+export function toReplayableFrontendEvent(
+  event: FrontendEventEnvelope,
+  runId: string,
+): ReplayableFrontendEvent | undefined {
+  if (!("runId" in event.data) || event.data.runId !== runId) {
+    return undefined;
+  }
+
+  if (!REPLAYABLE_FRONTEND_EVENT_TYPES.has(event.type as ReplayableFrontendEvent["type"])) {
+    return undefined;
+  }
+
+  return {
+    type: event.type,
+    ...event.data,
+  } as ReplayableFrontendEvent;
 }
 
 export function toFrontendCommands(commands: acp.AvailableCommand[]): FrontendCommand[] {

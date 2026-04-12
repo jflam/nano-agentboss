@@ -11,6 +11,7 @@ const BUILD_HOOK_TIMEOUT_MS = 30_000;
 import { DefaultConversationSession } from "../../src/agent/default-session.ts";
 import type { Procedure } from "../../src/core/types.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
 import { SessionStore } from "../../src/session/index.ts";
 import { extractProcedureDispatchResult, NanobossService } from "../../src/core/service.ts";
 
@@ -316,14 +317,23 @@ describe("NanobossService", () => {
         const liveReplay = normalizeReplayEvents(
           service.getSessionEvents(session.sessionId)?.after(-1) ?? [],
         );
-        const liveCompletedAt = liveReplay.findLast((event) => event.type === "run_completed")?.data.completedAt;
+        const liveCompletedAt = liveReplay.findLast((event) => event.type === "run_completed")?.completedAt;
+        const storedRun = getInternalSessionState(service, session.sessionId).store.topLevelRuns({ limit: 1 })[0];
 
         expect(liveReplay.some((event) => event.type === "tool_started")).toBe(true);
         expect(liveReplay.some((event) => event.type === "text_delta")).toBe(true);
         expect(typeof liveCompletedAt).toBe("string");
+        expect(storedRun).toBeDefined();
         if (typeof liveCompletedAt !== "string") {
           throw new Error("Missing completed timestamp");
         }
+        if (!storedRun) {
+          throw new Error("Missing stored run");
+        }
+
+        expect(
+          getInternalSessionState(service, session.sessionId).store.readCell(storedRun.cell).output.replayEvents,
+        ).toEqual(liveReplay);
 
         service.destroySession(session.sessionId);
 
@@ -393,7 +403,7 @@ describe("NanobossService", () => {
         const liveReplay = normalizeReplayEvents(
           service.getSessionEvents(session.sessionId)?.after(-1) ?? [],
         );
-        const liveCancelledAt = liveReplay.findLast((event) => event.type === "run_cancelled")?.data.completedAt;
+        const liveCancelledAt = liveReplay.findLast((event) => event.type === "run_cancelled")?.completedAt;
         expect(liveReplay.some((event) => event.type === "run_cancelled")).toBe(true);
         expect(typeof liveCancelledAt).toBe("string");
         if (typeof liveCancelledAt !== "string") {
@@ -1261,11 +1271,9 @@ describe("NanobossService", () => {
   });
 });
 
-function normalizeReplayEvents(events: Array<{ type: string; data: Record<string, unknown> }>): Array<{
-  type: string;
-  data: Record<string, unknown>;
-}> {
-  const replayable = new Set([
+type ReplayableFrontendEventEnvelope = Extract<FrontendEventEnvelope, { type: ReplayableFrontendEvent["type"] }>;
+
+const REPLAYABLE_EVENT_TYPES = new Set<ReplayableFrontendEvent["type"]>([
     "text_delta",
     "tool_started",
     "tool_updated",
@@ -1274,12 +1282,21 @@ function normalizeReplayEvents(events: Array<{ type: string; data: Record<string
     "run_paused",
     "run_failed",
     "run_cancelled",
-  ]);
+]);
 
-  return events
-    .filter((event) => replayable.has(event.type))
-    .map((event) => ({
-      type: event.type,
-      data: event.data,
-    }));
+function isReplayableFrontendEventEnvelope(
+  event: FrontendEventEnvelope,
+): event is ReplayableFrontendEventEnvelope {
+  return REPLAYABLE_EVENT_TYPES.has(event.type as ReplayableFrontendEvent["type"]);
+}
+
+function toReplayableFrontendEvent(event: ReplayableFrontendEventEnvelope): ReplayableFrontendEvent {
+  return {
+    type: event.type,
+    ...event.data,
+  } as ReplayableFrontendEvent;
+}
+
+function normalizeReplayEvents(events: FrontendEventEnvelope[]): ReplayableFrontendEvent[] {
+  return events.filter(isReplayableFrontendEventEnvelope).map(toReplayableFrontendEvent);
 }

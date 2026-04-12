@@ -6,6 +6,7 @@ import {
   mapProcedureUiEventToFrontendEvent,
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
+  toReplayableFrontendEvent,
   toFrontendCommands,
 } from "../../src/http/frontend-events.ts";
 
@@ -403,5 +404,43 @@ describe("frontend-events", () => {
     expect(third.seq).toBe(3);
     expect(log.after(-1).map((event) => event.seq)).toEqual([2, 3]);
     expect(log.after(2).map((event) => event.seq)).toEqual([3]);
+  });
+
+  test("flattens replayable frontend envelopes without re-copying payload semantics", () => {
+    const log = new SessionEventLog();
+    const started = log.publish("session-1", {
+      type: "run_started",
+      runId: "run-1",
+      procedure: "default",
+      prompt: "hello",
+      startedAt: "2026-03-31T00:00:00.000Z",
+    });
+    const completed = log.publish("session-1", {
+      type: "run_completed",
+      runId: "run-1",
+      procedure: "default",
+      completedAt: "2026-03-31T00:00:01.000Z",
+      cell: {
+        sessionId: "session-1",
+        cellId: "cell-1",
+      },
+      summary: "done",
+      display: "done\n",
+    });
+
+    expect(toReplayableFrontendEvent(started, "run-1")).toBeUndefined();
+    expect(toReplayableFrontendEvent(completed, "other-run")).toBeUndefined();
+    expect(toReplayableFrontendEvent(completed, "run-1")).toEqual({
+      type: "run_completed",
+      runId: "run-1",
+      procedure: "default",
+      completedAt: "2026-03-31T00:00:01.000Z",
+      cell: {
+        sessionId: "session-1",
+        cellId: "cell-1",
+      },
+      summary: "done",
+      display: "done\n",
+    });
   });
 });

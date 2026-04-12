@@ -1,6 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import type { ProcedureUiEvent } from "./context-shared.ts";
-import type { ToolPreviewBlock } from "./tool-call-preview.ts";
+import type { ReplayableFrontendEvent } from "../http/frontend-events.ts";
 
 export type KernelScalar = null | boolean | number | string;
 export type JsonValue = KernelScalar | JsonValue[] | { [key: string]: JsonValue };
@@ -240,97 +239,7 @@ export interface AgentTokenUsage {
   totalTrackedTokens?: number;
 }
 
-export type PersistedFrontendEvent =
-  | {
-      type: "text_delta";
-      runId: string;
-      text: string;
-      stream: "agent";
-    }
-  | {
-      type: "assistant_notice";
-      runId: string;
-      text: string;
-      tone: "info" | "warning" | "error";
-    }
-  | {
-      type: "procedure_status";
-      runId: string;
-      status: Extract<ProcedureUiEvent, { type: "status" }>;
-    }
-  | {
-      type: "procedure_card";
-      runId: string;
-      card: Extract<ProcedureUiEvent, { type: "card" }>;
-    }
-  | {
-      type: "tool_started";
-      runId: string;
-      toolCallId: string;
-      title: string;
-      kind: string;
-      status?: string;
-      callPreview?: ToolPreviewBlock;
-      rawInput?: unknown;
-    }
-  | {
-      type: "tool_updated";
-      runId: string;
-      toolCallId: string;
-      title?: string;
-      status: string;
-      resultPreview?: ToolPreviewBlock;
-      errorPreview?: ToolPreviewBlock;
-      durationMs?: number;
-      rawOutput?: unknown;
-    }
-  | {
-      type: "token_usage";
-      runId: string;
-      usage: AgentTokenUsage;
-      sourceUpdate: "usage_update" | "tool_call_update" | "run_completed" | "run_paused";
-      toolCallId?: string;
-      status?: string;
-    }
-  | {
-      type: "run_completed";
-      runId: string;
-      procedure: string;
-      completedAt: string;
-      cell: CellRef;
-      summary?: string;
-      display?: string;
-      tokenUsage?: AgentTokenUsage;
-    }
-  | {
-      type: "run_paused";
-      runId: string;
-      procedure: string;
-      pausedAt: string;
-      cell: CellRef;
-      question: string;
-      display?: string;
-      inputHint?: string;
-      suggestedReplies?: string[];
-      continuationUi?: ProcedureContinuationUi;
-      tokenUsage?: AgentTokenUsage;
-    }
-  | {
-      type: "run_failed";
-      runId: string;
-      procedure: string;
-      completedAt: string;
-      error: string;
-      cell?: CellRef;
-    }
-  | {
-      type: "run_cancelled";
-      runId: string;
-      procedure: string;
-      completedAt: string;
-      message: string;
-      cell?: CellRef;
-    };
+export type PersistedFrontendEvent = ReplayableFrontendEvent;
 
 export interface TypeDescriptor<T> {
   schema: object;
