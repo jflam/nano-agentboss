@@ -1726,7 +1726,7 @@ function resolveCommand(
     };
   }
 
-  const match = firstPart.text.match(/^\/(\S+)(?:\s+)?/);
+  const match = firstPart.text.match(/^\s*\/(\S+)(?:\s+)?/);
   if (!match) {
     return {
       commandName: "default",
