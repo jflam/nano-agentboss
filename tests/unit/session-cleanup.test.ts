@@ -41,6 +41,16 @@ describe("session cleanup inspection", () => {
       updatedAt: "2026-04-03T00:00:00.000Z",
     })}\n`);
 
+    const namespaceFixtureDir = join(baseDir, "namespace-fixture");
+    mkdirSync(namespaceFixtureDir, { recursive: true });
+    writeFileSync(join(namespaceFixtureDir, "session.json"), `${JSON.stringify({
+      sessionId: "namespace-fixture",
+      cwd: "/repo",
+      initialPrompt: "/research how we use typia to enforce types in ctx.agent.run() calls in nanoboss procedures",
+      createdAt: "2026-04-03T00:00:00.000Z",
+      updatedAt: "2026-04-03T00:00:00.000Z",
+    })}\n`);
+
     const emptySessionDir = join(baseDir, "session-from-client");
     mkdirSync(emptySessionDir, { recursive: true });
     writeFileSync(join(emptySessionDir, "session.json"), `${JSON.stringify({
@@ -71,6 +81,7 @@ describe("session cleanup inspection", () => {
     ]));
     const emptyDir = findCandidate(selected, "empty-dir");
     const tempSession = findCandidate(selected, "temp-session");
+    const namespaceFixture = findCandidate(selected, "namespace-fixture");
     const emptySession = findCandidate(selected, "session-from-client");
     const legacyFixture = findCandidate(candidates, "legacy-fixture");
 
@@ -78,6 +89,7 @@ describe("session cleanup inspection", () => {
     expect(emptyDir.reasons).toContain("unknown_cwd");
     expect(tempSession.reasons).toContain("temp_cwd");
     expect(tempSession.reasons).toContain("fixture_prompt");
+    expect(namespaceFixture.reasons).toContain("fixture_prompt");
     expect(emptySession.reasons).toContain("empty_session");
     expect(emptySession.reasons).toContain("fixture_session_id");
     expect(legacyFixture.reasons).toContain("unknown_cwd");

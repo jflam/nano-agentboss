@@ -30,7 +30,7 @@ import type {
   AutoresearchExperimentSpec,
   AutoresearchInitPlan,
 } from "../../procedures/autoresearch/types.ts";
-import type { CommandContext, DownstreamAgentConfig, RunResult } from "../../src/core/types.ts";
+import type { ProcedureApi, DownstreamAgentConfig, RunResult } from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];
 
@@ -660,7 +660,7 @@ function createMockContext(
     sessionId?: string;
     assertNotCancelled?: (checkCount: number) => void;
   } = {},
-): CommandContext {
+): ProcedureApi {
   const defaultAgentConfig: DownstreamAgentConfig = {
     provider: "copilot",
     command: "copilot",
@@ -669,69 +669,108 @@ function createMockContext(
   };
   let callCount = 0;
   let cancellationCheckCount = 0;
+  const callAgent = (async (prompt: string) => {
+    callCount += 1;
+    return {
+      cell: {
+        sessionId: options.sessionId ?? "test-session",
+        cellId: `agent-${callCount}`,
+      },
+      data: await handler(prompt, callCount),
+    } as RunResult;
+  }) as ProcedureApi["agent"]["run"];
+  const refs: ProcedureApi["state"]["refs"] = {
+    async read() {
+      throw new Error("Not implemented in test");
+    },
+    async stat() {
+      throw new Error("Not implemented in test");
+    },
+    async writeToFile() {
+      throw new Error("Not implemented in test");
+    },
+  };
+  const runs: ProcedureApi["state"]["runs"] = {
+    async recent() {
+      return [];
+    },
+    async latest() {
+      return undefined;
+    },
+    async topLevelRuns() {
+      return [];
+    },
+    async get() {
+      throw new Error("Not implemented in test");
+    },
+    async parent() {
+      return undefined;
+    },
+    async children() {
+      return [];
+    },
+    async ancestors() {
+      return [];
+    },
+    async descendants() {
+      return [];
+    },
+  };
+  const agent: ProcedureApi["agent"] = {
+    run: callAgent,
+    session() {
+      return {
+        run: callAgent,
+      };
+    },
+  };
 
   return {
     cwd,
     sessionId: options.sessionId ?? "test-session",
-    refs: {
-      async read() {
-        throw new Error("Not implemented in test");
+    agent,
+    state: {
+      runs,
+      refs,
+    },
+    ui: {
+      text(text: string) {
+        printed.push(text);
       },
-      async stat() {
-        throw new Error("Not implemented in test");
+      info(text: string) {
+        printed.push(text);
       },
-      async writeToFile() {
+      warning(text: string) {
+        printed.push(text);
+      },
+      error(text: string) {
+        printed.push(text);
+      },
+      status() {},
+      card() {},
+    },
+    procedures: {
+      async run() {
         throw new Error("Not implemented in test");
       },
     },
     session: {
-      async recent() {
-        return [];
+      getDefaultAgentConfig() {
+        return defaultAgentConfig;
       },
-      async topLevelRuns() {
-        return [];
+      setDefaultAgentSelection() {
+        return defaultAgentConfig;
       },
-      async get() {
-        throw new Error("Not implemented in test");
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
       },
-      async ancestors() {
-        return [];
-      },
-      async descendants() {
-        return [];
+      async getDefaultAgentTokenUsage() {
+        return undefined;
       },
     },
     assertNotCancelled() {
       cancellationCheckCount += 1;
       options.assertNotCancelled?.(cancellationCheckCount);
-    },
-    getDefaultAgentConfig() {
-      return defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    callAgent: (async (prompt: string) => {
-      callCount += 1;
-      return {
-        cell: {
-          sessionId: options.sessionId ?? "test-session",
-          cellId: `agent-${callCount}`,
-        },
-        data: await handler(prompt, callCount),
-      } as RunResult;
-    }) as CommandContext["callAgent"],
-    async callProcedure() {
-      throw new Error("Not implemented in test");
-    },
-    print(text: string) {
-      printed.push(text);
     },
   };
 }

@@ -1,14 +1,14 @@
 import type { UiToolCall } from "../../state.ts";
 import type { NanobossTuiTheme } from "../../theme.ts";
 import type { RenderedToolCard } from "../tool-card-format.ts";
-import { normalizeToolName, renderPreviewToolCard } from "../tool-card-format.ts";
+import { getCanonicalToolName, renderPreviewToolCard } from "../tool-card-format.ts";
 import { renderEditToolCard } from "./edit.ts";
 import { renderFallbackToolCard } from "./fallback.ts";
 import { renderReadToolCard } from "./read.ts";
 import { renderWriteToolCard } from "./write.ts";
 
 export function renderToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
-  switch (normalizeToolName(toolCall)) {
+  switch (getCanonicalToolName(toolCall)) {
     case "bash":
       return renderPreviewToolCard(theme, toolCall, expanded, { collapsedLines: 5 });
     case "read":

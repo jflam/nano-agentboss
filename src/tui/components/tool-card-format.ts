@@ -5,7 +5,6 @@ import {
   extractToolErrorText,
   firstString,
   normalizeToolInputPayload,
-  normalizeToolName as normalizeSharedToolName,
   normalizeToolResultPayload,
   stringifyValue,
 } from "../../core/tool-payload-normalizer.ts";
@@ -67,8 +66,8 @@ export function formatToolDurationLine(theme: NanobossTuiTheme, toolCall: UiTool
   return theme.toolCardMeta(`Took ${formatDuration(toolCall.durationMs)}`);
 }
 
-export function normalizeToolName(toolCall: Pick<UiToolCall, "kind" | "title">): string | undefined {
-  return normalizeSharedToolName(toolCall);
+export function getCanonicalToolName(toolCall: Pick<UiToolCall, "toolName">): string | undefined {
+  return toolCall.toolName?.trim().toLowerCase() || undefined;
 }
 
 export function formatToolHeader(theme: NanobossTuiTheme, header: string | undefined, fallbackTitle: string): string {
@@ -217,11 +216,11 @@ export function formatErrorLines(
 }
 
 export function formatExpandedToolHeader(toolCall: UiToolCall): string | undefined {
-  return normalizeToolInputPayload(toolCall, toolCall.rawInput).header ?? toolCall.callPreview?.header;
+  return normalizeToolInputPayload({ toolName: toolCall.toolName }, toolCall.rawInput).header ?? toolCall.callPreview?.header;
 }
 
 export function getExpandedToolInputBlock(toolCall: UiToolCall): ToolPreviewBlock | undefined {
-  const normalized = normalizeToolInputPayload(toolCall, toolCall.rawInput);
+  const normalized = normalizeToolInputPayload({ toolName: toolCall.toolName }, toolCall.rawInput);
   const record = asRecord(toolCall.rawInput);
 
   switch (normalized.toolName) {
@@ -268,7 +267,7 @@ export function getExpandedToolInputBlock(toolCall: UiToolCall): ToolPreviewBloc
 }
 
 export function getExpandedToolResultBlock(toolCall: UiToolCall): ToolPreviewBlock | undefined {
-  const normalized = normalizeToolResultPayload(toolCall, toolCall.rawOutput);
+  const normalized = normalizeToolResultPayload({ toolName: toolCall.toolName }, toolCall.rawOutput);
   const record = asRecord(toolCall.rawOutput);
   const expandedContent = firstString(record?.expandedContent, record?.expanded_content);
 
@@ -298,7 +297,7 @@ export function getExpandedToolErrorBlock(toolCall: UiToolCall): ToolPreviewBloc
 }
 
 function getToolCodeContext(toolCall: UiToolCall): { shouldHighlight: boolean; language?: string } {
-  const toolName = normalizeToolName(toolCall);
+  const toolName = getCanonicalToolName(toolCall);
   const inputRecord = asRecord(toolCall.rawInput);
   const outputRecord = asRecord(toolCall.rawOutput);
   const explicitLanguage = firstString(

@@ -128,7 +128,7 @@ describe("default session memory bridge", () => {
     ].join("\n"), "utf8");
     tempDirs.push(cwd);
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     registry.loadBuiltins();
     await registry.loadFromDisk();
 

@@ -1,9 +1,11 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
+import { buildMcpProcedureDispatchPrompt } from "./agent-runtime-instructions.ts";
 import { getBuildLabel } from "./build-info.ts";
 import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "./cancellation.ts";
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
 import { type SessionUpdateEmitter } from "./context.ts";
+import type { ProcedureUiEvent } from "./context-shared.ts";
 import { formatErrorMessage } from "./error-format.ts";
 import { DefaultConversationSession } from "../agent/default-session.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
@@ -13,10 +15,12 @@ import {
   renderProcedureMemoryCardsSection,
 } from "./memory-cards.ts";
 import {
+  mapProcedureUiEventToFrontendEvent,
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
+  toReplayableFrontendEvent,
   toFrontendCommands,
-  type FrontendEventEnvelope,
+  type FrontendEvent,
   type FrontendCommand,
 } from "../http/frontend-events.ts";
 import {
@@ -47,7 +51,7 @@ import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from 
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import { appendTimingTraceEvent, createRunTimingTrace, type RunTimingTrace } from "./timing-trace.ts";
-import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "../mcp/server.ts";
+import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "../runtime/api.ts";
 import type {
   AgentTokenUsage,
   DownstreamAgentConfig,
@@ -141,6 +145,11 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
     }
 
     this.delegate?.emit(update);
+  }
+
+  emitUiEvent(event: ProcedureUiEvent): void {
+    this.onActivity();
+    this.eventLog.publish(this.sessionId, mapProcedureUiEventToFrontendEvent(this.runId, event));
   }
 
   get currentTokenUsage(): AgentTokenUsage | undefined {
@@ -345,27 +354,20 @@ export class NanobossService {
     for (const summary of runs) {
       const record = session.store.readCell(summary.cell);
       const replayEvents = record.output.replayEvents;
+      const terminalEvent = getRestoredRunTerminalEvent(replayEvents);
       const runId = replayEvents?.[0]?.runId ?? record.cellId;
-      const completedAt = getRestoredRunEndedAt(replayEvents) ?? record.meta.createdAt;
-      const status = replayEvents?.some((event) => event.type === "run_failed")
-        ? "failed"
-        : replayEvents?.some((event) => event.type === "run_cancelled")
-          ? "cancelled"
-          : replayEvents?.some((event) => event.type === "run_paused")
-            ? "paused"
-          : "complete";
 
       session.events.publish(sessionId, {
         type: "run_restored",
         runId,
         procedure: record.procedure,
         prompt: record.input,
-        completedAt,
+        completedAt: getRestoredRunEndedAt(terminalEvent) ?? record.meta.createdAt,
         cell: {
           sessionId,
           cellId: record.cellId,
         },
-        status,
+        status: getRestoredRunStatus(terminalEvent),
         ...(replayEvents && replayEvents.length > 0
           ? {}
           : { text: record.output.display ?? record.output.summary }),
@@ -534,7 +536,7 @@ export class NanobossService {
         procedure: procedureName,
       });
       const promptResult = await session.defaultConversation.prompt(
-        buildProcedureDispatchPrompt(
+        buildMcpProcedureDispatchPrompt(
           session.store.sessionId,
           procedureName,
           procedurePrompt,
@@ -914,7 +916,7 @@ export class NanobossService {
     let persistedTopLevelCell: { sessionId: string; cellId: string } | undefined;
     const replayEvents: PersistedFrontendEvent[] = [];
     const stopReplayCapture = session.events.subscribe((event) => {
-      const replayEvent = toPersistedReplayEvent(event, runId);
+      const replayEvent = toReplayableFrontendEvent(event, runId);
       if (replayEvent) {
         replayEvents.push(replayEvent);
       }
@@ -1035,7 +1037,7 @@ export class NanobossService {
           },
           prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId, timingTrace),
           onError: (ctx, errorText) => {
-            ctx.print(errorText);
+            ctx.ui.text(errorText);
           },
           assertCanStartBoundary,
           timingTrace,
@@ -1177,20 +1179,45 @@ function shouldPrewarmDefaultConversation(): boolean {
   return process.env.NANOBOSS_PREWARM_DEFAULT_SESSION !== "0";
 }
 
-function getRestoredRunEndedAt(replayEvents: PersistedFrontendEvent[] | undefined): string | undefined {
-  const latest = [...(replayEvents ?? [])]
-    .reverse()
-    .find((event) =>
-      event.type === "run_completed"
-      || event.type === "run_paused"
-      || event.type === "run_failed"
-      || event.type === "run_cancelled"
-    );
-  if (!latest) {
+type RestoredRunTerminalEvent = Extract<
+  PersistedFrontendEvent,
+  { type: "run_completed" | "run_paused" | "run_failed" | "run_cancelled" }
+>;
+
+function getRestoredRunTerminalEvent(
+  replayEvents: PersistedFrontendEvent[] | undefined,
+): RestoredRunTerminalEvent | undefined {
+  return [...(replayEvents ?? [])].reverse().find(isRestoredRunTerminalEvent);
+}
+
+function isRestoredRunTerminalEvent(event: PersistedFrontendEvent): event is RestoredRunTerminalEvent {
+  return event.type === "run_completed"
+    || event.type === "run_paused"
+    || event.type === "run_failed"
+    || event.type === "run_cancelled";
+}
+
+function getRestoredRunEndedAt(event: RestoredRunTerminalEvent | undefined): string | undefined {
+  if (!event) {
     return undefined;
   }
 
-  return latest.type === "run_paused" ? latest.pausedAt : latest.completedAt;
+  return event.type === "run_paused" ? event.pausedAt : event.completedAt;
+}
+
+function getRestoredRunStatus(
+  event: RestoredRunTerminalEvent | undefined,
+): "complete" | "failed" | "cancelled" | "paused" {
+  switch (event?.type) {
+    case "run_failed":
+      return "failed";
+    case "run_cancelled":
+      return "cancelled";
+    case "run_paused":
+      return "paused";
+    default:
+      return "complete";
+  }
 }
 
 function getRunHeartbeatMs(): number {
@@ -1231,38 +1258,6 @@ function shouldIncludeRecoveredProcedureGuidance(session: SessionState): boolean
 function getRecoveredProcedureGuidanceWindowMs(): number {
   const value = Number(process.env.NANOBOSS_RECOVERED_PROCEDURE_GUIDANCE_WINDOW_MS ?? "300000");
   return Number.isFinite(value) && value > 0 ? value : 300000;
-}
-
-function buildProcedureDispatchPrompt(
-  sessionId: string,
-  procedureName: string,
-  procedurePrompt: string,
-  defaultAgentSelection?: DownstreamAgentSelection,
-  dispatchCorrelationId?: string,
-): string {
-  return [
-    "Nanoboss internal slash-command dispatch.",
-    "Internal control message for the current persistent master conversation.",
-    "Use the globally registered `nanoboss` MCP server.",
-    "Do not inspect repo files, CLI wiring, session pointer files, or ~/.nanoboss.",
-    "The client may expose the tools under bare names or namespaced handles such as `mcp__nanoboss__procedure_dispatch_start` or similar names that contain `procedure_dispatch_start` / `procedure_dispatch_wait`.",
-    "Use the global nanoboss MCP handle that contains `procedure_dispatch_start` for step 1 and the matching `procedure_dispatch_wait` handle for step 2.",
-    `Target session id: ${sessionId}`,
-    "Step 1: call the chosen `procedure_dispatch_start` tool exactly once with this JSON:",
-    JSON.stringify({
-      sessionId,
-      name: procedureName,
-      prompt: procedurePrompt,
-      defaultAgentSelection,
-      dispatchCorrelationId,
-    }),
-    "Step 2: after start returns a dispatch id, repeatedly call the chosen `procedure_dispatch_wait` tool with that dispatch id until status is `completed` or `failed`.",
-    "Use a short bounded wait on each poll.",
-    "Do not answer from your own knowledge.",
-    "If the final status is `completed`, reply with exactly the final tool result text and nothing else.",
-    "If the final status is `failed`, reply with exactly the tool error text and nothing else.",
-    "No prefatory explanation.",
-  ].join("\n\n");
 }
 
 export function extractProcedureDispatchResult(updates: acp.SessionUpdate[]): ProcedureExecutionResult | undefined {
@@ -1314,109 +1309,6 @@ function extractProcedureDispatchStatus(updates: acp.SessionUpdate[]): Procedure
   }
 
   return undefined;
-}
-
-function toPersistedReplayEvent(
-  event: FrontendEventEnvelope,
-  runId: string,
-): PersistedFrontendEvent | undefined {
-  if (!("runId" in event.data) || event.data.runId !== runId) {
-    return undefined;
-  }
-
-  switch (event.type) {
-    case "text_delta":
-      return {
-        type: "text_delta",
-        runId: event.data.runId,
-        text: event.data.text,
-        stream: event.data.stream,
-      };
-    case "assistant_notice":
-      return {
-        type: "assistant_notice",
-        runId: event.data.runId,
-        text: event.data.text,
-        tone: event.data.tone,
-      };
-    case "tool_started":
-      return {
-        type: "tool_started",
-        runId: event.data.runId,
-        toolCallId: event.data.toolCallId,
-        title: event.data.title,
-        kind: event.data.kind,
-        status: event.data.status,
-        callPreview: event.data.callPreview,
-        rawInput: event.data.rawInput,
-      };
-    case "tool_updated":
-      return {
-        type: "tool_updated",
-        runId: event.data.runId,
-        toolCallId: event.data.toolCallId,
-        title: event.data.title,
-        status: event.data.status,
-        resultPreview: event.data.resultPreview,
-        errorPreview: event.data.errorPreview,
-        durationMs: event.data.durationMs,
-        rawOutput: event.data.rawOutput,
-      };
-    case "token_usage":
-      return {
-        type: "token_usage",
-        runId: event.data.runId,
-        usage: event.data.usage,
-        sourceUpdate: event.data.sourceUpdate,
-        toolCallId: event.data.toolCallId,
-        status: event.data.status,
-      };
-    case "run_completed":
-      return {
-        type: "run_completed",
-        runId: event.data.runId,
-        procedure: event.data.procedure,
-        completedAt: event.data.completedAt,
-        cell: event.data.cell,
-        summary: event.data.summary,
-        display: event.data.display,
-        tokenUsage: event.data.tokenUsage,
-      };
-    case "run_paused":
-      return {
-        type: "run_paused",
-        runId: event.data.runId,
-        procedure: event.data.procedure,
-        pausedAt: event.data.pausedAt,
-        cell: event.data.cell,
-        question: event.data.question,
-        display: event.data.display,
-        inputHint: event.data.inputHint,
-        suggestedReplies: event.data.suggestedReplies,
-        continuationUi: event.data.continuationUi,
-        tokenUsage: event.data.tokenUsage,
-      };
-    case "run_failed":
-      return {
-        type: "run_failed",
-        runId: event.data.runId,
-        procedure: event.data.procedure,
-        completedAt: event.data.completedAt,
-        error: event.data.error,
-        cell: event.data.cell,
-      };
-    case "run_cancelled":
-      return {
-        type: "run_cancelled",
-        runId: event.data.runId,
-        procedure: event.data.procedure,
-        completedAt: event.data.completedAt,
-        message: event.data.message,
-        cell: event.data.cell,
-      };
-    default:
-      return undefined;
-  }
 }
 
 function collectProcedureDispatchCandidates(update: Extract<acp.SessionUpdate, { sessionUpdate: "tool_call_update" }>): unknown[] {

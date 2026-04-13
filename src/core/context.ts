@@ -1,61 +1,30 @@
-import type * as acp from "@agentclientprotocol/sdk";
-
-import { collectTextSessionUpdates, summarizeAgentOutput } from "../agent/acp-updates.ts";
-import { invokeAgent } from "../agent/call-agent.ts";
-import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "./cancellation.ts";
-import { resolveDownstreamAgentConfig } from "./config.ts";
-import { formatErrorMessage } from "./error-format.ts";
 import { DefaultConversationSession } from "../agent/default-session.ts";
-import type { RunLogger } from "./logger.ts";
-import { appendTimingTraceEvent, type RunTimingTrace } from "./timing-trace.ts";
-import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
-import {
-  normalizeProcedureResult,
-} from "../session/index.ts";
 import type { SessionStore } from "../session/index.ts";
-import { summarizeText } from "../util/text.ts";
+import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
+import { resolveDownstreamAgentConfig } from "./config.ts";
+import { AgentInvocationApiImpl, AgentRunRecorder } from "./context-agent.ts";
+import { type PreparedDefaultPrompt, type SessionUpdateEmitter } from "./context-shared.ts";
+import { ProcedureInvocationApiImpl, type ChildContextBindingParams } from "./context-procedures.ts";
+import { ContextSessionApiImpl } from "./context-session.ts";
+import { CommandState } from "./context-state.ts";
+import { type UiApi } from "./ui-api.ts";
+import { UiApiImpl } from "./ui-emitter.ts";
+import type { RunLogger } from "./logger.ts";
+import type { RunTimingTrace } from "./timing-trace.ts";
 import type {
-  AgentSessionMode,
-  CellAncestorsOptions,
-  CellDescendantsOptions,
-  CellRef,
-  CallAgentTransport,
-  CommandCallAgentOptions,
-  CommandCallProcedureOptions,
-  CommandContext,
+  AgentInvocationApi,
+  ProcedureApi,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
+  ProcedureInvocationApi,
   ProcedureRegistryLike,
-  ProcedureSessionMode,
-  KernelValue,
-  RefsApi,
-  RunResult,
   SessionApi,
-  SessionRecentOptions,
-  TopLevelRunsOptions,
-  TypeDescriptor,
-  ValueRef,
+  StateApi,
 } from "./types.ts";
 
 type ActiveCell = ReturnType<SessionStore["startCell"]>;
 
-interface StartedAgentRun {
-  childSpanId: string;
-  startedAt: number;
-  toolCallId?: string;
-  emitToolCallEvents: boolean;
-  childCell: ActiveCell;
-}
-
-export interface SessionUpdateEmitter {
-  emit(update: acp.SessionUpdate): void;
-  flush(): Promise<void>;
-}
-
-interface PreparedDefaultPrompt {
-  prompt: string;
-  markSubmitted?: () => void;
-}
+export type { PreparedDefaultPrompt, ProcedureUiEvent, SessionUpdateEmitter } from "./context-shared.ts";
 
 interface CommandContextParams {
   cwd: string;
@@ -81,32 +50,22 @@ interface CommandContextParams {
   timingTrace?: RunTimingTrace;
 }
 
-interface ProcedureInvocationBinding {
-  defaultConversation?: DefaultConversationSession;
-  getDefaultAgentConfig: () => DownstreamAgentConfig;
-  setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
-  prepareDefaultPrompt?: (prompt: string) => PreparedDefaultPrompt;
-}
-
-export class CommandContextImpl implements CommandContext {
+export class CommandContextImpl implements ProcedureApi {
   readonly cwd: string;
   readonly sessionId: string;
-  readonly refs: RefsApi;
+  readonly agent: AgentInvocationApi;
+  readonly state: StateApi;
+  readonly ui: UiApi;
+  readonly procedures: ProcedureInvocationApi;
   readonly session: SessionApi;
 
   private readonly logger: RunLogger;
   private readonly registry: ProcedureRegistryLike;
-  private readonly procedureName: string;
-  private readonly spanId: string;
   private readonly emitter: SessionUpdateEmitter;
   private readonly signal?: AbortSignal;
   private readonly softStopSignal?: AbortSignal;
   private readonly store: SessionStore;
   private readonly cell: ActiveCell;
-  private readonly defaultConversation?: DefaultConversationSession;
-  private readonly getDefaultAgentConfigValue: () => DownstreamAgentConfig;
-  private readonly setDefaultAgentSelectionValue: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
-  private readonly prepareDefaultPromptValue?: (prompt: string) => PreparedDefaultPrompt;
   private readonly rootDefaultConversation?: DefaultConversationSession;
   private readonly rootGetDefaultAgentConfigValue: () => DownstreamAgentConfig;
   private readonly rootSetDefaultAgentSelectionValue: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
@@ -119,45 +78,81 @@ export class CommandContextImpl implements CommandContext {
     this.sessionId = params.sessionId ?? params.store.sessionId;
     this.logger = params.logger;
     this.registry = params.registry;
-    this.procedureName = params.procedureName;
-    this.spanId = params.spanId;
     this.emitter = params.emitter;
     this.signal = params.signal;
     this.softStopSignal = params.softStopSignal;
     this.store = params.store;
     this.cell = params.cell;
-    this.defaultConversation = params.defaultConversation;
-    this.getDefaultAgentConfigValue = params.getDefaultAgentConfig
+    const defaultConversation = params.defaultConversation;
+    const getDefaultAgentConfig = params.getDefaultAgentConfig
       ?? (() => resolveDownstreamAgentConfig(this.cwd));
-    this.setDefaultAgentSelectionValue = params.setDefaultAgentSelection
+    const setDefaultAgentSelection = params.setDefaultAgentSelection
       ?? ((selection) => resolveDownstreamAgentConfig(this.cwd, selection));
-    this.prepareDefaultPromptValue = params.prepareDefaultPrompt;
-    this.rootDefaultConversation = params.rootDefaultConversation ?? this.defaultConversation;
-    this.rootGetDefaultAgentConfigValue = params.rootGetDefaultAgentConfig ?? this.getDefaultAgentConfigValue;
-    this.rootSetDefaultAgentSelectionValue = params.rootSetDefaultAgentSelection ?? this.setDefaultAgentSelectionValue;
-    this.rootPrepareDefaultPromptValue = params.rootPrepareDefaultPrompt ?? this.prepareDefaultPromptValue;
+    const prepareDefaultPrompt = params.prepareDefaultPrompt;
+    this.rootDefaultConversation = params.rootDefaultConversation ?? defaultConversation;
+    this.rootGetDefaultAgentConfigValue = params.rootGetDefaultAgentConfig ?? getDefaultAgentConfig;
+    this.rootSetDefaultAgentSelectionValue = params.rootSetDefaultAgentSelection ?? setDefaultAgentSelection;
+    this.rootPrepareDefaultPromptValue = params.rootPrepareDefaultPrompt ?? prepareDefaultPrompt;
     this.assertCanStartBoundaryValue = params.assertCanStartBoundary;
     this.timingTrace = params.timingTrace;
-    this.refs = new CommandRefs(this.store, this.cwd);
-    this.session = new CommandSession(this.store, this.cell.cell.cellId);
-  }
+    this.state = new CommandState(this.store, this.cwd, this.cell.cell.cellId);
 
-  getDefaultAgentConfig(): DownstreamAgentConfig {
-    return this.getDefaultAgentConfigValue();
-  }
+    const contextSessionApi = new ContextSessionApiImpl({
+      cwd: this.cwd,
+      current: {
+        defaultConversation,
+        getDefaultAgentConfig,
+        setDefaultAgentSelection,
+        prepareDefaultPrompt,
+      },
+      root: {
+        defaultConversation: this.rootDefaultConversation,
+        getDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
+        setDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
+        prepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
+      },
+    });
+    this.session = contextSessionApi;
 
-  setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig {
-    return this.setDefaultAgentSelectionValue(selection);
-  }
+    const recorder = new AgentRunRecorder({
+      logger: this.logger,
+      store: this.store,
+      emitter: this.emitter,
+      procedureName: params.procedureName,
+      spanId: params.spanId,
+      cell: this.cell,
+      softStopSignal: this.softStopSignal,
+      timingTrace: this.timingTrace,
+    });
+    this.agent = new AgentInvocationApiImpl({
+      cwd: this.cwd,
+      signal: this.signal,
+      softStopSignal: this.softStopSignal,
+      store: this.store,
+      emitter: this.emitter,
+      sessionManager: contextSessionApi,
+      assertCanStartBoundary: () => this.assertCanStartBoundary(),
+      recorder,
+      timingTrace: this.timingTrace,
+    });
 
-  async getDefaultAgentTokenSnapshot() {
-    return await this.defaultConversation?.getCurrentTokenSnapshot();
-  }
-
-  async getDefaultAgentTokenUsage() {
-    return normalizeAgentTokenUsage(
-      await this.defaultConversation?.getCurrentTokenSnapshot(),
-      this.getDefaultAgentConfigValue(),
+    this.procedures = new ProcedureInvocationApiImpl({
+      logger: this.logger,
+      registry: this.registry,
+      store: this.store,
+      sessionManager: contextSessionApi,
+      assertCanStartBoundary: () => this.assertCanStartBoundary(),
+      spanId: params.spanId,
+      cell: this.cell,
+      createChildContext: (binding) => this.createChildContext(binding),
+    });
+    this.ui = new UiApiImpl(
+      this.store,
+      this.cell,
+      this.logger,
+      params.spanId,
+      params.procedureName,
+      this.emitter,
     );
   }
 
@@ -165,385 +160,30 @@ export class CommandContextImpl implements CommandContext {
     this.assertCanStartBoundary();
   }
 
-  async callAgent(
-    prompt: string,
-    options?: CommandCallAgentOptions,
-  ): Promise<RunResult<string>>;
-  async callAgent<T extends KernelValue>(
-    prompt: string,
-    descriptor: TypeDescriptor<T>,
-    options?: CommandCallAgentOptions,
-  ): Promise<RunResult<T>>;
-  async callAgent<T extends KernelValue>(
-    prompt: string,
-    descriptorOrOptions?: TypeDescriptor<T> | CommandCallAgentOptions,
-    maybeOptions?: CommandCallAgentOptions,
-  ): Promise<RunResult<T> | RunResult<string>> {
-    const descriptor = isTypeDescriptor(descriptorOrOptions)
-      ? descriptorOrOptions
-      : undefined;
-    const options = (descriptor ? maybeOptions : descriptorOrOptions) as CommandCallAgentOptions | undefined;
-    const sessionMode = options?.session ?? "fresh";
-    const useDefaultSession = sessionMode === "default" && this.defaultConversation !== undefined;
-    const agentConfig = useDefaultSession && options?.agent
-      ? this.setDefaultAgentSelectionValue(options.agent)
-      : options?.agent
-        ? resolveDownstreamAgentConfig(this.cwd, options.agent)
-        : this.getDefaultAgentConfigValue();
-    const started = this.beginAgentRun(prompt, useDefaultSession
-      ? {
-          emitToolCallEvents: false,
-          agent: options?.agent,
-        }
-      : {
-          title: `callAgent${formatAgentLabel(options?.agent)}: ${summarizeText(prompt, 60)}`,
-          rawInput: {
-            prompt,
-            agent: options?.agent,
-            refs: options?.refs,
-          },
-          emitToolCallEvents: true,
-          agent: options?.agent,
-        });
-    const namedRefs = resolveNamedRefs(this.store, options?.refs);
-    const transport = this.createCallAgentTransport(sessionMode);
-
-    try {
-      const result = await invokeAgent(prompt, descriptor, {
-        config: agentConfig,
-        namedRefs,
-        signal: this.signal,
-        softStopSignal: this.softStopSignal,
-        onUpdate: async (update) => {
-          if (shouldForwardNestedAgentUpdate(update, options?.stream !== false)) {
-            this.emitter.emit(update);
-          }
-        },
-      }, transport);
-
-      const tokenUsageExtra = result.tokenSnapshot
-        ? {
-            tokenSnapshot: result.tokenSnapshot,
-            tokenUsage: normalizeAgentTokenUsage(result.tokenSnapshot, agentConfig),
-          }
-        : undefined;
-
-      return this.completeAgentRun(started, {
-        data: result.data,
-        raw: result.raw,
-        updates: result.updates,
-        durationMs: result.durationMs,
-        logFile: result.logFile,
-        summary: useDefaultSession && !descriptor
-          ? summarizeText(result.raw)
-          : summarizeAgentOutput(result.data, result.raw),
-        streamText: options?.stream !== false,
-        rawOutputExtra: useDefaultSession
-          ? {
-              sessionId: this.defaultConversation.currentSessionId,
-              ...tokenUsageExtra,
-            }
-          : tokenUsageExtra,
-        agent: options?.agent,
-      });
-    } catch (error) {
-      return this.failAgentRun(started, error, options?.agent);
-    }
-  }
-
-  private createCallAgentTransport(sessionMode: AgentSessionMode): CallAgentTransport | undefined {
-    const defaultConversation = this.defaultConversation;
-    if (sessionMode !== "default" || !defaultConversation) {
-      return undefined;
-    }
-
-    return {
-      invoke: async (prompt, options) => {
-        const preparedPrompt = this.prepareDefaultPromptValue?.(prompt) ?? { prompt };
-
-        const result = await defaultConversation.prompt(preparedPrompt.prompt, {
-          signal: options.signal,
-          softStopSignal: options.softStopSignal,
-          onUpdate: options.onUpdate,
-          timingTrace: this.timingTrace,
-        });
-
-        preparedPrompt.markSubmitted?.();
-        return result;
-      },
-    };
-  }
-
-  async callProcedure<T extends KernelValue = KernelValue>(
-    name: string,
-    prompt: string,
-    options?: CommandCallProcedureOptions,
-  ): Promise<RunResult<T>> {
-    const procedure = this.registry.get(name);
-    if (!procedure) {
-      throw new Error(`Unknown procedure: ${name}`);
-    }
-
-    const childSpanId = this.logger.newSpan(this.spanId);
-    const startedAt = Date.now();
-    this.assertCanStartBoundary();
-    const childCell = this.store.startCell({
-      procedure: name,
-      input: prompt,
-      kind: "procedure",
-      parentCellId: this.cell.cell.cellId,
+  private createChildContext(binding: ChildContextBindingParams): CommandContextImpl {
+    return new CommandContextImpl({
+      cwd: this.cwd,
+      sessionId: this.sessionId,
+      logger: this.logger,
+      registry: this.registry,
+      procedureName: binding.procedureName,
+      spanId: binding.spanId,
+      emitter: this.emitter,
+      store: this.store,
+      cell: binding.cell,
+      signal: this.signal,
+      softStopSignal: this.softStopSignal,
+      defaultConversation: binding.defaultConversation,
+      getDefaultAgentConfig: binding.getDefaultAgentConfig,
+      setDefaultAgentSelection: binding.setDefaultAgentSelection,
+      prepareDefaultPrompt: binding.prepareDefaultPrompt,
+      rootDefaultConversation: this.rootDefaultConversation,
+      rootGetDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
+      rootSetDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
+      rootPrepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
+      assertCanStartBoundary: this.assertCanStartBoundaryValue,
+      timingTrace: this.timingTrace,
     });
-
-    this.logger.write({
-      spanId: childSpanId,
-      parentSpanId: this.spanId,
-      procedure: name,
-      kind: "procedure_start",
-      prompt,
-    });
-
-    try {
-      const binding = this.resolveProcedureInvocationBinding(options?.session ?? "inherit");
-      const childContext = new CommandContextImpl({
-        cwd: this.cwd,
-        sessionId: this.sessionId,
-        logger: this.logger,
-        registry: this.registry,
-        procedureName: name,
-        spanId: childSpanId,
-        emitter: this.emitter,
-        store: this.store,
-        cell: childCell,
-        signal: this.signal,
-        softStopSignal: this.softStopSignal,
-        defaultConversation: binding.defaultConversation,
-        getDefaultAgentConfig: binding.getDefaultAgentConfig,
-        setDefaultAgentSelection: binding.setDefaultAgentSelection,
-        prepareDefaultPrompt: binding.prepareDefaultPrompt,
-        rootDefaultConversation: this.rootDefaultConversation,
-        rootGetDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
-        rootSetDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
-        rootPrepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
-        assertCanStartBoundary: this.assertCanStartBoundaryValue,
-        timingTrace: this.timingTrace,
-      });
-      const rawResult = await procedure.execute(prompt, childContext);
-      const result = normalizeProcedureResult(rawResult);
-      const finalized = this.store.finalizeCell(childCell, result);
-
-      this.logger.write({
-        spanId: childSpanId,
-        parentSpanId: this.spanId,
-        procedure: name,
-        kind: "procedure_end",
-        durationMs: Date.now() - startedAt,
-        result: result.data,
-        raw: result.display,
-      });
-
-      return finalized as RunResult<T>;
-    } catch (error) {
-      this.logger.write({
-        spanId: childSpanId,
-        parentSpanId: this.spanId,
-        procedure: name,
-        kind: "procedure_end",
-        durationMs: Date.now() - startedAt,
-        error: formatErrorMessage(error),
-      });
-      throw error;
-    }
-  }
-
-  private resolveProcedureInvocationBinding(
-    sessionMode: ProcedureSessionMode,
-  ): ProcedureInvocationBinding {
-    if (sessionMode === "default") {
-      return {
-        defaultConversation: this.rootDefaultConversation,
-        getDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
-        setDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
-        prepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
-      };
-    }
-
-    if (sessionMode === "fresh") {
-      let defaultAgentConfig = cloneDownstreamAgentConfig(this.getDefaultAgentConfigValue());
-      const defaultConversation = new DefaultConversationSession({
-        config: defaultAgentConfig,
-      });
-
-      return {
-        defaultConversation,
-        getDefaultAgentConfig: () => defaultAgentConfig,
-        setDefaultAgentSelection: (selection) => {
-          const nextConfig = resolveDownstreamAgentConfig(this.cwd, selection);
-          defaultAgentConfig = nextConfig;
-          defaultConversation.updateConfig(nextConfig);
-          return nextConfig;
-        },
-        prepareDefaultPrompt: this.prepareDefaultPromptValue,
-      };
-    }
-
-    return {
-      defaultConversation: this.defaultConversation,
-      getDefaultAgentConfig: this.getDefaultAgentConfigValue,
-      setDefaultAgentSelection: this.setDefaultAgentSelectionValue,
-      prepareDefaultPrompt: this.prepareDefaultPromptValue,
-    };
-  }
-
-  private beginAgentRun(
-    prompt: string,
-    params: {
-      title?: string;
-      rawInput?: unknown;
-      emitToolCallEvents: boolean;
-      agent?: DownstreamAgentSelection;
-    },
-  ): StartedAgentRun {
-    this.assertCanStartBoundary();
-
-    const started: StartedAgentRun = {
-      childSpanId: this.logger.newSpan(this.spanId),
-      startedAt: Date.now(),
-      toolCallId: params.emitToolCallEvents ? crypto.randomUUID() : undefined,
-      emitToolCallEvents: params.emitToolCallEvents,
-      childCell: this.store.startCell({
-        procedure: "callAgent",
-        input: prompt,
-        kind: "agent",
-        parentCellId: this.cell.cell.cellId,
-      }),
-    };
-
-    this.logger.write({
-      spanId: started.childSpanId,
-      parentSpanId: this.spanId,
-      procedure: this.procedureName,
-      kind: "agent_start",
-      prompt,
-      agentProvider: params.agent?.provider,
-      agentModel: params.agent?.model,
-    });
-    appendTimingTraceEvent(this.timingTrace, "context", "agent_run_started", {
-      procedure: this.procedureName,
-      agentProvider: params.agent?.provider,
-      agentModel: params.agent?.model,
-      sessionMode: params.emitToolCallEvents ? "fresh" : "default",
-      title: params.title,
-    });
-    if (this.timingTrace && !this.timingTrace.shared.firstAgentActionRecorded) {
-      this.timingTrace.shared.firstAgentActionRecorded = true;
-      appendTimingTraceEvent(this.timingTrace, "context", "first_agent_action", {
-        procedure: this.procedureName,
-        sessionMode: params.emitToolCallEvents ? "fresh" : "default",
-        title: params.title,
-      });
-    }
-
-    if (started.emitToolCallEvents && started.toolCallId && params.title) {
-      this.emitter.emit({
-        sessionUpdate: "tool_call",
-        toolCallId: started.toolCallId,
-        title: params.title,
-        kind: "other",
-        status: "pending",
-        rawInput: params.rawInput,
-      });
-    }
-
-    return started;
-  }
-
-  private completeAgentRun<T extends KernelValue>(
-    started: StartedAgentRun,
-    params: {
-      data: T;
-      raw: string;
-      updates: acp.SessionUpdate[];
-      durationMs: number;
-      logFile?: string;
-      summary?: string;
-      streamText: boolean;
-      rawOutputExtra?: Record<string, unknown>;
-      agent?: DownstreamAgentSelection;
-    },
-  ): RunResult<T> {
-    const finalized = this.store.finalizeCell(started.childCell, {
-      data: params.data,
-      display: params.raw,
-      summary: params.summary,
-    }, {
-      stream: params.streamText ? collectTextSessionUpdates(params.updates) : undefined,
-      raw: params.raw,
-    });
-
-    this.logger.write({
-      spanId: started.childSpanId,
-      parentSpanId: this.spanId,
-      procedure: this.procedureName,
-      kind: "agent_end",
-      durationMs: Date.now() - started.startedAt,
-      result: params.data,
-      raw: params.raw,
-      agentLogFile: params.logFile,
-      agentProvider: params.agent?.provider,
-      agentModel: params.agent?.model,
-    });
-
-    if (started.emitToolCallEvents && started.toolCallId) {
-      this.emitter.emit({
-        sessionUpdate: "tool_call_update",
-        toolCallId: started.toolCallId,
-        status: "completed",
-        rawOutput: {
-          cell: finalized.cell,
-          dataRef: finalized.dataRef,
-          durationMs: params.durationMs,
-          logFile: params.logFile,
-          expandedContent: params.raw,
-          ...params.rawOutputExtra,
-        },
-      });
-    }
-
-    return finalized;
-  }
-
-  private failAgentRun(
-    started: StartedAgentRun,
-    error: unknown,
-    agent?: DownstreamAgentSelection,
-  ): never {
-    const cancelled = normalizeRunCancelledError(
-      error,
-      this.softStopSignal?.aborted ? "soft_stop" : "abort",
-    );
-    const message = cancelled?.message ?? formatErrorMessage(error);
-
-    this.logger.write({
-      spanId: started.childSpanId,
-      parentSpanId: this.spanId,
-      procedure: this.procedureName,
-      kind: "agent_end",
-      durationMs: Date.now() - started.startedAt,
-      error: message,
-      agentProvider: agent?.provider,
-      agentModel: agent?.model,
-    });
-
-    if (started.emitToolCallEvents && started.toolCallId) {
-      this.emitter.emit({
-        sessionUpdate: "tool_call_update",
-        toolCallId: started.toolCallId,
-        status: cancelled ? "cancelled" : "failed",
-        rawOutput: { error: message },
-      } as acp.SessionUpdate);
-    }
-
-    throw cancelled ?? error;
   }
 
   private assertCanStartBoundary(): void {
@@ -557,132 +197,4 @@ export class CommandContextImpl implements CommandContext {
       throw new RunCancelledError(defaultCancellationMessage("abort"), "abort");
     }
   }
-
-  print(text: string): void {
-    this.store.appendStream(this.cell, text);
-    this.logger.write({
-      spanId: this.spanId,
-      parentSpanId: undefined,
-      procedure: this.procedureName,
-      kind: "print",
-      raw: text,
-    });
-    this.emitter.emit({
-      sessionUpdate: "agent_message_chunk",
-      content: {
-        type: "text",
-        text,
-      },
-    });
-  }
-}
-
-class CommandRefs implements RefsApi {
-  constructor(
-    private readonly store: SessionStore,
-    private readonly cwd: string,
-  ) {}
-
-  async read<T>(valueRef: ValueRef): Promise<T> {
-    return this.store.readRef(valueRef) as T;
-  }
-
-  async stat(valueRef: ValueRef) {
-    return this.store.statRef(valueRef);
-  }
-
-  async writeToFile(valueRef: ValueRef, path: string): Promise<void> {
-    this.store.writeRefToFile(valueRef, path, this.cwd);
-  }
-}
-
-class CommandSession implements SessionApi {
-  constructor(
-    private readonly store: SessionStore,
-    private readonly currentCellId: string,
-  ) {}
-
-  async recent(options?: SessionRecentOptions) {
-    return this.store.recent({
-      ...options,
-      excludeCellId: this.currentCellId,
-    });
-  }
-
-  async topLevelRuns(options?: TopLevelRunsOptions) {
-    return this.store.topLevelRuns(options);
-  }
-
-  async get(cellRef: CellRef) {
-    return this.store.readCell(cellRef);
-  }
-
-  async ancestors(cellRef: CellRef, options?: CellAncestorsOptions) {
-    return this.store.ancestors(cellRef, options);
-  }
-
-  async descendants(cellRef: CellRef, options?: CellDescendantsOptions) {
-    return this.store.descendants(cellRef, options);
-  }
-}
-
-function formatAgentLabel(agent?: DownstreamAgentSelection): string {
-  if (!agent) {
-    return "";
-  }
-
-  return agent.model ? ` [${agent.provider}:${agent.model}]` : ` [${agent.provider}]`;
-}
-
-function cloneDownstreamAgentConfig(config: DownstreamAgentConfig): DownstreamAgentConfig {
-  return {
-    ...config,
-    args: [...config.args],
-    env: config.env ? { ...config.env } : undefined,
-  };
-}
-
-function isTypeDescriptor<T>(value: unknown): value is TypeDescriptor<T> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "schema" in value &&
-    "validate" in value &&
-    typeof (value as { validate: unknown }).validate === "function"
-  );
-}
-
-function resolveNamedRefs(
-  store: SessionStore,
-  refs: Record<string, CellRef | ValueRef> | undefined,
-): Record<string, unknown> | undefined {
-  if (!refs || Object.keys(refs).length === 0) {
-    return undefined;
-  }
-
-  return Object.fromEntries(
-    Object.entries(refs).map(([name, ref]) => [
-      name,
-      isValueRef(ref) ? store.readRef(ref) : store.readCell(ref),
-    ]),
-  );
-}
-
-function isValueRef(value: CellRef | ValueRef): value is ValueRef {
-  return "path" in value;
-}
-
-function shouldForwardNestedAgentUpdate(
-  update: acp.SessionUpdate,
-  streamText: boolean,
-): boolean {
-  if (update.sessionUpdate === "agent_message_chunk") {
-    return streamText;
-  }
-
-  return (
-    update.sessionUpdate === "tool_call" ||
-    update.sessionUpdate === "tool_call_update" ||
-    update.sessionUpdate === "usage_update"
-  );
 }

@@ -3,7 +3,7 @@ import typia from "typia";
 import { expectData } from "../src/core/run-result.ts";
 import {
   jsonType,
-  type CommandContext,
+  type ProcedureApi,
   type KernelValue,
   type Procedure,
   type ProcedureResult,
@@ -80,7 +80,7 @@ export default {
   executionMode: "harness",
   async execute(prompt, ctx) {
     const focus = prompt.trim() || DEFAULT_FOCUS;
-    ctx.print("Scanning the repository for a simplification opportunity...\n");
+    ctx.ui.text("Scanning the repository for a simplification opportunity...\n");
 
     const opportunity = await findNextOpportunity({
       focus,
@@ -112,7 +112,7 @@ export default {
   async resume(prompt, stateValue, ctx) {
     const state = requireSimplifyState(stateValue);
     const reply = prompt.trim();
-    ctx.print(`Interpreting your feedback for simplify iteration ${state.iteration}...\n`);
+    ctx.ui.text(`Interpreting your feedback for simplify iteration ${state.iteration}...\n`);
 
     const decision = await interpretDecision({
       reply,
@@ -134,7 +134,7 @@ export default {
     let lead: string;
 
     if (decision.action === "apply") {
-      ctx.print(`Applying simplify iteration ${state.iteration}...\n`);
+      ctx.ui.text(`Applying simplify iteration ${state.iteration}...\n`);
       const applied = await applyOpportunity({
         opportunity: state.currentOpportunity,
         guidance: decision.guidance,
@@ -172,7 +172,7 @@ export default {
       ].filter(Boolean).join("\n");
     }
 
-    ctx.print("Looking for the next simplification opportunity...\n");
+    ctx.ui.text("Looking for the next simplification opportunity...\n");
     const nextOpportunity = await findNextOpportunity({
       focus: state.originalPrompt,
       notes,
@@ -205,7 +205,7 @@ async function findNextOpportunity(params: {
   focus: string;
   notes: string[];
   history: SimplifyHistoryEntry[];
-  ctx: CommandContext;
+  ctx: ProcedureApi;
 }): Promise<SimplifyOpportunity> {
   const historyLines = params.history.length > 0
     ? params.history.map((entry) => `- ${entry.title}: ${entry.outcome}${entry.note ? ` (${entry.note})` : ""}`)
@@ -213,7 +213,7 @@ async function findNextOpportunity(params: {
   const noteLines = params.notes.length > 0
     ? params.notes.map((note) => `- ${note}`)
     : ["- none"];
-  const result = await params.ctx.callAgent(
+  const result = await params.ctx.agent.run(
     [
       "You are scanning the current repository for one worthwhile simplification opportunity.",
       "Prioritize: removing unnecessary abstractions, deduplicating logic, deleting obsolete or unused code, and removing backward-compatibility shims that no longer matter.",
@@ -236,9 +236,9 @@ async function findNextOpportunity(params: {
 async function interpretDecision(params: {
   reply: string;
   state: SimplifyState;
-  ctx: CommandContext;
+  ctx: ProcedureApi;
 }): Promise<SimplifyDecision> {
-  const result = await params.ctx.callAgent(
+  const result = await params.ctx.agent.run(
     [
       "Interpret the user's reply about the current simplification opportunity.",
       "Return JSON only.",
@@ -267,9 +267,9 @@ async function applyOpportunity(params: {
   opportunity: SimplifyOpportunity;
   guidance?: string;
   focus: string;
-  ctx: CommandContext;
+  ctx: ProcedureApi;
 }): Promise<SimplifyApplyResult> {
-  const result = await params.ctx.callAgent(
+  const result = await params.ctx.agent.run(
     [
       "Apply the following simplification directly in the repository.",
       "Prefer deleting, inlining, or consolidating code over adding new abstraction layers.",

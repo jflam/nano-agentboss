@@ -8,7 +8,7 @@ import typia from "typia";
 import { expectData } from "../src/core/run-result.ts";
 import {
   jsonType,
-  type CommandContext,
+  type ProcedureApi,
   type KernelValue,
   type Procedure,
   type ProcedureResult,
@@ -97,6 +97,8 @@ interface SimplifyHypothesisDraft {
 interface SimplifyHypothesis extends SimplifyHypothesisDraft {
   score: number;
   rankingReason?: string;
+  canonicalId?: string;
+  sourceHypothesisId?: string;
 }
 
 interface SimplifyCheckpoint {
@@ -167,6 +169,19 @@ interface SimplifyApplyResult {
 interface SimplifyAppliedSlice {
   hypothesisId: string;
   title: string;
+  sourceHypothesisId?: string;
+  decision?: {
+    kind: HypothesisKind;
+    risk: Risk;
+    summary: string;
+    rationale: string;
+    rankingReason?: string;
+    checkpointReason?: string;
+    expectedDelta: SimplifyHypothesisExpectedDelta;
+    implementationScope: string[];
+    testImplications: string[];
+    evidence: SimplifyEvidenceRef[];
+  };
   result: SimplifyApplyResult;
   commit?: SimplifyCommitStatus;
 }
@@ -654,7 +669,7 @@ export default {
       return blocked;
     }
 
-    ctx.print("Loading simplify2 artifacts...\n");
+    ctx.ui.text("Loading simplify2 artifacts...\n");
     state = loadArtifacts(state, ctx);
     state = await analyzeCurrentFocus(state, ctx);
 
@@ -666,7 +681,7 @@ export default {
       return await resumeFocusPicker(prompt, state, ctx);
     }
 
-    ctx.print(`Interpreting simplify2 guidance for ${formatIterationProgress(state.iteration, state.maxIterations)}...\n`);
+    ctx.ui.text(`Interpreting simplify2 guidance for ${formatIterationProgress(state.iteration, state.maxIterations)}...\n`);
     const decision = await interpretHumanReply(prompt, state, ctx);
 
     if (decision.kind !== "stop") {
@@ -687,7 +702,7 @@ export default {
 
     if (decision.kind === "approve_hypothesis") {
       const hypothesis = findHypothesis(state, decision.hypothesisId);
-      ctx.print(`Applying ${hypothesis.title}...\n`);
+      ctx.ui.text(`Applying ${hypothesis.title}...\n`);
       state = await applySimplificationSlice(state, hypothesis, ctx);
       state = await validateAndReconcile(state, ctx);
       const completion = maybeFinishAfterApply(state);
@@ -739,7 +754,7 @@ function prepareSimplify2Execution(prompt: string, cwd: string): Simplify2State 
 async function resumeFocusPicker(
   prompt: string,
   state: Simplify2State,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<ProcedureResult | string | void> {
   const root = requireSimplify2StorageRoot(state);
   const reply = prompt.trim();
@@ -780,7 +795,7 @@ async function resumeFocusPicker(
     return blocked;
   }
 
-  ctx.print("Loading simplify2 artifacts...\n");
+  ctx.ui.text("Loading simplify2 artifacts...\n");
   let loaded = loadArtifacts(nextState, ctx);
   loaded = await analyzeCurrentFocus(loaded, ctx);
   return continueFromAnalysis(loaded, ctx);
@@ -1061,7 +1076,7 @@ function formatIterationProgress(iteration: number, maxIterations: number): stri
   return `Iteration ${iteration}/${maxIterations}`;
 }
 
-function loadArtifacts(state: Simplify2State, ctx: CommandContext): Simplify2State {
+function loadArtifacts(state: Simplify2State, ctx: ProcedureApi): Simplify2State {
   const focusId = state.focusRef.id;
   if (!focusId) {
     throw new Error("Simplify2 focus state is missing a focus id.");
@@ -1116,10 +1131,10 @@ function loadArtifacts(state: Simplify2State, ctx: CommandContext): Simplify2Sta
 
 async function refreshArchitectureMemory(
   state: Simplify2State,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<Simplify2State> {
   state.mode = "explore";
-  const proposalResult = await ctx.callAgent(
+  const proposalResult = await ctx.agent.run(
     buildArchitectureRefreshPrompt(state),
     ArchitectureRefreshProposalType,
     { stream: false },
@@ -1160,11 +1175,11 @@ async function refreshArchitectureMemory(
 
 async function collectObservations(
   state: Simplify2State,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
   scopedPaths: string[] = [],
   reuseCachedObservations = false,
 ): Promise<Simplify2State> {
-  const result = await ctx.callAgent(
+  const result = await ctx.agent.run(
     buildObservationPrompt(state, scopedPaths, reuseCachedObservations),
     ObservationBatchType,
     { stream: false },
@@ -1181,15 +1196,15 @@ async function collectObservations(
 
 async function generateAndRankHypotheses(
   state: Simplify2State,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<Simplify2State> {
-  const hypothesisResult = await ctx.callAgent(
+  const hypothesisResult = await ctx.agent.run(
     buildHypothesisPrompt(state),
     HypothesisBatchType,
     { stream: false },
   );
   const hypothesisBatch = expectData(hypothesisResult, "Missing hypotheses");
-  const rankingResult = await ctx.callAgent(
+  const rankingResult = await ctx.agent.run(
     buildHypothesisRankingPrompt(state, hypothesisBatch),
     HypothesisRankingBatchType,
     { stream: false },
@@ -1246,7 +1261,7 @@ function decideNextAction(state: Simplify2State): Simplify2Action {
 
 async function continueFromAnalysis(
   state: Simplify2State,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<ProcedureResult | string | void> {
   let current = state;
 
@@ -1265,7 +1280,7 @@ async function continueFromAnalysis(
       return buildPausedResult(current, next.question);
     }
 
-    ctx.print(`Applying ${next.hypothesis.title}...\n`);
+    ctx.ui.text(`Applying ${next.hypothesis.title}...\n`);
     current = await applySimplificationSlice(current, next.hypothesis, ctx);
     current = await validateAndReconcile(current, ctx);
 
@@ -1280,7 +1295,7 @@ async function continueFromAnalysis(
     }
 
     current = resetNotebookForFreshAnalysis(current);
-    ctx.print(`Continuing simplify2 analysis for ${formatIterationProgress(current.iteration, current.maxIterations)}...\n`);
+    ctx.ui.text(`Continuing simplify2 analysis for ${formatIterationProgress(current.iteration, current.maxIterations)}...\n`);
     current = await analyzeCurrentFocus(current, ctx);
   }
 }
@@ -1288,12 +1303,13 @@ async function continueFromAnalysis(
 async function applySimplificationSlice(
   state: Simplify2State,
   hypothesis: SimplifyHypothesis,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<Simplify2State> {
   state.mode = "apply";
+  const selectedHypothesis = withStableHypothesisIdentity(hypothesis);
   const selectedSlice = selectMinimalTrustedTestSlice(state, hypothesis);
-  const applyResult = await ctx.callAgent(
-    buildApplyPrompt(state, hypothesis, selectedSlice),
+  const applyResult = await ctx.agent.run(
+    buildApplyPrompt(state, selectedHypothesis, selectedSlice),
     SimplifyApplyResultType,
     { stream: false },
   );
@@ -1303,8 +1319,21 @@ async function applySimplificationSlice(
     notebook: {
       ...state.notebook,
       latestApply: {
-        hypothesisId: hypothesis.id,
-        title: hypothesis.title,
+        hypothesisId: selectedHypothesis.canonicalId ?? selectedHypothesis.id,
+        sourceHypothesisId: selectedHypothesis.sourceHypothesisId ?? selectedHypothesis.id,
+        title: selectedHypothesis.title,
+        decision: {
+          kind: selectedHypothesis.kind,
+          risk: selectedHypothesis.risk,
+          summary: selectedHypothesis.summary,
+          rationale: selectedHypothesis.rationale,
+          rankingReason: selectedHypothesis.rankingReason,
+          checkpointReason: selectedHypothesis.checkpointReason,
+          expectedDelta: selectedHypothesis.expectedDelta,
+          implementationScope: normalizePaths(selectedHypothesis.implementationScope),
+          testImplications: normalizeStrings(selectedHypothesis.testImplications),
+          evidence: selectedHypothesis.evidence,
+        },
         result: {
           ...applied,
           touchedFiles: normalizePaths(applied.touchedFiles),
@@ -1314,30 +1343,34 @@ async function applySimplificationSlice(
         },
       },
       currentCheckpoint: undefined,
-      candidateHypotheses: state.notebook.candidateHypotheses.filter((candidate) => candidate.id !== hypothesis.id),
+      candidateHypotheses: state.notebook.candidateHypotheses.filter((candidate) =>
+        getHypothesisCanonicalId(candidate) !== getHypothesisCanonicalId(selectedHypothesis)),
       openQuestions: [],
       status: "active",
     },
     history: {
       ...state.history,
-      appliedHypothesisIds: uniqueStrings([...state.history.appliedHypothesisIds, hypothesis.id]),
+      appliedHypothesisIds: uniqueStrings([
+        ...state.history.appliedHypothesisIds,
+        getHypothesisCanonicalId(selectedHypothesis),
+      ]),
     },
     testContext: {
       ...state.testContext,
       selectedSlice,
-      changedSubsystems: inferRelevantSubsystems(hypothesis),
+      changedSubsystems: inferRelevantSubsystems(selectedHypothesis),
     },
   };
-  return recordAppliedHypothesis(nextState, hypothesis);
+  return recordAppliedHypothesis(nextState, selectedHypothesis);
 }
 
 async function validateAndReconcile(
   state: Simplify2State,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<Simplify2State> {
   state.mode = "reconcile";
   const validation = runSelectedValidation(state);
-  const reconciliationResult = await ctx.callAgent(
+  const reconciliationResult = await ctx.agent.run(
     buildReconciliationPrompt(state, validation),
     ReconciliationResultType,
     { stream: false },
@@ -1352,7 +1385,7 @@ async function validateAndReconcile(
 async function commitAppliedSlice(
   state: Simplify2State,
   hypothesis: SimplifyHypothesis,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<Simplify2State> {
   const latestApply = state.notebook.latestApply;
   if (!latestApply) {
@@ -1361,7 +1394,7 @@ async function commitAppliedSlice(
 
   const commitContext = buildCommitContext(state, hypothesis);
   try {
-    const result = await ctx.callProcedure<NanobossCommitProcedureResult>("nanoboss/commit", commitContext);
+    const result = await ctx.procedures.run<NanobossCommitProcedureResult>("nanoboss/commit", commitContext);
     const commitResult = expectData(result, "Missing simplify2 commit result");
     const commit = createCommitStatus({
       succeeded: commitResult.checks.passed && commitResult.commit !== undefined,
@@ -1430,9 +1463,9 @@ function maybeFinishAfterCommit(state: Simplify2State): ProcedureResult | undefi
 async function interpretHumanReply(
   prompt: string,
   state: Simplify2State,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<SimplifyHumanDecision> {
-  const result = await ctx.callAgent(
+  const result = await ctx.agent.run(
     buildHumanDecisionPrompt(prompt, state),
     SimplifyHumanDecisionType,
     { stream: false },
@@ -1455,6 +1488,7 @@ function applyHumanDecision(
   state: Simplify2State,
   decision: SimplifyHumanDecision,
 ): Simplify2State {
+  const resolvedHypothesisId = resolveCanonicalHypothesisId(state, decision.hypothesisId);
   const next: Simplify2State = {
     ...state,
     notebook: {
@@ -1466,8 +1500,8 @@ function applyHumanDecision(
     history: {
       ...state.history,
       decisions: uniqueStrings([...state.history.decisions, `${decision.kind}: ${decision.reason}`]),
-      rejectedHypothesisIds: decision.kind === "reject_hypothesis" && decision.hypothesisId
-        ? uniqueStrings([...state.history.rejectedHypothesisIds, decision.hypothesisId])
+      rejectedHypothesisIds: decision.kind === "reject_hypothesis" && resolvedHypothesisId
+        ? uniqueStrings([...state.history.rejectedHypothesisIds, resolvedHypothesisId])
         : state.history.rejectedHypothesisIds,
     },
   };
@@ -1592,7 +1626,7 @@ function applyReconciliationResult(
       ...state.history,
       resolvedHypothesisIds: uniqueStrings([
         ...state.history.resolvedHypothesisIds,
-        ...normalizeStrings(reconciliation.resolvedHypothesisIds),
+        ...normalizeResolvedHypothesisIds(state, reconciliation.resolvedHypothesisIds),
       ]),
     },
   };
@@ -1849,7 +1883,9 @@ function markFinished(state: Simplify2State): Simplify2State {
 
 function findHypothesis(state: Simplify2State, hypothesisId?: string): SimplifyHypothesis {
   const resolvedId = hypothesisId ?? state.notebook.currentCheckpoint?.hypothesisId;
-  const hypothesis = state.notebook.candidateHypotheses.find((candidate) => candidate.id === resolvedId);
+  const hypothesis = state.notebook.candidateHypotheses
+    .map((candidate) => withStableHypothesisIdentity(candidate))
+    .find((candidate) => hypothesisMatchesIdentifier(candidate, resolvedId));
   if (!hypothesis) {
     throw new Error(`Could not find simplify2 hypothesis "${resolvedId ?? "unknown"}".`);
   }
@@ -2409,15 +2445,19 @@ function reconcileRankedHypotheses(
   const rankingById = new Map(rankings.rankings.map((ranking) => [ranking.hypothesisId, ranking]));
   const overlapSuppression = readCurrentAnalysisCache(state).overlapSuppression;
   return hypotheses.hypotheses
-    .filter((hypothesis) =>
-      !state.history.appliedHypothesisIds.includes(hypothesis.id)
-      && !state.history.rejectedHypothesisIds.includes(hypothesis.id)
-      && !state.history.resolvedHypothesisIds.includes(hypothesis.id))
-    .map((hypothesis) => {
-      const ranking = rankingById.get(hypothesis.id);
-      const overlap = findHighestHypothesisOverlap(hypothesis, overlapSuppression);
+    .map((hypothesis) => ({
+      draft: hypothesis,
+      canonicalId: computeCanonicalHypothesisId(hypothesis),
+    }))
+    .filter(({ canonicalId }) =>
+      !state.history.appliedHypothesisIds.includes(canonicalId)
+      && !state.history.rejectedHypothesisIds.includes(canonicalId)
+      && !state.history.resolvedHypothesisIds.includes(canonicalId))
+    .reduce<SimplifyHypothesis[]>((result, { draft, canonicalId }) => {
+      const ranking = rankingById.get(draft.id);
+      const overlap = findHighestHypothesisOverlap(draft, overlapSuppression);
       if (overlap && overlap.score >= 0.85 && overlap.hasNoDistinctScope) {
-        return undefined;
+        return result;
       }
 
       const score = ranking?.score;
@@ -2428,16 +2468,21 @@ function reconcileRankedHypotheses(
           ? `Overlaps with applied hypothesis ${overlap.entry.hypothesisId} (${Math.round(overlap.score * 100)}%).`
           : "",
       ].filter(Boolean).join(" ");
-      return {
-        ...hypothesis,
+      const candidate: SimplifyHypothesis = {
+        ...draft,
+        canonicalId,
+        sourceHypothesisId: draft.id,
         score: Math.max(0, (typeof score === "number" && Number.isFinite(score) ? score : 0) - overlapPenalty),
-        needsHumanCheckpoint: overlap && overlap.score >= 0.75 && hypothesis.risk !== "low"
+        needsHumanCheckpoint: overlap && overlap.score >= 0.75 && draft.risk !== "low"
           ? true
-          : (ranking?.needsHumanCheckpoint ?? hypothesis.needsHumanCheckpoint),
+          : (ranking?.needsHumanCheckpoint ?? draft.needsHumanCheckpoint),
         ...(rankingReason ? { rankingReason } : {}),
       };
-    })
-    .filter((hypothesis): hypothesis is SimplifyHypothesis => Boolean(hypothesis) && SimplifyHypothesisType.validate(hypothesis))
+      if (SimplifyHypothesisType.validate(candidate)) {
+        result.push(candidate);
+      }
+      return result;
+    }, [])
     .sort((left, right) =>
       right.score - left.score
       || compareRisk(left.risk, right.risk)
@@ -2446,7 +2491,7 @@ function reconcileRankedHypotheses(
 
 async function analyzeCurrentFocus(
   state: Simplify2State,
-  ctx: CommandContext,
+  ctx: ProcedureApi,
 ): Promise<Simplify2State> {
   const reusePlan = planAnalysisReuse(state);
   state.analysisCache = {
@@ -2457,7 +2502,7 @@ async function analyzeCurrentFocus(
     staleObservationIds: reusePlan.staleEntries.map((entry) => entry.observation.id),
   };
   if (reusePlan.reusableEntries.length > 0) {
-    ctx.print(`Reusing ${reusePlan.reusableEntries.length} cached simplify2 observations...\n`);
+    ctx.ui.text(`Reusing ${reusePlan.reusableEntries.length} cached simplify2 observations...\n`);
     state = {
       ...state,
       notebook: {
@@ -2468,13 +2513,13 @@ async function analyzeCurrentFocus(
   }
 
   if (reusePlan.shouldRunFullRefresh) {
-    ctx.print("Refreshing architecture memory for the current focus...\n");
+    ctx.ui.text("Refreshing architecture memory for the current focus...\n");
     state = await refreshArchitectureMemory(state, ctx);
 
-    ctx.print("Collecting conceptual simplification observations...\n");
+    ctx.ui.text("Collecting conceptual simplification observations...\n");
     state = await collectObservations(state, ctx);
   } else if (reusePlan.staleEntries.length > 0) {
-    ctx.print("Refreshing conceptual observations for touched files...\n");
+    ctx.ui.text("Refreshing conceptual observations for touched files...\n");
     state = await collectObservations(
       state,
       ctx,
@@ -2482,10 +2527,10 @@ async function analyzeCurrentFocus(
       reusePlan.reusableEntries.length > 0,
     );
   } else {
-    ctx.print("Skipping full simplify2 research refresh because cached observations are still valid.\n");
+    ctx.ui.text("Skipping full simplify2 research refresh because cached observations are still valid.\n");
   }
 
-  ctx.print("Generating and ranking simplification hypotheses...\n");
+  ctx.ui.text("Generating and ranking simplification hypotheses...\n");
   state = await generateAndRankHypotheses(state, ctx);
   return persistAnalysisArtifacts(state, reusePlan.analysisFingerprint);
 }
@@ -2499,6 +2544,7 @@ function buildLatestApplyLead(state: Simplify2State): string | undefined {
   return [
     `Applied: ${latestApply.title}.`,
     latestApply.result.summary.trim(),
+    renderAppliedDecisionExplanation(latestApply, state.testContext.selectedSlice),
     renderTouchedFiles(latestApply.result.touchedFiles),
     renderValidationLine(state.testContext.lastValidation),
     renderCommitLine(latestApply.commit),
@@ -2598,11 +2644,12 @@ function maybeCreateCheckpoint(hypotheses: SimplifyHypothesis[]): SimplifyCheckp
 }
 
 function buildCheckpoint(hypothesis: SimplifyHypothesis): SimplifyCheckpoint {
+  const normalizedHypothesis = withStableHypothesisIdentity(hypothesis);
   return {
-    hypothesisId: hypothesis.id,
-    kind: checkpointKindForHypothesis(hypothesis),
-    question: buildCheckpointQuestion(hypothesis),
-    options: checkpointOptionsForHypothesis(hypothesis),
+    hypothesisId: normalizedHypothesis.canonicalId ?? normalizedHypothesis.id,
+    kind: checkpointKindForHypothesis(normalizedHypothesis),
+    question: buildCheckpointQuestion(normalizedHypothesis),
+    options: checkpointOptionsForHypothesis(normalizedHypothesis),
   };
 }
 
@@ -3094,7 +3141,9 @@ function renderSelectedHypothesisSummary(hypothesis: SimplifyHypothesis | undefi
 function getSelectedCheckpointHypothesis(state: Simplify2State): SimplifyHypothesis | undefined {
   const checkpointHypothesisId = state.notebook.currentCheckpoint?.hypothesisId;
   if (checkpointHypothesisId) {
-    return state.notebook.candidateHypotheses.find((hypothesis) => hypothesis.id === checkpointHypothesisId)
+    return state.notebook.candidateHypotheses
+      .map((hypothesis) => withStableHypothesisIdentity(hypothesis))
+      .find((hypothesis) => hypothesisMatchesIdentifier(hypothesis, checkpointHypothesisId))
       ?? state.notebook.candidateHypotheses[0];
   }
 
@@ -3142,6 +3191,61 @@ function renderPausedActions(): string {
 function renderTouchedFiles(files: string[]): string | undefined {
   const normalized = normalizePaths(files);
   return normalized.length > 0 ? `Touched files: ${normalized.join(", ")}` : undefined;
+}
+
+function renderAppliedDecisionExplanation(
+  applied: SimplifyAppliedSlice,
+  selectedSlice: TestSliceSelection[],
+): string | undefined {
+  const decision = applied.decision;
+  if (!decision) {
+    return undefined;
+  }
+
+  const lines = [
+    "Why this change:",
+    `- selected because: ${decision.rankingReason ?? "No explicit ranking reason was recorded."}`,
+    `- simplification target: ${decision.summary}`,
+    `- conceptual rationale: ${decision.rationale}`,
+    `- expected payoff: ${renderExpectedDelta(decision.expectedDelta) ?? "No explicit delta was recorded."}`,
+    `- intended scope: ${decision.implementationScope.join(", ") || "(none recorded)"}`,
+    `- supporting evidence: ${renderEvidenceRefs(decision.evidence) ?? "(none recorded)"}`,
+    `- test intent: ${decision.testImplications.join("; ") || "(none recorded)"}`,
+    `- realized conceptual changes: ${applied.result.conceptualChanges.join("; ") || "(none recorded)"}`,
+    `- realized test changes: ${applied.result.testChanges.join("; ") || "(none recorded)"}`,
+    `- validation focus: ${renderSelectedValidationFocus(selectedSlice)}`,
+    `- validation notes: ${applied.result.validationNotes.join("; ") || "(none recorded)"}`,
+  ];
+  if (decision.checkpointReason) {
+    lines.splice(4, 0, `- checkpoint context: ${decision.checkpointReason}`);
+  }
+  return lines.join("\n");
+}
+
+function renderExpectedDelta(delta: SimplifyHypothesisExpectedDelta): string | undefined {
+  const parts = [
+    typeof delta.conceptsReduced === "number" ? `concepts -${delta.conceptsReduced}` : "",
+    typeof delta.boundariesReduced === "number" ? `boundaries -${delta.boundariesReduced}` : "",
+    typeof delta.exceptionsReduced === "number" ? `exceptions -${delta.exceptionsReduced}` : "",
+    typeof delta.duplicateRepresentationsReduced === "number"
+      ? `duplicate representations -${delta.duplicateRepresentationsReduced}`
+      : "",
+    delta.testRuntimeDelta ? `test runtime ${delta.testRuntimeDelta}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join("; ") : undefined;
+}
+
+function renderEvidenceRefs(evidence: SimplifyEvidenceRef[]): string | undefined {
+  const refs = evidence
+    .map((entry) => `${entry.kind}:${normalizePath(entry.ref)}${entry.note ? ` (${entry.note})` : ""}`)
+    .filter((entry) => entry.trim().length > 0)
+    .slice(0, 6);
+  return refs.length > 0 ? refs.join("; ") : undefined;
+}
+
+function renderSelectedValidationFocus(selectedSlice: TestSliceSelection[]): string {
+  const paths = normalizePaths(selectedSlice.map((entry) => entry.path));
+  return paths.join(", ") || "No trusted test slice matched the selected scope.";
 }
 
 function getRunResultDisplay(result: RunResult): string | undefined {
@@ -3224,25 +3328,27 @@ function recordAppliedHypothesis(
   state: Simplify2State,
   hypothesis: SimplifyHypothesis,
 ): Simplify2State {
+  const normalizedHypothesis = withStableHypothesisIdentity(hypothesis);
   const analysisCache = readCurrentAnalysisCache(state);
-  const touchedFiles = normalizePaths(state.notebook.latestApply?.result.touchedFiles ?? hypothesis.implementationScope);
+  const touchedFiles = normalizePaths(state.notebook.latestApply?.result.touchedFiles ?? normalizedHypothesis.implementationScope);
   const entry: Simplify2OverlapSuppressionEntry = {
-    hypothesisId: hypothesis.id,
-    titleTokens: extractTokens(hypothesis.title),
-    summaryTokens: extractTokens(hypothesis.summary),
-    normalizedScopeTokens: uniqueStrings(hypothesis.implementationScope.flatMap((path) => extractTokens(path))),
+    hypothesisId: normalizedHypothesis.canonicalId ?? normalizedHypothesis.id,
+    titleTokens: extractTokens(normalizedHypothesis.title),
+    summaryTokens: extractTokens(normalizedHypothesis.summary),
+    normalizedScopeTokens: uniqueStrings(normalizedHypothesis.implementationScope.flatMap((path) => extractTokens(path))),
     touchedFiles,
-    evidenceRefs: uniqueStrings(hypothesis.evidence.map((evidence) => normalizePath(evidence.ref))),
+    evidenceRefs: uniqueStrings(normalizedHypothesis.evidence.map((evidence) => normalizePath(evidence.ref))),
   };
   const nextAnalysisCache: Simplify2AnalysisCache = {
     ...analysisCache,
     updatedAt: nowIso(),
     focusHash: computeFocusHash(state),
     analysisFingerprint: state.analysisCache.analysisFingerprint ?? analysisCache.analysisFingerprint,
-    lastAppliedHypothesisId: hypothesis.id,
+    lastAppliedHypothesisId: normalizedHypothesis.canonicalId ?? normalizedHypothesis.id,
     lastTouchedFiles: touchedFiles,
     overlapSuppression: [
-      ...analysisCache.overlapSuppression.filter((candidate) => candidate.hypothesisId !== hypothesis.id),
+      ...analysisCache.overlapSuppression.filter((candidate) =>
+        candidate.hypothesisId !== (normalizedHypothesis.canonicalId ?? normalizedHypothesis.id)),
       entry,
     ].slice(-25),
   };
@@ -3352,6 +3458,81 @@ function computeFocusHash(state: Simplify2State): string {
     constraints: state.focus.constraints,
     guidance: state.focus.guidance,
   });
+}
+
+function computeCanonicalHypothesisId(hypothesis: SimplifyHypothesisDraft): string {
+  const scopePaths = normalizePaths(hypothesis.implementationScope);
+  const payload = {
+    kind: hypothesis.kind,
+    titleTokens: extractTokens(hypothesis.title),
+    summaryTokens: extractTokens(hypothesis.summary),
+    rationaleTokens: extractTokens(hypothesis.rationale),
+    scopePaths,
+    scopeTokens: uniqueStrings(scopePaths.flatMap((path) => extractTokens(path))),
+    evidenceRefs: uniqueStrings(hypothesis.evidence.map((evidence) => `${evidence.kind}:${normalizePath(evidence.ref)}`)),
+  };
+  return `hyp-${createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 12)}`;
+}
+
+function getHypothesisSourceId(hypothesis: SimplifyHypothesis | SimplifyHypothesisDraft): string {
+  return "sourceHypothesisId" in hypothesis && typeof hypothesis.sourceHypothesisId === "string" && hypothesis.sourceHypothesisId.trim().length > 0
+    ? hypothesis.sourceHypothesisId
+    : hypothesis.id;
+}
+
+function getHypothesisCanonicalId(hypothesis: SimplifyHypothesis | SimplifyHypothesisDraft): string {
+  return "canonicalId" in hypothesis && typeof hypothesis.canonicalId === "string" && hypothesis.canonicalId.trim().length > 0
+    ? hypothesis.canonicalId
+    : computeCanonicalHypothesisId({
+      ...hypothesis,
+      id: getHypothesisSourceId(hypothesis),
+    });
+}
+
+function withStableHypothesisIdentity(hypothesis: SimplifyHypothesis): SimplifyHypothesis {
+  return {
+    ...hypothesis,
+    sourceHypothesisId: getHypothesisSourceId(hypothesis),
+    canonicalId: getHypothesisCanonicalId(hypothesis),
+  };
+}
+
+function hypothesisMatchesIdentifier(hypothesis: SimplifyHypothesis, hypothesisId: string | undefined): boolean {
+  if (!hypothesisId) {
+    return false;
+  }
+  return hypothesis.id === hypothesisId
+    || getHypothesisSourceId(hypothesis) === hypothesisId
+    || getHypothesisCanonicalId(hypothesis) === hypothesisId;
+}
+
+function resolveCanonicalHypothesisId(state: Simplify2State, hypothesisId?: string): string | undefined {
+  if (!hypothesisId) {
+    return undefined;
+  }
+  const checkpointId = state.notebook.currentCheckpoint?.hypothesisId;
+  if (checkpointId === hypothesisId) {
+    return checkpointId;
+  }
+  const candidate = state.notebook.candidateHypotheses
+    .map((entry) => withStableHypothesisIdentity(entry))
+    .find((entry) => hypothesisMatchesIdentifier(entry, hypothesisId));
+  if (candidate) {
+    return candidate.canonicalId ?? candidate.id;
+  }
+  const latestApply = state.notebook.latestApply;
+  if (latestApply) {
+    if (latestApply.hypothesisId === hypothesisId || latestApply.sourceHypothesisId === hypothesisId) {
+      return latestApply.hypothesisId;
+    }
+  }
+  return hypothesisId;
+}
+
+function normalizeResolvedHypothesisIds(state: Simplify2State, hypothesisIds: string[]): string[] {
+  return hypothesisIds
+    .map((hypothesisId) => resolveCanonicalHypothesisId(state, hypothesisId))
+    .filter((hypothesisId): hypothesisId is string => typeof hypothesisId === "string" && hypothesisId.length > 0);
 }
 
 function hashFocusPayload(payload: {

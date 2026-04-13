@@ -32,8 +32,12 @@ export interface UiTurn {
 export interface UiToolCall {
   id: string;
   runId: string;
+  parentToolCallId?: string;
+  transcriptVisible?: boolean;
+  removeOnTerminal?: boolean;
   title: string;
   kind: string;
+  toolName?: string;
   status: string;
   depth: number;
   isWrapper: boolean;
@@ -60,9 +64,6 @@ export interface UiState {
   toolCalls: UiToolCall[];
   pendingPrompts: UiPendingPrompt[];
   transcriptItems: UiTranscriptItem[];
-  activeWrapperToolCallIds: string[];
-  hiddenToolCallIds: string[];
-  runtimeNotes: string[];
   activeRunId?: string;
   activeProcedure?: string;
   activeAssistantTurnId?: string;
@@ -101,9 +102,6 @@ export function createInitialUiState(params: {
     toolCalls: [],
     pendingPrompts: [],
     transcriptItems: [],
-    activeWrapperToolCallIds: [],
-    hiddenToolCallIds: [],
-    runtimeNotes: [],
     activeRunAttemptedToolCallIds: [],
     activeRunSucceededToolCallIds: [],
     pendingStopRequest: false,

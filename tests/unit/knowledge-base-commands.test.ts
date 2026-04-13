@@ -12,7 +12,7 @@ import kbLinkProcedure from "../../procedures/kb/link.ts";
 import kbRenderProcedure from "../../procedures/kb/render.ts";
 import kbRefreshProcedure from "../../procedures/kb/refresh.ts";
 import type {
-  CommandContext,
+  ProcedureApi,
   DownstreamAgentConfig,
   Procedure,
   ProcedureResult,
@@ -392,6 +392,172 @@ describe("knowledge-base procedures", () => {
     expect(harness.prints).toContain("Knowledge base refresh complete.\n");
   });
 
+  test("/kb/refresh can use ctx.procedures and ctx.ui directly", async () => {
+    const cwd = createWorkspace();
+    const prints: string[] = [];
+    const procedureCalls: Array<{ name: string; prompt: string }> = [];
+    const defaultAgentConfig: DownstreamAgentConfig = {
+      provider: "copilot",
+      command: "bun",
+      args: [],
+      cwd,
+    };
+    const refs: ProcedureApi["state"]["refs"] = {
+      async read() {
+        throw new Error("Not implemented in test");
+      },
+      async stat() {
+        throw new Error("Not implemented in test");
+      },
+      async writeToFile() {
+        throw new Error("Not implemented in test");
+      },
+    };
+    const runs: ProcedureApi["state"]["runs"] = {
+      async recent() {
+        return [];
+      },
+      async latest() {
+        return undefined;
+      },
+      async topLevelRuns() {
+        return [];
+      },
+      async get() {
+        throw new Error("Not implemented in test");
+      },
+      async parent() {
+        return undefined;
+      },
+      async children() {
+        return [];
+      },
+      async ancestors() {
+        return [];
+      },
+      async descendants() {
+        return [];
+      },
+    };
+
+    const context: ProcedureApi = {
+      cwd,
+      sessionId: "test-session",
+      agent: {
+        async run() {
+          throw new Error("Not implemented in test");
+        },
+        session() {
+          return {
+            async run() {
+              throw new Error("Not implemented in test");
+            },
+          };
+        },
+      },
+      state: {
+        runs,
+        refs,
+      },
+      ui: {
+        text(text) {
+          prints.push(text);
+        },
+        info(text) {
+          prints.push(text);
+        },
+        warning(text) {
+          prints.push(text);
+        },
+        error(text) {
+          prints.push(text);
+        },
+        status() {
+          throw new Error("Not implemented in test");
+        },
+        card() {
+          throw new Error("Not implemented in test");
+        },
+      },
+      procedures: {
+        run: (async (name, prompt) => {
+          procedureCalls.push({ name, prompt });
+          switch (name) {
+            case "kb/ingest":
+              return {
+                cell: { sessionId: "test-session", cellId: "proc-1" },
+                data: {
+                  sourceCount: 1,
+                  changedSourceIds: ["paper-1234"],
+                  allSourceIds: ["paper-1234"],
+                },
+              } as RunResult;
+            case "kb/compile-source":
+              return {
+                cell: { sessionId: "test-session", cellId: "proc-2" },
+                data: {
+                  status: "compiled",
+                  sourceId: "paper-1234",
+                },
+              } as RunResult;
+            case "kb/compile-concepts":
+              return {
+                cell: { sessionId: "test-session", cellId: "proc-3" },
+                data: {
+                  conceptCount: 1,
+                  touchedConceptIds: ["transformers"],
+                },
+              } as RunResult;
+            case "kb/link":
+              return {
+                cell: { sessionId: "test-session", cellId: "proc-4" },
+                data: {
+                  indexPath: "wiki/index.md",
+                  conceptIndexPath: "wiki/indexes/concepts.md",
+                  backlinksPath: "wiki/indexes/backlinks.md",
+                  maintenancePath: "wiki/indexes/maintenance.md",
+                },
+              } as RunResult;
+            default:
+              throw new Error(`Unexpected nested procedure: ${name}`);
+          }
+        }) as ProcedureApi["procedures"]["run"],
+      },
+      session: {
+        getDefaultAgentConfig() {
+          return defaultAgentConfig;
+        },
+        setDefaultAgentSelection() {
+          return defaultAgentConfig;
+        },
+        async getDefaultAgentTokenSnapshot() {
+          return undefined;
+        },
+        async getDefaultAgentTokenUsage() {
+          return undefined;
+        },
+      },
+      assertNotCancelled() {},
+    };
+
+    const result = await kbRefreshProcedure.execute("", context);
+    if (typeof result === "string") {
+      throw new Error("Expected refresh ProcedureResult");
+    }
+
+    expect(procedureCalls.map((call) => call.name)).toEqual([
+      "kb/ingest",
+      "kb/compile-source",
+      "kb/compile-concepts",
+      "kb/link",
+    ]);
+    expect(prints).toEqual([
+      "Refreshing knowledge base...\n",
+      "Knowledge base refresh complete.\n",
+    ]);
+    expect(result.summary).toBe("kb/refresh: 1 compiled");
+  });
+
   test("/kb/answer writes a durable answer page and updates answer manifests", async () => {
     const cwd = createWorkspace();
     writeFileSync(join(cwd, "raw", "article.md"), "# Article\n\nContext for answering.\n", "utf8");
@@ -656,17 +822,17 @@ function createHarness(params: {
 
     const context = createMockContext({
       cwd: params.cwd,
-      print: (text) => {
+      emitText: (text) => {
         prints.push(text);
       },
       getNextAgentResult: () => {
         const next = params.agentResults.shift();
         if (next === undefined) {
-          throw new Error("Unexpected callAgent in test harness");
+          throw new Error("Unexpected ctx.agent.run in test harness");
         }
         return next;
       },
-      callProcedure: async (procedureName, procedurePrompt) => {
+      runProcedure: async (procedureName, procedurePrompt) => {
         const nested = await invoke(procedureName, procedurePrompt);
         const normalized = normalizeProcedureOutput(nested);
         cellCounter += 1;
@@ -694,14 +860,14 @@ function createHarness(params: {
 
 function createMockContext(params: {
   cwd: string;
-  print(text: string): void;
+  emitText(text: string): void;
   getNextAgentResult(): unknown;
-  callProcedure(name: string, prompt: string): Promise<RunResult>;
+  runProcedure(name: string, prompt: string): Promise<RunResult>;
   defaultAgentConfig: DownstreamAgentConfig;
-}): CommandContext {
+}): ProcedureApi {
   let agentCounter = 0;
 
-  const callAgent = async () => {
+  const runAgent = async () => {
     agentCounter += 1;
     return {
       cell: {
@@ -711,54 +877,98 @@ function createMockContext(params: {
       data: params.getNextAgentResult(),
     } as RunResult;
   };
+  const refs: ProcedureApi["state"]["refs"] = {
+    async read() {
+      throw new Error("Not implemented in test");
+    },
+    async stat() {
+      throw new Error("Not implemented in test");
+    },
+    async writeToFile() {
+      throw new Error("Not implemented in test");
+    },
+  };
+  const runs: ProcedureApi["state"]["runs"] = {
+    async recent() {
+      return [];
+    },
+    async latest() {
+      return undefined;
+    },
+    async topLevelRuns() {
+      return [];
+    },
+    async get() {
+      throw new Error("Not implemented in test");
+    },
+    async parent() {
+      return undefined;
+    },
+    async children() {
+      return [];
+    },
+    async ancestors() {
+      return [];
+    },
+    async descendants() {
+      return [];
+    },
+  };
+  const agent: ProcedureApi["agent"] = {
+    run: runAgent as ProcedureApi["agent"]["run"],
+    session() {
+      return {
+        run: runAgent as ProcedureApi["agent"]["run"],
+      };
+    },
+  };
+  const procedures: ProcedureApi["procedures"] = {
+    run: params.runProcedure as ProcedureApi["procedures"]["run"],
+  };
+  const ui: ProcedureApi["ui"] = {
+    text: params.emitText,
+    info(text) {
+      params.emitText(text);
+    },
+    warning(text) {
+      params.emitText(text);
+    },
+    error(text) {
+      params.emitText(text);
+    },
+    status() {
+      throw new Error("Not implemented in test");
+    },
+    card() {
+      throw new Error("Not implemented in test");
+    },
+  };
 
   return {
     cwd: params.cwd,
     sessionId: "test-session",
-    refs: {
-      async read() {
-        throw new Error("Not implemented in test");
-      },
-      async stat() {
-        throw new Error("Not implemented in test");
-      },
-      async writeToFile() {
-        throw new Error("Not implemented in test");
-      },
+    agent,
+    state: {
+      runs,
+      refs,
     },
+    ui,
+    procedures,
     session: {
-      async recent() {
-        return [];
+      getDefaultAgentConfig() {
+        return params.defaultAgentConfig;
       },
-      async topLevelRuns() {
-        return [];
+      setDefaultAgentSelection() {
+        return params.defaultAgentConfig;
       },
-      async get() {
-        throw new Error("Not implemented in test");
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
       },
-      async ancestors() {
-        return [];
-      },
-      async descendants() {
-        return [];
+      async getDefaultAgentTokenUsage() {
+        return undefined;
       },
     },
     assertNotCancelled() {},
-    getDefaultAgentConfig() {
-      return params.defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return params.defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    callAgent: callAgent as CommandContext["callAgent"],
-    callProcedure: params.callProcedure as CommandContext["callProcedure"],
-    print: params.print,
   };
 }
 

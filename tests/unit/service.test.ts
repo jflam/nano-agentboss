@@ -11,6 +11,7 @@ const BUILD_HOOK_TIMEOUT_MS = 30_000;
 import { DefaultConversationSession } from "../../src/agent/default-session.ts";
 import type { Procedure } from "../../src/core/types.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
 import { SessionStore } from "../../src/session/index.ts";
 import { extractProcedureDispatchResult, NanobossService } from "../../src/core/service.ts";
 
@@ -93,7 +94,7 @@ async function createRegistryWithWorkspace(commandFiles: Record<string, string> 
     writeFileSync(join(packageDir, "index.ts"), content, "utf8");
   }
 
-  const registry = new ProcedureRegistry(procedureRoot);
+  const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
   registry.loadBuiltins();
   await registry.loadFromDisk();
   return { cwd, registry };
@@ -242,12 +243,12 @@ describe("NanobossService", () => {
   });
 
   test("does not duplicate final display when the same text was already streamed", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-"))] });
     registry.register({
       name: "default",
       description: "test default",
       async execute(_prompt, ctx) {
-        ctx.print("4");
+        ctx.ui.text("4");
         return {
           display: "4",
         };
@@ -268,7 +269,7 @@ describe("NanobossService", () => {
 
   test("publishes a final token usage event before run completion for assistant replies", async () => {
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-token-usage-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-token-usage-"))] });
       registry.loadBuiltins();
 
       const service = new NanobossService(registry);
@@ -304,7 +305,7 @@ describe("NanobossService", () => {
     const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-resume-history-agent-"));
 
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-resume-history-reg-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-resume-history-reg-"))] });
       registry.loadBuiltins();
       const createService = () => new NanobossService(registry);
 
@@ -316,14 +317,23 @@ describe("NanobossService", () => {
         const liveReplay = normalizeReplayEvents(
           service.getSessionEvents(session.sessionId)?.after(-1) ?? [],
         );
-        const liveCompletedAt = liveReplay.findLast((event) => event.type === "run_completed")?.data.completedAt;
+        const liveCompletedAt = liveReplay.findLast((event) => event.type === "run_completed")?.completedAt;
+        const storedRun = getInternalSessionState(service, session.sessionId).store.topLevelRuns({ limit: 1 })[0];
 
         expect(liveReplay.some((event) => event.type === "tool_started")).toBe(true);
         expect(liveReplay.some((event) => event.type === "text_delta")).toBe(true);
         expect(typeof liveCompletedAt).toBe("string");
+        expect(storedRun).toBeDefined();
         if (typeof liveCompletedAt !== "string") {
           throw new Error("Missing completed timestamp");
         }
+        if (!storedRun) {
+          throw new Error("Missing stored run");
+        }
+
+        expect(
+          getInternalSessionState(service, session.sessionId).store.readCell(storedRun.cell).output.replayEvents,
+        ).toEqual(liveReplay);
 
         service.destroySession(session.sessionId);
 
@@ -366,7 +376,7 @@ describe("NanobossService", () => {
     const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-resume-cancelled-agent-"));
 
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-resume-cancelled-reg-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-resume-cancelled-reg-"))] });
       registry.loadBuiltins();
       const createService = () => new NanobossService(registry);
 
@@ -393,7 +403,7 @@ describe("NanobossService", () => {
         const liveReplay = normalizeReplayEvents(
           service.getSessionEvents(session.sessionId)?.after(-1) ?? [],
         );
-        const liveCancelledAt = liveReplay.findLast((event) => event.type === "run_cancelled")?.data.completedAt;
+        const liveCancelledAt = liveReplay.findLast((event) => event.type === "run_cancelled")?.completedAt;
         expect(liveReplay.some((event) => event.type === "run_cancelled")).toBe(true);
         expect(typeof liveCancelledAt).toBe("string");
         if (typeof liveCancelledAt !== "string") {
@@ -443,7 +453,7 @@ describe("NanobossService", () => {
           '  name: "probe",',
           '  description: "test procedure dispatch",',
           '  async execute(_prompt, ctx) {',
-          '    await ctx.callAgent("nested tool trace demo", { stream: false });',
+          '    await ctx.agent.run("nested tool trace demo", { stream: false });',
           '    return { display: "done" };',
           '  },',
           "};",
@@ -456,17 +466,35 @@ describe("NanobossService", () => {
       await service.prompt(session.sessionId, "/probe");
 
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+      const storedRun = getInternalSessionState(service, session.sessionId).store.topLevelRuns({ limit: 1 })[0];
       const toolTitles = events
         .filter((event) => event.type === "tool_started")
         .map((event) => event.data.title);
+      const startedToolEvents = events.filter((event) => event.type === "tool_started");
+      const agentWrapper = startedToolEvents.find((event) => event.data.title.startsWith("callAgent"));
+      const nestedRead = startedToolEvents.find((event) => event.data.title === "Mock read README.md");
       const textEvents = events
         .filter((event) => event.type === "text_delta")
         .map((event) => event.data.text);
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "probe");
+      const replayEvents = storedRun
+        ? getInternalSessionState(service, session.sessionId).store.readCell(storedRun.cell).output.replayEvents
+        : undefined;
+      const replayedNestedRead = replayEvents?.find((event) =>
+        event.type === "tool_started" && event.title === "Mock read README.md"
+      );
 
       expect(toolTitles).not.toContain("procedure_dispatch_start");
       expect(toolTitles).not.toContain("procedure_dispatch_wait");
       expect(toolTitles).toContain("Mock read README.md");
+      expect(agentWrapper?.data.toolCallId).toBeTruthy();
+      expect(agentWrapper?.data.kind).toBe("wrapper");
+      expect(nestedRead?.data.parentToolCallId).toBe(agentWrapper?.data.toolCallId);
+      expect(replayedNestedRead?.type).toBe("tool_started");
+      if (replayedNestedRead?.type === "tool_started") {
+        expect(replayedNestedRead.kind).toBe("read");
+        expect(replayedNestedRead.parentToolCallId).toBe(agentWrapper?.data.toolCallId);
+      }
       expect(textEvents).toContain("done");
       expect(completed?.type).toBe("run_completed");
       if (completed?.type !== "run_completed") {
@@ -489,7 +517,7 @@ describe("NanobossService", () => {
         '  name: "slowreview",',
         '  description: "slow direct procedure",',
         '  async execute(prompt, ctx) {',
-        '    ctx.print(`starting: ${prompt}\\n`);',
+        '    ctx.ui.text(`starting: ${prompt}\\n`);',
         '    await Bun.sleep(50);',
         '    return {',
         '      display: `completed: ${prompt}`,',
@@ -570,7 +598,7 @@ describe("NanobossService", () => {
           '  name: "probe",',
           '  description: "reuse the master default session",',
           '  async execute(_prompt, ctx) {',
-          '    const reply = await ctx.callAgent("nested default session demo", { session: "default", stream: false });',
+          '    const reply = await ctx.agent.run("nested default session demo", { session: "default", stream: false });',
           '    return { display: String(reply.data) };',
           '  },',
           "};",
@@ -757,7 +785,7 @@ describe("NanobossService", () => {
   test("includes retrieval guidance without a memory-card preamble when recovery guidance is active", async () => {
     const mockSessionStoreDir = mkdtempSync(join(tmpdir(), "nab-service-guidance-agent-"));
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-guidance-reg-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-guidance-reg-"))] });
       registry.loadBuiltins();
 
       const service = new NanobossService(
@@ -832,7 +860,7 @@ describe("NanobossService", () => {
           '  name: "review",',
           '  description: "test review cancellation",',
           '  async execute(_prompt, ctx) {',
-          '    await ctx.callAgent("cooperative cancel demo", { stream: false });',
+          '    await ctx.agent.run("cooperative cancel demo", { stream: false });',
           '    return { display: "done" };',
           '  },',
           "};",
@@ -874,17 +902,17 @@ describe("NanobossService", () => {
 
   test("soft stop cancels the in-flight agent and blocks the next boundary", async () => {
     await withMockAgentEnv(async () => {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-stop-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-stop-"))] });
       registry.register({
         name: "default",
         description: "test soft stop boundaries",
         async execute(_prompt, ctx) {
           try {
-            await ctx.callAgent("cooperative cancel demo", { stream: false });
+            await ctx.agent.run("cooperative cancel demo", { stream: false });
           } catch {
             // Expected: the active boundary is cancelled before the next one can start.
           }
-          await ctx.callAgent("second boundary should never start", { stream: false });
+          await ctx.agent.run("second boundary should never start", { stream: false });
           return { display: "done" };
         },
       });
@@ -944,7 +972,7 @@ describe("NanobossService", () => {
           '  name: "review",',
           '  description: "test review",',
           "  async execute(_prompt, ctx) {",
-          '    await ctx.callAgent("cooperative cancel demo", { stream: false });',
+          '    await ctx.agent.run("cooperative cancel demo", { stream: false });',
           '    return { display: "done" };',
           "  },",
           "};",
@@ -980,7 +1008,7 @@ describe("NanobossService", () => {
   }, 30_000);
 
   test("run-scoped cancel ignores stale run ids", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-stop-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-stop-"))] });
     registry.register({
       name: "default",
       description: "test stale stop ids",
@@ -1039,7 +1067,7 @@ describe("NanobossService", () => {
   }, 30_000);
 
   test("createSession accepts an inherited default agent selection", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-"))] });
     registry.loadBuiltins();
 
     const service = new NanobossService(registry);
@@ -1059,7 +1087,7 @@ describe("NanobossService", () => {
   });
 
   test("createSession honors an explicit session id", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-"))] });
     registry.loadBuiltins();
 
     const service = new NanobossService(registry);
@@ -1073,7 +1101,7 @@ describe("NanobossService", () => {
   });
 
   test("createSession does not expose duplicate session inspection commands on the parent command surface", () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-"))] });
     registry.loadBuiltins();
 
     const service = new NanobossService(registry);
@@ -1087,7 +1115,7 @@ describe("NanobossService", () => {
   });
 
   test("plain-text replies resume a paused procedure", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-"))] });
     registry.register(createPausedWizardProcedure());
     registry.register({
       name: "default",
@@ -1122,7 +1150,7 @@ describe("NanobossService", () => {
   });
 
   test("publishes continuation UI metadata for paused procedures", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-ui-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-ui-"))] });
     registry.register(createPausedSimplify2LikeProcedure());
 
     const service = new NanobossService(registry);
@@ -1148,7 +1176,7 @@ describe("NanobossService", () => {
   });
 
   test("explicit slash commands do not consume a pending continuation", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-"))] });
     registry.register(createPausedWizardProcedure());
     registry.register({
       name: "default",
@@ -1178,7 +1206,7 @@ describe("NanobossService", () => {
   });
 
   test("/dismiss clears a pending continuation without exiting the session", async () => {
-    const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-"))] });
     registry.register(createPausedWizardProcedure());
     registry.register({
       name: "default",
@@ -1216,7 +1244,7 @@ describe("NanobossService", () => {
     process.env.HOME = mkdtempSync(join(tmpdir(), "nab-paused-resume-home-"));
 
     try {
-      const registry = new ProcedureRegistry(mkdtempSync(join(tmpdir(), "nab-service-pause-")));
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-pause-"))] });
       registry.register(createPausedWizardProcedure());
       registry.register({
         name: "default",
@@ -1261,11 +1289,9 @@ describe("NanobossService", () => {
   });
 });
 
-function normalizeReplayEvents(events: Array<{ type: string; data: Record<string, unknown> }>): Array<{
-  type: string;
-  data: Record<string, unknown>;
-}> {
-  const replayable = new Set([
+type ReplayableFrontendEventEnvelope = Extract<FrontendEventEnvelope, { type: ReplayableFrontendEvent["type"] }>;
+
+const REPLAYABLE_EVENT_TYPES = new Set<ReplayableFrontendEvent["type"]>([
     "text_delta",
     "tool_started",
     "tool_updated",
@@ -1274,12 +1300,21 @@ function normalizeReplayEvents(events: Array<{ type: string; data: Record<string
     "run_paused",
     "run_failed",
     "run_cancelled",
-  ]);
+]);
 
-  return events
-    .filter((event) => replayable.has(event.type))
-    .map((event) => ({
-      type: event.type,
-      data: event.data,
-    }));
+function isReplayableFrontendEventEnvelope(
+  event: FrontendEventEnvelope,
+): event is ReplayableFrontendEventEnvelope {
+  return REPLAYABLE_EVENT_TYPES.has(event.type as ReplayableFrontendEvent["type"]);
+}
+
+function toReplayableFrontendEvent(event: ReplayableFrontendEventEnvelope): ReplayableFrontendEvent {
+  return {
+    type: event.type,
+    ...event.data,
+  } as ReplayableFrontendEvent;
+}
+
+function normalizeReplayEvents(events: FrontendEventEnvelope[]): ReplayableFrontendEvent[] {
+  return events.filter(isReplayableFrontendEventEnvelope).map(toReplayableFrontendEvent);
 }

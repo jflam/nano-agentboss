@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import researchProcedure from "../../procedures/research.ts";
 import type {
-  CommandContext,
+  ProcedureApi,
   DownstreamAgentConfig,
   RunResult,
 } from "../../src/core/types.ts";
@@ -28,7 +28,7 @@ describe("/research", () => {
     tempDirs.push(cwd);
 
     const prints: string[] = [];
-    const calls: Array<{
+    const agentRuns: Array<{
       prompt: string;
       descriptor?: unknown;
       options?: unknown;
@@ -48,22 +48,22 @@ describe("/research", () => {
       "summarize the pi-tui update",
       createMockContext({
         cwd,
-        print: (text) => {
+        uiText: (text) => {
           prints.push(text);
         },
-        callAgent: (async (prompt, descriptorOrOptions, maybeOptions) => {
+        agentRun: async (prompt: string, descriptorOrOptions?: unknown, maybeOptions?: unknown) => {
           const descriptor = isDescriptor(descriptorOrOptions) ? descriptorOrOptions : undefined;
           const options = (descriptor ? maybeOptions : descriptorOrOptions) as
             | Record<string, unknown>
             | undefined;
 
-          calls.push({
+          agentRuns.push({
             prompt,
             descriptor,
             options,
           });
 
-          if (calls.length === 1) {
+          if (agentRuns.length === 1) {
             return {
               cell: {
                 sessionId: "test-session",
@@ -103,7 +103,7 @@ describe("/research", () => {
               path: "data",
             },
           } satisfies RunResult;
-        }) as CommandContext["callAgent"],
+        },
       }),
     );
 
@@ -123,11 +123,11 @@ describe("/research", () => {
     expect(result.memory).toBe(
       `Research completed for summarize the pi-tui update. The cited report was also written to ${relativePath}.`,
     );
-    expect(calls).toHaveLength(2);
-    const firstCall = calls[0];
-    const secondCall = calls[1];
+    expect(agentRuns).toHaveLength(2);
+    const firstCall = agentRuns[0];
+    const secondCall = agentRuns[1];
     if (!firstCall || !secondCall) {
-      throw new Error("Expected two callAgent invocations");
+      throw new Error("Expected brief and report agent runs");
     }
     expect(firstCall.prompt).toContain("You are preparing a research brief for a separate worker agent.");
     expect(firstCall.prompt).toContain("User request:\nsummarize the pi-tui update");
@@ -161,65 +161,108 @@ describe("/research", () => {
 
 function createMockContext(params: {
   cwd: string;
-  print(text: string): void;
-  callAgent: CommandContext["callAgent"];
-}): CommandContext {
+  uiText(text: string): void;
+  agentRun(prompt: string, descriptorOrOptions?: unknown, maybeOptions?: unknown): Promise<RunResult>;
+}): ProcedureApi {
   const defaultAgentConfig: DownstreamAgentConfig = {
     provider: "copilot",
     command: "bun",
     args: [],
     cwd: params.cwd,
   };
+  const refs: ProcedureApi["state"]["refs"] = {
+    async read() {
+      throw new Error("Not implemented in test");
+    },
+    async stat() {
+      throw new Error("Not implemented in test");
+    },
+    async writeToFile() {
+      throw new Error("Not implemented in test");
+    },
+  };
+  const runs: ProcedureApi["state"]["runs"] = {
+    async recent() {
+      return [];
+    },
+    async latest() {
+      return undefined;
+    },
+    async topLevelRuns() {
+      return [];
+    },
+    async get() {
+      throw new Error("Not implemented in test");
+    },
+    async parent() {
+      return undefined;
+    },
+    async children() {
+      return [];
+    },
+    async ancestors() {
+      return [];
+    },
+    async descendants() {
+      return [];
+    },
+  };
+  const agent: ProcedureApi["agent"] = {
+    run: params.agentRun as ProcedureApi["agent"]["run"],
+    session() {
+      return {
+        run: params.agentRun as ProcedureApi["agent"]["run"],
+      };
+    },
+  };
+  const ui: ProcedureApi["ui"] = {
+    text: params.uiText,
+    info(text) {
+      params.uiText(`INFO:${text}`);
+    },
+    warning(text) {
+      params.uiText(`WARNING:${text}`);
+    },
+    error(text) {
+      params.uiText(`ERROR:${text}`);
+    },
+    status() {
+      throw new Error("Not implemented in test");
+    },
+    card() {
+      throw new Error("Not implemented in test");
+    },
+  };
 
   return {
     cwd: params.cwd,
     sessionId: "test-session",
-    refs: {
-      async read() {
-        throw new Error("Not implemented in test");
-      },
-      async stat() {
-        throw new Error("Not implemented in test");
-      },
-      async writeToFile() {
+    agent,
+    state: {
+      runs,
+      refs,
+    },
+    ui,
+    procedures: {
+      async run() {
         throw new Error("Not implemented in test");
       },
     },
     session: {
-      async recent() {
-        return [];
+      getDefaultAgentConfig() {
+        return defaultAgentConfig;
       },
-      async topLevelRuns() {
-        return [];
+      setDefaultAgentSelection() {
+        return defaultAgentConfig;
       },
-      async get() {
-        throw new Error("Not implemented in test");
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
       },
-      async ancestors() {
-        return [];
-      },
-      async descendants() {
-        return [];
+      async getDefaultAgentTokenUsage() {
+        return undefined;
       },
     },
     assertNotCancelled() {},
-    getDefaultAgentConfig() {
-      return defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    callAgent: params.callAgent,
-    async callProcedure() {
-      throw new Error("Not implemented in test");
-    },
-    print: params.print,
   };
 }
 

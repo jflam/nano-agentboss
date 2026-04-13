@@ -11,7 +11,11 @@ import {
   startSessionEventStream,
   type SessionStreamHandle,
 } from "../http/client.ts";
-import type { FrontendCommand, FrontendEventEnvelope } from "../http/frontend-events.ts";
+import {
+  isRenderedFrontendEvent,
+  type FrontendCommand,
+  type FrontendEventEnvelope,
+} from "../http/frontend-events.ts";
 import { formatAgentBanner } from "../core/runtime-banner.ts";
 import type { DownstreamAgentSelection, ProcedureContinuationUi } from "../core/types.ts";
 
@@ -302,7 +306,9 @@ export class NanobossTuiController {
       baseUrl: this.params.serverUrl,
       sessionId: session.sessionId,
       onEvent: (event) => {
-        this.dispatch({ type: "frontend_event", event });
+        if (isRenderedFrontendEvent(event)) {
+          this.dispatch({ type: "frontend_event", event });
+        }
         this.maybeSendLatchedStopRequest(event);
         void this.maybeAutoApproveSimplify2Pause(event);
         void this.maybeFlushPendingPrompt(event);

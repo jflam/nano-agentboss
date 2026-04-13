@@ -9,7 +9,7 @@ import { DefaultConversationSession } from "../../src/agent/default-session.ts";
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { resolveDownstreamAgentConfig } from "../../src/core/config.ts";
 import { RunLogger } from "../../src/core/logger.ts";
-import { jsonType, type DownstreamAgentConfig } from "../../src/core/types.ts";
+import { jsonType, type DownstreamAgentConfig, type ProcedureApi } from "../../src/core/types.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { SessionStore } from "../../src/session/index.ts";
 
@@ -33,11 +33,18 @@ afterEach(() => {
   }
 });
 
-describe("CommandContext callAgent session selection", () => {
+describe("procedure API session namespaces", () => {
   test("typed default-session calls reuse the default transport and keep parse retries", async () => {
-    const { conversation, ctx, emittedUpdates } = createContext();
-    const prompts: string[] = [];
     let submittedCount = 0;
+    const { conversation, ctx, emittedUpdates } = createContext({
+      prepareDefaultPrompt: (prompt: string) => ({
+        prompt: `Prepared default prompt\n\nUser message:\n${prompt}`,
+        markSubmitted: () => {
+          submittedCount += 1;
+        },
+      }),
+    });
+    const prompts: string[] = [];
 
     Reflect.set(conversation as object, "persistedSessionId", "default-session-1");
     Reflect.set(
@@ -63,18 +70,7 @@ describe("CommandContext callAgent session selection", () => {
         };
       },
     );
-    Reflect.set(
-      ctx as object,
-      "prepareDefaultPromptValue",
-      (prompt: string) => ({
-        prompt: `Prepared default prompt\n\nUser message:\n${prompt}`,
-        markSubmitted: () => {
-          submittedCount += 1;
-        },
-      }),
-    );
-
-    const result = await ctx.callAgent("Compute 4 + 3.", MathResultType, {
+    const result = await ctx.agent.run("Compute 4 + 3.", MathResultType, {
       session: "default",
       stream: false,
     });
@@ -90,10 +86,17 @@ describe("CommandContext callAgent session selection", () => {
     expect(emittedUpdates).toEqual([]);
   });
 
-  test("untyped default-session calls use the same unified callAgent path", async () => {
-    const { conversation, ctx, emittedUpdates } = createContext();
-    const prompts: string[] = [];
+  test("untyped default-session calls use the same unified ctx.agent.run path", async () => {
     let submittedCount = 0;
+    const { conversation, ctx, emittedUpdates } = createContext({
+      prepareDefaultPrompt: (prompt: string) => ({
+        prompt: `Prepared default prompt\n\nUser message:\n${prompt}`,
+        markSubmitted: () => {
+          submittedCount += 1;
+        },
+      }),
+    });
+    const prompts: string[] = [];
 
     Reflect.set(conversation as object, "persistedSessionId", "default-session-2");
     Reflect.set(
@@ -108,18 +111,7 @@ describe("CommandContext callAgent session selection", () => {
         };
       },
     );
-    Reflect.set(
-      ctx as object,
-      "prepareDefaultPromptValue",
-      (prompt: string) => ({
-        prompt: `Prepared default prompt\n\nUser message:\n${prompt}`,
-        markSubmitted: () => {
-          submittedCount += 1;
-        },
-      }),
-    );
-
-    const result = await ctx.callAgent("What is 2 + 2?", { session: "default" });
+    const result = await ctx.agent.run("What is 2 + 2?", { session: "default" });
 
     expect(result.data).toBe("4");
     expect(prompts).toHaveLength(1);
@@ -129,7 +121,7 @@ describe("CommandContext callAgent session selection", () => {
     expect(emittedUpdates).toEqual([]);
   });
 
-  test("callProcedure inherits the current default-session binding by default", async () => {
+  test("ctx.procedures.run inherits the current default-session binding by default", async () => {
     const { conversation, ctx, registry } = createContext();
     const prompts: string[] = [];
 
@@ -151,7 +143,7 @@ describe("CommandContext callAgent session selection", () => {
       name: "child",
       description: "test child procedure",
       async execute(prompt, childCtx) {
-        const reply = await childCtx.callAgent(prompt, {
+        const reply = await childCtx.agent.run(prompt, {
           session: "default",
           stream: false,
         });
@@ -161,15 +153,15 @@ describe("CommandContext callAgent session selection", () => {
       },
     });
 
-    const result = await ctx.callProcedure("child", "reuse the bound session");
+    const result = await ctx.procedures.run("child", "reuse the bound session");
 
     expect(result.data).toBe("inherited");
     expect(prompts).toEqual(["reuse the bound session"]);
   });
 
-  test("callProcedure with session fresh gives the child a private default binding", async () => {
+  test("ctx.procedures.run with session fresh gives the child a private default binding", async () => {
     const { conversation, ctx, registry } = createContext();
-    const rootConfigBefore = ctx.getDefaultAgentConfig();
+    const rootConfigBefore = ctx.session.getDefaultAgentConfig();
     const promptedConversations: DefaultConversationSession[] = [];
     const originalPrompt = DefaultConversationSession.prototype.prompt;
 
@@ -195,12 +187,12 @@ describe("CommandContext callAgent session selection", () => {
       name: "child",
       description: "test fresh child procedure",
       async execute(prompt, childCtx) {
-        childCtx.setDefaultAgentSelection({
+        childCtx.session.setDefaultAgentSelection({
           provider: "codex",
           model: "gpt-5.4/high",
         });
 
-        const reply = await childCtx.callAgent(prompt, {
+        const reply = await childCtx.agent.run(prompt, {
           session: "default",
           stream: false,
         });
@@ -208,14 +200,14 @@ describe("CommandContext callAgent session selection", () => {
         return {
           data: {
             reply: reply.data,
-            selection: childCtx.getDefaultAgentConfig(),
+            selection: childCtx.session.getDefaultAgentConfig(),
           },
         };
       },
     });
 
     try {
-      const result = await ctx.callProcedure<{
+      const result = await ctx.procedures.run<{
         reply: string;
         selection: DownstreamAgentConfig;
       }>("child", "private child session", { session: "fresh" });
@@ -225,13 +217,13 @@ describe("CommandContext callAgent session selection", () => {
       expect(promptedConversations[0]).not.toBe(conversation);
       expect(result.data?.selection.provider).toBe("codex");
       expect(result.data?.selection.model).toBe("gpt-5.4/high");
-      expect(ctx.getDefaultAgentConfig()).toEqual(rootConfigBefore);
+      expect(ctx.session.getDefaultAgentConfig()).toEqual(rootConfigBefore);
     } finally {
       Reflect.set(DefaultConversationSession.prototype as object, "prompt", originalPrompt);
     }
   });
 
-  test("callProcedure with session default rebinds nested children to the master session", async () => {
+  test("ctx.procedures.run with session default rebinds nested children to the master session", async () => {
     const { conversation, ctx, registry } = createContext();
     const promptedConversations: DefaultConversationSession[] = [];
     const originalPrompt = DefaultConversationSession.prototype.prompt;
@@ -254,7 +246,7 @@ describe("CommandContext callAgent session selection", () => {
       name: "inner",
       description: "test nested child procedure",
       async execute(_prompt, innerCtx) {
-        const reply = await innerCtx.callAgent("use the master binding", {
+        const reply = await innerCtx.agent.run("use the master binding", {
           session: "default",
           stream: false,
         });
@@ -267,7 +259,7 @@ describe("CommandContext callAgent session selection", () => {
       name: "outer",
       description: "test outer child procedure",
       async execute(_prompt, outerCtx) {
-        const result = await outerCtx.callProcedure("inner", "", { session: "default" });
+        const result = await outerCtx.procedures.run("inner", "", { session: "default" });
         return {
           data: result.data,
         };
@@ -275,7 +267,7 @@ describe("CommandContext callAgent session selection", () => {
     });
 
     try {
-      const result = await ctx.callProcedure("outer", "", { session: "fresh" });
+      const result = await ctx.procedures.run("outer", "", { session: "fresh" });
 
       expect(result.data).toBe("master session reply");
       expect(promptedConversations).toEqual([conversation]);
@@ -283,19 +275,47 @@ describe("CommandContext callAgent session selection", () => {
       Reflect.set(DefaultConversationSession.prototype as object, "prompt", originalPrompt);
     }
   });
+
+  test("ctx.state owns durable run traversal while ctx.session owns live default-agent control", async () => {
+    const { ctx, store } = createContext();
+    const otherTopLevel = store.finalizeCell(
+      store.startCell({
+        procedure: "other-procedure",
+        input: "other input",
+        kind: "top_level",
+      }),
+      {
+        summary: "other summary",
+      },
+    );
+
+    expect("recent" in ctx.session).toBe(false);
+    expect("topLevelRuns" in ctx.session).toBe(false);
+    expect("getDefaultAgentConfig" in ctx.state).toBe(false);
+
+    const latest = await ctx.state.runs.latest();
+    const topLevelRuns = await ctx.state.runs.topLevelRuns();
+
+    expect(ctx.session.getDefaultAgentConfig()).toEqual(createMockConfig(ctx.cwd));
+    expect(latest?.cell).toEqual(otherTopLevel.cell);
+    expect(topLevelRuns.map((run) => run.cell)).toContainEqual(otherTopLevel.cell);
+  });
 });
 
-function createContext(): {
+function createContext(options: {
+  prepareDefaultPrompt?: (prompt: string) => { prompt: string; markSubmitted?: () => void };
+} = {}): {
   conversation: DefaultConversationSession;
-  ctx: CommandContextImpl;
+  ctx: ProcedureApi;
   emittedUpdates: acp.SessionUpdate[];
   registry: ProcedureRegistry;
+  store: SessionStore;
 } {
   const cwd = mkdtempSync(join(tmpdir(), "nab-call-agent-session-"));
   tempDirs.push(cwd);
 
   const registryRoot = join(cwd, ".nanoboss", "procedures");
-  const registry = new ProcedureRegistry(registryRoot);
+  const registry = new ProcedureRegistry({ procedureRoots: [registryRoot] });
   const logger = new RunLogger();
   const store = new SessionStore({
     sessionId: crypto.randomUUID(),
@@ -333,6 +353,7 @@ function createContext(): {
       conversation.updateConfig(nextConfig);
       return nextConfig;
     },
+    prepareDefaultPrompt: options.prepareDefaultPrompt,
   });
 
   return {
@@ -340,6 +361,7 @@ function createContext(): {
     ctx,
     emittedUpdates,
     registry,
+    store,
   };
 }
 

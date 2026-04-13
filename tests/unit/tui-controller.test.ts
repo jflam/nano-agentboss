@@ -527,6 +527,53 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
+  test("memory sync events stay out of retained ui state", async () => {
+    const streams: FakeStreamRecord[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream(streams, sessionId, onEvent),
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    await controller.handleSubmit("hello");
+    const beforeSyncEvents = controller.getState();
+
+    streams[0]?.emit(eventEnvelope("memory_cards", {
+      runId: "run-1",
+      cards: [{
+        cell: { sessionId: "session-1", cellId: "cell-1" },
+        procedure: "default",
+        input: "hello",
+        summary: "stored summary",
+        createdAt: "2026-04-11T00:00:00.000Z",
+      }],
+    }));
+    streams[0]?.emit(eventEnvelope("memory_card_stored", {
+      runId: "run-1",
+      card: {
+        cell: { sessionId: "session-1", cellId: "cell-1" },
+        procedure: "default",
+        input: "hello",
+        memory: "stored memory",
+        createdAt: "2026-04-11T00:00:00.000Z",
+      },
+    }));
+
+    expect(controller.getState()).toEqual(beforeSyncEvents);
+
+    controller.requestExit();
+    await runPromise;
+  });
+
   test("paused runs re-enable input for open-ended replies", async () => {
     const streams: FakeStreamRecord[] = [];
     const controller = new NanobossTuiController(

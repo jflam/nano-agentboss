@@ -1,5 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
-import type { ToolPreviewBlock } from "./tool-call-preview.ts";
+import type { ReplayableFrontendEvent } from "../http/frontend-events.ts";
 
 export type KernelScalar = null | boolean | number | string;
 export type JsonValue = KernelScalar | JsonValue[] | { [key: string]: JsonValue };
@@ -153,12 +153,37 @@ export interface RefsApi {
   writeToFile(valueRef: ValueRef, path: string): Promise<void>;
 }
 
-export interface SessionApi {
+export interface StateRunsApi {
   recent(options?: SessionRecentOptions): Promise<CellSummary[]>;
+  latest(options?: SessionRecentOptions): Promise<CellSummary | undefined>;
   topLevelRuns(options?: TopLevelRunsOptions): Promise<CellSummary[]>;
   get(cellRef: CellRef): Promise<CellRecord>;
+  parent(cellRef: CellRef): Promise<CellSummary | undefined>;
+  children(cellRef: CellRef, options?: Omit<CellDescendantsOptions, "maxDepth">): Promise<CellSummary[]>;
   ancestors(cellRef: CellRef, options?: CellAncestorsOptions): Promise<CellSummary[]>;
   descendants(cellRef: CellRef, options?: CellDescendantsOptions): Promise<CellSummary[]>;
+}
+
+export interface SessionApi {
+  /**
+   * Live default-agent session control for the current procedure binding.
+   *
+   * Durable run/cell history lives under `ctx.state`, not `ctx.session`.
+   */
+  getDefaultAgentConfig(): DownstreamAgentConfig;
+  setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig;
+  getDefaultAgentTokenSnapshot(): Promise<AgentTokenSnapshot | undefined>;
+  getDefaultAgentTokenUsage(): Promise<AgentTokenUsage | undefined>;
+}
+
+export interface StateApi {
+  /**
+   * Durable session data and structural traversal over stored run cells.
+   *
+   * Live default-agent controls live under `ctx.session`, not `ctx.state`.
+   */
+  readonly runs: StateRunsApi;
+  readonly refs: RefsApi;
 }
 
 export interface DownstreamAgentConfig {
@@ -214,87 +239,7 @@ export interface AgentTokenUsage {
   totalTrackedTokens?: number;
 }
 
-export type PersistedFrontendEvent =
-  | {
-      type: "text_delta";
-      runId: string;
-      text: string;
-      stream: "agent";
-    }
-  | {
-      type: "assistant_notice";
-      runId: string;
-      text: string;
-      tone: "info" | "warning" | "error";
-    }
-  | {
-      type: "tool_started";
-      runId: string;
-      toolCallId: string;
-      title: string;
-      kind: string;
-      status?: string;
-      callPreview?: ToolPreviewBlock;
-      rawInput?: unknown;
-    }
-  | {
-      type: "tool_updated";
-      runId: string;
-      toolCallId: string;
-      title?: string;
-      status: string;
-      resultPreview?: ToolPreviewBlock;
-      errorPreview?: ToolPreviewBlock;
-      durationMs?: number;
-      rawOutput?: unknown;
-    }
-  | {
-      type: "token_usage";
-      runId: string;
-      usage: AgentTokenUsage;
-      sourceUpdate: "usage_update" | "tool_call_update" | "run_completed" | "run_paused";
-      toolCallId?: string;
-      status?: string;
-    }
-  | {
-      type: "run_completed";
-      runId: string;
-      procedure: string;
-      completedAt: string;
-      cell: CellRef;
-      summary?: string;
-      display?: string;
-      tokenUsage?: AgentTokenUsage;
-    }
-  | {
-      type: "run_paused";
-      runId: string;
-      procedure: string;
-      pausedAt: string;
-      cell: CellRef;
-      question: string;
-      display?: string;
-      inputHint?: string;
-      suggestedReplies?: string[];
-      continuationUi?: ProcedureContinuationUi;
-      tokenUsage?: AgentTokenUsage;
-    }
-  | {
-      type: "run_failed";
-      runId: string;
-      procedure: string;
-      completedAt: string;
-      error: string;
-      cell?: CellRef;
-    }
-  | {
-      type: "run_cancelled";
-      runId: string;
-      procedure: string;
-      completedAt: string;
-      message: string;
-      cell?: CellRef;
-    };
+export type PersistedFrontendEvent = ReplayableFrontendEvent;
 
 export interface TypeDescriptor<T> {
   schema: object;
@@ -368,16 +313,16 @@ export interface DeferredProcedureMetadata extends ProcedureMetadata {
 }
 
 export interface Procedure extends ProcedureMetadata {
-  execute(prompt: string, ctx: CommandContext): Promise<ProcedureResult | string | void>;
-  resume?(prompt: string, state: KernelValue, ctx: CommandContext): Promise<ProcedureResult | string | void>;
+  execute(prompt: string, ctx: ProcedureApi): Promise<ProcedureResult | string | void>;
+  resume?(prompt: string, state: KernelValue, ctx: ProcedureApi): Promise<ProcedureResult | string | void>;
 }
 
 export interface ProcedureRegistryLike {
   get(name: string): Procedure | undefined;
   register(procedure: Procedure): void;
   loadProcedureFromPath(path: string): Promise<Procedure>;
-  persist(procedure: Procedure, source: string, cwd?: string): Promise<string>;
-  listMetadata(): ProcedureMetadata[];
+  persist(procedureName: string, source: string, cwd: string): Promise<string>;
+  listMetadata(): DeferredProcedureMetadata[];
 }
 
 export type AgentSessionMode = "fresh" | "default";
@@ -417,31 +362,74 @@ export interface CommandCallProcedureOptions {
   session?: ProcedureSessionMode;
 }
 
-export interface CommandContext {
-  readonly cwd: string;
-  readonly sessionId: string;
-  readonly refs: RefsApi;
-  readonly session: SessionApi;
-  getDefaultAgentConfig(): DownstreamAgentConfig;
-  setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig;
-  getDefaultAgentTokenSnapshot(): Promise<AgentTokenSnapshot | undefined>;
-  getDefaultAgentTokenUsage(): Promise<AgentTokenUsage | undefined>;
-  assertNotCancelled(): void;
-  callAgent(
+export type UiCardKind = "proposal" | "summary" | "checkpoint" | "report" | "notification";
+
+export interface UiStatusParams {
+  procedure?: string;
+  phase?: string;
+  message: string;
+  iteration?: string;
+  autoApprove?: boolean;
+  waiting?: boolean;
+}
+
+export interface UiCardParams {
+  kind: UiCardKind;
+  title: string;
+  markdown: string;
+}
+
+export interface UiApi {
+  text(text: string): void;
+  info(text: string): void;
+  warning(text: string): void;
+  error(text: string): void;
+  status(params: UiStatusParams): void;
+  card(params: UiCardParams): void;
+}
+
+export interface BoundAgentInvocationApi {
+  run(prompt: string, options?: Omit<CommandCallAgentOptions, "session">): Promise<RunResult<string>>;
+  run<T extends KernelValue>(
     prompt: string,
-    options?: CommandCallAgentOptions,
-  ): Promise<RunResult<string>>;
-  callAgent<T extends KernelValue>(
+    descriptor: TypeDescriptor<T>,
+    options?: Omit<CommandCallAgentOptions, "session">,
+  ): Promise<RunResult<T>>;
+}
+
+export interface AgentInvocationApi {
+  run(prompt: string, options?: CommandCallAgentOptions): Promise<RunResult<string>>;
+  run<T extends KernelValue>(
     prompt: string,
     descriptor: TypeDescriptor<T>,
     options?: CommandCallAgentOptions,
   ): Promise<RunResult<T>>;
-  callProcedure<T extends KernelValue = KernelValue>(
+  session(mode: AgentSessionMode): BoundAgentInvocationApi;
+}
+
+export interface ProcedureInvocationApi {
+  run<T extends KernelValue = KernelValue>(
     name: string,
     prompt: string,
     options?: CommandCallProcedureOptions,
   ): Promise<RunResult<T>>;
-  print(text: string): void;
+}
+
+export interface ProcedureApi {
+  readonly cwd: string;
+  readonly sessionId: string;
+  readonly agent: AgentInvocationApi;
+  /**
+   * Durable run state: stored cells, traversal, and refs.
+   */
+  readonly state: StateApi;
+  readonly ui: UiApi;
+  readonly procedures: ProcedureInvocationApi;
+  /**
+   * Live default-agent session control for the current binding.
+   */
+  readonly session: SessionApi;
+  assertNotCancelled(): void;
 }
 
 export interface LogEntry {

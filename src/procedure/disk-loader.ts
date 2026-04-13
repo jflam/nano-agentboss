@@ -16,7 +16,6 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { getProcedureRuntimeDir } from "../core/config.ts";
-import { resolveRepoProcedureRoot } from "../core/procedure-paths.ts";
 import type {
   DeferredProcedureMetadata,
   Procedure,
@@ -27,7 +26,6 @@ import { createTypiaBunPlugin } from "./typia-bun-plugin.ts";
 
 export interface DiskProcedureDefinition extends DeferredProcedureMetadata {
   path: string;
-  workspaceRoot: string;
 }
 
 interface ProcedureSourceFile {
@@ -46,32 +44,28 @@ export function discoverDiskProcedures(procedureRoot: string): DiskProcedureDefi
     return [];
   }
 
-  const workspaceRoot = resolveDiskProcedureWorkspaceRoot(procedureRoot);
   return listProcedureSourcePaths(procedureRoot)
     .map((path) => {
       const metadata = readProcedureMetadata(path);
-      return metadata ? { ...metadata, path, workspaceRoot } : undefined;
+      return metadata ? { ...metadata, path } : undefined;
     })
     .filter((definition): definition is DiskProcedureDefinition => definition !== undefined);
 }
 
-export async function loadProcedureFromPath(path: string, workspaceRoot?: string): Promise<Procedure> {
-  const moduleUrl = await buildProcedureModule(path, workspaceRoot);
+export async function loadProcedureFromPath(path: string): Promise<Procedure> {
+  const moduleUrl = await buildProcedureModule(path);
   const loaded: unknown = await import(moduleUrl);
   const procedure = getDefaultExport(loaded);
   assertProcedure(procedure);
   return procedure;
 }
 
-export async function persistProcedureSource(params: {
+export function persistProcedureSource(params: {
   procedureName: string;
   source: string;
-  cwd?: string;
-  fallbackProcedureRoot?: string;
-  profileProcedureRoot: string;
-}): Promise<string> {
-  const procedureRoot = resolvePersistProcedureRoot(params);
-  const filePath = join(procedureRoot, resolveProcedureEntryRelativePath(params.procedureName));
+  procedureRoot: string;
+}): string {
+  const filePath = join(resolve(params.procedureRoot), resolveProcedureEntryRelativePath(params.procedureName));
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, params.source, "utf8");
   return filePath;
@@ -97,8 +91,8 @@ function getDefaultExport(module: unknown): unknown {
   return module.default;
 }
 
-async function buildProcedureModule(path: string, workspaceRoot?: string): Promise<string> {
-  const resolvedWorkspaceRoot = resolveProcedureWorkspaceRoot(path, workspaceRoot);
+async function buildProcedureModule(path: string): Promise<string> {
+  const resolvedWorkspaceRoot = resolveProcedureBuildRoot(path);
   const cacheKey = buildProcedureCacheKey(path, resolvedWorkspaceRoot);
   const cacheDir = join(getProcedureBuildCacheDir(), cacheKey);
   const cacheModulePath = join(cacheDir, "module.js");
@@ -353,19 +347,17 @@ async function withProcedureBuildNodeModules<T>(workspaceRoot: string, run: () =
   });
 }
 
-function resolveProcedureWorkspaceRoot(path: string, workspaceRoot?: string): string {
-  if (workspaceRoot) {
-    return resolve(workspaceRoot);
-  }
-
+function resolveProcedureBuildRoot(path: string): string {
   const fileDir = dirname(resolve(path));
+
   for (let current = fileDir; ; current = dirname(current)) {
-    if (basename(current) === "packages") {
+    const currentBaseName = basename(current);
+    if (currentBaseName === "packages" || currentBaseName === "procedures") {
       return dirname(current);
     }
 
-    if (basename(current) === "procedures") {
-      return dirname(current);
+    if (existsSync(join(current, "tsconfig.json")) || existsSync(join(current, "node_modules"))) {
+      return current;
     }
 
     const parent = dirname(current);
@@ -430,22 +422,3 @@ async function withTemporarySymlink<T>(targetPath: string, sourcePath: string, r
   }
 }
 
-function resolveDiskProcedureWorkspaceRoot(procedureRoot: string): string {
-  const resolvedProcedureRoot = resolve(procedureRoot);
-  return basename(resolvedProcedureRoot) === "procedures"
-    ? dirname(resolvedProcedureRoot)
-    : resolvedProcedureRoot;
-}
-
-function resolvePersistProcedureRoot(params: {
-  cwd?: string;
-  fallbackProcedureRoot?: string;
-  profileProcedureRoot: string;
-}): string {
-  const workingDir = params.cwd ? resolve(params.cwd) : undefined;
-  const repoProcedureRoot = workingDir ? resolveRepoProcedureRoot(workingDir) : undefined;
-  const procedureRoot = repoProcedureRoot
-    ?? (workingDir ? params.profileProcedureRoot : params.fallbackProcedureRoot ?? params.profileProcedureRoot);
-
-  return resolve(procedureRoot);
-}

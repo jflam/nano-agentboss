@@ -1,12 +1,13 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { collectTextSessionUpdates, parseAssistantNoticeText, summarizeAgentOutput } from "./acp-updates.ts";
+import { parseProcedureUiMarker } from "../core/ui-cli.ts";
 import {
   applyAcpSessionConfig,
   closeAcpConnection,
   openAcpConnection,
 } from "./acp-runtime.ts";
-import { buildGlobalMcpStdioServer } from "../mcp/registration.ts";
+import { buildAgentRuntimeSessionRuntime } from "./runtime-capability.ts";
 import { RunCancelledError, defaultCancellationMessage } from "../core/cancellation.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
 import { SessionStore } from "../session/index.ts";
@@ -359,7 +360,7 @@ async function runAcpPrompt(
       update.sessionUpdate === "agent_message_chunk" &&
       update.content.type === "text"
     ) {
-      if (!parseAssistantNoticeText(update.content.text)) {
+      if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarker(update.content.text)) {
         raw += update.content.text;
       }
     }
@@ -384,7 +385,7 @@ async function runAcpPrompt(
   try {
     const session = await state.connection.newSession({
       cwd: state.cwd,
-      mcpServers: [buildGlobalMcpStdioServer()],
+      ...buildAgentRuntimeSessionRuntime(),
     });
     sessionId = session.sessionId;
 

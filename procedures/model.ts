@@ -17,11 +17,11 @@ export default {
   executionMode: "harness",
   async execute(prompt, ctx) {
     const trimmed = prompt.trim();
-    const current = ctx.getDefaultAgentConfig();
+    const current = ctx.session.getDefaultAgentConfig();
     const currentBanner = formatAgentBanner(current);
 
     if (!trimmed) {
-      const usage = await ctx.getDefaultAgentTokenUsage();
+      const usage = await ctx.session.getDefaultAgentTokenUsage();
       const contextLine = formatObservedContext(usage);
 
       return {
@@ -86,7 +86,7 @@ export default {
       };
     }
 
-    const nextConfig = ctx.setDefaultAgentSelection({
+    const nextConfig = ctx.session.setDefaultAgentSelection({
       provider: rawProvider,
       model: modelSelection,
     });

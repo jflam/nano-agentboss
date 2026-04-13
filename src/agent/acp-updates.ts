@@ -1,5 +1,6 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
+import { parseProcedureUiMarker } from "../core/ui-cli.ts";
 import { summarizeText } from "../util/text.ts";
 
 export interface AssistantNotice {
@@ -32,7 +33,7 @@ export function collectTextSessionUpdates(updates: acp.SessionUpdate[]): string 
       continue;
     }
 
-    if (parseAssistantNoticeText(update.content.text)) {
+    if (parseAssistantNoticeText(update.content.text) || parseProcedureUiMarker(update.content.text)) {
       continue;
     }
 

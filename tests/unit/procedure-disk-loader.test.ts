@@ -93,58 +93,29 @@ describe("procedure disk loader", () => {
     expect(existsSync(join(workspaceRoot, "node_modules"))).toBe(false);
   });
 
-  test("persists generated procedures into the profile procedure root outside the repo", async () => {
-    const repoProcedureRoot = mkdtempSync(join(tmpdir(), "nab-repo-procedures-"));
-    const profileProcedureRoot = mkdtempSync(join(tmpdir(), "nab-profile-procedures-"));
-    const workspaceDir = mkdtempSync(join(tmpdir(), "nab-workspace-"));
+  test("persists generated procedures into an explicit procedure root", async () => {
+    const procedureRoot = mkdtempSync(join(tmpdir(), "nab-profile-procedures-"));
 
-    const filePath = await persistProcedureSource({
+    const filePath = persistProcedureSource({
       procedureName: "generated-profile",
       source: "export default { name: \"generated-profile\", description: \"generated\", async execute() { return {}; } };",
-      cwd: workspaceDir,
-      fallbackProcedureRoot: repoProcedureRoot,
-      profileProcedureRoot,
+      procedureRoot,
     });
 
-    expect(filePath).toBe(join(profileProcedureRoot, "generated-profile.ts"));
+    expect(filePath).toBe(join(procedureRoot, "generated-profile.ts"));
     expect(existsSync(filePath)).toBe(true);
   });
 
-  test("persists generated procedures into the repo-local procedure root when running in a repo", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "nab-repo-root-"));
-    const repoProcedureRoot = join(repoRoot, ".nanoboss", "procedures");
-    const profileProcedureRoot = mkdtempSync(join(tmpdir(), "nab-profile-procedures-"));
-    mkdirSync(repoProcedureRoot, { recursive: true });
-    writeFileSync(join(repoRoot, "README.md"), "# repo\n", "utf8");
-    writeFileSync(join(repoRoot, ".gitignore"), ".nanoboss/\n", "utf8");
-    Bun.spawnSync(["git", "init"], { cwd: repoRoot, stdio: ["ignore", "ignore", "ignore"] });
-
-    const filePath = await persistProcedureSource({
-      procedureName: "generated-repo",
-      source: "export default { name: \"generated-repo\", description: \"generated\", async execute() { return {}; } };",
-      cwd: repoRoot,
-      fallbackProcedureRoot: repoProcedureRoot,
-      profileProcedureRoot,
-    });
-
-    expect(filePath.endsWith("/.nanoboss/procedures/generated-repo.ts")).toBe(true);
-    expect(readFileSync(filePath, "utf8")).toContain("generated-repo");
-  });
-
   test("persists scoped generated procedures into package directories", async () => {
-    const repoProcedureRoot = mkdtempSync(join(tmpdir(), "nab-repo-procedures-"));
-    const profileProcedureRoot = mkdtempSync(join(tmpdir(), "nab-profile-procedures-"));
-    const workspaceDir = mkdtempSync(join(tmpdir(), "nab-workspace-"));
+    const procedureRoot = mkdtempSync(join(tmpdir(), "nab-profile-procedures-"));
 
-    const filePath = await persistProcedureSource({
+    const filePath = persistProcedureSource({
       procedureName: "kb/answer",
       source: "export default { name: \"kb/answer\", description: \"generated\", async execute() { return {}; } };",
-      cwd: workspaceDir,
-      fallbackProcedureRoot: repoProcedureRoot,
-      profileProcedureRoot,
+      procedureRoot,
     });
 
-    expect(filePath).toBe(join(profileProcedureRoot, "kb", "answer.ts"));
+    expect(filePath).toBe(join(procedureRoot, "kb", "answer.ts"));
     expect(existsSync(filePath)).toBe(true);
   });
 });

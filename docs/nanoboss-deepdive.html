@@ -712,11 +712,11 @@ cell.output may contain:
           <table class="table">
             <thead><tr><th>Call shape</th><th>Default</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>ctx.callAgent(...)</code></td><td><code>fresh</code></td><td>new isolated ACP session</td></tr>
-              <tr><td><code>ctx.callAgent(..., { session: "default" })</code></td><td>explicit</td><td>reuse the session’s persistent master conversation</td></tr>
-              <tr><td><code>ctx.callProcedure(name, prompt)</code></td><td><code>inherit</code></td><td>child procedure keeps caller’s default-binding behavior</td></tr>
-              <tr><td><code>ctx.callProcedure(..., { session: "fresh" })</code></td><td>explicit</td><td>child gets a private default conversation</td></tr>
-              <tr><td><code>ctx.callProcedure(..., { session: "default" })</code></td><td>explicit</td><td>child rebinds to the master session</td></tr>
+              <tr><td><code>ctx.agent.run(...)</code></td><td><code>fresh</code></td><td>new isolated ACP session</td></tr>
+              <tr><td><code>ctx.agent.run(..., { session: "default" })</code></td><td>explicit</td><td>reuse the session’s persistent master conversation</td></tr>
+              <tr><td><code>ctx.procedures.run(name, prompt)</code></td><td><code>inherit</code></td><td>child procedure keeps caller’s default-binding behavior</td></tr>
+              <tr><td><code>ctx.procedures.run(..., { session: "fresh" })</code></td><td>explicit</td><td>child gets a private default conversation</td></tr>
+              <tr><td><code>ctx.procedures.run(..., { session: "default" })</code></td><td>explicit</td><td>child rebinds to the master session</td></tr>
             </tbody>
           </table>
           <div class="callout ok">This lets nanoboss separate <strong>workflow state</strong> from <strong>conversation state</strong>. That is a big deal.</div>
@@ -724,7 +724,7 @@ cell.output may contain:
         <div class="panel rows">
           <h3>How flagship procedures use it</h3>
           <ul class="bullets">
-            <li><strong>/default</strong> is just <code>ctx.callAgent(prompt, { session: "default" })</code> — persistent chat continuity.</li>
+            <li><strong>/default</strong> is just <code>ctx.agent.run(prompt, { session: "default" })</code> — persistent chat continuity.</li>
             <li><strong>/research</strong> creates a brief in the default conversation, then dispatches a fresh isolated research worker.</li>
             <li><strong>/simplify2</strong> intentionally keeps most direct agent calls fresh so each analysis phase is isolated and typed.</li>
             <li><strong>/second-opinion</strong> gets a first pass from the default model, then a fresh typed critique from Codex using refs.</li>

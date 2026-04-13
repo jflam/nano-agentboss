@@ -1,6 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { parseAssistantNoticeText } from "../agent/acp-updates.ts";
+import type { ProcedureUiEvent } from "../core/context-shared.ts";
 import type { ProcedureMemoryCard } from "../core/memory-cards.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
 import {
@@ -8,6 +9,7 @@ import {
   summarizeToolCallUpdate,
   type ToolPreviewBlock,
 } from "../core/tool-call-preview.ts";
+import { normalizeToolName } from "../core/tool-payload-normalizer.ts";
 import type {
   AgentTokenUsage,
   CellRef,
@@ -70,6 +72,16 @@ export type FrontendEvent =
       tone: "info" | "warning" | "error";
     }
   | {
+      type: "procedure_status";
+      runId: string;
+      status: Extract<ProcedureUiEvent, { type: "status" }>;
+    }
+  | {
+      type: "procedure_card";
+      runId: string;
+      card: Extract<ProcedureUiEvent, { type: "card" }>;
+    }
+  | {
       type: "token_usage";
       runId: string;
       usage: AgentTokenUsage;
@@ -87,8 +99,12 @@ export type FrontendEvent =
       type: "tool_started";
       runId: string;
       toolCallId: string;
+      parentToolCallId?: string;
+      transcriptVisible?: boolean;
+      removeOnTerminal?: boolean;
       title: string;
       kind: string;
+      toolName?: string;
       status?: string;
       callPreview?: ToolPreviewBlock;
       rawInput?: unknown;
@@ -97,7 +113,11 @@ export type FrontendEvent =
       type: "tool_updated";
       runId: string;
       toolCallId: string;
+      parentToolCallId?: string;
+      transcriptVisible?: boolean;
+      removeOnTerminal?: boolean;
       title?: string;
+      toolName?: string;
       status: string;
       resultPreview?: ToolPreviewBlock;
       errorPreview?: ToolPreviewBlock;
@@ -144,6 +164,13 @@ export type FrontendEvent =
       cell?: CellRef;
     };
 
+export type MemorySyncFrontendEvent = Extract<FrontendEvent, { type: "memory_cards" | "memory_card_stored" }>;
+export type RenderedFrontendEvent = Exclude<FrontendEvent, MemorySyncFrontendEvent>;
+export type ReplayableFrontendEvent = Exclude<
+  Extract<RenderedFrontendEvent, { runId: string }>,
+  { type: "run_started" | "run_restored" | "run_heartbeat" }
+>;
+
 export type FrontendEventEnvelope = {
   [EventType in FrontendEvent["type"]]: {
     sessionId: string;
@@ -153,12 +180,44 @@ export type FrontendEventEnvelope = {
   };
 }[FrontendEvent["type"]];
 
+export type MemorySyncFrontendEventEnvelope = {
+  [EventType in MemorySyncFrontendEvent["type"]]: {
+    sessionId: string;
+    seq: number;
+    type: EventType;
+    data: Omit<Extract<MemorySyncFrontendEvent, { type: EventType }>, "type">;
+  };
+}[MemorySyncFrontendEvent["type"]];
+
+export type RenderedFrontendEventEnvelope = {
+  [EventType in RenderedFrontendEvent["type"]]: {
+    sessionId: string;
+    seq: number;
+    type: EventType;
+    data: Omit<Extract<RenderedFrontendEvent, { type: EventType }>, "type">;
+  };
+}[RenderedFrontendEvent["type"]];
+
 export type CommandsUpdatedEventEnvelope = Extract<FrontendEventEnvelope, { type: "commands_updated" }>;
 export type TextDeltaEventEnvelope = Extract<FrontendEventEnvelope, { type: "text_delta" }>;
 export type ToolStartedEventEnvelope = Extract<FrontendEventEnvelope, { type: "tool_started" }>;
 export type ToolUpdatedEventEnvelope = Extract<FrontendEventEnvelope, { type: "tool_updated" }>;
 export type TokenUsageEventEnvelope = Extract<FrontendEventEnvelope, { type: "token_usage" }>;
 export type RunFailedEventEnvelope = Extract<FrontendEventEnvelope, { type: "run_failed" }>;
+
+const REPLAYABLE_FRONTEND_EVENT_TYPES = new Set<ReplayableFrontendEvent["type"]>([
+  "text_delta",
+  "assistant_notice",
+  "procedure_status",
+  "procedure_card",
+  "tool_started",
+  "tool_updated",
+  "token_usage",
+  "run_completed",
+  "run_paused",
+  "run_failed",
+  "run_cancelled",
+]);
 
 export class SessionEventLog {
   private readonly listeners = new Set<(event: FrontendEventEnvelope) => void>();
@@ -209,6 +268,60 @@ export function isTextDeltaEvent(event: FrontendEventEnvelope): event is TextDel
   return event.type === "text_delta";
 }
 
+interface NanobossToolMeta {
+  toolKind?: string;
+  parentToolCallId?: string;
+  transcriptVisible?: boolean;
+  removeOnTerminal?: boolean;
+}
+
+function getNanobossToolMeta(
+  update: Extract<acp.SessionUpdate, { sessionUpdate: "tool_call" | "tool_call_update" }>,
+): NanobossToolMeta {
+  const meta = update._meta;
+  if (!meta || typeof meta !== "object") {
+    return {};
+  }
+
+  const nanoboss = "nanoboss" in meta ? meta.nanoboss : undefined;
+  if (!nanoboss || typeof nanoboss !== "object") {
+    return {};
+  }
+
+  const toolMeta: NanobossToolMeta = {};
+  if ("toolKind" in nanoboss && typeof nanoboss.toolKind === "string") {
+    toolMeta.toolKind = nanoboss.toolKind;
+  }
+  if ("parentToolCallId" in nanoboss && typeof nanoboss.parentToolCallId === "string") {
+    toolMeta.parentToolCallId = nanoboss.parentToolCallId;
+  }
+  if ("transcriptVisible" in nanoboss && typeof nanoboss.transcriptVisible === "boolean") {
+    toolMeta.transcriptVisible = nanoboss.transcriptVisible;
+  }
+  if ("removeOnTerminal" in nanoboss && typeof nanoboss.removeOnTerminal === "boolean") {
+    toolMeta.removeOnTerminal = nanoboss.removeOnTerminal;
+  }
+  return toolMeta;
+}
+
+function normalizeToolUpdateStatus(
+  update: Extract<acp.SessionUpdate, { sessionUpdate: "tool_call_update" }>,
+): string {
+  const status = update.status ?? "pending";
+  return status === "failed" && isCancelledToolOutput(update.rawOutput)
+    ? "cancelled"
+    : status;
+}
+
+function isCancelledToolOutput(rawOutput: unknown): boolean {
+  return Boolean(
+    rawOutput
+    && typeof rawOutput === "object"
+    && "cancelled" in rawOutput
+    && rawOutput.cancelled === true,
+  );
+}
+
 export function isToolStartedEvent(event: FrontendEventEnvelope): event is ToolStartedEventEnvelope {
   return event.type === "tool_started";
 }
@@ -223,6 +336,34 @@ export function isTokenUsageEvent(event: FrontendEventEnvelope): event is TokenU
 
 export function isRunFailedEvent(event: FrontendEventEnvelope): event is RunFailedEventEnvelope {
   return event.type === "run_failed";
+}
+
+export function isMemorySyncFrontendEvent(
+  event: FrontendEventEnvelope,
+): event is MemorySyncFrontendEventEnvelope {
+  return event.type === "memory_cards" || event.type === "memory_card_stored";
+}
+
+export function isRenderedFrontendEvent(event: FrontendEventEnvelope): event is RenderedFrontendEventEnvelope {
+  return !isMemorySyncFrontendEvent(event);
+}
+
+export function toReplayableFrontendEvent(
+  event: FrontendEventEnvelope,
+  runId: string,
+): ReplayableFrontendEvent | undefined {
+  if (!("runId" in event.data) || event.data.runId !== runId) {
+    return undefined;
+  }
+
+  if (!REPLAYABLE_FRONTEND_EVENT_TYPES.has(event.type as ReplayableFrontendEvent["type"])) {
+    return undefined;
+  }
+
+  return {
+    type: event.type,
+    ...event.data,
+  } as ReplayableFrontendEvent;
 }
 
 export function toFrontendCommands(commands: acp.AvailableCommand[]): FrontendCommand[] {
@@ -265,9 +406,13 @@ export function mapSessionUpdateToFrontendEvents(
       ];
     }
     case "tool_call": {
+      const toolMeta = getNanobossToolMeta(update);
+      const toolKind = toolMeta.toolKind ?? String(update.kind);
+      const toolName = normalizeToolName({ title: update.title, kind: toolKind });
       const preview = summarizeToolCallStart({
+        toolName,
         title: update.title,
-        kind: String(update.kind),
+        kind: toolKind,
       }, update.rawInput);
 
       return [
@@ -275,8 +420,12 @@ export function mapSessionUpdateToFrontendEvents(
           type: "tool_started",
           runId,
           toolCallId: update.toolCallId,
+          ...(toolMeta.parentToolCallId ? { parentToolCallId: toolMeta.parentToolCallId } : {}),
+          ...(toolMeta.transcriptVisible !== undefined ? { transcriptVisible: toolMeta.transcriptVisible } : {}),
+          ...(toolMeta.removeOnTerminal !== undefined ? { removeOnTerminal: toolMeta.removeOnTerminal } : {}),
           title: update.title,
-          kind: String(update.kind),
+          kind: toolKind,
+          ...(toolName ? { toolName } : {}),
           status: update.status ?? undefined,
           callPreview: preview.callPreview,
           rawInput: update.rawInput,
@@ -284,7 +433,11 @@ export function mapSessionUpdateToFrontendEvents(
       ];
     }
     case "tool_call_update": {
+      const toolMeta = getNanobossToolMeta(update);
+      const status = normalizeToolUpdateStatus(update);
+      const toolName = update.title ? normalizeToolName({ title: update.title }) : undefined;
       const preview = summarizeToolCallUpdate({
+        toolName,
         title: update.title ?? undefined,
       }, update.rawOutput);
       const events: FrontendEvent[] = [
@@ -292,8 +445,12 @@ export function mapSessionUpdateToFrontendEvents(
           type: "tool_updated",
           runId,
           toolCallId: update.toolCallId,
+          ...(toolMeta.parentToolCallId ? { parentToolCallId: toolMeta.parentToolCallId } : {}),
+          ...(toolMeta.transcriptVisible !== undefined ? { transcriptVisible: toolMeta.transcriptVisible } : {}),
+          ...(toolMeta.removeOnTerminal !== undefined ? { removeOnTerminal: toolMeta.removeOnTerminal } : {}),
           title: update.title ?? undefined,
-          status: update.status ?? "pending",
+          ...(toolName ? { toolName } : {}),
+          status,
           resultPreview: preview.resultPreview,
           errorPreview: preview.errorPreview,
           durationMs: preview.durationMs,
@@ -309,7 +466,7 @@ export function mapSessionUpdateToFrontendEvents(
           usage,
           sourceUpdate: "tool_call_update",
           toolCallId: update.toolCallId,
-          status: update.status ?? undefined,
+          status,
         });
       }
 
@@ -342,6 +499,26 @@ export function mapSessionUpdateToFrontendEvents(
       }
     default:
       return [];
+  }
+}
+
+export function mapProcedureUiEventToFrontendEvent(
+  runId: string,
+  event: ProcedureUiEvent,
+): Extract<FrontendEvent, { type: "procedure_status" | "procedure_card" }> {
+  switch (event.type) {
+    case "status":
+      return {
+        type: "procedure_status",
+        runId,
+        status: event,
+      };
+    case "card":
+      return {
+        type: "procedure_card",
+        runId,
+        card: event,
+      };
   }
 }
 

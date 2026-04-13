@@ -1,12 +1,13 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { parseAssistantNoticeText } from "./acp-updates.ts";
+import { parseProcedureUiMarker } from "../core/ui-cli.ts";
 import {
   closeAcpConnection,
   openAcpConnection,
   type OpenAcpConnection,
 } from "./acp-runtime.ts";
-import { buildGlobalMcpStdioServer } from "../mcp/registration.ts";
+import { buildAgentRuntimeSessionRuntime } from "./runtime-capability.ts";
 import { RunCancelledError, defaultCancellationMessage } from "../core/cancellation.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "../core/timing-trace.ts";
 import { collectTokenSnapshot, enrichToolCallUpdateWithTokenUsage } from "./token-metrics.ts";
@@ -179,7 +180,11 @@ export class DefaultConversationSession {
       appendTimingTraceEvent(timingTrace, "default_session", "load_session_attempt_started", {
         sessionId: this.persistedSessionId,
       });
-      session = await PersistentAcpSession.load(this.config, this.persistedSessionId, timingTrace);
+      session = await PersistentAcpSession.load(
+        this.config,
+        this.persistedSessionId,
+        timingTrace,
+      );
       appendTimingTraceEvent(timingTrace, "default_session", "load_session_attempt_completed", {
         sessionId: this.persistedSessionId,
         loaded: session !== undefined,
@@ -237,7 +242,7 @@ class PersistentAcpSession {
       appendTimingTraceEvent(timingTrace, "default_session", "new_session_rpc_started");
       const session = await state.connection.newSession({
         cwd: state.cwd,
-        mcpServers: [buildGlobalMcpStdioServer()],
+        ...buildAgentRuntimeSessionRuntime(),
       });
       appendTimingTraceEvent(timingTrace, "default_session", "new_session_rpc_completed", {
         sessionId: session.sessionId,
@@ -274,7 +279,7 @@ class PersistentAcpSession {
       });
       await state.connection.loadSession({
         cwd: state.cwd,
-        mcpServers: [buildGlobalMcpStdioServer()],
+        ...buildAgentRuntimeSessionRuntime(),
         sessionId,
       });
       appendTimingTraceEvent(timingTrace, "default_session", "load_session_rpc_completed", {
@@ -440,7 +445,7 @@ class PersistentAcpSession {
         update.sessionUpdate === "agent_message_chunk" &&
         update.content.type === "text"
       ) {
-        if (!parseAssistantNoticeText(update.content.text)) {
+        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarker(update.content.text)) {
           collector.raw += update.content.text;
         }
       }

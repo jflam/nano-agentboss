@@ -1,28 +1,21 @@
 
 import { getBuildLabel } from "../core/build-info.ts";
-import { inferDataShape } from "../core/data-shape.ts";
 import { parseRequiredDownstreamAgentSelection } from "../core/downstream-agent-selection.ts";
 import { dispatchMcpToolsMethod, type JsonRpcToolMetadata } from "./jsonrpc.ts";
 import { runStdioJsonRpcServer } from "./stdio-jsonrpc.ts";
 import {
-  ProcedureDispatchJobManager,
-  type ProcedureDispatchStartResult,
-  type ProcedureDispatchStatusResult,
-} from "../procedure/dispatch-jobs.ts";
-import { type ProcedureExecutionResult } from "../procedure/runner.ts";
-import { ProcedureRegistry, projectProcedureMetadata } from "../procedure/registry.ts";
-import { SessionStore, readCurrentSessionMetadata, readSessionMetadata } from "../session/index.ts";
-import { shouldLoadDiskCommands } from "../core/runtime-mode.ts";
+  type ProcedureListResult,
+  type ProcedureDispatchResult,
+  type ProcedureDispatchStartToolResult,
+  type ProcedureDispatchStatusToolResult,
+  type RuntimeService,
+  isProcedureDispatchResult,
+  isProcedureDispatchStatusResult,
+} from "../runtime/api.ts";
 import type {
-  CellDescendantsOptions,
   CellKind,
-  CellRecord,
   CellRef,
-  DownstreamAgentSelection,
   ProcedureMetadata,
-  ProcedureRegistryLike,
-  SessionRecentOptions,
-  TopLevelRunsOptions,
   ValueRef,
 } from "../core/types.ts";
 
@@ -36,228 +29,9 @@ export interface McpServerOptions {
   serverName?: string;
 }
 
-interface McpApiParams {
-  sessionId?: string;
-  cwd: string;
-  rootDir?: string;
-  registry?: ProcedureRegistryLike;
-  allowCurrentSessionFallback?: boolean;
-}
-
 interface McpToolDefinition extends JsonRpcToolMetadata {
   parseArgs(args: Record<string, unknown>): unknown;
-  call(api: NanobossMcpApi, args: unknown): Promise<unknown>;
-}
-
-interface ProcedureListResult {
-  procedures: ProcedureMetadata[];
-}
-
-export type ProcedureDispatchResult = ProcedureExecutionResult;
-export type ProcedureDispatchStartToolResult = ProcedureDispatchStartResult;
-export type ProcedureDispatchStatusToolResult = ProcedureDispatchStatusResult;
-
-export interface McpSchemaResult {
-  target: CellRef | ValueRef;
-  dataShape: unknown;
-  explicitDataSchema?: object;
-}
-
-export class NanobossMcpApi {
-  constructor(private readonly params: McpApiParams) {}
-
-  sessionRecent(args: SessionRecentOptions & { sessionId?: string } = {}): ReturnType<SessionStore["recent"]> {
-    return this.createStore(args.sessionId).recent(args);
-  }
-
-  topLevelRuns(args: TopLevelRunsOptions & { sessionId?: string } = {}): ReturnType<SessionStore["topLevelRuns"]> {
-    return this.createStore(args.sessionId).topLevelRuns(args);
-  }
-
-  cellGet(cellRef: CellRef): CellRecord {
-    return this.createStoreForCellRef(cellRef).readCell(cellRef);
-  }
-
-  cellAncestors(
-    cellRef: CellRef,
-    args: { includeSelf?: boolean; limit?: number } = {},
-  ): ReturnType<SessionStore["ancestors"]> {
-    return this.createStoreForCellRef(cellRef).ancestors(cellRef, args);
-  }
-
-  cellDescendants(
-    cellRef: CellRef,
-    args: CellDescendantsOptions = {},
-  ): ReturnType<SessionStore["descendants"]> {
-    return this.createStoreForCellRef(cellRef).descendants(cellRef, args);
-  }
-
-  refRead(valueRef: ValueRef): unknown {
-    return this.createStoreForValueRef(valueRef).readRef(valueRef);
-  }
-
-  refStat(valueRef: ValueRef) {
-    return this.createStoreForValueRef(valueRef).statRef(valueRef);
-  }
-
-  refWriteToFile(valueRef: ValueRef, path: string): { path: string } {
-    const store = this.createStoreForValueRef(valueRef);
-    store.writeRefToFile(valueRef, path, store.cwd);
-    return { path };
-  }
-
-  getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): McpSchemaResult {
-    if (args.valueRef) {
-      const store = this.createStoreForValueRef(args.valueRef);
-      const value = store.readRef(args.valueRef);
-      return {
-        target: args.valueRef,
-        dataShape: inferDataShape(value),
-      };
-    }
-
-    if (!args.cellRef) {
-      throw new Error("get_schema requires cellRef or valueRef");
-    }
-
-    const store = this.createStoreForCellRef(args.cellRef);
-    const cell = store.readCell(args.cellRef);
-    return {
-      target: args.cellRef,
-      dataShape: inferDataShape(cell.output.data),
-      explicitDataSchema: cell.output.explicitDataSchema,
-    };
-  }
-
-  async procedureList(args: { includeHidden?: boolean; sessionId?: string } = {}): Promise<ProcedureListResult> {
-    const registry = await this.getRegistry(args.sessionId);
-    return {
-      procedures: getProcedureList(registry, args.includeHidden === true),
-    };
-  }
-
-  async procedureGet(args: { name: string; sessionId?: string }): Promise<ProcedureMetadata> {
-    const registry = await this.getRegistry(args.sessionId);
-    const procedure = registry.listMetadata().find((candidate) => candidate.name === args.name);
-    if (!procedure) {
-      throw new Error(`Unknown procedure: ${args.name}`);
-    }
-
-    return toPublicProcedureMetadata(procedure);
-  }
-
-  async procedureDispatchStart(args: {
-    sessionId?: string;
-    name: string;
-    prompt: string;
-    defaultAgentSelection?: DownstreamAgentSelection;
-    dispatchCorrelationId?: string;
-  }): Promise<ProcedureDispatchStartToolResult> {
-    return await this.createDispatchJobManager(args.sessionId).start({
-      name: args.name,
-      prompt: args.prompt,
-      defaultAgentSelection: args.defaultAgentSelection,
-      dispatchCorrelationId: args.dispatchCorrelationId,
-    });
-  }
-
-  async procedureDispatchStatus(args: { dispatchId: string }): Promise<ProcedureDispatchStatusToolResult> {
-    return await this.createDispatchJobManager().status(args.dispatchId);
-  }
-
-  async procedureDispatchWait(args: {
-    dispatchId: string;
-    waitMs?: number;
-  }): Promise<ProcedureDispatchStatusToolResult> {
-    return await this.createDispatchJobManager().wait(args.dispatchId, args.waitMs);
-  }
-
-  private createStore(sessionIdOverride?: string): SessionStore {
-    const context = this.resolveEffectiveContext(sessionIdOverride);
-    if (!context.sessionId) {
-      throw new Error("Nanoboss MCP requires an explicit sessionId or a current session for the server working directory.");
-    }
-
-    return new SessionStore({
-      sessionId: context.sessionId,
-      cwd: context.cwd,
-      rootDir: context.rootDir,
-    });
-  }
-
-  private createStoreForCellRef(cellRef: CellRef): SessionStore {
-    return this.createStore(cellRef.sessionId);
-  }
-
-  private createStoreForValueRef(valueRef: ValueRef): SessionStore {
-    return this.createStore(valueRef.cell.sessionId);
-  }
-
-  private createDispatchJobManager(sessionIdOverride?: string): ProcedureDispatchJobManager {
-    const context = this.resolveEffectiveContext(sessionIdOverride);
-    const store = this.createStore(sessionIdOverride);
-    return new ProcedureDispatchJobManager({
-      cwd: context.cwd,
-      sessionId: store.sessionId,
-      rootDir: store.rootDir,
-      getRegistry: async () => await this.getRegistry(store.sessionId),
-    });
-  }
-
-  private async getRegistry(sessionIdOverride?: string): Promise<ProcedureRegistryLike> {
-    if (this.params.registry) {
-      return this.params.registry;
-    }
-
-    return await loadMcpRegistry(this.resolveEffectiveContext(sessionIdOverride).cwd);
-  }
-
-  private resolveEffectiveContext(sessionIdOverride?: string): { sessionId?: string; cwd: string; rootDir?: string } {
-    const explicitSessionId = sessionIdOverride ?? this.params.sessionId;
-    if (explicitSessionId) {
-      const metadata = readSessionMetadata(explicitSessionId);
-      if (metadata) {
-        return {
-          sessionId: metadata.sessionId,
-          cwd: metadata.cwd,
-          rootDir: metadata.rootDir,
-        };
-      }
-
-      return {
-        sessionId: explicitSessionId,
-        cwd: this.params.cwd,
-        rootDir: this.params.rootDir,
-      };
-    }
-
-    if (this.params.allowCurrentSessionFallback) {
-      const current = readCurrentSessionMetadata(this.params.cwd);
-      if (current) {
-        return {
-          sessionId: current.sessionId,
-          cwd: current.cwd,
-          rootDir: current.rootDir,
-        };
-      }
-    }
-
-    return {
-      cwd: this.params.cwd,
-      rootDir: this.params.rootDir,
-    };
-  }
-}
-
-export function createNanobossMcpApi(params: McpApiParams): NanobossMcpApi {
-  return new NanobossMcpApi(params);
-}
-
-export function createCurrentSessionBackedNanobossMcpApi(cwd = process.cwd()): NanobossMcpApi {
-  return createNanobossMcpApi({
-    cwd,
-    allowCurrentSessionFallback: true,
-  });
+  call(runtime: RuntimeService, args: unknown): Promise<unknown>;
 }
 
 const CELL_REF_SCHEMA = {
@@ -290,7 +64,7 @@ function defineTool<Args>(definition: {
   description: string;
   inputSchema: object;
   parseArgs(args: Record<string, unknown>): Args;
-  call(api: NanobossMcpApi, args: Args): Promise<unknown>;
+  call(runtime: RuntimeService, args: Args): Promise<unknown>;
 }): McpToolDefinition {
   return {
     name: definition.name,
@@ -376,7 +150,7 @@ const MCP_TOOLS: McpToolDefinition[] = [
       return {
         sessionId: asOptionalString(args.sessionId),
         name: asString(args.name, "name"),
-        prompt: typeof args.prompt === "string" ? args.prompt : "",
+        prompt: asString(args.prompt, "prompt"),
         defaultAgentSelection: args.defaultAgentSelection === undefined
           ? undefined
           : parseRequiredDownstreamAgentSelection(args.defaultAgentSelection),
@@ -645,7 +419,7 @@ export function listMcpTools(): JsonRpcToolMetadata[] {
 }
 
 export async function callMcpTool(
-  api: NanobossMcpApi,
+  runtime: RuntimeService,
   name: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
@@ -654,17 +428,17 @@ export async function callMcpTool(
     throw new Error(`Unknown tool: ${name}`);
   }
 
-  return await tool.call(api, tool.parseArgs(args));
+  return await tool.call(runtime, tool.parseArgs(args));
 }
 
 export async function dispatchMcpMethod(
-  api: NanobossMcpApi,
+  runtime: RuntimeService,
   method: string,
   params: unknown,
   options: McpServerOptions = {},
 ): Promise<unknown> {
   return await dispatchMcpToolsMethod({
-    api,
+    api: runtime,
     method,
     messageParams: params,
     protocolVersion: options.protocolVersion ?? MCP_PROTOCOL_VERSION,
@@ -678,10 +452,10 @@ export async function dispatchMcpMethod(
 }
 
 export async function runMcpServer(
-  api: NanobossMcpApi,
+  runtime: RuntimeService,
   options: McpServerOptions = {},
 ): Promise<void> {
-  await runStdioJsonRpcServer((method, messageParams) => dispatchMcpMethod(api, method, messageParams, options));
+  await runStdioJsonRpcServer((method, messageParams) => dispatchMcpMethod(runtime, method, messageParams, options));
 }
 
 export function formatMcpToolResult(
@@ -753,33 +527,6 @@ function serializeToolResult(toolName: string, result: unknown): string {
   return JSON.stringify(result, null, 2);
 }
 
-async function loadMcpRegistry(cwd: string): Promise<ProcedureRegistryLike> {
-  const registry = new ProcedureRegistry({
-    workspaceDir: cwd,
-  });
-  registry.loadBuiltins();
-  if (shouldLoadDiskCommands()) {
-    await registry.loadFromDisk();
-  }
-  return registry;
-}
-
-function getProcedureList(
-  registry: ProcedureRegistryLike,
-  includeHidden: boolean,
-): ProcedureMetadata[] {
-  return projectProcedureMetadata(registry.listMetadata(), { includeHidden })
-    .map(toPublicProcedureMetadata);
-}
-
-function toPublicProcedureMetadata(metadata: ProcedureMetadata): ProcedureMetadata {
-  return {
-    name: metadata.name,
-    description: metadata.description,
-    inputHint: metadata.inputHint,
-  };
-}
-
 function isProcedureListResult(value: unknown): value is ProcedureListResult {
   return (
     typeof value === "object" &&
@@ -805,27 +552,6 @@ function isProcedureDispatchStartResult(value: unknown): value is ProcedureDispa
     ((value as { status?: unknown }).status === "queued" ||
       (value as { status?: unknown }).status === "running" ||
       (value as { status?: unknown }).status === "completed")
-  );
-}
-
-export function isProcedureDispatchStatusResult(value: unknown): value is ProcedureDispatchStatusToolResult {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { dispatchId?: unknown }).dispatchId === "string" &&
-    typeof (value as { procedure?: unknown }).procedure === "string" &&
-    typeof (value as { status?: unknown }).status === "string"
-  );
-}
-
-export function isProcedureDispatchResult(value: unknown): value is ProcedureDispatchResult {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { procedure?: unknown }).procedure === "string" &&
-    isCellRefLike((value as { cell?: unknown }).cell) &&
-    typeof (value as { status?: unknown }).status !== "string" &&
-    typeof (value as { dispatchId?: unknown }).dispatchId !== "string"
   );
 }
 
@@ -855,15 +581,6 @@ function serializeProcedureDispatchStatus(result: ProcedureDispatchStatusToolRes
   }
 
   return `${result.procedure} ${result.status}. dispatchId=${result.dispatchId}. Call procedure_dispatch_wait again with this same dispatch id.`;
-}
-
-function isCellRefLike(value: unknown): value is CellRef {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { sessionId?: unknown }).sessionId === "string" &&
-    typeof (value as { cellId?: unknown }).cellId === "string"
-  );
 }
 
 function parseCellRef(value: unknown): CellRef {

@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 
 import simplify2Procedure from "../../procedures/simplify2.ts";
 import type {
-  CommandContext,
+  ProcedureApi,
   DownstreamAgentConfig,
   ProcedureResult,
   RunResult,
@@ -88,7 +88,8 @@ describe("simplify2 procedure", () => {
       notebook: { currentCheckpoint?: { hypothesisId: string } };
     };
     expect(pausedState.mode).toBe("checkpoint");
-    expect(pausedState.notebook.currentCheckpoint?.hypothesisId).toBe("hyp-boundary-checkpoint");
+    expect(pausedState.notebook.currentCheckpoint?.hypothesisId).toMatch(/^hyp-[0-9a-f]{12}$/);
+    expect(pausedState.notebook.currentCheckpoint?.hypothesisId).not.toBe("hyp-boundary-checkpoint");
     expect(normalized.pause?.continuationUi).toMatchObject({
       kind: "simplify2_checkpoint",
       actions: [
@@ -378,6 +379,10 @@ describe("simplify2 procedure", () => {
     const normalized = normalizeProcedureResult(result);
     expect(normalized.pause).toBeUndefined();
     expect(normalized.display).toContain("Applied: Canonicalize continuation parsing.");
+    expect(normalized.display).toContain("Why this change:");
+    expect(normalized.display).toContain("- selected because: Small, coherent, and high-value cleanup.");
+    expect(normalized.display).toContain("- conceptual rationale: This removes duplicate parsing logic and sharpens the invariant.");
+    expect(normalized.display).toContain("- realized conceptual changes: one representation now owns continuation parsing");
     expect(normalized.display).toContain("Validation: passed.");
     expect(normalized.display).toContain("Landed one simplify2 slice for this focus after applying Canonicalize continuation parsing.");
 
@@ -501,6 +506,9 @@ describe("simplify2 procedure", () => {
 
     const normalized = normalizeProcedureResult(result);
     expect(normalized.display).toContain("Applied: Canonicalize continuation parsing.");
+    expect(normalized.display).toContain("Why this change:");
+    expect(normalized.display).toContain("- selected because: Small, coherent, and high-value cleanup.");
+    expect(normalized.display).toContain("- realized conceptual changes: one representation now owns continuation parsing");
     expect(normalized.pause?.question).toContain("Challenge continuation persistence ownership");
   });
 
@@ -601,6 +609,11 @@ describe("simplify2 procedure", () => {
 
     const normalized = normalizeProcedureResult(resumeResult);
     expect(normalized.display).toContain("Applied: Collapse continuation parsing ownership.");
+    expect(normalized.display).toContain("Why this change:");
+    expect(normalized.display).toContain("- selected because: Worth doing after a human checkpoint.");
+    expect(normalized.display).toContain("- checkpoint context: Ownership changes should be reviewed before apply.");
+    expect(normalized.display).toContain("- conceptual rationale: This removes duplicated parsing decisions.");
+    expect(normalized.display).toContain("- realized conceptual changes: one owner now enforces parsing invariants");
     expect(normalized.display).toContain("Validation: passed.");
     expect(normalized.display).toContain("Commit: created.");
     expect(normalized.display).toContain("Landed one simplify2 slice for this focus after applying Collapse continuation parsing ownership.");
@@ -1057,6 +1070,126 @@ describe("simplify2 procedure", () => {
     expect(normalized.display).toContain("No worthwhile simplification hypothesis stood out after the current review cycle.");
   });
 
+  test("does not suppress a new core hypothesis just because a later iteration reused the same batch-local id", async () => {
+    const cwd = createFixtureWorkspace({
+      sourceFiles: ["src/session/repository.ts", "src/tui/controller.ts"],
+      tests: [
+        {
+          path: "tests/unit/current-session.test.ts",
+          contents: [
+            'import { expect, test } from "bun:test";',
+            'test("current session slice", () => {',
+            "  expect(true).toBe(true);",
+            "});",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    const result = await simplify2Procedure.execute(
+      "max 2 iterations focus on continuation persistence",
+      createMockContext(cwd, [
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-repo",
+            kind: "duplication",
+            summary: "Continuation parsing is duplicated in the repository path.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            confidence: "high",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "H1",
+            title: "Canonicalize continuation parsing",
+            kind: "canonicalize_representation",
+            summary: "Use one representation for continuation parsing across the session flow.",
+            rationale: "This removes duplicate parsing logic and sharpens the invariant.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            expectedDelta: {
+              duplicateRepresentationsReduced: 1,
+            },
+            risk: "low",
+            needsHumanCheckpoint: false,
+            implementationScope: ["src/session/repository.ts"],
+            testImplications: ["keep a narrow invariant test for current session parsing"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "H1",
+            score: 8,
+            reason: "Small, coherent, and high-value cleanup.",
+            needsHumanCheckpoint: false,
+          },
+        ]),
+        {
+          summary: "Canonicalized the continuation parsing path around a single representation.",
+          touchedFiles: ["src/session/repository.ts"],
+          conceptualChanges: ["one representation now owns continuation parsing"],
+          testChanges: ["kept the current session invariant test narrow"],
+          validationNotes: ["expected unit test slice should pass"],
+        },
+        {
+          journalSummary: "Recorded the parsing canonicalization as the new baseline.",
+          memorySummary: "Continuation parsing now has one canonical representation.",
+          memoryUpdates: {
+            concepts: ["continuation parsing"],
+            invariants: ["one canonical continuation representation"],
+            boundaries: ["session persistence"],
+            exceptions: [],
+            staleItems: [],
+          },
+          nextQuestions: [],
+          resolvedHypothesisIds: ["H1"],
+          followupRecommendations: [],
+        },
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-transport",
+            kind: "boundary_candidate",
+            summary: "Transport liveness is modeled separately from retained run lifecycle.",
+            evidence: [{ kind: "file", ref: "src/tui/controller.ts" }],
+            confidence: "medium",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "H1",
+            title: "Unify transport liveness with retained run lifecycle",
+            kind: "centralize_invariant",
+            summary: "Represent disconnect and reconnect state inside one retained lifecycle model.",
+            rationale: "This removes the fake boundary between transport health and run lifecycle.",
+            evidence: [{ kind: "file", ref: "src/tui/controller.ts" }],
+            expectedDelta: {
+              conceptsReduced: 1,
+              boundariesReduced: 1,
+            },
+            risk: "medium",
+            needsHumanCheckpoint: true,
+            checkpointReason: "The lifecycle contract should be reviewed before changing transport state semantics.",
+            implementationScope: ["src/tui/controller.ts"],
+            testImplications: ["add one lifecycle-focused test after clarifying the contract"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "H1",
+            score: 9,
+            reason: "High-value lifecycle cleanup that still needs a checkpoint.",
+            needsHumanCheckpoint: true,
+          },
+        ]),
+      ]),
+    );
+
+    const normalized = normalizeProcedureResult(result);
+    expect(normalized.pause?.question).toContain("Unify transport liveness with retained run lifecycle");
+    expect(normalized.display).toContain("Applied: Canonicalize continuation parsing.");
+  });
+
   test("bare simplify2 opens a focus picker when no saved focuses exist", async () => {
     const cwd = createFixtureWorkspace();
 
@@ -1186,7 +1319,7 @@ function createMockContext(
     procedureResults?: unknown[];
     procedureCalls?: Array<{ name: string; prompt: string }>;
   } = {},
-): CommandContext {
+): ProcedureApi {
   let callCount = 0;
   let procedureCallCount = 0;
   const defaultAgentConfig: DownstreamAgentConfig = {
@@ -1195,111 +1328,145 @@ function createMockContext(
     args: [],
     cwd,
   };
+  const callAgent = (async (prompt: string) => {
+    prompts.push(prompt);
+    callCount += 1;
+    const next = agentResults.shift();
+    if (next === undefined) {
+      throw new Error(`Unexpected callAgent #${callCount}`);
+    }
+    return {
+      cell: {
+        sessionId: "test-session",
+        cellId: `agent-${callCount}`,
+      },
+      data: next,
+    } as RunResult;
+  }) as ProcedureApi["agent"]["run"];
+  const callProcedure = (async (name: string, prompt: string) => {
+    options.procedureCalls?.push({ name, prompt });
+    const next = options.procedureResults?.shift();
+    if (typeof next === "object" && next !== null && "cell" in next) {
+      return next as RunResult;
+    }
+
+    if (next !== undefined) {
+      procedureCallCount += 1;
+      return {
+        cell: {
+          sessionId: "test-session",
+          cellId: `procedure-${procedureCallCount}`,
+        },
+        data: next,
+      } as RunResult;
+    }
+
+    if (name === "nanoboss/commit") {
+      procedureCallCount += 1;
+      return {
+        cell: {
+          sessionId: "test-session",
+          cellId: `procedure-${procedureCallCount}`,
+        },
+        data: {
+          checks: {
+            passed: true,
+          },
+          commit: {
+            cell: {
+              sessionId: "test-session",
+              cellId: `commit-${procedureCallCount}`,
+            },
+            path: "output.data",
+          },
+        },
+        display: "commit sha=abc123 message=\"simplify2 slice\" clean=true",
+        summary: "simplify2 slice commit",
+      } as RunResult;
+    }
+
+    throw new Error(`Unexpected callProcedure ${name}`);
+  }) as ProcedureApi["procedures"]["run"];
+  const refs: ProcedureApi["state"]["refs"] = {
+    async read() {
+      throw new Error("Not implemented in test");
+    },
+    async stat() {
+      throw new Error("Not implemented in test");
+    },
+    async writeToFile() {
+      throw new Error("Not implemented in test");
+    },
+  };
+  const runs: ProcedureApi["state"]["runs"] = {
+    async recent() {
+      return [];
+    },
+    async latest() {
+      return undefined;
+    },
+    async topLevelRuns() {
+      return [];
+    },
+    async get() {
+      throw new Error("Not implemented in test");
+    },
+    async parent() {
+      return undefined;
+    },
+    async children() {
+      return [];
+    },
+    async ancestors() {
+      return [];
+    },
+    async descendants() {
+      return [];
+    },
+  };
+  const agent: ProcedureApi["agent"] = {
+    run: callAgent,
+    session() {
+      return {
+        run: callAgent,
+      };
+    },
+  };
 
   return {
     cwd,
     sessionId: "test-session",
-    refs: {
-      async read() {
-        throw new Error("Not implemented in test");
-      },
-      async stat() {
-        throw new Error("Not implemented in test");
-      },
-      async writeToFile() {
-        throw new Error("Not implemented in test");
-      },
+    agent,
+    state: {
+      runs,
+      refs,
+    },
+    ui: {
+      text() {},
+      info() {},
+      warning() {},
+      error() {},
+      status() {},
+      card() {},
+    },
+    procedures: {
+      run: callProcedure,
     },
     session: {
-      async recent() {
-        return [];
+      getDefaultAgentConfig() {
+        return defaultAgentConfig;
       },
-      async topLevelRuns() {
-        return [];
+      setDefaultAgentSelection() {
+        return defaultAgentConfig;
       },
-      async get() {
-        throw new Error("Not implemented in test");
+      async getDefaultAgentTokenSnapshot() {
+        return undefined;
       },
-      async ancestors() {
-        return [];
-      },
-      async descendants() {
-        return [];
+      async getDefaultAgentTokenUsage() {
+        return undefined;
       },
     },
     assertNotCancelled() {},
-    getDefaultAgentConfig() {
-      return defaultAgentConfig;
-    },
-    setDefaultAgentSelection() {
-      return defaultAgentConfig;
-    },
-    async getDefaultAgentTokenSnapshot() {
-      return undefined;
-    },
-    async getDefaultAgentTokenUsage() {
-      return undefined;
-    },
-    callAgent: (async (prompt: string) => {
-      prompts.push(prompt);
-      callCount += 1;
-      const next = agentResults.shift();
-      if (next === undefined) {
-        throw new Error(`Unexpected callAgent #${callCount}`);
-      }
-      return {
-        cell: {
-          sessionId: "test-session",
-          cellId: `agent-${callCount}`,
-        },
-        data: next,
-      } as RunResult;
-    }) as CommandContext["callAgent"],
-    callProcedure: (async (name: string, prompt: string) => {
-      options.procedureCalls?.push({ name, prompt });
-      const next = options.procedureResults?.shift();
-      if (typeof next === "object" && next !== null && "cell" in next) {
-        return next as RunResult;
-      }
-
-      if (next !== undefined) {
-        procedureCallCount += 1;
-        return {
-          cell: {
-            sessionId: "test-session",
-            cellId: `procedure-${procedureCallCount}`,
-          },
-          data: next,
-        } as RunResult;
-      }
-
-      if (name === "nanoboss/commit") {
-        procedureCallCount += 1;
-        return {
-          cell: {
-            sessionId: "test-session",
-            cellId: `procedure-${procedureCallCount}`,
-          },
-          data: {
-            checks: {
-              passed: true,
-            },
-            commit: {
-              cell: {
-                sessionId: "test-session",
-                cellId: `commit-${procedureCallCount}`,
-              },
-              path: "output.data",
-            },
-          },
-          display: "commit sha=abc123 message=\"simplify2 slice\" clean=true",
-          summary: "simplify2 slice commit",
-        } as RunResult;
-      }
-
-      throw new Error(`Unexpected callProcedure ${name}`);
-    }) as CommandContext["callProcedure"],
-    print() {},
   };
 }
 

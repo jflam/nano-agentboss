@@ -5,10 +5,10 @@ import { join } from "node:path";
 
 import {
   callMcpTool,
-  createNanobossMcpApi,
   listMcpTools,
 } from "../../src/mcp/server.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { createNanobossRuntimeService } from "../../src/runtime/service.ts";
 import { SessionStore } from "../../src/session/index.ts";
 
 const tempDirs: string[] = [];
@@ -171,7 +171,7 @@ function seedSession(rootDir: string) {
   };
 }
 
-describe("nanoboss MCP API", () => {
+describe("nanoboss MCP server", () => {
   test("accepts MCP default agent selections without a model", async () => {
     const fakeApi = {
       async procedureDispatchStart(args: unknown) {
@@ -210,19 +210,40 @@ describe("nanoboss MCP API", () => {
     })).rejects.toThrow("Expected defaultAgentSelection.provider to be one of claude, gemini, codex, copilot");
   });
 
-  test("supports structural traversal, exact cell reads, ref reads, and schema lookup", () => {
+  test("rejects non-string procedure dispatch prompts at the MCP boundary", async () => {
+    const fakeApi = {
+      async procedureDispatchStart(args: unknown) {
+        return args;
+      },
+    } as unknown as Parameters<typeof callMcpTool>[0];
+
+    await expect(callMcpTool(fakeApi, "procedure_dispatch_start", {
+      name: "review",
+      prompt: 7,
+    })).rejects.toThrow("Expected prompt to be a non-empty string");
+  });
+
+  test("maps structural MCP tools onto the runtime service", async () => {
     const rootDir = mkdtempSync(join(process.cwd(), ".tmp-mcp-test-session-"));
     tempDirs.push(rootDir);
 
     const { critiqueResult, planResult, reviewResult, summaryResult } = seedSession(rootDir);
 
-    const api = createNanobossMcpApi({
+    const runtime = createNanobossRuntimeService({
       sessionId: "mcp-test-session",
       cwd: process.cwd(),
       rootDir,
     });
 
-    const recent = api.sessionRecent({ procedure: "second-opinion", limit: 5 });
+    const recent = await callMcpTool(runtime, "session_recent", {
+      procedure: "second-opinion",
+      limit: 5,
+    }) as Array<{
+      summary?: string;
+      memory?: string;
+      kind?: string;
+      dataShape?: unknown;
+    }>;
     expect(recent).toHaveLength(1);
     expect(recent[0]?.summary).toBe("review summary");
     expect(recent[0]?.memory).toBe("The main issue was missing evidence.");
@@ -234,39 +255,60 @@ describe("nanoboss MCP API", () => {
       verdict: "mixed",
     });
 
-    expect(api.topLevelRuns().map((item) => item.procedure)).toEqual([
+    expect((await callMcpTool(runtime, "top_level_runs", {}) as Array<{ procedure: string }>).map((item) => item.procedure)).toEqual([
       "linter",
       "second-opinion",
     ]);
-    expect(api.cellAncestors(critiqueResult.cell).map((item) => item.cell.cellId)).toEqual([
+    expect((await callMcpTool(runtime, "cell_ancestors", {
+      cellRef: critiqueResult.cell,
+    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
       planResult.cell.cellId,
       reviewResult.cell.cellId,
     ]);
-    expect(api.cellAncestors(critiqueResult.cell, { limit: 1 }).map((item) => item.cell.cellId)).toEqual([
+    expect((await callMcpTool(runtime, "cell_ancestors", {
+      cellRef: critiqueResult.cell,
+      limit: 1,
+    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
       planResult.cell.cellId,
     ]);
-    expect(api.cellAncestors(critiqueResult.cell, { includeSelf: true, limit: 2 }).map((item) => item.cell.cellId)).toEqual([
+    expect((await callMcpTool(runtime, "cell_ancestors", {
+      cellRef: critiqueResult.cell,
+      includeSelf: true,
+      limit: 2,
+    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
       critiqueResult.cell.cellId,
       planResult.cell.cellId,
     ]);
-    expect(api.cellDescendants(reviewResult.cell).map((item) => item.cell.cellId)).toEqual([
+    expect((await callMcpTool(runtime, "cell_descendants", {
+      cellRef: reviewResult.cell,
+    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
       planResult.cell.cellId,
       critiqueResult.cell.cellId,
       summaryResult.cell.cellId,
     ]);
-    expect(api.cellDescendants(reviewResult.cell, { kind: "agent" }).map((item) => item.cell.cellId)).toEqual([
+    expect((await callMcpTool(runtime, "cell_descendants", {
+      cellRef: reviewResult.cell,
+      kind: "agent",
+    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
       critiqueResult.cell.cellId,
       summaryResult.cell.cellId,
     ]);
-    expect(api.cellDescendants(reviewResult.cell, { maxDepth: 1 }).map((item) => item.cell.cellId)).toEqual([
+    expect((await callMcpTool(runtime, "cell_descendants", {
+      cellRef: reviewResult.cell,
+      maxDepth: 1,
+    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
       planResult.cell.cellId,
       summaryResult.cell.cellId,
     ]);
 
-    expect(api.cellGet(reviewResult.cell).output.summary).toBe("review summary");
+    expect((await callMcpTool(runtime, "cell_get", {
+      cellRef: reviewResult.cell,
+    }) as { output: { summary?: string } }).output.summary).toBe("review summary");
 
     const reviewDataRef = expectDefined(reviewResult.dataRef, "Expected review dataRef");
-    const manifest = api.refRead(reviewDataRef);
+    const manifest = await callMcpTool(runtime, "ref_read", {
+      valueRef: reviewDataRef,
+    });
     expect(manifest).toEqual({
       subject: "review the code",
       plan: planResult.dataRef,
@@ -278,7 +320,9 @@ describe("nanoboss MCP API", () => {
       (manifest as { plan?: typeof planResult.dataRef }).plan,
       "Expected plan ref in manifest",
     );
-    expect(api.refRead(planRef)).toEqual({
+    expect(await callMcpTool(runtime, "ref_read", {
+      valueRef: planRef,
+    })).toEqual({
       critique: critiqueResult.dataRef,
       steps: ["inspect diff", "check tests"],
     });
@@ -286,13 +330,22 @@ describe("nanoboss MCP API", () => {
       (manifest as { summary?: typeof summaryResult.dataRef }).summary,
       "Expected summary ref in manifest",
     );
-    expect(api.refRead(summaryRef)).toEqual({
+    expect(await callMcpTool(runtime, "ref_read", {
+      valueRef: summaryRef,
+    })).toEqual({
       outline: "review outline",
     });
 
-    expect(api.refStat(reviewDataRef).type).toBe("object");
+    expect((await callMcpTool(runtime, "ref_stat", {
+      valueRef: reviewDataRef,
+    }) as { type?: string }).type).toBe("object");
 
-    const schema = api.getSchema({ cellRef: reviewResult.cell });
+    const schema = await callMcpTool(runtime, "get_schema", {
+      cellRef: reviewResult.cell,
+    }) as {
+      dataShape?: unknown;
+      explicitDataSchema?: unknown;
+    };
     expect(schema.dataShape).toEqual({
       subject: "string",
       plan: "ValueRef",
@@ -310,12 +363,12 @@ describe("nanoboss MCP API", () => {
     });
   });
 
-  test("requires an explicit session id", () => {
-    const api = createNanobossMcpApi({
+  test("requires an explicit session id", async () => {
+    const runtime = createNanobossRuntimeService({
       cwd: process.cwd(),
     });
 
-    expect(() => api.topLevelRuns()).toThrow(
+    await expect(callMcpTool(runtime, "top_level_runs", {})).rejects.toThrow(
       "Nanoboss MCP requires an explicit sessionId or a current session for the server working directory.",
     );
   });
@@ -326,7 +379,7 @@ describe("nanoboss MCP API", () => {
 
     const { critiqueResult, reviewResult } = seedSession(rootDir);
 
-    const api = createNanobossMcpApi({
+    const runtime = createNanobossRuntimeService({
       sessionId: "mcp-test-session",
       cwd: process.cwd(),
       rootDir,
@@ -349,7 +402,7 @@ describe("nanoboss MCP API", () => {
     expect(toolNames).toContain("procedure_dispatch_wait");
 
     expect(
-      await callMcpTool(api, "cell_ancestors", {
+      await callMcpTool(runtime, "cell_ancestors", {
         cellRef: critiqueResult.cell,
         limit: 1,
       }),
@@ -358,7 +411,7 @@ describe("nanoboss MCP API", () => {
     ]);
 
     expect(
-      await callMcpTool(api, "cell_descendants", {
+      await callMcpTool(runtime, "cell_descendants", {
         cellRef: reviewResult.cell,
         kind: "agent",
       }),
@@ -376,7 +429,7 @@ describe("nanoboss MCP API", () => {
     mkdirSync(reviewPackageDir, { recursive: true });
     tempDirs.push(rootDir, cwd);
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     registry.loadBuiltins();
     await Bun.write(join(reviewPackageDir, "index.ts"), [
       "export default {",
@@ -398,14 +451,14 @@ describe("nanoboss MCP API", () => {
     ].join("\n"));
     await registry.loadFromDisk();
 
-    const api = createNanobossMcpApi({
+    const runtime = createNanobossRuntimeService({
       sessionId: "mcp-test-session",
       cwd,
       rootDir,
       registry,
     });
 
-    const listed = await callMcpTool(api, "procedure_list", {}) as {
+    const listed = await callMcpTool(runtime, "procedure_list", {}) as {
       procedures: Array<{
         name: string;
         description: string;
@@ -419,7 +472,7 @@ describe("nanoboss MCP API", () => {
     });
     expect(listed.procedures.some((procedure) => procedure.name === "default")).toBe(false);
 
-    const listedWithHidden = await callMcpTool(api, "procedure_list", { includeHidden: true }) as {
+    const listedWithHidden = await callMcpTool(runtime, "procedure_list", { includeHidden: true }) as {
       procedures: Array<{
         name: string;
         description: string;
@@ -428,12 +481,12 @@ describe("nanoboss MCP API", () => {
     };
     expect(listedWithHidden.procedures.some((procedure) => procedure.name === "default")).toBe(true);
 
-    expect(await callMcpTool(api, "procedure_get", { name: "review" })).toEqual({
+    expect(await callMcpTool(runtime, "procedure_get", { name: "review" })).toEqual({
       name: "review",
       description: "store a durable review result",
       inputHint: "subject to review",
     });
-    expect(await callMcpTool(api, "procedure_get", { name: "default" })).toEqual({
+    expect(await callMcpTool(runtime, "procedure_get", { name: "default" })).toEqual({
       name: "default",
       description: "Pass prompt through to the downstream agent",
       inputHint: undefined,
@@ -448,7 +501,7 @@ describe("nanoboss MCP API", () => {
     mkdirSync(reviewPackageDir, { recursive: true });
     tempDirs.push(rootDir, cwd);
 
-    const registry = new ProcedureRegistry(procedureRoot);
+    const registry = new ProcedureRegistry({ procedureRoots: [procedureRoot] });
     registry.loadBuiltins();
     await Bun.write(join(reviewPackageDir, "index.ts"), [
       "export default {",
@@ -470,7 +523,7 @@ describe("nanoboss MCP API", () => {
     ].join("\n"));
     await registry.loadFromDisk();
 
-    const api = createNanobossMcpApi({
+    const runtime = createNanobossRuntimeService({
       sessionId: "mcp-test-session",
       cwd,
       rootDir,
@@ -478,7 +531,7 @@ describe("nanoboss MCP API", () => {
     });
 
     const dispatchCorrelationId = crypto.randomUUID();
-    const started = await callMcpTool(api, "procedure_dispatch_start", {
+    const started = await callMcpTool(runtime, "procedure_dispatch_start", {
       name: "review",
       prompt: "patch",
       dispatchCorrelationId,
@@ -494,14 +547,14 @@ describe("nanoboss MCP API", () => {
     expect(startedDispatchId).toMatch(/^dispatch_/);
     expect(started.status).toBe("queued");
 
-    const reloadedApi = createNanobossMcpApi({
+    const reloadedRuntime = createNanobossRuntimeService({
       sessionId: "mcp-test-session",
       cwd,
       rootDir,
       registry,
     });
 
-    const initialStatus = await callMcpTool(reloadedApi, "procedure_dispatch_status", {
+    const initialStatus = await callMcpTool(reloadedRuntime, "procedure_dispatch_status", {
       dispatchId: startedDispatchId,
     }) as {
       dispatchId: string;
@@ -512,7 +565,7 @@ describe("nanoboss MCP API", () => {
     expect(initialStatus.procedure).toBe("review");
     expect(["queued", "running", "completed"]).toContain(initialStatus.status);
 
-    let completed = await callMcpTool(reloadedApi, "procedure_dispatch_wait", {
+    let completed = await callMcpTool(reloadedRuntime, "procedure_dispatch_wait", {
       dispatchId: startedDispatchId,
       waitMs: 10,
     }) as {
@@ -530,7 +583,7 @@ describe("nanoboss MCP API", () => {
     };
 
     while (completed.status !== "completed") {
-      completed = await callMcpTool(reloadedApi, "procedure_dispatch_wait", {
+      completed = await callMcpTool(reloadedRuntime, "procedure_dispatch_wait", {
         dispatchId: startedDispatchId,
         waitMs: 50,
       }) as typeof completed;
@@ -549,15 +602,21 @@ describe("nanoboss MCP API", () => {
 
     const dispatched = expectDefined(completed.result, "Expected completed async dispatch result");
     expect(dispatched.dataRef).toBeDefined();
-    expect(api.topLevelRuns({ procedure: "review" })).toMatchObject([
+    expect(await callMcpTool(runtime, "top_level_runs", {
+      procedure: "review",
+    })).toMatchObject([
       {
         cell: dispatched.cell,
         procedure: "review",
         summary: "review patch",
       },
     ]);
-    expect(api.cellGet(dispatched.cell).meta.dispatchCorrelationId).toBe(dispatchCorrelationId);
-    expect(dispatched.dataRef ? api.refRead(dispatched.dataRef) : undefined).toEqual({
+    expect((await callMcpTool(runtime, "cell_get", {
+      cellRef: dispatched.cell,
+    }) as { meta: { dispatchCorrelationId?: string } }).meta.dispatchCorrelationId).toBe(dispatchCorrelationId);
+    expect(dispatched.dataRef ? await callMcpTool(runtime, "ref_read", {
+      valueRef: dispatched.dataRef,
+    }) : undefined).toEqual({
       subject: "patch",
       verdict: "mixed",
     });

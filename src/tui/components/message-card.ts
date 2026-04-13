@@ -1,4 +1,4 @@
-import { Box, Container, Text, type Component } from "../pi-tui.ts";
+import { Box, Container, Markdown, type Component } from "../pi-tui.ts";
 import type { NanobossTuiTheme } from "../theme.ts";
 import type { UiTurn } from "../state.ts";
 
@@ -28,7 +28,9 @@ export class MessageCardComponent implements Component {
     this.container.clear();
 
     const box = new Box(1, 1, backgroundForTone(this.theme, this.tone));
-    box.addChild(new Text(this.lines.map((line) => styleLine(this.theme, this.tone, line)).join("\n"), 0, 0));
+    box.addChild(new Markdown(this.lines.join("\n"), 0, 0, this.theme.markdown, {
+      color: colorForTone(this.theme, this.tone),
+    }));
     this.container.addChild(box);
   }
 }
@@ -45,15 +47,15 @@ function backgroundForTone(theme: NanobossTuiTheme, tone: MessageCardTone): (tex
   return theme.toolCardPendingBg;
 }
 
-function styleLine(theme: NanobossTuiTheme, tone: MessageCardTone, line: string): string {
+function colorForTone(theme: NanobossTuiTheme, tone: MessageCardTone): (text: string) => string {
   switch (tone) {
     case "error":
-      return theme.toolCardError(line);
+      return theme.toolCardError;
     case "success":
-      return theme.toolCardSuccess(line);
+      return theme.toolCardSuccess;
     case "warning":
-      return theme.toolCardWarning(line);
+      return theme.toolCardWarning;
     case "info":
-      return theme.toolCardBody(line);
+      return theme.toolCardBody;
   }
 }

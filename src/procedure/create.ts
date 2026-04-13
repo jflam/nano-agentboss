@@ -34,30 +34,31 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
     ...CREATE_PROCEDURE_METADATA,
     async execute(prompt, ctx) {
       const examples = loadExamples();
-      const generated = await ctx.callAgent(
+      const generated = await ctx.agent.run(
         [
           "You are generating a nanoboss procedure.",
           "",
            "A procedure is a TypeScript module that exports a default object with:",
            '- `name: string`',
            '- `description: string`',
-           "- `execute(prompt: string, ctx: CommandContext): Promise<ProcedureResult>`",
-           "- optional `resume(prompt: string, state: KernelValue, ctx: CommandContext): Promise<ProcedureResult>` when the procedure needs to pause and continue later",
+           "- `execute(prompt: string, ctx: ProcedureApi): Promise<ProcedureResult>`",
+           "- optional `resume(prompt: string, state: KernelValue, ctx: ProcedureApi): Promise<ProcedureResult>` when the procedure needs to pause and continue later",
             "",
-          "CommandContext provides:",
-          "- `ctx.callAgent(prompt)` for untyped downstream calls returning RunResult<string> from a fresh isolated ACP session",
-          "- `ctx.callAgent(prompt, descriptor)` for typed downstream calls returning RunResult<T> from a fresh isolated ACP session",
-          "- `ctx.callAgent(prompt, { session: \"default\" })` to continue the current nanoboss session's default ACP conversation",
-          "- `ctx.callAgent(prompt, descriptor, { session: \"default\" })` when you need typed JSON output while continuing the current conversation",
-          "- `ctx.callAgent(prompt, { agent: { provider, model }, refs, session })` to choose a downstream agent, pass named refs, and explicitly select fresh vs default session behavior",
-          "- `ctx.callProcedure(name, prompt)` for composing procedures and getting RunResult<T> while inheriting the current default-conversation binding",
-          "- `ctx.callProcedure(name, prompt, { session: \"default\" | \"fresh\" | \"inherit\" })` to control whether the child procedure uses the master default conversation, a private one, or the current inherited binding",
-          "- `ctx.getDefaultAgentConfig()` and `ctx.setDefaultAgentSelection(...)` to inspect or change the session's default downstream agent",
+          "The procedure API provides:",
+          "- `ctx.agent.run(prompt)` for untyped downstream calls returning RunResult<string> from a fresh isolated ACP session",
+          "- `ctx.agent.run(prompt, descriptor)` for typed downstream calls returning RunResult<T> from a fresh isolated ACP session",
+          "- `ctx.agent.run(prompt, { session: \"default\" })` to continue the current nanoboss session's default ACP conversation",
+          "- `ctx.agent.run(prompt, descriptor, { session: \"default\" })` when you need typed JSON output while continuing the current conversation",
+          "- `ctx.agent.run(prompt, { agent: { provider, model }, refs, session })` to choose a downstream agent, pass named refs, and explicitly select fresh vs default session behavior",
+          "- `ctx.procedures.run(name, prompt)` for composing procedures and getting RunResult<T> while inheriting the current default-conversation binding",
+          "- `ctx.procedures.run(name, prompt, { session: \"default\" | \"fresh\" | \"inherit\" })` to control whether the child procedure uses the master default conversation, a private one, or the current inherited binding",
+          "- `ctx.state.runs.topLevelRuns(...)`, `ctx.state.runs.descendants(...)`, `ctx.state.runs.ancestors(...)`, and `ctx.state.runs.get(...)` for structural discovery over prior cells",
+          "- `ctx.state.runs.recent(...)` only for true global recency scans across the whole session",
+          "- `ctx.state.refs.read(...)` and `ctx.state.refs.writeToFile(...)` for durable references",
+          "- `ctx.ui.text(text)` to stream progress back to the CLI and `ctx.ui.info|warning|error|status|card` for structured procedure output",
+          "- `ctx.session.getDefaultAgentConfig()` and `ctx.session.setDefaultAgentSelection(...)` to inspect or change the session's default downstream agent",
+          "- `ctx.session.getDefaultAgentTokenUsage()` when a procedure needs the latest live default-session token metrics",
           "- `ctx.assertNotCancelled()` to cooperatively stop long-running work at safe checkpoints",
-          "- `ctx.session.topLevelRuns(...)`, `ctx.session.descendants(...)`, `ctx.session.ancestors(...)`, and `ctx.session.get(...)` for structural discovery over prior cells",
-          "- `ctx.session.recent(...)` only for true global recency scans across the whole session",
-          "- `ctx.refs.read(...)` and `ctx.refs.writeToFile(...)` for durable references",
-          "- `ctx.print(text)` to stream progress back to the CLI",
           `- \`ctx.cwd\` for the current working directory (${ctx.cwd})`,
           "",
           "For typed agent outputs:",
@@ -68,7 +69,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           "Session-selection guidance:",
           "- prefer the default fresh mode for isolated sub-tasks, validation passes, and deterministic structured work",
           "- use `session: \"default\"` only when conversational continuity with the current thread is the point",
-          "- when you need typed JSON while reusing conversation state, still use typed `ctx.callAgent(...)` instead of ad hoc parsing",
+          "- when you need typed JSON while reusing conversation state, use typed `ctx.agent.run(...)` instead of ad hoc parsing",
           "",
            "ProcedureResult should usually:",
             "- keep `data` small and ref-heavy",
@@ -96,17 +97,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
       const procedureName = sanitizeProcedureName(generatedData.name);
       const source = normalizeGeneratedProcedureSource(generatedData.source, procedureName);
 
-      const filePath = await registry.persist(
-        {
-          name: procedureName,
-          description: "Generated procedure placeholder",
-          async execute() {
-            return {};
-          },
-        },
-        source,
-        ctx.cwd,
-      );
+      const filePath = await registry.persist(procedureName, source, ctx.cwd);
 
       const procedure = await registry.loadProcedureFromPath(filePath);
       registry.register(procedure);
@@ -125,7 +116,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
 
 function loadExamples(): string {
   const cwd = process.cwd();
-  const examples = ["nanoboss/commit.ts", "linter.ts"]
+  const examples = ["research.ts", "kb/refresh.ts"]
     .map((file) => {
       try {
         return `// ${file}\n${readFileSync(join(cwd, "procedures", file), "utf8")}`;
