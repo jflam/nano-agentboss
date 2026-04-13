@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import type { ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
+import type { PromptInput } from "../../src/core/types.ts";
 import { SessionStore } from "../../src/session/index.ts";
 
 const tempDirs: string[] = [];
@@ -278,5 +279,74 @@ describe("SessionStore", () => {
     }
 
     expect(reloaded.readCell(stored.cell).output.replayEvents).toEqual(replayEvents);
+  });
+
+  test("persists prompt image attachments under the session root and stores durable metadata", () => {
+    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-store-"));
+    tempDirs.push(rootDir);
+
+    const store = new SessionStore({
+      sessionId: "session-attachments",
+      cwd: process.cwd(),
+      rootDir,
+    });
+    const promptInput: PromptInput = {
+      parts: [
+        { type: "text", text: "look " },
+        {
+          type: "image",
+          token: "[Image 1: PNG 10x10 3B]",
+          mimeType: "image/png",
+          data: "YWJj",
+          width: 10,
+          height: 10,
+          byteLength: 3,
+        },
+      ],
+    };
+
+    const promptImages = store.persistPromptImages(promptInput);
+    const persistedAgain = store.persistPromptImages(promptInput);
+    const promptImage = expectDefined(promptImages?.[0], "Expected persisted prompt image");
+
+    expect(promptImages).toHaveLength(1);
+    expect(promptImage.token).toBe("[Image 1: PNG 10x10 3B]");
+    expect(promptImage.mimeType).toBe("image/png");
+    expect(promptImage.width).toBe(10);
+    expect(promptImage.height).toBe(10);
+    expect(promptImage.byteLength).toBe(3);
+    expect(promptImage.attachmentPath).toMatch(/^attachments\/.+\.png$/);
+    expect(promptImage.attachmentId).toMatch(/.+\.png$/);
+    expect(persistedAgain).toEqual(promptImages);
+
+    const attachmentPath = promptImage.attachmentPath;
+    expect(typeof attachmentPath).toBe("string");
+    if (typeof attachmentPath !== "string") {
+      throw new Error("Expected prompt image attachment path");
+    }
+
+    const attachmentFile = join(rootDir, attachmentPath);
+    expect(existsSync(attachmentFile)).toBe(true);
+    expect(readFileSync(attachmentFile).toString("base64")).toBe("YWJj");
+    expect(readdirSync(join(rootDir, "attachments"))).toHaveLength(1);
+
+    const cell = store.startCell({
+      procedure: "default",
+      input: "look [Image 1: PNG 10x10 3B]",
+      kind: "top_level",
+      promptImages,
+    });
+    const finalized = store.finalizeCell(cell, {
+      display: "noted\n",
+      summary: "noted",
+    });
+
+    const reloaded = new SessionStore({
+      sessionId: "session-attachments",
+      cwd: process.cwd(),
+      rootDir,
+    });
+
+    expect(reloaded.readCell(finalized.cell).meta.promptImages).toEqual(promptImages);
   });
 });

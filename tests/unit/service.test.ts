@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -306,6 +306,53 @@ describe("NanobossService", () => {
       throw new Error("Missing run_failed event");
     }
     expect(failed.data.error).toContain("only supported for /default");
+  });
+
+  test("persists durable prompt image metadata for default-session image prompts", async () => {
+    await withMockAgentEnv(async () => {
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-image-store-"))] });
+      registry.loadBuiltins();
+
+      const service = new NanobossService(registry);
+      const session = service.createSession({ cwd: process.cwd() });
+
+      await service.prompt(session.sessionId, {
+        parts: [
+          { type: "text", text: "describe " },
+          {
+            type: "image",
+            token: "[Image 1: PNG 10x10 3B]",
+            mimeType: "image/png",
+            data: "YWJj",
+            width: 10,
+            height: 10,
+            byteLength: 3,
+          },
+        ],
+      });
+
+      const sessionState = getInternalSessionState(service, session.sessionId);
+      const topLevel = sessionState.store.topLevelRuns({ limit: 1 })[0];
+      expect(topLevel).toBeDefined();
+      if (!topLevel) {
+        throw new Error("Missing stored top-level run");
+      }
+
+      const topLevelRecord = sessionState.store.readCell(topLevel.cell);
+      const topLevelImage = topLevelRecord.meta.promptImages?.[0];
+      expect(topLevelImage?.attachmentPath).toMatch(/^attachments\/.+\.png$/);
+      expect(topLevelImage?.attachmentId).toMatch(/.+\.png$/);
+
+      const attachmentPath = topLevelImage?.attachmentPath;
+      expect(attachmentPath).toBeDefined();
+      if (!attachmentPath) {
+        throw new Error("Missing attachment path");
+      }
+
+      const attachmentFile = join(sessionState.store.rootDir, attachmentPath);
+      expect(existsSync(attachmentFile)).toBe(true);
+      expect(readFileSync(attachmentFile).toString("base64")).toBe("YWJj");
+    });
   });
 
   test("publishes a final token usage event before run completion for assistant replies", async () => {

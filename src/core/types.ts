@@ -54,6 +54,8 @@ export interface PromptImageSummary {
   width?: number;
   height?: number;
   byteLength?: number;
+  attachmentId?: string;
+  attachmentPath?: string;
 }
 
 export interface ProcedurePromptInput {

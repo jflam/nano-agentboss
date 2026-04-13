@@ -56,6 +56,7 @@ export async function callAgent<T = string>(
     procedure: "callAgent",
     input: displayPrompt,
     kind: "agent",
+    promptImages: options.promptInput ? store.persistPromptImages(options.promptInput) : undefined,
   });
   const finalized = store.finalizeCell(cell, {
     data: result.data as T & KernelValue,

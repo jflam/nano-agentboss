@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import { getSessionDir } from "../core/config.ts";
@@ -15,6 +16,9 @@ import type {
   DownstreamAgentSelection,
   KernelValue,
   PersistedFrontendEvent,
+  PromptImagePart,
+  PromptImageSummary,
+  PromptInput,
   ProcedureResult,
   RefStat,
   RunResult,
@@ -79,6 +83,7 @@ export class SessionStore {
   readonly rootDir: string;
 
   private readonly cellsDir: string;
+  private readonly attachmentsDir: string;
   private readonly cells = new Map<string, CellRecord>();
   private readonly cellFilePaths = new Map<string, string>();
   private readonly order: string[] = [];
@@ -91,8 +96,19 @@ export class SessionStore {
     this.cwd = params.cwd;
     this.rootDir = params.rootDir ?? getSessionDir(params.sessionId);
     this.cellsDir = join(this.rootDir, "cells");
+    this.attachmentsDir = join(this.rootDir, "attachments");
     mkdirSync(this.cellsDir, { recursive: true });
     this.loadExistingCells();
+  }
+
+  persistPromptImages(input: PromptInput): PromptImageSummary[] | undefined {
+    const images = input.parts.filter((part): part is PromptImagePart => part.type === "image");
+    if (images.length === 0) {
+      return undefined;
+    }
+
+    mkdirSync(this.attachmentsDir, { recursive: true });
+    return images.map((image) => this.persistPromptImage(image));
   }
 
   startCell(params: {
@@ -512,6 +528,48 @@ export class SessionStore {
 
       this.storeCellRecord(record, filePath);
     }
+  }
+
+  private persistPromptImage(image: PromptImagePart): PromptImageSummary {
+    const bytes = Buffer.from(image.data, "base64");
+    const digest = createHash("sha256")
+      .update(image.mimeType)
+      .update("\0")
+      .update(bytes)
+      .digest("hex");
+    const extension = fileExtensionForMimeType(image.mimeType);
+    const attachmentId = extension ? `${digest}.${extension}` : digest;
+    const attachmentPath = `attachments/${attachmentId}`;
+    const filePath = join(this.rootDir, attachmentPath);
+
+    if (!existsSync(filePath)) {
+      writeFileSync(filePath, bytes);
+    }
+
+    return {
+      token: image.token,
+      mimeType: image.mimeType,
+      width: image.width,
+      height: image.height,
+      byteLength: image.byteLength,
+      attachmentId,
+      attachmentPath,
+    };
+  }
+}
+
+function fileExtensionForMimeType(mimeType: string): string | undefined {
+  switch (mimeType) {
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return undefined;
   }
 }
 

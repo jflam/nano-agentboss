@@ -3,7 +3,7 @@ import type * as acp from "@agentclientprotocol/sdk";
 import { collectTextSessionUpdates, summarizeAgentOutput } from "../agent/acp-updates.ts";
 import { invokeAgent } from "../agent/call-agent.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
-import { promptInputAttachmentSummaries, promptInputDisplayText } from "./prompt.ts";
+import { promptInputDisplayText } from "./prompt.ts";
 import type { SessionStore } from "../session/index.ts";
 import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "./cancellation.ts";
 import { resolveDownstreamAgentConfig } from "./config.ts";
@@ -68,7 +68,7 @@ export class AgentRunRecorder {
         input: prompt,
         kind: "agent",
         parentCellId: this.params.cell.cell.cellId,
-        promptImages: params.promptInput ? promptInputAttachmentSummaries(params.promptInput) : undefined,
+        promptImages: params.promptInput ? this.params.store.persistPromptImages(params.promptInput) : undefined,
       }),
     };
 

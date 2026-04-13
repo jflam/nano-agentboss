@@ -10,7 +10,6 @@ import { RunLogger } from "../core/logger.ts";
 import { inferDataShape } from "../core/data-shape.ts";
 import { formatErrorMessage } from "../core/error-format.ts";
 import {
-  promptInputAttachmentSummaries,
   promptInputDisplayText,
   promptInputToPlainText,
 } from "../core/prompt.ts";
@@ -109,7 +108,7 @@ export async function executeTopLevelProcedure(params: {
     input: displayPrompt,
     kind: "top_level",
     dispatchCorrelationId: params.dispatchCorrelationId,
-    promptImages: promptInput ? promptInputAttachmentSummaries(promptInput) : undefined,
+    promptImages: promptInput ? params.store.persistPromptImages(promptInput) : undefined,
   });
   const beforeSelection = toDownstreamAgentSelection(params.getDefaultAgentConfig());
   const startedAt = Date.now();
