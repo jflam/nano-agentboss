@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 
@@ -326,9 +326,8 @@ describe("SessionStore", () => {
     }
 
     const attachmentFile = join(rootDir, attachmentPath);
-    expect(existsSync(attachmentFile)).toBe(true);
-    expect(readFileSync(attachmentFile).toString("base64")).toBe("YWJj");
-    expect(readdirSync(join(rootDir, "attachments"))).toHaveLength(1);
+    expect(existsSync(attachmentFile)).toBe(false);
+    expect(readdirSync(join(rootDir, "attachments")).filter((entry) => entry.endsWith(".tmp"))).toHaveLength(1);
 
     const cell = store.startCell({
       procedure: "default",
@@ -347,6 +346,35 @@ describe("SessionStore", () => {
       rootDir,
     });
 
+    expect(existsSync(attachmentFile)).toBe(true);
+    expect(readFileSync(attachmentFile).toString("base64")).toBe("YWJj");
+    expect(readdirSync(join(rootDir, "attachments")).filter((entry) => entry.endsWith(".tmp"))).toHaveLength(0);
     expect(reloaded.readCell(finalized.cell).meta.promptImages).toEqual(promptImages);
+  });
+
+  test("removes stale staged attachment temp files when a store is reloaded", () => {
+    const rootDir = mkdtempSync(join(process.cwd(), ".tmp-session-store-"));
+    tempDirs.push(rootDir);
+
+    const attachmentsDir = join(rootDir, "attachments");
+    mkdirSync(attachmentsDir, { recursive: true });
+
+    const staleTempPath = join(attachmentsDir, "stale.png.123.tmp");
+    writeFileSync(staleTempPath, Buffer.from("abc"));
+    const oldDate = new Date(Date.now() - (3 * 24 * 60 * 60 * 1000));
+    utimesSync(staleTempPath, oldDate, oldDate);
+
+    const liveAttachmentPath = join(attachmentsDir, "live.png");
+    writeFileSync(liveAttachmentPath, Buffer.from("xyz"));
+
+    const store = new SessionStore({
+      sessionId: "session-attachment-cleanup",
+      cwd: process.cwd(),
+      rootDir,
+    });
+
+    expect(store.topLevelRuns()).toEqual([]);
+    expect(existsSync(staleTempPath)).toBe(false);
+    expect(existsSync(liveAttachmentPath)).toBe(true);
   });
 });

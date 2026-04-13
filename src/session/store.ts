@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import { getSessionDir } from "../core/config.ts";
 import { inferDataShape } from "../core/data-shape.ts";
+import { writeJsonFileAtomicSync } from "../util/repo-artifacts.ts";
 import { summarizeText } from "../util/text.ts";
 import type {
   CellAncestorsOptions,
@@ -56,6 +57,8 @@ interface FinalizeCellOptions {
   meta?: Partial<CellRecord["meta"]>;
 }
 
+const STALE_ATTACHMENT_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 export function createCellRef(sessionId: string, cellId: string): CellRef {
   return { sessionId, cellId };
 }
@@ -84,6 +87,7 @@ export class SessionStore {
 
   private readonly cellsDir: string;
   private readonly attachmentsDir: string;
+  private readonly pendingAttachmentTempPaths = new Map<string, string>();
   private readonly cells = new Map<string, CellRecord>();
   private readonly cellFilePaths = new Map<string, string>();
   private readonly order: string[] = [];
@@ -99,6 +103,7 @@ export class SessionStore {
     this.attachmentsDir = join(this.rootDir, "attachments");
     mkdirSync(this.cellsDir, { recursive: true });
     this.loadExistingCells();
+    this.cleanupStaleAttachmentTemps();
   }
 
   persistPromptImages(input: PromptInput): PromptImageSummary[] | undefined {
@@ -143,6 +148,8 @@ export class SessionStore {
     result: ProcedureResult<T>,
     options: FinalizeCellOptions = {},
   ): RunResult<T> {
+    this.promotePendingPromptImages(draft.meta.promptImages);
+
     const stream = draft.streamChunks.join("") || options.stream;
     const display = result.display ?? options.display ?? options.raw;
     const summary = result.summary ?? options.summary ?? (
@@ -178,7 +185,7 @@ export class SessionStore {
     };
 
     const filePath = join(this.cellsDir, `${Date.now()}-${record.cellId}.json`);
-    writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+    writeJsonFileAtomicSync(filePath, record);
 
     this.storeCellRecord(record, filePath);
 
@@ -235,7 +242,7 @@ export class SessionStore {
     };
 
     this.cells.set(cellRef.cellId, updated);
-    writeFileSync(filePath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+    writeJsonFileAtomicSync(filePath, updated);
     return updated;
   }
 
@@ -541,9 +548,12 @@ export class SessionStore {
     const attachmentId = extension ? `${digest}.${extension}` : digest;
     const attachmentPath = `attachments/${attachmentId}`;
     const filePath = join(this.rootDir, attachmentPath);
+    const pendingTempPath = this.pendingAttachmentTempPaths.get(attachmentPath);
 
-    if (!existsSync(filePath)) {
-      writeFileSync(filePath, bytes);
+    if (!existsSync(filePath) && (!pendingTempPath || !existsSync(pendingTempPath))) {
+      const tempPath = buildAttachmentTempPath(filePath);
+      writeFileSync(tempPath, bytes);
+      this.pendingAttachmentTempPaths.set(attachmentPath, tempPath);
     }
 
     return {
@@ -555,6 +565,63 @@ export class SessionStore {
       attachmentId,
       attachmentPath,
     };
+  }
+
+  private promotePendingPromptImages(promptImages: CellRecord["meta"]["promptImages"]): void {
+    for (const image of promptImages ?? []) {
+      const attachmentPath = image.attachmentPath;
+      if (!attachmentPath) {
+        continue;
+      }
+
+      const filePath = join(this.rootDir, attachmentPath);
+      if (existsSync(filePath)) {
+        this.deletePendingAttachmentTemp(attachmentPath);
+        continue;
+      }
+
+      const tempPath = this.pendingAttachmentTempPaths.get(attachmentPath);
+      if (!tempPath || !existsSync(tempPath)) {
+        throw new Error(`Missing staged prompt image attachment: ${attachmentPath}`);
+      }
+
+      renameSync(tempPath, filePath);
+      this.pendingAttachmentTempPaths.delete(attachmentPath);
+    }
+  }
+
+  private deletePendingAttachmentTemp(attachmentPath: string): void {
+    const tempPath = this.pendingAttachmentTempPaths.get(attachmentPath);
+    this.pendingAttachmentTempPaths.delete(attachmentPath);
+    if (tempPath && existsSync(tempPath)) {
+      unlinkSync(tempPath);
+    }
+  }
+
+  private cleanupStaleAttachmentTemps(now = Date.now()): void {
+    if (!existsSync(this.attachmentsDir)) {
+      return;
+    }
+
+    for (const entry of readdirSync(this.attachmentsDir)) {
+      if (!entry.endsWith(".tmp")) {
+        continue;
+      }
+
+      const path = join(this.attachmentsDir, entry);
+      let stats;
+      try {
+        stats = statSync(path);
+      } catch {
+        continue;
+      }
+
+      if (now - stats.mtimeMs <= STALE_ATTACHMENT_TEMP_MAX_AGE_MS) {
+        continue;
+      }
+
+      unlinkSync(path);
+    }
   }
 }
 
@@ -571,6 +638,10 @@ function fileExtensionForMimeType(mimeType: string): string | undefined {
     default:
       return undefined;
   }
+}
+
+function buildAttachmentTempPath(path: string): string {
+  return `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
 }
 
 function matchesCell(record: CellRecord, options: Pick<CellFilterOptions, "kind" | "procedure">): boolean {
