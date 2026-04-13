@@ -936,6 +936,50 @@ describe("NanobossAppView", () => {
     expect(expanded).not.toContain("... (19 more lines, ctrl+o to expand)");
   });
 
+  test("expanded cards keep canonical tool rendering even if the title drifts later", () => {
+    const view = new NanobossAppView(
+      {
+        render: () => [""],
+        invalidate() {},
+      } as never,
+      createNanobossTuiTheme(),
+      {
+        ...createInitialUiState({ cwd: "/repo", showToolCalls: true, expandedToolOutput: true }),
+        sessionId: "session-1",
+        toolCalls: [
+          {
+            id: "tool-1",
+            runId: "run-1",
+            title: "Write File",
+            kind: "read",
+            toolName: "read",
+            status: "completed",
+            depth: 0,
+            isWrapper: false,
+            callPreview: { header: "read src/example.ts" },
+            resultPreview: { bodyLines: ["const answer = 42;"], truncated: true },
+            rawInput: {
+              file_path: "src/example.ts",
+            },
+            rawOutput: {
+              file: {
+                filePath: "src/example.ts",
+                content: "const answer = 42;\nexport const next = 43;",
+              },
+            },
+          },
+        ],
+        transcriptItems: [{ type: "tool_call" as const, id: "tool-1" }],
+      },
+    );
+
+    const expanded = stripAnsi(view.render(160).join("\n"));
+
+    expect(expanded).toContain("read src/example.ts");
+    expect(expanded).toContain("export const next = 43;");
+    expect(expanded).not.toContain("file_path");
+  });
+
   test("expanded agent tool output uses expanded-only completion content", () => {
     const collapsedView = new NanobossAppView(
       {

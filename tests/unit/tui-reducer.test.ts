@@ -98,6 +98,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         title: "Mock read README.md",
         kind: "read",
+        toolName: "read",
         status: "completed",
         depth: 0,
         isWrapper: false,
@@ -783,6 +784,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         title: "Mock read README.md",
         kind: "read",
+        toolName: "read",
         status: "completed",
         depth: 0,
         isWrapper: false,
@@ -880,6 +882,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         title: "callAgent: summarize the diff",
         kind: "other",
+        toolName: "agent",
         status: "completed",
         depth: 0,
         isWrapper: false,
@@ -892,6 +895,51 @@ describe("tui reducer", () => {
       },
     ]);
     expect(state.transcriptItems).toContainEqual({ type: "tool_call", id: "tool-1" });
+  });
+
+  test("preserves the original tool identity when later updates rename the card", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_started", {
+        runId: "run-1",
+        toolCallId: "tool-1",
+        title: "Read File",
+        kind: "read",
+        toolName: "read",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("tool_updated", {
+        runId: "run-1",
+        toolCallId: "tool-1",
+        title: "Write File",
+        toolName: "write",
+        status: "completed",
+        resultPreview: { bodyLines: ["kept original semantics"] },
+      }),
+    });
+
+    expect(state.toolCalls).toEqual([
+      {
+        id: "tool-1",
+        runId: "run-1",
+        title: "Write File",
+        kind: "read",
+        toolName: "read",
+        status: "completed",
+        depth: 0,
+        isWrapper: false,
+        callPreview: undefined,
+        resultPreview: { bodyLines: ["kept original semantics"] },
+        errorPreview: undefined,
+        rawInput: undefined,
+        rawOutput: undefined,
+        durationMs: undefined,
+      },
+    ]);
   });
 
   test("removes terminal wrappers and reparents descendants through explicit parentToolCallId links", () => {
@@ -983,6 +1031,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         title: "write",
         kind: "other",
+        toolName: "write",
         status: "failed",
         depth: 0,
         isWrapper: false,

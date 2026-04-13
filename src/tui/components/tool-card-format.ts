@@ -5,7 +5,6 @@ import {
   extractToolErrorText,
   firstString,
   normalizeToolInputPayload,
-  normalizeToolName as normalizeSharedToolName,
   normalizeToolResultPayload,
   stringifyValue,
 } from "../../core/tool-payload-normalizer.ts";
@@ -67,8 +66,14 @@ export function formatToolDurationLine(theme: NanobossTuiTheme, toolCall: UiTool
   return theme.toolCardMeta(`Took ${formatDuration(toolCall.durationMs)}`);
 }
 
-export function normalizeToolName(toolCall: Pick<UiToolCall, "kind" | "title">): string | undefined {
-  return normalizeSharedToolName(toolCall);
+export function getCanonicalToolName(toolCall: Pick<UiToolCall, "toolName" | "kind">): string | undefined {
+  const toolName = toolCall.toolName?.trim().toLowerCase();
+  if (toolName) {
+    return toolName;
+  }
+
+  const kind = toolCall.kind.trim().toLowerCase();
+  return kind && kind !== "other" && kind !== "thought" && kind !== "wrapper" ? kind : undefined;
 }
 
 export function formatToolHeader(theme: NanobossTuiTheme, header: string | undefined, fallbackTitle: string): string {
@@ -298,7 +303,7 @@ export function getExpandedToolErrorBlock(toolCall: UiToolCall): ToolPreviewBloc
 }
 
 function getToolCodeContext(toolCall: UiToolCall): { shouldHighlight: boolean; language?: string } {
-  const toolName = normalizeToolName(toolCall);
+  const toolName = getCanonicalToolName(toolCall);
   const inputRecord = asRecord(toolCall.rawInput);
   const outputRecord = asRecord(toolCall.rawOutput);
   const explicitLanguage = firstString(

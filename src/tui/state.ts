@@ -35,6 +35,7 @@ export interface UiToolCall {
   parentToolCallId?: string;
   title: string;
   kind: string;
+  toolName?: string;
   status: string;
   depth: number;
   isWrapper: boolean;

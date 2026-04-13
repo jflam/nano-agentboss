@@ -115,6 +115,7 @@ describe("frontend-events", () => {
         toolCallId: "tool-1",
         title: "Mock read README.md",
         kind: "read",
+        toolName: "read",
         status: "in_progress",
         callPreview: {
           header: "read README.md",
@@ -195,6 +196,7 @@ describe("frontend-events", () => {
       toolCallId: "tool-bash",
       title: "functions.bash",
       kind: "other",
+      toolName: "bash",
       status: "pending",
       callPreview: {
         header: "$ git show --stat HEAD",
@@ -343,6 +345,7 @@ describe("frontend-events", () => {
       toolCallId: "tool-read",
       title: "Read File",
       kind: "read",
+      toolName: "read",
       status: "pending",
       callPreview: {
         header: "read src/mcp/jsonrpc.ts:12",
@@ -358,6 +361,7 @@ describe("frontend-events", () => {
       runId: "run-1",
       toolCallId: "tool-read",
       title: "Read File",
+      toolName: "read",
       status: "completed",
       resultPreview: {
         bodyLines: [
@@ -399,6 +403,7 @@ describe("frontend-events", () => {
         toolCallId: "tool-wrapper",
         title: "callAgent: summarize the diff",
         kind: "wrapper",
+        toolName: "agent",
         status: "pending",
         callPreview: undefined,
         rawInput: undefined,

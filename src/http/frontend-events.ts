@@ -9,6 +9,7 @@ import {
   summarizeToolCallUpdate,
   type ToolPreviewBlock,
 } from "../core/tool-call-preview.ts";
+import { normalizeToolName } from "../core/tool-payload-normalizer.ts";
 import type {
   AgentTokenUsage,
   CellRef,
@@ -101,6 +102,7 @@ export type FrontendEvent =
       parentToolCallId?: string;
       title: string;
       kind: string;
+      toolName?: string;
       status?: string;
       callPreview?: ToolPreviewBlock;
       rawInput?: unknown;
@@ -111,6 +113,7 @@ export type FrontendEvent =
       toolCallId: string;
       parentToolCallId?: string;
       title?: string;
+      toolName?: string;
       status: string;
       resultPreview?: ToolPreviewBlock;
       errorPreview?: ToolPreviewBlock;
@@ -283,15 +286,6 @@ export function isToolUpdatedEvent(event: FrontendEventEnvelope): event is ToolU
   return event.type === "tool_updated";
 }
 
-export function isWrapperToolTitle(title: string): boolean {
-  return (
-    title.startsWith("callAgent") ||
-    title.startsWith("defaultSession:") ||
-    title.startsWith("Calling default procedure") ||
-    title.includes("procedure_dispatch")
-  );
-}
-
 export function isTokenUsageEvent(event: FrontendEventEnvelope): event is TokenUsageEventEnvelope {
   return event.type === "token_usage";
 }
@@ -369,7 +363,9 @@ export function mapSessionUpdateToFrontendEvents(
     }
     case "tool_call": {
       const toolKind = getNanobossToolKindMeta(update) ?? String(update.kind);
+      const toolName = normalizeToolName({ title: update.title, kind: toolKind });
       const preview = summarizeToolCallStart({
+        toolName,
         title: update.title,
         kind: toolKind,
       }, update.rawInput);
@@ -381,6 +377,7 @@ export function mapSessionUpdateToFrontendEvents(
           toolCallId: update.toolCallId,
           title: update.title,
           kind: toolKind,
+          ...(toolName ? { toolName } : {}),
           status: update.status ?? undefined,
           callPreview: preview.callPreview,
           rawInput: update.rawInput,
@@ -388,7 +385,9 @@ export function mapSessionUpdateToFrontendEvents(
       ];
     }
     case "tool_call_update": {
+      const toolName = update.title ? normalizeToolName({ title: update.title }) : undefined;
       const preview = summarizeToolCallUpdate({
+        toolName,
         title: update.title ?? undefined,
       }, update.rawOutput);
       const events: FrontendEvent[] = [
@@ -397,6 +396,7 @@ export function mapSessionUpdateToFrontendEvents(
           runId,
           toolCallId: update.toolCallId,
           title: update.title ?? undefined,
+          ...(toolName ? { toolName } : {}),
           status: update.status ?? "pending",
           resultPreview: preview.resultPreview,
           errorPreview: preview.errorPreview,

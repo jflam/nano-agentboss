@@ -1,4 +1,5 @@
 export interface ToolPayloadIdentity {
+  toolName?: string;
   title?: string;
   kind?: string;
 }
@@ -14,6 +15,11 @@ export interface NormalizedToolPayload {
 const MAX_FALLBACK_JSON_LENGTH = 200_000;
 
 export function normalizeToolName(identity: ToolPayloadIdentity): string | undefined {
+  const explicitToolName = identity.toolName?.trim().toLowerCase();
+  if (explicitToolName) {
+    return explicitToolName;
+  }
+
   const kind = identity.kind?.trim().toLowerCase();
   if (kind && kind !== "other" && kind !== "thought" && kind !== "wrapper") {
     return kind;
