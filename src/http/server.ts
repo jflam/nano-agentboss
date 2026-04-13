@@ -1,10 +1,10 @@
 import { getBuildCommit, getBuildLabel } from "../core/build-info.ts";
 import { DEFAULT_HTTP_SERVER_PORT } from "../core/defaults.ts";
-import { parsePromptInputPayload } from "../core/prompt.ts";
+import { hasPromptInputContent, parsePromptInputPayload } from "../core/prompt.ts";
 import { requireValue } from "../util/argv.ts";
 import type { FrontendEventEnvelope } from "./frontend-events.ts";
 import { NanobossService } from "../core/service.ts";
-import type { DownstreamAgentSelection } from "../core/types.ts";
+import type { DownstreamAgentSelection, PromptInput } from "../core/types.ts";
 import { getWorkspaceIdentity } from "../core/workspace-identity.ts";
 
 export interface HttpServerOptions {
@@ -178,19 +178,12 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
         }
 
         const body = await readJson<{ prompt?: string; promptInput?: unknown }>(request);
-        const promptInput = body.promptInput !== undefined
-          ? parsePromptInputPayload(body.promptInput)
-          : undefined;
-        if (body.promptInput !== undefined && !promptInput) {
-          return error(400, "promptInput is invalid");
+        const parsedPrompt = parseSessionPromptRequestBody(body);
+        if ("error" in parsedPrompt) {
+          return error(400, parsedPrompt.error);
         }
 
-        const prompt = promptInput ?? body.prompt?.trim();
-        if (!prompt) {
-          return error(400, "prompt is required");
-        }
-
-        void service.prompt(sessionId, prompt).catch((err: unknown) => {
+        void service.prompt(sessionId, parsedPrompt.prompt).catch((err: unknown) => {
           console.error("prompt failed", err);
         });
 
@@ -288,6 +281,27 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
   }
   console.log(`${getBuildLabel()} server listening on ${baseUrl}`);
   return server;
+}
+
+export function parseSessionPromptRequestBody(body: { prompt?: string; promptInput?: unknown }):
+  | { prompt: string | PromptInput }
+  | { error: string } {
+  const promptInput = body.promptInput !== undefined
+    ? parsePromptInputPayload(body.promptInput)
+    : undefined;
+  if (body.promptInput !== undefined && !promptInput) {
+    return { error: "promptInput is invalid" };
+  }
+  if (promptInput) {
+    return hasPromptInputContent(promptInput)
+      ? { prompt: promptInput }
+      : { error: "prompt is required" };
+  }
+
+  const prompt = body.prompt?.trim();
+  return prompt
+    ? { prompt }
+    : { error: "prompt is required" };
 }
 
 function formatSseEvent(event: FrontendEventEnvelope): string {
