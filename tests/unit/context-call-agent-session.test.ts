@@ -319,8 +319,8 @@ describe("procedure API session namespaces", () => {
     const topLevelRuns = await ctx.state.runs.topLevelRuns();
 
     expect(ctx.session.getDefaultAgentConfig()).toEqual(createMockConfig(ctx.cwd));
-    expect(latest?.cell).toEqual(otherTopLevel.cell);
-    expect(topLevelRuns.map((run) => run.cell)).toContainEqual(otherTopLevel.cell);
+    expect(latest?.run).toEqual(otherTopLevel.run);
+    expect(topLevelRuns.map((run) => run.run)).toContainEqual(otherTopLevel.run);
   });
 
   test("failed typed image calls discard staged prompt attachments", async () => {

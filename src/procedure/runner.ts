@@ -15,7 +15,6 @@ import {
 } from "../core/prompt.ts";
 import {
   type SessionStore,
-  createValueRef,
   normalizeProcedureResult,
 } from "../session/index.ts";
 import { toDownstreamAgentSelection } from "../core/config.ts";
@@ -35,7 +34,7 @@ import type {
   Ref,
   RunRef,
 } from "../core/types.ts";
-import { refFromValueRef, runRefFromCellRef } from "../core/types.ts";
+import { createRef, runRefFromCellRef } from "../core/types.ts";
 
 export interface ProcedureExecutionResult {
   procedure: string;
@@ -193,7 +192,7 @@ export async function executeTopLevelProcedure(params: {
       });
       throw new TopLevelProcedureCancelledError(
         cancelled.message,
-        finalized.run ?? runRefFromCellRef(finalized.cell),
+        finalized.run,
         cancelled.reason,
       );
     }
@@ -213,7 +212,7 @@ export async function executeTopLevelProcedure(params: {
     const finalized = params.store.finalizeCell(rootCell, {
       summary: summarizeText(errorText),
     });
-    throw new TopLevelProcedureExecutionError(message, finalized.run ?? runRefFromCellRef(finalized.cell));
+    throw new TopLevelProcedureExecutionError(message, finalized.run);
   } finally {
     await params.emitter.flush();
     logger.close();
@@ -235,17 +234,17 @@ export function buildProcedureExecutionResult(params: {
     display: params.cell.output.display,
     memory: params.cell.output.memory,
     dataRef: params.cell.output.data !== undefined
-      ? refFromValueRef(createValueRef(cellRef, "output.data"))
+      ? createRef(run, "output.data")
       : undefined,
     displayRef: params.cell.output.display !== undefined
-      ? refFromValueRef(createValueRef(cellRef, "output.display"))
+      ? createRef(run, "output.display")
       : undefined,
     streamRef: params.cell.output.stream !== undefined
-      ? refFromValueRef(createValueRef(cellRef, "output.stream"))
+      ? createRef(run, "output.stream")
       : undefined,
     pause: params.cell.output.pause,
     pauseRef: params.cell.output.pause !== undefined
-      ? refFromValueRef(createValueRef(cellRef, "output.pause"))
+      ? createRef(run, "output.pause")
       : undefined,
     dataShape: params.cell.output.data !== undefined ? inferDataShape(params.cell.output.data) : undefined,
     explicitDataSchema: params.cell.output.explicitDataSchema,

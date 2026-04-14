@@ -98,9 +98,9 @@ function createProcedureApi(
   ) => {
     const result = await agentRun(prompt, descriptorOrOptions, options);
     return {
-      cell: {
+      run: {
         sessionId: "session",
-        cellId: "agent-run",
+        runId: "agent-run",
       },
       ...result,
     };

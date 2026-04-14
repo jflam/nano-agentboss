@@ -143,9 +143,9 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Pro
       throw new Error(`Unexpected callAgent #${callCount}`);
     }
     return {
-      cell: {
+      run: {
         sessionId: "test-session",
-        cellId: `agent-${callCount}`,
+        runId: `agent-${callCount}`,
       },
       data: next,
     } as RunResult;

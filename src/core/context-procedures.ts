@@ -3,6 +3,7 @@ import { createTextPromptInput, promptInputDisplayText } from "./prompt.ts";
 import type { SessionStore } from "../session/index.ts";
 import { formatErrorMessage } from "./error-format.ts";
 import type { RunLogger } from "./logger.ts";
+import { toPublicRunResult } from "./run-result.ts";
 import type { ContextSessionApiImpl, ProcedureInvocationBinding } from "./context-session.ts";
 import type {
   ProcedureApi,
@@ -88,7 +89,7 @@ export class ProcedureInvocationApiImpl implements ProcedureInvocationApi {
         raw: result.display,
       });
 
-      return finalized as RunResult<T>;
+      return toPublicRunResult(finalized) as RunResult<T>;
     } catch (error) {
       this.params.logger.write({
         spanId: childSpanId,

@@ -483,20 +483,24 @@ function isRefLike(value: unknown): value is Ref {
   );
 }
 
-export interface CellFilterOptions {
+export interface RunFilterOptions {
   kind?: CellKind;
   procedure?: string;
   limit?: number;
 }
 
-export interface CellAncestorsOptions {
+export interface RunAncestorsOptions {
   includeSelf?: boolean;
   limit?: number;
 }
 
-export interface CellDescendantsOptions extends CellFilterOptions {
+export interface RunDescendantsOptions extends RunFilterOptions {
   maxDepth?: number;
 }
+
+export type CellFilterOptions = RunFilterOptions;
+export type CellAncestorsOptions = RunAncestorsOptions;
+export type CellDescendantsOptions = RunDescendantsOptions;
 
 export interface SessionRecentOptions {
   procedure?: string;
@@ -506,20 +510,20 @@ export interface SessionRecentOptions {
 export type TopLevelRunsOptions = Omit<CellFilterOptions, "kind">;
 
 export interface RefsApi {
-  read<T = KernelValue>(valueRef: ValueRef): Promise<T>;
-  stat(valueRef: ValueRef): Promise<RefStat>;
-  writeToFile(valueRef: ValueRef, path: string): Promise<void>;
+  read<T = KernelValue>(ref: Ref): Promise<T>;
+  stat(ref: Ref): Promise<RefStat>;
+  writeToFile(ref: Ref, path: string): Promise<void>;
 }
 
 export interface StateRunsApi {
-  recent(options?: SessionRecentOptions): Promise<CellSummary[]>;
-  latest(options?: SessionRecentOptions): Promise<CellSummary | undefined>;
-  topLevelRuns(options?: TopLevelRunsOptions): Promise<CellSummary[]>;
-  get(cellRef: CellRef): Promise<CellRecord>;
-  parent(cellRef: CellRef): Promise<CellSummary | undefined>;
-  children(cellRef: CellRef, options?: Omit<CellDescendantsOptions, "maxDepth">): Promise<CellSummary[]>;
-  ancestors(cellRef: CellRef, options?: CellAncestorsOptions): Promise<CellSummary[]>;
-  descendants(cellRef: CellRef, options?: CellDescendantsOptions): Promise<CellSummary[]>;
+  recent(options?: SessionRecentOptions): Promise<RunSummary[]>;
+  latest(options?: SessionRecentOptions): Promise<RunSummary | undefined>;
+  topLevelRuns(options?: TopLevelRunsOptions): Promise<RunSummary[]>;
+  get(run: RunRef): Promise<RunRecord>;
+  parent(run: RunRef): Promise<RunSummary | undefined>;
+  children(run: RunRef, options?: Omit<RunDescendantsOptions, "maxDepth">): Promise<RunSummary[]>;
+  ancestors(run: RunRef, options?: RunAncestorsOptions): Promise<RunSummary[]>;
+  descendants(run: RunRef, options?: RunDescendantsOptions): Promise<RunSummary[]>;
 }
 
 export interface SessionApi {
@@ -639,16 +643,15 @@ export interface ProcedureResult<T extends KernelValue = KernelValue> {
 }
 
 export interface RunResult<T extends KernelValue = KernelValue> {
-  run?: RunRef;
-  cell: CellRef;
+  run: RunRef;
   data?: T;
-  dataRef?: ValueRef;
-  displayRef?: ValueRef;
-  streamRef?: ValueRef;
+  dataRef?: Ref;
+  displayRef?: Ref;
+  streamRef?: Ref;
   pause?: ProcedurePause;
-  pauseRef?: ValueRef;
+  pauseRef?: Ref;
   summary?: string;
-  rawRef?: ValueRef;
+  rawRef?: Ref;
 }
 
 export interface AgentRunResult<T extends KernelValue = KernelValue> extends RunResult<T> {
@@ -712,7 +715,7 @@ export interface CommandCallAgentOptions {
    */
   agent?: DownstreamAgentSelection;
   stream?: boolean;
-  refs?: Record<string, CellRef | ValueRef>;
+  refs?: Record<string, RunRef | Ref>;
   promptInput?: PromptInput;
 }
 

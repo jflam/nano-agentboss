@@ -18,7 +18,7 @@ import {
   type PreCommitChecksResult,
   type PreCommitChecksFreshRunReason,
 } from "../../procedures/nanoboss/test-cache-lib.ts";
-import type { ProcedureApi, RunResult, ValueRef } from "../../src/core/types.ts";
+import type { ProcedureApi, Ref, RunResult } from "../../src/core/types.ts";
 
 describe("pre-commit test cache helper", () => {
   test("returns the same fingerprint for the same workspace state", () => {
@@ -436,9 +436,9 @@ describe("nanoboss/pre-commit-checks procedure", () => {
       async runAgent(prompt) {
         calls.push(prompt);
         return {
-          cell: { sessionId: "session", cellId: "agent" },
+          run: { sessionId: "session", runId: "agent" },
           data: "Applied focused fixes.\n",
-          dataRef: makeValueRef("agent"),
+          dataRef: makeRef("agent"),
         } satisfies RunResult<string>;
       },
     }));
@@ -558,9 +558,9 @@ describe("nanoboss/pre-commit-checks procedure", () => {
         async runAgent(prompt) {
           calls.push(prompt);
           return {
-            cell: { sessionId: "session", cellId: "agent" },
+            run: { sessionId: "session", runId: "agent" },
             data: "Applied focused fixes.\n",
-            dataRef: makeValueRef("agent"),
+            dataRef: makeRef("agent"),
           } satisfies RunResult<string>;
         },
       }),
@@ -642,16 +642,16 @@ describe("nanoboss/commit procedure", () => {
         async runProcedure(name, prompt) {
           calls.push(`procedure:${name}:${prompt}`);
           return {
-            cell: { sessionId: "session", cellId: "checks" },
+            run: { sessionId: "session", runId: "checks" },
             data: passingChecks({ cacheHit: false }),
           } satisfies RunResult<PreCommitChecksResult>;
         },
         async runAgent(prompt) {
           calls.push(`agent:${prompt}`);
           return {
-            cell: { sessionId: "session", cellId: "agent" },
+            run: { sessionId: "session", runId: "agent" },
             data: "committed\n",
-            dataRef: makeValueRef("agent"),
+            dataRef: makeRef("agent"),
           } satisfies RunResult<string>;
         },
       }),
@@ -680,16 +680,16 @@ describe("nanoboss/commit procedure", () => {
         cwd: "/repo",
         async runProcedure() {
           return {
-            cell: { sessionId: "session", cellId: "checks" },
+            run: { sessionId: "session", runId: "checks" },
             data: passingChecks({ passed: false, exitCode: 2 }),
           } satisfies RunResult<PreCommitChecksResult>;
         },
         async runAgent() {
           agentCalled = true;
           return {
-            cell: { sessionId: "session", cellId: "agent" },
+            run: { sessionId: "session", runId: "agent" },
             data: "unexpected",
-            dataRef: makeValueRef("agent"),
+            dataRef: makeRef("agent"),
           } satisfies RunResult<string>;
         },
       }),
@@ -718,16 +718,16 @@ describe("nanoboss/commit procedure", () => {
         async runProcedure(name, prompt) {
           calls.push(`procedure:${name}:${prompt}`);
           return {
-            cell: { sessionId: "session", cellId: "checks" },
+            run: { sessionId: "session", runId: "checks" },
             data: passingChecks({ cacheHit: true }),
           } satisfies RunResult<PreCommitChecksResult>;
         },
         async runAgent(prompt) {
           calls.push(`agent:${prompt}`);
           return {
-            cell: { sessionId: "session", cellId: "agent" },
+            run: { sessionId: "session", runId: "agent" },
             data: "committed\n",
-            dataRef: makeValueRef("agent"),
+            dataRef: makeRef("agent"),
           } satisfies RunResult<string>;
         },
       }),
@@ -748,16 +748,16 @@ describe("nanoboss/commit procedure", () => {
         async runProcedure(name, prompt) {
           calls.push(`procedure:${name}:${prompt}`);
           return {
-            cell: { sessionId: "session", cellId: "checks" },
+            run: { sessionId: "session", runId: "checks" },
             data: passingChecks({ cacheHit: true }),
           } satisfies RunResult<PreCommitChecksResult>;
         },
         async runAgent(prompt) {
           calls.push(`agent:${prompt}`);
           return {
-            cell: { sessionId: "session", cellId: "agent" },
+            run: { sessionId: "session", runId: "agent" },
             data: "committed\n",
-            dataRef: makeValueRef("agent"),
+            dataRef: makeRef("agent"),
           } satisfies RunResult<string>;
         },
       }),
@@ -777,16 +777,16 @@ describe("nanoboss/commit procedure", () => {
         cwd: "/repo",
         async runProcedure() {
           return {
-            cell: { sessionId: "session", cellId: "checks" },
+            run: { sessionId: "session", runId: "checks" },
             data: passingChecks({ cacheHit: true }),
           } satisfies RunResult<PreCommitChecksResult>;
         },
         async runAgent(prompt) {
           calls.push(prompt);
           return {
-            cell: { sessionId: "session", cellId: "agent" },
+            run: { sessionId: "session", runId: "agent" },
             data: "committed\n",
-            dataRef: makeValueRef("agent"),
+            dataRef: makeRef("agent"),
           } satisfies RunResult<string>;
         },
       }),
@@ -920,11 +920,11 @@ function passingChecks(
   };
 }
 
-function makeValueRef(cellId: string): ValueRef {
+function makeRef(runId: string): Ref {
   return {
-    cell: {
+    run: {
       sessionId: "session",
-      cellId,
+      runId,
     },
     path: "data",
   };

@@ -3,6 +3,7 @@ import { shouldLoadDiskCommands } from "../core/runtime-mode.ts";
 import type {
   CellDescendantsOptions,
   DownstreamAgentSelection,
+  KernelValue,
   ProcedureMetadata,
   Ref,
   ProcedureRegistryLike,
@@ -63,7 +64,7 @@ export class NanobossRuntimeService {
 
   refRead(ref: Ref): unknown {
     const valueRef = valueRefFromRef(ref);
-    return publicKernelValueFromStored(this.createStoreForRef(ref).readRef(valueRef));
+    return publicKernelValueFromStored(this.createStoreForRef(ref).readRef(valueRef) as KernelValue);
   }
 
   refStat(ref: Ref) {

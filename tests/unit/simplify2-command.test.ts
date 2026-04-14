@@ -707,9 +707,9 @@ describe("simplify2 procedure", () => {
       ], [], {
         procedureResults: [
           {
-            cell: {
+            run: {
               sessionId: "test-session",
-              cellId: "procedure-commit",
+              runId: "procedure-commit",
             },
             data: {
               checks: {
@@ -1336,9 +1336,9 @@ function createMockContext(
       throw new Error(`Unexpected callAgent #${callCount}`);
     }
     return {
-      cell: {
+      run: {
         sessionId: "test-session",
-        cellId: `agent-${callCount}`,
+        runId: `agent-${callCount}`,
       },
       data: next,
     } as RunResult;
@@ -1346,16 +1346,16 @@ function createMockContext(
   const callProcedure = (async (name: string, prompt: string) => {
     options.procedureCalls?.push({ name, prompt });
     const next = options.procedureResults?.shift();
-    if (typeof next === "object" && next !== null && "cell" in next) {
+    if (typeof next === "object" && next !== null && "run" in next) {
       return next as RunResult;
     }
 
     if (next !== undefined) {
       procedureCallCount += 1;
       return {
-        cell: {
+        run: {
           sessionId: "test-session",
-          cellId: `procedure-${procedureCallCount}`,
+          runId: `procedure-${procedureCallCount}`,
         },
         data: next,
       } as RunResult;
@@ -1364,18 +1364,18 @@ function createMockContext(
     if (name === "nanoboss/commit") {
       procedureCallCount += 1;
       return {
-        cell: {
+        run: {
           sessionId: "test-session",
-          cellId: `procedure-${procedureCallCount}`,
+          runId: `procedure-${procedureCallCount}`,
         },
         data: {
           checks: {
             passed: true,
           },
           commit: {
-            cell: {
+            run: {
               sessionId: "test-session",
-              cellId: `commit-${procedureCallCount}`,
+              runId: `commit-${procedureCallCount}`,
             },
             path: "output.data",
           },

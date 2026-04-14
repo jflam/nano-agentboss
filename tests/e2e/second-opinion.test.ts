@@ -4,13 +4,13 @@ import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { SessionStore } from "../../src/session/index.ts";
-import type { ValueRef } from "../../src/core/types.ts";
+import type { Ref } from "../../src/core/types.ts";
 import { describeE2E } from "./helpers.ts";
 
 interface SecondOpinionData {
   subject: string;
-  answer: ValueRef;
-  critique: ValueRef;
+  answer: Ref;
+  critique: Ref;
   verdict: "sound" | "mixed" | "flawed";
 }
 

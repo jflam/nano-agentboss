@@ -9,6 +9,7 @@ import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledErr
 import { resolveDownstreamAgentConfig } from "./config.ts";
 import { formatErrorMessage } from "./error-format.ts";
 import type { RunLogger } from "./logger.ts";
+import { toPublicRunResult } from "./run-result.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "./timing-trace.ts";
 import type { ContextSessionApiImpl } from "./context-session.ts";
 import type { SessionUpdateEmitter } from "./context-shared.ts";
@@ -20,9 +21,12 @@ import type {
   CommandCallAgentOptions,
   DownstreamAgentSelection,
   KernelValue,
+  Ref,
   RunResult,
+  RunRef,
   TypeDescriptor,
 } from "./types.ts";
+import { cellRefFromRunRef, publicKernelValueFromStored, runRecordFromCellRecord, valueRefFromRef } from "./types.ts";
 
 type ActiveCell = ReturnType<SessionStore["startCell"]>;
 
@@ -139,6 +143,7 @@ export class AgentRunRecorder {
       stream: params.streamText ? collectTextSessionUpdates(params.updates) : undefined,
       raw: params.raw,
     });
+    const publicResult = toPublicRunResult(finalized);
 
     this.params.logger.write({
       spanId: started.childSpanId,
@@ -164,8 +169,8 @@ export class AgentRunRecorder {
           },
         },
         rawOutput: {
-          cell: finalized.cell,
-          dataRef: finalized.dataRef,
+          run: publicResult.run,
+          dataRef: publicResult.dataRef,
           durationMs: params.durationMs,
           logFile: params.logFile,
           expandedContent: params.raw,
@@ -174,7 +179,7 @@ export class AgentRunRecorder {
       });
     }
 
-    return finalized;
+    return publicResult;
   }
 
   fail(
@@ -391,7 +396,7 @@ function isTypeDescriptor<T>(value: unknown): value is TypeDescriptor<T> {
 
 function resolveNamedRefs(
   store: SessionStore,
-  refs: Record<string, { sessionId: string; cellId: string } | { cell: { sessionId: string; cellId: string }; path: string }> | undefined,
+  refs: Record<string, RunRef | Ref> | undefined,
 ): Record<string, unknown> | undefined {
   if (!refs || Object.keys(refs).length === 0) {
     return undefined;
@@ -400,12 +405,14 @@ function resolveNamedRefs(
   return Object.fromEntries(
     Object.entries(refs).map(([name, ref]) => [
       name,
-      isValueRef(ref) ? store.readRef(ref) : store.readCell(ref),
+      isRef(ref)
+        ? publicKernelValueFromStored(store.readRef(valueRefFromRef(ref)) as KernelValue)
+        : runRecordFromCellRecord(ref.sessionId, store.readCell(cellRefFromRunRef(ref))),
     ]),
   );
 }
 
-function isValueRef(value: { sessionId: string; cellId: string } | { cell: { sessionId: string; cellId: string }; path: string }): value is { cell: { sessionId: string; cellId: string }; path: string } {
+function isRef(value: RunRef | Ref): value is Ref {
   return "path" in value;
 }
 

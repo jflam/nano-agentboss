@@ -17,6 +17,7 @@ import {
 import { buildAgentRuntimeSessionRuntime } from "./runtime-capability.ts";
 import { RunCancelledError, defaultCancellationMessage } from "../core/cancellation.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
+import { toPublicRunResult } from "../core/run-result.ts";
 import { SessionStore } from "../session/index.ts";
 import { collectTokenSnapshot, enrichToolCallUpdateWithTokenUsage } from "./token-metrics.ts";
 import type {
@@ -66,9 +67,10 @@ export async function callAgent<T = string>(
     stream: collectTextSessionUpdates(result.updates),
     raw: result.raw,
   });
+  const publicResult = toPublicRunResult(finalized);
 
   return {
-    ...finalized,
+    ...publicResult,
     durationMs: result.durationMs,
     raw: result.raw,
     logFile: result.logFile,

@@ -66,9 +66,9 @@ describe("procedure API surface", () => {
     Reflect.set(ctx.agent as object, "run", async (...args: unknown[]) => {
       captured.push(args);
       return {
-        cell: {
+        run: {
           sessionId: "session",
-          cellId: "agent-2",
+          runId: "agent-2",
         },
         data: "bound",
       };

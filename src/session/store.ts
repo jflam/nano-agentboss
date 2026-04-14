@@ -20,9 +20,10 @@ import type {
   PromptImagePart,
   PromptImageSummary,
   PromptInput,
+  ProcedurePause,
   ProcedureResult,
   RefStat,
-  RunResult,
+  RunRef,
   TopLevelRunsOptions,
   ValueRef,
 } from "../core/types.ts";
@@ -56,6 +57,19 @@ interface FinalizeCellOptions {
   raw?: string;
   replayEvents?: PersistedFrontendEvent[];
   meta?: Partial<CellRecord["meta"]>;
+}
+
+export interface StoredRunResult<T extends KernelValue = KernelValue> {
+  run: RunRef;
+  cell: CellRef;
+  data?: T;
+  dataRef?: ValueRef;
+  displayRef?: ValueRef;
+  streamRef?: ValueRef;
+  pause?: ProcedurePause;
+  pauseRef?: ValueRef;
+  summary?: string;
+  rawRef?: ValueRef;
 }
 
 const STALE_ATTACHMENT_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -148,7 +162,7 @@ export class SessionStore {
     draft: CellDraft,
     result: ProcedureResult<T>,
     options: FinalizeCellOptions = {},
-  ): RunResult<T> {
+  ): StoredRunResult<T> {
     const stream = draft.streamChunks.join("") || options.stream;
     const display = result.display ?? options.display ?? options.raw;
     const summary = result.summary ?? options.summary ?? (

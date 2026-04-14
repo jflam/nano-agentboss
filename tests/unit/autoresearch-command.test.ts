@@ -672,9 +672,9 @@ function createMockContext(
   const callAgent = (async (prompt: string) => {
     callCount += 1;
     return {
-      cell: {
+      run: {
         sessionId: options.sessionId ?? "test-session",
-        cellId: `agent-${callCount}`,
+        runId: `agent-${callCount}`,
       },
       data: await handler(prompt, callCount),
     } as RunResult;

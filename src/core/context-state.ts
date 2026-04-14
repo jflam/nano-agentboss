@@ -1,15 +1,25 @@
 import type {
-  CellAncestorsOptions,
-  CellDescendantsOptions,
-  CellRef,
+  KernelValue,
+  Ref,
   RefsApi,
+  RunAncestorsOptions,
+  RunDescendantsOptions,
+  RunRef,
+  RunRecord,
+  RunSummary,
   SessionRecentOptions,
   StateApi,
   StateRunsApi,
   TopLevelRunsOptions,
-  ValueRef,
 } from "./types.ts";
 import type { SessionStore } from "../session/index.ts";
+import {
+  cellRefFromRunRef,
+  publicKernelValueFromStored,
+  runRecordFromCellRecord,
+  runSummaryFromCellSummary,
+  valueRefFromRef,
+} from "./types.ts";
 
 export class CommandRefs implements RefsApi {
   constructor(
@@ -17,16 +27,16 @@ export class CommandRefs implements RefsApi {
     private readonly cwd: string,
   ) {}
 
-  async read<T>(valueRef: ValueRef): Promise<T> {
-    return this.store.readRef(valueRef) as T;
+  async read<T>(ref: Ref): Promise<T> {
+    return publicKernelValueFromStored(this.store.readRef(valueRefFromRef(ref)) as KernelValue) as T;
   }
 
-  async stat(valueRef: ValueRef) {
-    return this.store.statRef(valueRef);
+  async stat(ref: Ref) {
+    return this.store.statRef(valueRefFromRef(ref));
   }
 
-  async writeToFile(valueRef: ValueRef, path: string): Promise<void> {
-    this.store.writeRefToFile(valueRef, path, this.cwd);
+  async writeToFile(ref: Ref, path: string): Promise<void> {
+    this.store.writeRefToFile(valueRefFromRef(ref), path, this.cwd);
   }
 }
 
@@ -36,42 +46,44 @@ export class CommandRuns implements StateRunsApi {
     private readonly currentCellId: string,
   ) {}
 
-  async recent(options?: SessionRecentOptions) {
+  async recent(options?: SessionRecentOptions): Promise<RunSummary[]> {
     return this.store.recent({
       ...options,
       excludeCellId: this.currentCellId,
-    });
+    }).map(runSummaryFromCellSummary);
   }
 
-  async latest(options?: SessionRecentOptions) {
-    return this.store.latest({
+  async latest(options?: SessionRecentOptions): Promise<RunSummary | undefined> {
+    const summary = this.store.latest({
       ...options,
       excludeCellId: this.currentCellId,
     });
+    return summary ? runSummaryFromCellSummary(summary) : undefined;
   }
 
-  async topLevelRuns(options?: TopLevelRunsOptions) {
-    return this.store.topLevelRuns(options);
+  async topLevelRuns(options?: TopLevelRunsOptions): Promise<RunSummary[]> {
+    return this.store.topLevelRuns(options).map(runSummaryFromCellSummary);
   }
 
-  async get(cellRef: CellRef) {
-    return this.store.readCell(cellRef);
+  async get(run: RunRef): Promise<RunRecord> {
+    return runRecordFromCellRecord(this.store.sessionId, this.store.readCell(cellRefFromRunRef(run)));
   }
 
-  async parent(cellRef: CellRef) {
-    return this.store.parent(cellRef);
+  async parent(run: RunRef): Promise<RunSummary | undefined> {
+    const summary = this.store.parent(cellRefFromRunRef(run));
+    return summary ? runSummaryFromCellSummary(summary) : undefined;
   }
 
-  async children(cellRef: CellRef, options?: Omit<CellDescendantsOptions, "maxDepth">) {
-    return this.store.children(cellRef, options);
+  async children(run: RunRef, options?: Omit<RunDescendantsOptions, "maxDepth">): Promise<RunSummary[]> {
+    return this.store.children(cellRefFromRunRef(run), options).map(runSummaryFromCellSummary);
   }
 
-  async ancestors(cellRef: CellRef, options?: CellAncestorsOptions) {
-    return this.store.ancestors(cellRef, options);
+  async ancestors(run: RunRef, options?: RunAncestorsOptions): Promise<RunSummary[]> {
+    return this.store.ancestors(cellRefFromRunRef(run), options).map(runSummaryFromCellSummary);
   }
 
-  async descendants(cellRef: CellRef, options?: CellDescendantsOptions) {
-    return this.store.descendants(cellRef, options);
+  async descendants(run: RunRef, options?: RunDescendantsOptions): Promise<RunSummary[]> {
+    return this.store.descendants(cellRefFromRunRef(run), options).map(runSummaryFromCellSummary);
   }
 }
 

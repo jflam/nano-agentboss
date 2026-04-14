@@ -6,10 +6,10 @@ import {
 import { createTextPromptInput } from "../core/prompt.ts";
 import type { DefaultConversationSession } from "../agent/default-session.ts";
 import { buildProcedureExecutionResult, type ProcedureExecutionResult } from "./runner.ts";
-import { createValueRef, type SessionStore } from "../session/index.ts";
+import type { SessionStore } from "../session/index.ts";
 import { inferDataShape } from "../core/data-shape.ts";
 import type { AgentTokenUsage, CellRecord, DownstreamAgentConfig, Ref } from "../core/types.ts";
-import { refFromValueRef } from "../core/types.ts";
+import { createRef } from "../core/types.ts";
 import { summarizeText } from "../util/text.ts";
 
 export function isProcedureDispatchTimeout(message: string | undefined): boolean {
@@ -92,13 +92,12 @@ export function procedureDispatchResultFromRecoveredCell(sessionId: string, cell
 }
 
 export function buildRecoveredProcedureSyncPrompt(sessionId: string, cell: CellRecord): string {
-  const cellRef = { sessionId, cellId: cell.cellId };
   const run = { sessionId, runId: cell.cellId };
   const dataRef = cell.output.data !== undefined
-    ? refFromValueRef(createValueRef(cellRef, "output.data"))
+    ? createRef(run, "output.data")
     : undefined;
   const displayRef = cell.output.display !== undefined
-    ? refFromValueRef(createValueRef(cellRef, "output.display"))
+    ? createRef(run, "output.display")
     : undefined;
   const dataShape = cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined;
 
