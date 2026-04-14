@@ -236,7 +236,7 @@ describe("ProcedureRegistry", () => {
         '  name: "guided",',
         '  description: "guided command",',
         '  inputHint: "what to do",',
-        '  executionMode: "defaultConversation",',
+        '  executionMode: "agentSession",',
         '  async execute() { return "guided"; },',
         "};",
       ].join("\n"),
@@ -259,7 +259,7 @@ describe("ProcedureRegistry", () => {
         name: "guided",
         description: "guided command",
         inputHint: "what to do",
-        executionMode: "defaultConversation" as const,
+        executionMode: "agentSession" as const,
         supportsResume: false,
       },
     ] as const;

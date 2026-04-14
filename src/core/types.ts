@@ -508,7 +508,7 @@ export interface AgentSession {
   close(): void;
 }
 
-export type ProcedureExecutionMode = "defaultConversation" | "harness";
+export type ProcedureExecutionMode = "agentSession" | "harness";
 
 export interface ProcedureMetadata {
   name: string;
@@ -561,11 +561,11 @@ export interface CommandCallAgentOptions {
 
 export interface CommandCallProcedureOptions {
   /**
-   * Default-conversation binding for the invoked procedure.
+   * Agent-session binding for the invoked procedure.
    *
-   * - "inherit" keeps the caller's current default-conversation binding.
-   * - "default" rebinds the child procedure to the top-level/master default conversation.
-   * - "fresh" gives the child procedure a private default conversation and private default-agent selection state.
+   * - "inherit" keeps the caller's current agent-session binding.
+   * - "default" rebinds the child procedure to the top-level/master agent session.
+   * - "fresh" gives the child procedure a private agent session and private default-agent selection state.
    *
    * Defaults to "inherit" so nested procedures preserve the caller's session behavior unless explicitly changed.
    */

@@ -284,7 +284,7 @@ function looksLikeResumableProcedureModule(source: string): boolean {
 }
 
 function parseExecutionMode(value: string | undefined): ProcedureExecutionMode | undefined {
-  if (value === "defaultConversation" || value === "harness") {
+  if (value === "agentSession" || value === "harness") {
     return value;
   }
 
@@ -421,4 +421,3 @@ async function withTemporarySymlink<T>(targetPath: string, sourcePath: string, r
     }
   }
 }
-
