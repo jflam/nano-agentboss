@@ -4,6 +4,7 @@ import { join } from "node:path";
 import typia from "typia";
 
 import { formatErrorMessage } from "../core/error-format.ts";
+import { detectRepoRoot } from "../core/procedure-paths.ts";
 import { expectData } from "../core/run-result.ts";
 import { jsonType } from "../core/types.ts";
 import { normalizeProcedureName, resolveProcedureImportPrefix } from "./names.ts";
@@ -33,10 +34,12 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
   return {
     ...CREATE_PROCEDURE_METADATA,
     async execute(prompt, ctx) {
-      const examples = loadExamples();
+      const examples = loadExamples(ctx.cwd);
       const generated = await ctx.agent.run(
         [
           "You are generating a nanoboss procedure.",
+          "Return exactly one JSON object matching the requested schema.",
+          "Do not include markdown fences, explanations, or prose outside the JSON object.",
           "",
            "A procedure is a TypeScript module that exports a default object with:",
            '- `name: string`',
@@ -47,7 +50,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           "The procedure API provides:",
           "- `ctx.agent.run(prompt)` for untyped downstream calls returning RunResult<string> from a fresh isolated ACP session",
           "- `ctx.agent.run(prompt, descriptor)` for typed downstream calls returning RunResult<T> from a fresh isolated ACP session",
-          "- `ctx.agent.run(prompt, { session: \"default\" })` to continue the current nanoboss session's default ACP conversation",
+          "- `ctx.agent.run(prompt, { session: \"default\" })` to continue the current nanoboss session's default agent session",
           "- `ctx.agent.run(prompt, descriptor, { session: \"default\" })` when you need typed JSON output while continuing the current conversation",
           "- `ctx.agent.run(prompt, { agent: { provider, model }, refs, session })` to choose a downstream agent, pass named refs, and explicitly select fresh vs default session behavior",
           "- `ctx.procedures.run(name, prompt)` for composing procedures and getting RunResult<T> while inheriting the current agent-session binding",
@@ -57,7 +60,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           "- `ctx.state.refs.read(...)` and `ctx.state.refs.writeToFile(...)` for durable references",
           "- `ctx.ui.text(text)` to stream progress back to the CLI and `ctx.ui.info|warning|error|status|card` for structured procedure output",
           "- `ctx.session.getDefaultAgentConfig()` and `ctx.session.setDefaultAgentSelection(...)` to inspect or change the session's default downstream agent",
-          "- `ctx.session.getDefaultAgentTokenUsage()` when a procedure needs the latest live default-session token metrics",
+          "- `ctx.session.getDefaultAgentTokenUsage()` when a procedure needs the latest live default agent-session token metrics",
           "- `ctx.assertNotCancelled()` to cooperatively stop long-running work at safe checkpoints",
           `- \`ctx.cwd\` for the current working directory (${ctx.cwd})`,
           "",
@@ -77,8 +80,9 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
             "- put a short discovery string in `summary`",
            "- set `pause: { question, state, inputHint?, suggestedReplies? }` when the procedure should ask the user an open-ended follow-up and resume on the next plain-text reply",
             "",
-           "Generated procedures are persisted at `procedures/<name>.ts` for unscoped names and `procedures/<package>/<leaf>.ts` for scoped names.",
-           "When you need nanoboss runtime imports from src/, use a relative path from that persisted file location, for example `../src/core/types.ts` for `/review` and `../../src/core/types.ts` for `/kb/answer`.",
+           "Generated procedures are persisted at `.nanoboss/procedures/<name>.ts` for unscoped names and `.nanoboss/procedures/<package>/<leaf>.ts` for scoped names.",
+           "When you need nanoboss runtime imports from src/, use a relative path from that persisted file location, for example `../../src/core/types.ts` for `/review` and `../../../src/core/types.ts` for `/kb/answer`.",
+           "If you import helpers from src/, keep the path explicit with a `.ts` extension.",
            "",
            "Use existing built-in procedures as style references:",
           examples,
@@ -88,6 +92,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           "Return the procedure name and full TypeScript source.",
         ].join("\n"),
         GeneratedProcedureType,
+        { stream: false },
       );
       const generatedData: GeneratedProcedure = expectData(
         generated,
@@ -107,19 +112,19 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           procedure: procedure.name,
           filePath,
         },
-        display: `Created procedure /${procedure.name} at ${filePath}`,
+        display: `Created and loaded procedure /${procedure.name} at ${filePath}`,
         summary: `create: /${procedure.name}`,
       };
     },
   };
 }
 
-function loadExamples(): string {
-  const cwd = process.cwd();
+function loadExamples(cwd: string): string {
+  const examplesRoot = detectRepoRoot(cwd) ?? cwd;
   const examples = ["research.ts", "kb/refresh.ts"]
     .map((file) => {
       try {
-        return `// ${file}\n${readFileSync(join(cwd, "procedures", file), "utf8")}`;
+        return `// ${file}\n${readFileSync(join(examplesRoot, "procedures", file), "utf8")}`;
       } catch {
         return "";
       }
