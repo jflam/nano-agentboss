@@ -1,0 +1,1199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>A Jedi Builds His Own Lightsaber - nanoboss</title>
+  <style>
+    :root {
+      --bg: #05070b;
+      --bg-2: #0b1018;
+      --panel: rgba(12, 17, 25, 0.84);
+      --panel-strong: rgba(16, 22, 32, 0.94);
+      --panel-soft: rgba(16, 23, 34, 0.74);
+      --text: #f7f1e7;
+      --muted: #ccbda6;
+      --soft: #9b8e7a;
+      --line: rgba(255, 198, 112, 0.22);
+      --amber: #ffb347;
+      --amber-2: #ffd47c;
+      --ice: #8be4ff;
+      --ice-2: #4fb6ff;
+      --good: #92e08d;
+      --warn: #ffcc80;
+      --danger: #ff9aa2;
+      --shadow: 0 30px 90px rgba(0, 0, 0, 0.48);
+      --radius: 24px;
+      --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background:
+        radial-gradient(circle at 18% 16%, rgba(255, 179, 71, 0.22), transparent 26%),
+        radial-gradient(circle at 78% 0%, rgba(79, 182, 255, 0.16), transparent 22%),
+        radial-gradient(circle at 72% 72%, rgba(255, 212, 124, 0.08), transparent 24%),
+        linear-gradient(135deg, #030406, var(--bg) 38%, var(--bg-2));
+      color: var(--text);
+      overflow: hidden;
+      font-family: var(--sans);
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: auto;
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(0.4px);
+    }
+
+    body::before {
+      top: 0;
+      left: 12vw;
+      width: 1px;
+      height: 100vh;
+      background: linear-gradient(180deg, transparent, rgba(255, 179, 71, 0.28), transparent);
+      box-shadow: 0 0 18px rgba(255, 179, 71, 0.4);
+    }
+
+    body::after {
+      top: 0;
+      right: 18vw;
+      width: 1px;
+      height: 100vh;
+      background: linear-gradient(180deg, transparent, rgba(79, 182, 255, 0.24), transparent);
+      box-shadow: 0 0 18px rgba(79, 182, 255, 0.35);
+    }
+
+    .deck {
+      position: relative;
+      height: 100vh;
+      width: 100vw;
+      z-index: 1;
+    }
+
+    .progress {
+      position: fixed;
+      inset: 0 0 auto 0;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      z-index: 60;
+    }
+
+    .progress > div {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--amber), var(--ice));
+      box-shadow: 0 0 22px rgba(255, 179, 71, 0.45);
+      transition: width 180ms ease;
+    }
+
+    .hud {
+      position: fixed;
+      top: 16px;
+      right: 18px;
+      z-index: 60;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(9, 12, 18, 0.74);
+      color: var(--muted);
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 52px 58px 60px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 22px;
+      opacity: 0;
+      transform: translateX(46px) scale(0.985);
+      transition: opacity 240ms ease, transform 240ms ease;
+      pointer-events: none;
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .eyebrow {
+      margin-bottom: 10px;
+      color: var(--amber-2);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      font-family: var(--serif);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    h1 {
+      font-size: 70px;
+      line-height: 0.96;
+      max-width: 980px;
+    }
+
+    h2 {
+      font-size: 46px;
+      line-height: 1.02;
+      max-width: 1100px;
+    }
+
+    h3 {
+      font-size: 21px;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      max-width: 1040px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1.38;
+    }
+
+    .content {
+      min-height: 0;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 18px;
+      min-height: 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .rows {
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel {
+      min-width: 0;
+      padding: 20px 22px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(22, 29, 41, 0.9), rgba(10, 14, 22, 0.88)),
+        linear-gradient(135deg, rgba(255, 179, 71, 0.08), transparent 48%);
+      box-shadow: var(--shadow);
+    }
+
+    .panel.soft {
+      background: linear-gradient(180deg, rgba(18, 24, 35, 0.72), rgba(9, 13, 21, 0.82));
+    }
+
+    .lead {
+      font-size: 30px;
+      line-height: 1.26;
+      max-width: 1080px;
+      color: #fff7ec;
+    }
+
+    .quote {
+      font-family: var(--serif);
+      font-size: 38px;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      max-width: 1160px;
+    }
+
+    .quote strong {
+      color: var(--amber-2);
+    }
+
+    .bullets {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .bullets li {
+      margin: 8px 0;
+      line-height: 1.4;
+      color: #f2eadc;
+    }
+
+    .bullets li::marker {
+      color: var(--ice);
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.04);
+      color: #f7efe4;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .chip.amber { border-color: rgba(255, 179, 71, 0.34); color: #ffe3b8; }
+    .chip.ice { border-color: rgba(79, 182, 255, 0.34); color: #d6f4ff; }
+    .chip.good { border-color: rgba(146, 224, 141, 0.34); color: #ddffd8; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .stat {
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(18, 24, 35, 0.94), rgba(10, 14, 22, 0.9));
+    }
+
+    .stat .n {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: #fff8ec;
+      margin-bottom: 6px;
+    }
+
+    .stat .l {
+      color: var(--soft);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .flow {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .flow-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+
+    .node {
+      min-height: 92px;
+      padding: 15px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 198, 112, 0.18);
+      background: linear-gradient(180deg, rgba(21, 28, 40, 0.96), rgba(11, 15, 23, 0.92));
+    }
+
+    .node strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 6px;
+      color: #fff4e1;
+    }
+
+    .node span {
+      display: block;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.36;
+    }
+
+    .arrow {
+      text-align: center;
+      color: var(--ice);
+      font-size: 24px;
+    }
+
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+    }
+
+    .pillar {
+      padding: 16px 14px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(21, 29, 41, 0.95), rgba(10, 14, 21, 0.9));
+      border: 1px solid rgba(255, 198, 112, 0.15);
+    }
+
+    .pillar .k {
+      color: var(--amber-2);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .pillar .v {
+      font-size: 18px;
+      line-height: 1.2;
+      margin-bottom: 8px;
+      color: #fff7ea;
+    }
+
+    .pillar p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.38;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .table th,
+    .table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255, 198, 112, 0.16);
+      text-align: left;
+      vertical-align: top;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    .table th {
+      color: var(--ice);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .code, code, pre {
+      font-family: var(--mono);
+    }
+
+    .code {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(79, 182, 255, 0.2);
+      background: rgba(8, 12, 20, 0.92);
+      color: #d9f2ff;
+      font-size: 14px;
+      line-height: 1.45;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+
+    .callout {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border-left: 4px solid var(--amber);
+      background: rgba(255, 179, 71, 0.08);
+      color: #fff0d3;
+      line-height: 1.42;
+    }
+
+    .callout.ice {
+      border-left-color: var(--ice);
+      background: rgba(79, 182, 255, 0.09);
+      color: #e7f8ff;
+    }
+
+    .callout.good {
+      border-left-color: var(--good);
+      background: rgba(146, 224, 141, 0.1);
+      color: #e9ffe6;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .stack-item {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 14px;
+      align-items: start;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .stack-item .label {
+      color: var(--amber-2);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .stack-item .value {
+      color: var(--muted);
+      line-height: 1.42;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .card {
+      padding: 16px 16px 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 198, 112, 0.15);
+      background: linear-gradient(180deg, rgba(18, 24, 35, 0.94), rgba(10, 14, 22, 0.9));
+    }
+
+    .card .title {
+      font-size: 17px;
+      color: #fff5e7;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.4;
+      font-size: 14px;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 20px;
+      color: var(--soft);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .footer .refs {
+      font-family: var(--mono);
+      white-space: pre-wrap;
+    }
+
+    .nav {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      z-index: 60;
+      display: flex;
+      gap: 8px;
+      padding: 9px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(9, 12, 18, 0.78);
+      backdrop-filter: blur(10px);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      border: 0;
+      padding: 0;
+      background: rgba(255, 255, 255, 0.16);
+      cursor: pointer;
+    }
+
+    .dot.active {
+      background: linear-gradient(90deg, var(--amber), var(--ice));
+    }
+
+    .small {
+      color: var(--soft);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .mono {
+      font-family: var(--mono);
+    }
+
+    .highlight {
+      color: var(--ice);
+    }
+
+    @media (max-width: 1240px) {
+      .slide {
+        padding: 40px 34px 64px;
+      }
+
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .stat-grid,
+      .pillars,
+      .mini-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .flow-row {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow {
+        transform: rotate(90deg);
+      }
+
+      .stack-item {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 52px;
+      }
+
+      h2 {
+        font-size: 36px;
+      }
+
+      .quote {
+        font-size: 30px;
+      }
+    }
+
+    @media print {
+      html, body {
+        overflow: visible;
+        background: white;
+        color: black;
+      }
+
+      body::before,
+      body::after,
+      .progress,
+      .hud,
+      .nav {
+        display: none !important;
+      }
+
+      .deck {
+        height: auto;
+        width: auto;
+      }
+
+      .slide {
+        position: relative;
+        opacity: 1 !important;
+        transform: none !important;
+        pointer-events: auto !important;
+        min-height: 100vh;
+        page-break-after: always;
+        color: black;
+        background: white;
+      }
+
+      .panel,
+      .node,
+      .card,
+      .pillar,
+      .stat,
+      .stack-item,
+      .code,
+      .callout {
+        background: white;
+        color: black;
+        border-color: #bbb;
+        box-shadow: none;
+      }
+
+      .subtitle,
+      .small,
+      .footer,
+      .stat .l,
+      .node span,
+      .card p,
+      .value {
+        color: #444 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress"><div id="progress-bar"></div></div>
+  <div class="hud">
+    <span id="slide-counter">1 / 11</span>
+    <span id="slide-title">Cover</span>
+    <span>&larr; &rarr; navigate</span>
+  </div>
+
+  <main class="deck" id="deck">
+    <section class="slide active" data-title="Cover">
+      <header>
+        <div class="eyebrow">nanoboss architecture deck</div>
+        <h1>A Jedi Builds His Own Lightsaber</h1>
+        <div class="subtitle">nanoboss as a procedure runtime for custom agent workflows, not a one-size-fits-all harness.</div>
+      </header>
+      <div class="content">
+        <div class="quote">The point is not to ship <strong>one universal agent loop</strong>. The point is to give developers a runtime where they can encode their own workflow semantics, their own boundaries, and their own notion of what “good agent behavior” means.</div>
+        <div class="stat-grid">
+          <div class="stat"><div class="n">3</div><div class="l">protocol roles</div></div>
+          <div class="stat"><div class="n">5</div><div class="l">author APIs on ctx</div></div>
+          <div class="stat"><div class="n">1</div><div class="l">durable run graph</div></div>
+          <div class="stat"><div class="n">2026-04-13</div><div class="l">active refactor plan</div></div>
+        </div>
+        <div class="panel">
+          <h3>Talk arc</h3>
+          <ul class="bullets">
+            <li>Why generic harnesses flatten too many real workflow differences</li>
+            <li>How nanoboss is built: sessions, runs, procedures, ACP, MCP, HTTP/SSE</li>
+            <li>Why procedures are the core customization surface</li>
+            <li>How the current refactor direction turns the runtime into cleaner libraries</li>
+          </ul>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Snapshot for talk prep: April 14, 2026.</div>
+        <div class="refs">Evidence: README.md · docs/architecture.md · src/core/service.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Problem">
+      <header>
+        <div class="eyebrow">1 · thesis</div>
+        <h2>One-size-fits-all agent harnesses optimize for demoability, not for developer workflow reality</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>What a generic harness usually assumes</h3>
+          <div class="mini-grid">
+            <div class="card">
+              <div class="title">One memory model</div>
+              <p>Usually a blob of chat history, maybe some vector retrieval, rarely a durable execution tree with refs.</p>
+            </div>
+            <div class="card">
+              <div class="title">One control loop</div>
+              <p>Prompt, tools, answer. That is fine for chat, weak for research loops, validation gates, or resumable workflows.</p>
+            </div>
+            <div class="card">
+              <div class="title">One continuity policy</div>
+              <p>Either always fresh or always persistent. Real systems need both, often inside the same procedure.</p>
+            </div>
+            <div class="card">
+              <div class="title">One success criterion</div>
+              <p>Usually “got an answer.” Developers often need “produced artifacts, passed checks, left provenance.”</p>
+            </div>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>What nanoboss is trying instead</h3>
+          <div class="callout">Treat workflow logic as code, not as prompt folklore.</div>
+          <ul class="bullets">
+            <li>Procedures encode domain-specific orchestration in TypeScript.</li>
+            <li>Each procedure chooses its own agent continuity, structure, and validation path.</li>
+            <li>Runs are durable, traversable, and ref-addressable after execution.</li>
+            <li>Agents can inspect that durable state through a stable MCP surface.</li>
+            <li>The runtime is meant to be extended by developers, not merely configured by toggles.</li>
+          </ul>
+          <div class="chip-row">
+            <div class="chip amber">custom harnesses</div>
+            <div class="chip ice">durable provenance</div>
+            <div class="chip amber">resumable procedures</div>
+            <div class="chip ice">runtime inspection</div>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>The slogan version: a Jedi does not buy an off-the-shelf lightsaber.</div>
+        <div class="refs">Evidence: procedures/simplify2.ts · procedures/autoresearch/* · procedures/kb/*</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Principle">
+      <header>
+        <div class="eyebrow">2 · design principle</div>
+        <h2>nanoboss is a harness construction kit: the runtime stays small, the workflows get specialized</h2>
+      </header>
+      <div class="content">
+        <div class="pillars">
+          <div class="pillar">
+            <div class="k">Primitive</div>
+            <div class="v">Session</div>
+            <p>The user-facing boundary. Owns cwd, event stream, default agent continuity, and durable history.</p>
+          </div>
+          <div class="pillar">
+            <div class="k">Primitive</div>
+            <div class="v">Run</div>
+            <p>The durable execution node. Top-level runs can contain nested procedure and agent runs.</p>
+          </div>
+          <div class="pillar">
+            <div class="k">Primitive</div>
+            <div class="v">Ref</div>
+            <p>The stable pointer into stored output data. Keeps the runtime ref-heavy instead of copy-heavy.</p>
+          </div>
+          <div class="pillar">
+            <div class="k">Primitive</div>
+            <div class="v">Continuation</div>
+            <p>The pause-and-resume model for long workflows, checkpoints, and human steering.</p>
+          </div>
+          <div class="pillar">
+            <div class="k">Primitive</div>
+            <div class="v">Procedure</div>
+            <p>The authoring abstraction. This is where developers build their lightsaber.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Why this matters</h3>
+          <div class="lead">If the primitives are stable and inspectable, developers can build very different workflows on top of the same runtime: validation-gated commits, resumable architecture simplification, repo-local knowledge pipelines, bounded research loops, or model-selection procedures.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>nanoboss is opinionated about the runtime shape, not about a single universal workflow.</div>
+        <div class="refs">Evidence: src/core/types.ts · src/session/store.ts · src/procedure/runner.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Architecture">
+      <header>
+        <div class="eyebrow">3 · transport stack</div>
+        <h2>Three transport roles, one runtime</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel">
+          <h3>High-level flow</h3>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><strong>Frontend</strong><span>CLI or HTTP client submits prompts and renders live events.</span></div>
+              <div class="arrow">&rarr;</div>
+              <div class="node"><strong>NanobossService</strong><span>Creates sessions, routes commands, handles continuations, cancellation, replay, and dispatch.</span></div>
+              <div class="arrow">&rarr;</div>
+              <div class="node"><strong>Procedure runtime</strong><span>Runs a procedure with <span class="mono">ctx.agent</span>, <span class="mono">ctx.state</span>, <span class="mono">ctx.procedures</span>, <span class="mono">ctx.session</span>, <span class="mono">ctx.ui</span>.</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><strong>Downstream agent</strong><span>Codex, Copilot, Claude, Gemini, or another ACP-capable tool.</span></div>
+              <div class="arrow">&larr;</div>
+              <div class="node"><strong>ACP over stdio</strong><span>Used for agent invocation and default-session reuse.</span></div>
+              <div class="arrow">&rarr;</div>
+              <div class="node"><strong>Global nanoboss MCP</strong><span>Lets agents inspect runs/refs and dispatch procedures through a stable tool plane.</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Why the stack is mixed on purpose</h3>
+          <table class="table">
+            <thead><tr><th>Concern</th><th>Protocol</th><th>Reason</th></tr></thead>
+            <tbody>
+              <tr><td>Frontend UX</td><td>HTTP + SSE</td><td>Natural fit for remote UIs and event streaming.</td></tr>
+              <tr><td>Agent execution</td><td>ACP over stdio</td><td>Matches downstream CLIs and persistent conversation loading.</td></tr>
+              <tr><td>Runtime inspection</td><td>MCP over stdio</td><td>Gives every agent the same durable tool surface for runs, refs, and dispatch.</td></tr>
+            </tbody>
+          </table>
+          <div class="callout ice">This is a key point for the talk: nanoboss does not worship one protocol. It picks the best protocol for each role.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Mixed stack is a feature, not an architectural accident.</div>
+        <div class="refs">Evidence: docs/architecture.md · src/http/server.ts · src/agent/default-session.ts · src/mcp/server.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Run Graph">
+      <header>
+        <div class="eyebrow">4 · durable state</div>
+        <h2>The real runtime artifact is not the chat transcript. It is the session-backed run graph.</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Execution tree</h3>
+          <div class="code">Session
+  top-level run: /simplify2
+    child run: procedure /nanoboss/pre-commit-checks
+    child run: agent call (structured JSON)
+    child run: agent call (default conversation)
+  top-level run: /kb/refresh
+  top-level run: /second-opinion</div>
+          <div class="callout">Each node is persisted by <span class="mono">SessionStore</span>, with summaries, display text, stream text, refs, replay events, and parent linkage.</div>
+        </div>
+        <div class="panel rows">
+          <h3>What this buys you</h3>
+          <ul class="bullets">
+            <li>Agents and procedures can traverse ancestors and descendants, not just “the last message.”</li>
+            <li>Structured outputs can stay durable and small through refs instead of being recopied into prompts.</li>
+            <li>Async procedure dispatch can recover because the underlying run exists independently of one client session.</li>
+            <li>Continuations are first-class because pause state is stored with the run, not hidden in UI state.</li>
+          </ul>
+          <div class="chip-row">
+            <div class="chip amber">top_level</div>
+            <div class="chip amber">procedure</div>
+            <div class="chip amber">agent</div>
+            <div class="chip ice">dataRef</div>
+            <div class="chip ice">displayRef</div>
+            <div class="chip ice">pauseRef</div>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>nanoboss stores work as execution structure, not only as conversation text.</div>
+        <div class="refs">Evidence: src/session/store.ts · src/core/types.ts · src/core/context-state.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Procedure API">
+      <header>
+        <div class="eyebrow">5 · authoring surface</div>
+        <h2>The procedure API is the lightsaber hilt: this is where developers shape workflow behavior</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>What a procedure gets</h3>
+          <div class="stack">
+            <div class="stack-item">
+              <div class="label mono">ctx.agent</div>
+              <div class="value">Invoke a downstream agent fresh or on the session's default conversation, with typed JSON parsing, named refs, and explicit model selection.</div>
+            </div>
+            <div class="stack-item">
+              <div class="label mono">ctx.procedures</div>
+              <div class="value">Compose procedures as child runs while inheriting or overriding session continuity.</div>
+            </div>
+            <div class="stack-item">
+              <div class="label mono">ctx.state</div>
+              <div class="value">Traverse durable run history and read or materialize refs.</div>
+            </div>
+            <div class="stack-item">
+              <div class="label mono">ctx.session</div>
+              <div class="value">Inspect or change the default downstream agent selection and token usage.</div>
+            </div>
+            <div class="stack-item">
+              <div class="label mono">ctx.ui</div>
+              <div class="value">Stream progress, statuses, notices, and cards to the frontend while the procedure runs.</div>
+            </div>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Why this beats a monolithic loop</h3>
+          <div class="code">export default {
+  name: "my-workflow",
+  async execute(prompt, ctx) {
+    const brief = await ctx.agent.run(prompt, { session: "default" });
+    const analysis = await ctx.agent.run(
+      "return structured JSON",
+      ResultType,
+      { session: "fresh", refs: { brief: brief.dataRef } }
+    );
+    const prior = await ctx.state.runs.topLevelRuns({ procedure: "my-workflow", limit: 3 });
+    ctx.ui.status({ phase: "analysis", message: "Validated plan, ready for next step" });
+    return { data: analysis.dataRef, summary: "custom workflow completed" };
+  }
+}</div>
+          <div class="callout good">Fresh vs default vs inherit is not a minor option. It is how the author chooses when continuity helps and when isolation matters.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Procedures are deterministic workflow code wrapped around agentic subcalls.</div>
+        <div class="refs">Evidence: src/core/context.ts · src/core/context-session.ts · src/core/context-procedures.ts · src/core/context-state.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Routing">
+      <header>
+        <div class="eyebrow">6 · control semantics</div>
+        <h2>nanoboss does not just execute commands. It routes plain text, continuations, and harness modes deliberately.</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Prompt routing</h3>
+          <ul class="bullets">
+            <li>If input starts with <span class="mono">/name</span>, nanoboss dispatches that procedure.</li>
+            <li>If input is plain text and a procedure is paused, the reply goes back to that continuation.</li>
+            <li>Otherwise plain text flows to <span class="mono">/default</span>, the persistent master conversation.</li>
+          </ul>
+          <div class="callout">That means the chat surface is only the shell. The real semantics are driven by procedure routing and continuation state.</div>
+        </div>
+        <div class="panel rows">
+          <h3>Execution modes in practice</h3>
+          <table class="table">
+            <thead><tr><th>Mode</th><th>Use when</th><th>Example</th></tr></thead>
+            <tbody>
+              <tr><td><span class="mono">defaultConversation</span></td><td>Conversation continuity is the point.</td><td><span class="mono">/default</span>, brief-building, exploratory dialogue</td></tr>
+              <tr><td><span class="mono">harness</span></td><td>The procedure owns control flow and may call agents internally.</td><td><span class="mono">/simplify2</span>, <span class="mono">/model</span>, dismiss continuation</td></tr>
+              <tr><td><span class="mono">fresh</span> subcalls</td><td>Need isolation, deterministic structure, or validation passes.</td><td>typed JSON extraction, lint analysis, one-shot research subtask</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>This is where nanoboss stops being "slash commands on top of chat" and becomes a control runtime.</div>
+        <div class="refs">Evidence: src/core/service.ts resolveCommand(...) · src/core/types.ts ProcedureExecutionMode</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Procedure Supply Chain">
+      <header>
+        <div class="eyebrow">7 · extension model</div>
+        <h2>Custom workflows are loaded like software, not pasted like prompts</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>How procedures enter the system</h3>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><strong>Built-ins</strong><span>Imported directly in <span class="mono">src/procedure/registry.ts</span>.</span></div>
+              <div class="arrow">&rarr;</div>
+              <div class="node"><strong>Workspace disk procedures</strong><span><span class="mono">./.nanoboss/procedures</span> for repo-specific workflows.</span></div>
+              <div class="arrow">&rarr;</div>
+              <div class="node"><strong>Profile procedures</strong><span><span class="mono">~/.nanoboss/procedures</span> for personal cross-repo tools.</span></div>
+            </div>
+          </div>
+          <div class="callout ice"><span class="mono">/create</span> is important strategically: nanoboss treats procedure authoring as a runtime capability, not a side quest.</div>
+        </div>
+        <div class="panel rows">
+          <h3>What makes the supply chain feel like software</h3>
+          <ul class="bullets">
+            <li>Disk procedures are discovered recursively by static metadata, no manifest required.</li>
+            <li>Procedure modules are compiled with Bun, cached by source-graph hash, and lazy-loaded.</li>
+            <li>Helpers can live alongside entrypoints, so workflows can become packages, not giant single files.</li>
+            <li>The repo and profile procedure roots make custom workflows naturally local or reusable.</li>
+          </ul>
+          <div class="code">discoverDiskProcedures(...)
+loadProcedureFromPath(...)
+persistProcedureSource(...)
+createCreateProcedure(...)</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>The extensibility story is code-first, file-backed, and versionable.</div>
+        <div class="refs">Evidence: src/procedure/registry.ts · src/procedure/disk-loader.ts · src/procedure/create.ts · docs/procedure-packages.md</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Workflow Examples">
+      <header>
+        <div class="eyebrow">8 · concrete workflows</div>
+        <h2>Different procedures embody different theories of agent work</h2>
+      </header>
+      <div class="content grid-4">
+        <div class="card">
+          <div class="title">/simplify2</div>
+          <p>A large harness procedure with observations, hypotheses, checkpoints, apply/reconcile phases, and resumable human decisions.</p>
+        </div>
+        <div class="card">
+          <div class="title">/autoresearch/*</div>
+          <p>A package of repo-local optimization commands with durable state, status, continue, clear, and finalize semantics.</p>
+        </div>
+        <div class="card">
+          <div class="title">/kb/*</div>
+          <p>A compiled knowledge workflow: ingest, compile source pages, compile concepts, link structure, render outputs, answer questions.</p>
+        </div>
+        <div class="card">
+          <div class="title">/nanoboss/commit</div>
+          <p>A validation-gated commit workflow layered on top of pre-commit checks and agent-generated commit context.</p>
+        </div>
+      </div>
+      <div class="content grid-2" style="margin-top:18px">
+        <div class="panel">
+          <h3>Same runtime, different harness semantics</h3>
+          <ul class="bullets">
+            <li><span class="mono">/simplify2</span> is a hypothesis-driven architecture loop.</li>
+            <li><span class="mono">/autoresearch</span> is a bounded optimization process with explicit lifecycle commands.</li>
+            <li><span class="mono">/kb/refresh</span> is a multi-stage data pipeline.</li>
+            <li><span class="mono">/second-opinion</span> is a multi-model critique composition.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Talk line to emphasize</h3>
+          <div class="lead">These are not "the same agent with different prompts." They are different workflow machines built on a shared runtime.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>This is the strongest evidence against one universal harness.</div>
+        <div class="refs">Evidence: procedures/simplify2.ts · procedures/autoresearch/* · procedures/kb/* · procedures/second-opinion.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="MCP and Agents">
+      <header>
+        <div class="eyebrow">9 · agent-facing runtime</div>
+        <h2>The downstream agent is not trapped in the prompt. It gets a controlled runtime via MCP.</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>What the agent can do through the global nanoboss MCP server</h3>
+          <ul class="bullets">
+            <li>List procedures and inspect one procedure's metadata.</li>
+            <li>Start an async procedure dispatch and wait for completion.</li>
+            <li>List top-level or recent runs for a session.</li>
+            <li>Read exact runs, ancestors, descendants, refs, and schemas.</li>
+          </ul>
+          <div class="callout good">This is a powerful architectural move: agents can reason over durable workflow state without scraping files or relying on hidden prompt context.</div>
+        </div>
+        <div class="panel rows">
+          <h3>Why that matters for custom harnesses</h3>
+          <div class="code">Agent session runtime
+  mounts global nanoboss MCP
+  -> agent calls procedure_dispatch_start
+  -> nanoboss background worker executes procedure
+  -> durable run is written to SessionStore
+  -> agent calls procedure_dispatch_wait / get_run / ref_read</div>
+          <div class="small">Nanoboss is effectively giving the model a stable API for the workflow runtime itself.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>The prompt becomes thinner because the runtime becomes richer.</div>
+        <div class="refs">Evidence: src/mcp/server.ts · src/runtime/service.ts · src/procedure/dispatch-jobs.ts · src/agent/runtime-capability.ts</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Refactor Direction">
+      <header>
+        <div class="eyebrow">10 · code for agents</div>
+        <h2>nanoboss is also a testing ground for how agent runtimes should be structured in code</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Current refactor thesis</h3>
+          <div class="callout">The active plan is not "split folders into packages." It is "simplify the ontology first, then extract libraries around the canonical concepts."</div>
+          <table class="table">
+            <thead><tr><th>Concept family</th><th>Why it matters</th></tr></thead>
+            <tbody>
+              <tr><td>Run</td><td>Collapse cell/run/result vocabulary into one execution concept.</td></tr>
+              <tr><td>Session</td><td>Clarify live session state vs durable metadata.</td></tr>
+              <tr><td>Continuation</td><td>Unify pause, pending continuation, suggestions, and UI affordances.</td></tr>
+              <tr><td>Procedure</td><td>Stabilize the authoring abstraction.</td></tr>
+              <tr><td>Agent Session</td><td>Expose continuity as a runtime concept, hide ACP specifics inside transport code.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel rows">
+          <h3>Target library shape</h3>
+          <div class="chip-row">
+            <div class="chip amber">@nanoboss/contracts</div>
+            <div class="chip amber">@nanoboss/store</div>
+            <div class="chip amber">@nanoboss/procedure-sdk</div>
+            <div class="chip amber">@nanoboss/procedure-catalog</div>
+            <div class="chip amber">@nanoboss/procedure-engine</div>
+            <div class="chip ice">@nanoboss/agent-acp</div>
+            <div class="chip ice">@nanoboss/app-runtime</div>
+            <div class="chip ice">@nanoboss/adapters-*</div>
+          </div>
+          <div class="lead">This matters to the talk because it reinforces the same philosophy: do not build around accidental protocol or storage terms; build around the real runtime nouns developers need.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>This is the "nanoboss as research vehicle" part of the story.</div>
+        <div class="refs">Evidence: plans/2026-04-13-library-refactor-plan.md · plans/2026-04-13-nanoboss-nouns-verbs-inventory.md</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Close">
+      <header>
+        <div class="eyebrow">11 · close</div>
+        <h2>What nanoboss is really offering</h2>
+      </header>
+      <div class="content">
+        <div class="quote">Not "here is the agent harness you should all use."<br />Instead: <strong>here is a runtime where you can build the harness your workflow actually needs.</strong></div>
+        <div class="panel">
+          <h3>Closing points</h3>
+          <ul class="bullets">
+            <li>Procedures are the unit of customization.</li>
+            <li>Sessions, runs, refs, and continuations give those procedures durable structure.</li>
+            <li>ACP and MCP are not the product. They are transport choices inside the runtime.</li>
+            <li>The active refactor is trying to make those runtime concepts cleaner, more portable, and more library-like.</li>
+            <li>The lightsaber metaphor works because nanoboss is about crafted workflow identity, not generic agent theater.</li>
+          </ul>
+        </div>
+        <div class="callout ice">If you want one line for the presentation: nanoboss treats agentic workflow as software architecture, not as a prompt preset.</div>
+      </div>
+      <footer class="footer">
+        <div>Presentation file: <span class="mono">docs/nanoboss-lightsaber-presentation.html</span></div>
+        <div class="refs">Built from repo sources on April 14, 2026.</div>
+      </footer>
+    </section>
+  </main>
+
+  <div class="nav" id="nav"></div>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    const progressBar = document.getElementById("progress-bar");
+    const slideCounter = document.getElementById("slide-counter");
+    const slideTitle = document.getElementById("slide-title");
+    const nav = document.getElementById("nav");
+    let current = 0;
+
+    slides.forEach((slide, index) => {
+      const dot = document.createElement("button");
+      dot.className = "dot";
+      dot.type = "button";
+      dot.setAttribute("aria-label", `Go to slide ${index + 1}`);
+      dot.addEventListener("click", () => setSlide(index));
+      nav.appendChild(dot);
+    });
+
+    function setSlide(index) {
+      current = Math.max(0, Math.min(index, slides.length - 1));
+      slides.forEach((slide, i) => slide.classList.toggle("active", i === current));
+      [...nav.children].forEach((dot, i) => dot.classList.toggle("active", i === current));
+      slideCounter.textContent = `${current + 1} / ${slides.length}`;
+      slideTitle.textContent = slides[current].dataset.title || `Slide ${current + 1}`;
+      progressBar.style.width = `${(current / (slides.length - 1 || 1)) * 100}%`;
+      location.hash = `slide-${current + 1}`;
+    }
+
+    function move(delta) {
+      setSlide(current + delta);
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === " ") {
+        event.preventDefault();
+        move(1);
+      } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        move(-1);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        setSlide(0);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        setSlide(slides.length - 1);
+      }
+    });
+
+    const match = location.hash.match(/slide-(\d+)/);
+    const initial = match ? Number(match[1]) - 1 : 0;
+    setSlide(Number.isFinite(initial) ? initial : 0);
+  </script>
+</body>
+</html>
