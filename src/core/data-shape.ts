@@ -1,4 +1,4 @@
-import type { CellRef, JsonValue, ValueRef } from "./types.ts";
+import type { JsonValue, Ref, RunRef } from "./types.ts";
 
 const MAX_DEPTH = 4;
 const MAX_OBJECT_KEYS = 12;
@@ -6,12 +6,12 @@ const MAX_ARRAY_ITEMS = 3;
 const MAX_LITERAL_LENGTH = 24;
 
 export function inferDataShape(value: unknown, depth = 0): JsonValue {
-  if (isCellRef(value)) {
-    return "CellRef";
+  if (isRunRef(value) || isCellRef(value)) {
+    return "RunRef";
   }
 
-  if (isValueRef(value)) {
-    return "ValueRef";
+  if (isRef(value) || isValueRef(value)) {
+    return "Ref";
   }
 
   if (value === null) {
@@ -85,7 +85,7 @@ function inferStringShape(value: string): string {
   return "string";
 }
 
-function isCellRef(value: unknown): value is CellRef {
+function isCellRef(value: unknown): value is { sessionId: string; cellId: string } {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -96,13 +96,37 @@ function isCellRef(value: unknown): value is CellRef {
   );
 }
 
-function isValueRef(value: unknown): value is ValueRef {
+function isValueRef(value: unknown): value is { cell: { sessionId: string; cellId: string }; path: string } {
   return (
     typeof value === "object" &&
     value !== null &&
     "cell" in value &&
     typeof (value as { cell: unknown }).cell === "object" &&
     (value as { cell: unknown }).cell !== null &&
+    "path" in value &&
+    typeof (value as { path: unknown }).path === "string"
+  );
+}
+
+function isRunRef(value: unknown): value is RunRef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sessionId" in value &&
+    typeof (value as { sessionId: unknown }).sessionId === "string" &&
+    "runId" in value &&
+    typeof (value as { runId: unknown }).runId === "string"
+  );
+}
+
+function isRef(value: unknown): value is Ref {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "run" in value &&
+    typeof (value as { run: unknown }).run === "object" &&
+    (value as { run: unknown }).run !== null &&
+    isRunRef((value as { run: unknown }).run) &&
     "path" in value &&
     typeof (value as { path: unknown }).path === "string"
   );

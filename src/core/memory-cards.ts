@@ -1,8 +1,7 @@
 import { inferDataShape, stringifyCompactShape } from "./data-shape.ts";
-import { createValueRef } from "../session/index.ts";
 import type { SessionStore } from "../session/index.ts";
 import type { JsonValue, Ref, RunRef } from "./types.ts";
-import { cellRefFromRunRef, refFromValueRef } from "./types.ts";
+import { cellRefFromRunRef, createRef } from "./types.ts";
 import { summarizeText } from "../util/text.ts";
 
 const DEFAULT_MAX_CARDS = 3;
@@ -68,10 +67,10 @@ export function materializeProcedureMemoryCard(
 
   const memory = deriveProcedureMemory(record.output.memory, record.output.summary, record.output.display);
   const dataRef = record.output.data !== undefined
-    ? refFromValueRef(createValueRef(cell, "output.data"))
+    ? createRef(run, "output.data")
     : undefined;
   const displayRef = record.output.display !== undefined
-    ? refFromValueRef(createValueRef(cell, "output.display"))
+    ? createRef(run, "output.display")
     : undefined;
 
   return {

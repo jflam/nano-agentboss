@@ -7,7 +7,7 @@ import {
   callMcpTool,
   listMcpTools,
 } from "../../src/mcp/server.ts";
-import { refFromValueRef } from "../../src/core/types.ts";
+import { createRef } from "../../src/core/types.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { createNanobossRuntimeService } from "../../src/runtime/service.ts";
 import { SessionStore } from "../../src/session/index.ts";
@@ -251,8 +251,8 @@ describe("nanoboss MCP server", () => {
     expect(recent[0]?.kind).toBe("top_level");
     expect(recent[0]?.dataShape).toEqual({
       subject: "string",
-      plan: "ValueRef",
-      summary: "ValueRef",
+      plan: "Ref",
+      summary: "Ref",
       verdict: "mixed",
     });
 
@@ -306,14 +306,14 @@ describe("nanoboss MCP server", () => {
       runRef: reviewResult.run,
     }) as { output: { summary?: string } }).output.summary).toBe("review summary");
 
-    const reviewDataRef = refFromValueRef(expectDefined(reviewResult.dataRef, "Expected review dataRef"));
+    const reviewDataRef = createRef(reviewResult.run, "output.data");
     const manifest = await callMcpTool(runtime, "ref_read", {
       ref: reviewDataRef,
     });
     expect(manifest).toEqual({
       subject: "review the code",
-      plan: planResult.dataRef ? refFromValueRef(planResult.dataRef) : undefined,
-      summary: summaryResult.dataRef ? refFromValueRef(summaryResult.dataRef) : undefined,
+      plan: planResult.dataRef ? createRef(planResult.run, "output.data") : undefined,
+      summary: summaryResult.dataRef ? createRef(summaryResult.run, "output.data") : undefined,
       verdict: "mixed",
     });
 
@@ -324,7 +324,7 @@ describe("nanoboss MCP server", () => {
     expect(await callMcpTool(runtime, "ref_read", {
       ref: planRef,
     })).toEqual({
-      critique: critiqueResult.dataRef ? refFromValueRef(critiqueResult.dataRef) : undefined,
+      critique: critiqueResult.dataRef ? createRef(critiqueResult.run, "output.data") : undefined,
       steps: ["inspect diff", "check tests"],
     });
     const summaryRef = expectDefined(
@@ -349,8 +349,8 @@ describe("nanoboss MCP server", () => {
     };
     expect(schema.dataShape).toEqual({
       subject: "string",
-      plan: "ValueRef",
-      summary: "ValueRef",
+      plan: "Ref",
+      summary: "Ref",
       verdict: "mixed",
     });
     expect(schema.explicitDataSchema).toEqual({

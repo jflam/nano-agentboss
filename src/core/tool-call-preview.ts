@@ -503,11 +503,6 @@ function cleanPreviewBlock(block: ToolPreviewBlock | undefined): ToolPreviewBloc
   };
 }
 
-function isCellRef(value: unknown): value is { sessionId: string; cellId: string } {
-  const record = asRecord(value);
-  return record !== undefined && typeof record.sessionId === "string" && typeof record.cellId === "string";
-}
-
 function isRunRef(value: unknown): value is { sessionId: string; runId: string } {
   const record = asRecord(value);
   return record !== undefined && typeof record.sessionId === "string" && typeof record.runId === "string";
