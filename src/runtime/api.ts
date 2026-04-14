@@ -1,12 +1,10 @@
 import type { ProcedureExecutionResult } from "../procedure/runner.ts";
 import type { ProcedureDispatchStartResult, ProcedureDispatchStatusResult } from "../procedure/dispatch-jobs.ts";
 import type {
-  CellRef,
   DownstreamAgentSelection,
   ProcedureMetadata,
   ProcedureRegistryLike,
-  SessionRecentOptions,
-  TopLevelRunsOptions,
+  RunRef,
   ValueRef,
 } from "../core/types.ts";
 
@@ -27,21 +25,27 @@ export type ProcedureDispatchStartToolResult = ProcedureDispatchStartResult;
 export type ProcedureDispatchStatusToolResult = ProcedureDispatchStatusResult;
 
 export interface RuntimeSchemaResult {
-  target: CellRef | ValueRef;
+  target: RunRef | ValueRef;
   dataShape: unknown;
   explicitDataSchema?: object;
 }
 
+export interface ListRunsArgs {
+  sessionId?: string;
+  procedure?: string;
+  limit?: number;
+  scope?: "recent" | "top_level";
+}
+
 export interface RuntimeService {
-  sessionRecent(args?: SessionRecentOptions & { sessionId?: string }): unknown;
-  topLevelRuns(args?: TopLevelRunsOptions & { sessionId?: string }): unknown;
-  cellGet(cellRef: CellRef): unknown;
-  cellAncestors(cellRef: CellRef, args?: { includeSelf?: boolean; limit?: number }): unknown;
-  cellDescendants(cellRef: CellRef, args?: unknown): unknown;
+  listRuns(args?: ListRunsArgs): unknown;
+  getRun(runRef: RunRef): unknown;
+  getRunAncestors(runRef: RunRef, args?: { includeSelf?: boolean; limit?: number }): unknown;
+  getRunDescendants(runRef: RunRef, args?: unknown): unknown;
   refRead(valueRef: ValueRef): unknown;
   refStat(valueRef: ValueRef): unknown;
   refWriteToFile(valueRef: ValueRef, path: string): { path: string };
-  getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): RuntimeSchemaResult;
+  getSchema(args: { runRef?: RunRef; valueRef?: ValueRef }): RuntimeSchemaResult;
   procedureList(args?: { includeHidden?: boolean; sessionId?: string }): Promise<ProcedureListResult>;
   procedureGet(args: { name: string; sessionId?: string }): Promise<ProcedureMetadata>;
   procedureDispatchStart(args: {
@@ -70,17 +74,17 @@ export function isProcedureDispatchResult(value: unknown): value is ProcedureDis
     typeof value === "object" &&
     value !== null &&
     typeof (value as { procedure?: unknown }).procedure === "string" &&
-    isCellRefLike((value as { cell?: unknown }).cell) &&
+    isRunRefLike((value as { run?: unknown }).run) &&
     typeof (value as { status?: unknown }).status !== "string" &&
     typeof (value as { dispatchId?: unknown }).dispatchId !== "string"
   );
 }
 
-function isCellRefLike(value: unknown): value is CellRef {
+function isRunRefLike(value: unknown): value is RunRef {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { sessionId?: unknown }).sessionId === "string" &&
-    typeof (value as { cellId?: unknown }).cellId === "string"
+    typeof (value as { runId?: unknown }).runId === "string"
   );
 }

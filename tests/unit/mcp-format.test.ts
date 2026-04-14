@@ -4,7 +4,7 @@ import { formatMcpToolResult } from "../../src/mcp/server.ts";
 
 describe("nanoboss MCP formatting", () => {
   test("wraps array results in an items record for structuredContent", () => {
-    const formatted = formatMcpToolResult("top_level_runs", [
+    const formatted = formatMcpToolResult("list_runs", [
       { procedure: "review", summary: "done" },
     ]);
 
@@ -34,6 +34,10 @@ describe("nanoboss MCP formatting", () => {
       status: "completed",
       result: {
         procedure: "review",
+        run: {
+          sessionId: "session_123",
+          runId: "cell_123",
+        },
         cell: {
           sessionId: "session_123",
           cellId: "cell_123",
@@ -54,6 +58,10 @@ describe("nanoboss MCP formatting", () => {
       status: "completed",
       result: {
         procedure: "review",
+        run: {
+          sessionId: "session_123",
+          runId: "cell_123",
+        },
         cell: {
           sessionId: "session_123",
           cellId: "cell_123",

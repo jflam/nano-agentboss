@@ -2,14 +2,16 @@ import { inferDataShape } from "../core/data-shape.ts";
 import { shouldLoadDiskCommands } from "../core/runtime-mode.ts";
 import type {
   CellDescendantsOptions,
-  CellRecord,
-  CellRef,
   DownstreamAgentSelection,
   ProcedureMetadata,
   ProcedureRegistryLike,
-  SessionRecentOptions,
-  TopLevelRunsOptions,
+  RunRef,
   ValueRef,
+} from "../core/types.ts";
+import {
+  cellRefFromRunRef,
+  runRecordFromCellRecord,
+  runSummaryFromCellSummary,
 } from "../core/types.ts";
 import {
   ProcedureDispatchJobManager,
@@ -17,6 +19,7 @@ import {
 import { ProcedureRegistry, projectProcedureMetadata } from "../procedure/registry.ts";
 import { SessionStore, readCurrentSessionMetadata, readSessionMetadata } from "../session/index.ts";
 import type {
+  ListRunsArgs,
   ProcedureListResult,
   RuntimeSchemaResult,
   RuntimeServiceParams,
@@ -27,30 +30,33 @@ import type {
 export class NanobossRuntimeService {
   constructor(private readonly params: RuntimeServiceParams) {}
 
-  sessionRecent(args: SessionRecentOptions & { sessionId?: string } = {}): ReturnType<SessionStore["recent"]> {
-    return this.createStore(args.sessionId).recent(args);
+  listRuns(args: ListRunsArgs = {}) {
+    const store = this.createStore(args.sessionId);
+    const summaries = args.scope === "recent"
+      ? store.recent({ procedure: args.procedure, limit: args.limit })
+      : store.topLevelRuns({ procedure: args.procedure, limit: args.limit });
+    return summaries.map(runSummaryFromCellSummary);
   }
 
-  topLevelRuns(args: TopLevelRunsOptions & { sessionId?: string } = {}): ReturnType<SessionStore["topLevelRuns"]> {
-    return this.createStore(args.sessionId).topLevelRuns(args);
+  getRun(runRef: RunRef) {
+    const cellRef = cellRefFromRunRef(runRef);
+    return runRecordFromCellRecord(runRef.sessionId, this.createStoreForRunRef(runRef).readCell(cellRef));
   }
 
-  cellGet(cellRef: CellRef): CellRecord {
-    return this.createStoreForCellRef(cellRef).readCell(cellRef);
-  }
-
-  cellAncestors(
-    cellRef: CellRef,
+  getRunAncestors(
+    runRef: RunRef,
     args: { includeSelf?: boolean; limit?: number } = {},
-  ): ReturnType<SessionStore["ancestors"]> {
-    return this.createStoreForCellRef(cellRef).ancestors(cellRef, args);
+  ) {
+    const cellRef = cellRefFromRunRef(runRef);
+    return this.createStoreForRunRef(runRef).ancestors(cellRef, args).map(runSummaryFromCellSummary);
   }
 
-  cellDescendants(
-    cellRef: CellRef,
+  getRunDescendants(
+    runRef: RunRef,
     args: CellDescendantsOptions = {},
-  ): ReturnType<SessionStore["descendants"]> {
-    return this.createStoreForCellRef(cellRef).descendants(cellRef, args);
+  ) {
+    const cellRef = cellRefFromRunRef(runRef);
+    return this.createStoreForRunRef(runRef).descendants(cellRef, args).map(runSummaryFromCellSummary);
   }
 
   refRead(valueRef: ValueRef): unknown {
@@ -67,7 +73,7 @@ export class NanobossRuntimeService {
     return { path };
   }
 
-  getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): RuntimeSchemaResult {
+  getSchema(args: { runRef?: RunRef; valueRef?: ValueRef }): RuntimeSchemaResult {
     if (args.valueRef) {
       const store = this.createStoreForValueRef(args.valueRef);
       const value = store.readRef(args.valueRef);
@@ -77,14 +83,15 @@ export class NanobossRuntimeService {
       };
     }
 
-    if (!args.cellRef) {
-      throw new Error("get_schema requires cellRef or valueRef");
+    if (!args.runRef) {
+      throw new Error("get_schema requires runRef or valueRef");
     }
 
-    const store = this.createStoreForCellRef(args.cellRef);
-    const cell = store.readCell(args.cellRef);
+    const cellRef = cellRefFromRunRef(args.runRef);
+    const store = this.createStoreForRunRef(args.runRef);
+    const cell = store.readCell(cellRef);
     return {
-      target: args.cellRef,
+      target: args.runRef,
       dataShape: inferDataShape(cell.output.data),
       explicitDataSchema: cell.output.explicitDataSchema,
     };
@@ -146,8 +153,8 @@ export class NanobossRuntimeService {
     });
   }
 
-  private createStoreForCellRef(cellRef: CellRef): SessionStore {
-    return this.createStore(cellRef.sessionId);
+  private createStoreForRunRef(runRef: RunRef): SessionStore {
+    return this.createStore(runRef.sessionId);
   }
 
   private createStoreForValueRef(valueRef: ValueRef): SessionStore {

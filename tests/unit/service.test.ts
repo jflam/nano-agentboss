@@ -868,7 +868,7 @@ describe("NanobossService", () => {
       expect(followUpPrompt).toContain("Nanoboss session memory update:");
       expect(followUpPrompt).toContain("procedure: /review");
       expect(followUpPrompt).toContain("Nanoboss session tool guidance:");
-      expect(followUpPrompt).toContain("Use top_level_runs(...) to find prior chat-visible commands");
+      expect(followUpPrompt).toContain("Use list_runs(...) to find prior chat-visible commands");
       expect(followUpPrompt).toContain("Never inspect ~/.nanoboss/agent-logs directly");
     } finally {
       service.destroySession(session.sessionId);
@@ -907,7 +907,7 @@ describe("NanobossService", () => {
         const stored = readStoredMockSession(mockSessionStoreDir);
         const userPrompt = stored.turns[0]?.text ?? "";
         expect(userPrompt).toContain("Nanoboss session tool guidance:");
-        expect(userPrompt).toContain("Use top_level_runs(...) to find prior chat-visible commands");
+        expect(userPrompt).toContain("Use list_runs(...) to find prior chat-visible commands");
         expect(userPrompt).toContain("Never inspect ~/.nanoboss/agent-logs directly");
         expect(userPrompt).not.toContain("Nanoboss session memory update:");
       } finally {
@@ -1220,8 +1220,8 @@ describe("NanobossService", () => {
     const session = service.createSession({ cwd: process.cwd() });
 
     expect(session.commands.some((command) => command.name === "default")).toBe(false);
-    expect(session.commands.some((command) => command.name === "top_level_runs")).toBe(false);
-    expect(session.commands.some((command) => command.name === "cell_get")).toBe(false);
+    expect(session.commands.some((command) => command.name === "list_runs")).toBe(false);
+    expect(session.commands.some((command) => command.name === "get_run")).toBe(false);
     expect(session.commands.some((command) => command.name === "ref_read")).toBe(false);
     expect(session.commands.some((command) => command.name === "dismiss")).toBe(true);
   });

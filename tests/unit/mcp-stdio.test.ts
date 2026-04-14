@@ -93,14 +93,14 @@ describe("global nanoboss MCP stdio transport", () => {
       const toolNames = list.result?.tools?.map((tool) => tool.name) ?? [];
       expect(toolNames).toContain("procedure_dispatch_start");
       expect(toolNames).toContain("procedure_dispatch_wait");
-      expect(toolNames).toContain("top_level_runs");
+      expect(toolNames).toContain("list_runs");
 
       writeMcpMessage(child.stdin, {
         jsonrpc: "2.0",
         id: 3,
         method: "tools/call",
         params: {
-          name: "top_level_runs",
+          name: "list_runs",
           arguments: {
             limit: 1,
           },
@@ -108,7 +108,7 @@ describe("global nanoboss MCP stdio transport", () => {
       });
       const call = await readMcpMessage(frames);
       expect(call.result?.structuredContent?.items?.[0]).toMatchObject({
-        cell: reviewCell.cell,
+        run: { sessionId, runId: reviewCell.cell.cellId },
         procedure: "second-opinion",
         summary: "review summary",
       });
