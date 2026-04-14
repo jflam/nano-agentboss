@@ -12,8 +12,9 @@ import { join } from "node:path";
 
 import { defaultCancellationMessage } from "../core/cancellation.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
+import { cellRefFromRunRef } from "../core/types.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "../core/timing-trace.ts";
-import { findRecoveredProcedureDispatchCell } from "./dispatch-recovery.ts";
+import { findRecoveredProcedureDispatchRecord } from "./dispatch-recovery.ts";
 import {
   ProcedureDispatchProgressEmitter,
   buildProcedureDispatchProgressPath,
@@ -29,7 +30,6 @@ import { ProcedureRegistry } from "./registry.ts";
 import { SessionStore } from "../session/index.ts";
 import { resolveSelfCommand } from "../core/self-command.ts";
 import type {
-  CellRef,
   DownstreamAgentSelection,
   ProcedureRegistryLike,
   RunRef,
@@ -395,14 +395,14 @@ export class ProcedureDispatchJobManager {
       return job;
     }
 
-    const cell = job.run
-      ? this.tryReadCell({ sessionId: job.run.sessionId, cellId: job.run.runId })
-      : findRecoveredProcedureDispatchCell(this.createStore(), {
+    const record = job.run
+      ? this.tryReadStoredRunRecord(job.run)
+      : findRecoveredProcedureDispatchRecord(this.createStore(), {
         procedureName: job.procedure,
         dispatchCorrelationId: job.dispatchCorrelationId,
       });
 
-    if (!cell) {
+    if (!record) {
       if (!isTerminalStatus(job.status) && isDeadWorkerJob(job)) {
         const failed: ProcedureDispatchJob = {
           ...job,
@@ -422,15 +422,15 @@ export class ProcedureDispatchJobManager {
       return job;
     }
 
-    if (job.status !== "completed" && looksLikeProcedureFailureCell(cell)) {
+    if (job.status !== "completed" && looksLikeProcedureFailureRecord(record)) {
       const completedAt = job.completedAt ?? new Date().toISOString();
       const failed: ProcedureDispatchJob = {
         ...job,
         status: "failed",
         updatedAt: new Date().toISOString(),
         completedAt,
-        run: { sessionId: this.params.sessionId, runId: cell.cellId },
-        error: job.error ?? cell.output.summary ?? `${job.procedure} failed`,
+        run: { sessionId: this.params.sessionId, runId: record.cellId },
+        error: job.error ?? record.output.summary ?? `${job.procedure} failed`,
       };
       this.writeJob(failed);
       return failed;
@@ -438,7 +438,7 @@ export class ProcedureDispatchJobManager {
 
     const result = buildProcedureExecutionResult({
       sessionId: this.params.sessionId,
-      cell,
+      cell: record,
       tokenUsage: job.result?.tokenUsage,
       defaultAgentSelection: job.result?.defaultAgentSelection ?? job.defaultAgentSelection,
     });
@@ -457,9 +457,9 @@ export class ProcedureDispatchJobManager {
     return reconciled;
   }
 
-  private tryReadCell(cell: CellRef) {
+  private tryReadStoredRunRecord(run: RunRef) {
     try {
-      return this.createStore().readCell(cell);
+      return this.createStore().readCell(cellRefFromRunRef(run));
     } catch {
       return undefined;
     }
@@ -697,13 +697,13 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function looksLikeProcedureFailureCell(cell: ReturnType<SessionStore["readCell"]>): boolean {
+function looksLikeProcedureFailureRecord(record: ReturnType<SessionStore["readCell"]>): boolean {
   return (
-    cell.output.data === undefined &&
-    cell.output.display === undefined &&
-    cell.output.memory === undefined &&
-    typeof cell.output.summary === "string" &&
-    /^Error:/i.test(cell.output.summary)
+    record.output.data === undefined &&
+    record.output.display === undefined &&
+    record.output.memory === undefined &&
+    typeof record.output.summary === "string" &&
+    /^Error:/i.test(record.output.summary)
   );
 }
 

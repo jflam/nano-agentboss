@@ -16,7 +16,7 @@ export function isProcedureDispatchTimeout(message: string | undefined): boolean
   return Boolean(message && /request timed out/i.test(message));
 }
 
-export async function waitForRecoveredProcedureDispatchCell(
+export async function waitForRecoveredProcedureDispatchRecord(
   store: SessionStore,
   params: {
     procedureName: string;
@@ -36,7 +36,7 @@ export async function waitForRecoveredProcedureDispatchCell(
       throw new RunCancelledError(defaultCancellationMessage("abort"), "abort");
     }
 
-    const found = findRecoveredProcedureDispatchCell(store, params);
+    const found = findRecoveredProcedureDispatchRecord(store, params);
     if (found) {
       return found;
     }
@@ -49,7 +49,7 @@ export async function waitForRecoveredProcedureDispatchCell(
   }
 }
 
-export function findRecoveredProcedureDispatchCell(
+export function findRecoveredProcedureDispatchRecord(
   store: SessionStore,
   params: {
     procedureName: string;
@@ -70,12 +70,12 @@ export function findRecoveredProcedureDispatchCell(
 export async function syncRecoveredProcedureResultIntoDefaultConversation(params: {
   defaultConversation: DefaultConversationSession;
   sessionId: string;
-  cell: CellRecord;
+  record: CellRecord;
   signal?: AbortSignal;
   defaultAgentConfig: DownstreamAgentConfig;
 }): Promise<AgentTokenUsage | undefined> {
   await params.defaultConversation.prompt(
-    createTextPromptInput(buildRecoveredProcedureSyncPrompt(params.sessionId, params.cell)),
+    createTextPromptInput(buildRecoveredProcedureSyncPrompt(params.sessionId, params.record)),
     {
       signal: params.signal,
     },
@@ -87,19 +87,19 @@ export async function syncRecoveredProcedureResultIntoDefaultConversation(params
   );
 }
 
-export function procedureDispatchResultFromRecoveredCell(sessionId: string, cell: CellRecord): ProcedureExecutionResult {
-  return buildProcedureExecutionResult({ sessionId, cell });
+export function procedureDispatchResultFromRecoveredRecord(sessionId: string, record: CellRecord): ProcedureExecutionResult {
+  return buildProcedureExecutionResult({ sessionId, cell: record });
 }
 
-export function buildRecoveredProcedureSyncPrompt(sessionId: string, cell: CellRecord): string {
-  const run = { sessionId, runId: cell.cellId };
-  const dataRef = cell.output.data !== undefined
+export function buildRecoveredProcedureSyncPrompt(sessionId: string, record: CellRecord): string {
+  const run = { sessionId, runId: record.cellId };
+  const dataRef = record.output.data !== undefined
     ? createRef(run, "output.data")
     : undefined;
-  const displayRef = cell.output.display !== undefined
+  const displayRef = record.output.display !== undefined
     ? createRef(run, "output.display")
     : undefined;
-  const dataShape = cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined;
+  const dataShape = record.output.data !== undefined ? inferDataShape(record.output.data) : undefined;
 
   return [
     "Nanoboss internal recovered procedure synchronization.",
@@ -107,19 +107,19 @@ export function buildRecoveredProcedureSyncPrompt(sessionId: string, cell: CellR
     "Treat the following as the authoritative stored result for future turns in this same persistent master conversation.",
     "Do not answer the user. Respond with exactly: OK",
     "",
-    `Procedure: /${cell.procedure}`,
-    cell.input.trim() ? `Original input: ${summarizeText(cell.input, 500)}` : undefined,
-    cell.output.summary ? `Summary: ${summarizeText(cell.output.summary, 800)}` : undefined,
-    cell.output.memory ? `Memory: ${summarizeText(cell.output.memory, 800)}` : undefined,
-    !cell.output.summary && !cell.output.memory && cell.output.display
-      ? `Display preview: ${summarizeText(cell.output.display, 1200)}`
+    `Procedure: /${record.procedure}`,
+    record.input.trim() ? `Original input: ${summarizeText(record.input, 500)}` : undefined,
+    record.output.summary ? `Summary: ${summarizeText(record.output.summary, 800)}` : undefined,
+    record.output.memory ? `Memory: ${summarizeText(record.output.memory, 800)}` : undefined,
+    !record.output.summary && !record.output.memory && record.output.display
+      ? `Display preview: ${summarizeText(record.output.display, 1200)}`
       : undefined,
     `Run: session=${run.sessionId} run=${run.runId}`,
     dataRef ? `Data ref: ${formatRef(dataRef)}` : undefined,
     displayRef ? `Display ref: ${formatRef(displayRef)}` : undefined,
     dataShape !== undefined ? `Data shape: ${JSON.stringify(dataShape)}` : undefined,
-    cell.output.explicitDataSchema
-      ? `Explicit data schema: ${summarizeText(JSON.stringify(cell.output.explicitDataSchema), 800)}`
+    record.output.explicitDataSchema
+      ? `Explicit data schema: ${summarizeText(JSON.stringify(record.output.explicitDataSchema), 800)}`
       : undefined,
     "",
     "Use the global nanoboss MCP tools later if you need exact stored values.",

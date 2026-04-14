@@ -41,8 +41,8 @@ import {
 } from "../session/index.ts";
 import { startProcedureDispatchProgressBridge } from "../procedure/dispatch-progress.ts";
 import {
-  procedureDispatchResultFromRecoveredCell,
-  waitForRecoveredProcedureDispatchCell,
+  procedureDispatchResultFromRecoveredRecord,
+  waitForRecoveredProcedureDispatchRecord,
 } from "../procedure/dispatch-recovery.ts";
 import {
   ProcedureDispatchJobManager,
@@ -74,6 +74,7 @@ import type {
   ProcedureRegistryLike,
   RunRef,
 } from "./types.ts";
+import { cellRefFromRunRef } from "./types.ts";
 
 interface ActiveRunState {
   runId: string;
@@ -89,7 +90,7 @@ interface SessionState {
   events: SessionEventLog;
   defaultAgentConfig: DownstreamAgentConfig;
   defaultConversation: DefaultConversationSession;
-  syncedProcedureMemoryCellIds: Set<string>;
+  syncedProcedureMemoryRunIds: Set<string>;
   recentRecoverySyncAtMs?: number;
   activeRun?: ActiveRunState;
   commands: FrontendCommand[];
@@ -328,7 +329,7 @@ export class NanobossService {
       events: new SessionEventLog(),
       defaultAgentConfig,
       defaultConversation,
-      syncedProcedureMemoryCellIds: new Set(),
+      syncedProcedureMemoryRunIds: new Set(),
       commands,
       pendingContinuation: params.pendingContinuation,
     };
@@ -459,7 +460,7 @@ export class NanobossService {
     });
     const cards = collectUnsyncedProcedureMemoryCards(
       session.store,
-      session.syncedProcedureMemoryCellIds,
+      session.syncedProcedureMemoryRunIds,
     );
     const blocks: string[] = [];
     const memoryUpdate = renderProcedureMemoryCardsSection(cards);
@@ -511,7 +512,7 @@ export class NanobossService {
       promptInput: preparedPrompt,
       markSubmitted: () => {
         for (const card of cards) {
-          session.syncedProcedureMemoryCellIds.add(card.run.runId);
+          session.syncedProcedureMemoryRunIds.add(card.run.runId);
         }
       },
     };
@@ -588,7 +589,7 @@ export class NanobossService {
         appendTimingTraceEvent(timingTrace, "service", "dispatch_result_extracted_from_prompt", {
           procedure: procedureName,
         });
-        session.syncedProcedureMemoryCellIds.add(result.run.runId);
+        session.syncedProcedureMemoryRunIds.add(result.run.runId);
         return {
           result,
           tokenUsage: normalizeAgentTokenUsage(
@@ -618,7 +619,7 @@ export class NanobossService {
         });
       }
       if (dispatchStatus?.status === "completed" && dispatchStatus.result) {
-        session.syncedProcedureMemoryCellIds.add(dispatchStatus.result.run.runId);
+        session.syncedProcedureMemoryRunIds.add(dispatchStatus.result.run.runId);
         return {
           result: dispatchStatus.result,
           tokenUsage: normalizeAgentTokenUsage(
@@ -639,19 +640,19 @@ export class NanobossService {
         );
       }
 
-      const recoveredCell = await waitForRecoveredProcedureDispatchCell(session.store, {
+      const recoveredRecord = await waitForRecoveredProcedureDispatchRecord(session.store, {
         procedureName,
         dispatchCorrelationId,
         signal: options.signal,
         softStopSignal: options.softStopSignal,
       });
-      if (recoveredCell) {
+      if (recoveredRecord) {
         appendTimingTraceEvent(timingTrace, "service", "dispatch_result_recovered_from_store", {
           procedure: procedureName,
-          cellId: recoveredCell.cellId,
+          runId: recoveredRecord.cellId,
         });
         return {
-          result: procedureDispatchResultFromRecoveredCell(session.store.sessionId, recoveredCell),
+          result: procedureDispatchResultFromRecoveredRecord(session.store.sessionId, recoveredRecord),
           tokenUsage: normalizeAgentTokenUsage(
             promptResult.tokenSnapshot ?? await session.defaultConversation.getCurrentTokenSnapshot(),
             session.defaultAgentConfig,
@@ -932,7 +933,7 @@ export class NanobossService {
         throw new RunCancelledError(defaultCancellationMessage("abort"), "abort");
       }
     };
-    let persistedTopLevelCell: { sessionId: string; cellId: string } | undefined;
+    let persistedTopLevelRun: RunRef | undefined;
     const replayEvents: PersistedFrontendEvent[] = [];
     const stopReplayCapture = session.events.subscribe((event) => {
       const replayEvent = toReplayableFrontendEvent(event, runId);
@@ -1123,7 +1124,7 @@ export class NanobossService {
             markRunActivity,
           });
         }
-        persistedTopLevelCell = { sessionId: result.run.sessionId, cellId: result.run.runId };
+        persistedTopLevelRun = result.run;
       } catch (error) {
         if (error instanceof TopLevelProcedureExecutionError) {
           this.publishRunFailed({
@@ -1145,7 +1146,7 @@ export class NanobossService {
             run: error.run,
             markRunActivity,
           });
-          persistedTopLevelCell = { sessionId: error.run.sessionId, cellId: error.run.runId };
+          persistedTopLevelRun = error.run;
         }
         throw error;
       }
@@ -1199,8 +1200,8 @@ export class NanobossService {
       });
       await emitter.flush();
       stopReplayCapture();
-      if (persistedTopLevelCell && replayEvents.length > 0) {
-        session.store.patchCell(persistedTopLevelCell, {
+      if (persistedTopLevelRun && replayEvents.length > 0) {
+        session.store.patchCell(cellRefFromRunRef(persistedTopLevelRun), {
           output: {
             replayEvents,
           },
