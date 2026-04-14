@@ -14,6 +14,71 @@ export interface ValueRef {
   path: string;
 }
 
+export interface RunRef {
+  sessionId: string;
+  runId: string;
+}
+
+export interface Ref {
+  run: RunRef;
+  path: string;
+}
+
+export interface SessionRef {
+  sessionId: string;
+}
+
+export interface SessionDescriptor {
+  session: SessionRef;
+  cwd: string;
+  defaultAgentSelection?: DownstreamAgentSelection;
+}
+
+export interface SessionMetadataRecord {
+  session: SessionRef;
+  cwd: string;
+  rootDir: string;
+  createdAt: string;
+  updatedAt: string;
+  defaultAgentSelection?: DownstreamAgentSelection;
+  defaultAgentSessionId?: string;
+  pendingContinuation?: PendingContinuation;
+}
+
+export function createRunRef(sessionId: string, runId: string): RunRef {
+  return { sessionId, runId };
+}
+
+export function createRef(run: RunRef, path: string): Ref {
+  return { run, path };
+}
+
+export function createSessionRef(sessionId: string): SessionRef {
+  return { sessionId };
+}
+
+export function runRefFromCellRef(cell: CellRef): RunRef {
+  return createRunRef(cell.sessionId, cell.cellId);
+}
+
+export function cellRefFromRunRef(run: RunRef): CellRef {
+  return {
+    sessionId: run.sessionId,
+    cellId: run.runId,
+  };
+}
+
+export function refFromValueRef(valueRef: ValueRef): Ref {
+  return createRef(runRefFromCellRef(valueRef.cell), valueRef.path);
+}
+
+export function valueRefFromRef(ref: Ref): ValueRef {
+  return {
+    cell: cellRefFromRunRef(ref.run),
+    path: ref.path,
+  };
+}
+
 export interface ProcedurePause<TState extends KernelValue = KernelValue> {
   question: string;
   state: TState;
@@ -103,10 +168,69 @@ export type ProcedureContinuationUi =
   | Simplify2CheckpointContinuationUi
   | Simplify2FocusPickerContinuationUi;
 
+export type ContinuationUi = ProcedureContinuationUi;
+
+export interface Continuation<TState extends KernelValue = KernelValue> {
+  question: string;
+  state: TState;
+  inputHint?: string;
+  suggestedReplies?: string[];
+  ui?: ContinuationUi;
+}
+
 export type FrontendPendingProcedureContinuation = Pick<
   PendingProcedureContinuation,
   "procedure" | "question" | "inputHint" | "suggestedReplies" | "continuationUi"
 >;
+
+export interface PendingContinuation<TState extends KernelValue = KernelValue> extends Continuation<TState> {
+  procedure: string;
+  run: RunRef;
+}
+
+export function continuationFromPause<TState extends KernelValue = KernelValue>(
+  pause: ProcedurePause<TState>,
+): Continuation<TState> {
+  return {
+    question: pause.question,
+    state: pause.state,
+    inputHint: pause.inputHint,
+    suggestedReplies: pause.suggestedReplies,
+    ui: pause.continuationUi,
+  };
+}
+
+export function pauseFromContinuation<TState extends KernelValue = KernelValue>(
+  continuation: Continuation<TState>,
+): ProcedurePause<TState> {
+  return {
+    question: continuation.question,
+    state: continuation.state,
+    inputHint: continuation.inputHint,
+    suggestedReplies: continuation.suggestedReplies,
+    continuationUi: continuation.ui,
+  };
+}
+
+export function pendingContinuationFromLegacy<TState extends KernelValue = KernelValue>(
+  continuation: PendingProcedureContinuation<TState>,
+): PendingContinuation<TState> {
+  return {
+    procedure: continuation.procedure,
+    run: runRefFromCellRef(continuation.cell),
+    ...continuationFromPause(continuation),
+  };
+}
+
+export function pendingProcedureContinuationFromPending<TState extends KernelValue = KernelValue>(
+  continuation: PendingContinuation<TState>,
+): PendingProcedureContinuation<TState> {
+  return {
+    procedure: continuation.procedure,
+    cell: cellRefFromRunRef(continuation.run),
+    ...pauseFromContinuation(continuation),
+  };
+}
 
 export type KernelValue =
   | KernelScalar
@@ -116,6 +240,47 @@ export type KernelValue =
   | object;
 
 export type CellKind = "top_level" | "procedure" | "agent";
+
+export type RunKind = CellKind;
+
+export interface RunRecord {
+  run: RunRef;
+  kind: RunKind;
+  procedure: string;
+  input: string;
+  output: {
+    data?: KernelValue;
+    display?: string;
+    stream?: string;
+    summary?: string;
+    memory?: string;
+    pause?: Continuation;
+    explicitDataSchema?: object;
+    replayEvents?: PersistedFrontendEvent[];
+  };
+  meta: {
+    createdAt: string;
+    parentRunId?: string;
+    dispatchCorrelationId?: string;
+    defaultAgentSelection?: DownstreamAgentSelection;
+    promptImages?: PromptImageSummary[];
+  };
+}
+
+export interface RunSummary {
+  run: RunRef;
+  procedure: string;
+  kind: RunKind;
+  parentRunId?: string;
+  summary?: string;
+  memory?: string;
+  dataRef?: Ref;
+  displayRef?: Ref;
+  streamRef?: Ref;
+  dataShape?: JsonValue;
+  explicitDataSchema?: object;
+  createdAt: string;
+}
 
 export interface CellRecord {
   cellId: string;
@@ -154,6 +319,128 @@ export interface CellSummary {
   dataShape?: JsonValue;
   explicitDataSchema?: object;
   createdAt: string;
+}
+
+export function runRecordFromCellRecord(sessionId: string, record: CellRecord): RunRecord {
+  return {
+    run: createRunRef(sessionId, record.cellId),
+    kind: record.meta.kind,
+    procedure: record.procedure,
+    input: record.input,
+    output: {
+      data: record.output.data,
+      display: record.output.display,
+      stream: record.output.stream,
+      summary: record.output.summary,
+      memory: record.output.memory,
+      pause: record.output.pause ? continuationFromPause(record.output.pause) : undefined,
+      explicitDataSchema: record.output.explicitDataSchema,
+      replayEvents: record.output.replayEvents,
+    },
+    meta: {
+      createdAt: record.meta.createdAt,
+      parentRunId: record.meta.parentCellId,
+      dispatchCorrelationId: record.meta.dispatchCorrelationId,
+      defaultAgentSelection: record.meta.defaultAgentSelection,
+      promptImages: record.meta.promptImages,
+    },
+  };
+}
+
+export function cellRecordFromRunRecord(run: RunRecord): CellRecord {
+  return {
+    cellId: run.run.runId,
+    procedure: run.procedure,
+    input: run.input,
+    output: {
+      data: run.output.data,
+      display: run.output.display,
+      stream: run.output.stream,
+      summary: run.output.summary,
+      memory: run.output.memory,
+      pause: run.output.pause ? pauseFromContinuation(run.output.pause) : undefined,
+      explicitDataSchema: run.output.explicitDataSchema,
+      replayEvents: run.output.replayEvents,
+    },
+    meta: {
+      createdAt: run.meta.createdAt,
+      parentCellId: run.meta.parentRunId,
+      kind: run.kind,
+      dispatchCorrelationId: run.meta.dispatchCorrelationId,
+      defaultAgentSelection: run.meta.defaultAgentSelection,
+      promptImages: run.meta.promptImages,
+    },
+  };
+}
+
+export function runSummaryFromCellSummary(summary: CellSummary): RunSummary {
+  return {
+    run: runRefFromCellRef(summary.cell),
+    procedure: summary.procedure,
+    kind: summary.kind,
+    parentRunId: summary.parentCellId,
+    summary: summary.summary,
+    memory: summary.memory,
+    dataRef: summary.dataRef ? refFromValueRef(summary.dataRef) : undefined,
+    displayRef: summary.displayRef ? refFromValueRef(summary.displayRef) : undefined,
+    streamRef: summary.streamRef ? refFromValueRef(summary.streamRef) : undefined,
+    dataShape: summary.dataShape,
+    explicitDataSchema: summary.explicitDataSchema,
+    createdAt: summary.createdAt,
+  };
+}
+
+export function cellSummaryFromRunSummary(summary: RunSummary): CellSummary {
+  return {
+    cell: cellRefFromRunRef(summary.run),
+    procedure: summary.procedure,
+    kind: summary.kind,
+    parentCellId: summary.parentRunId,
+    summary: summary.summary,
+    memory: summary.memory,
+    dataRef: summary.dataRef ? valueRefFromRef(summary.dataRef) : undefined,
+    displayRef: summary.displayRef ? valueRefFromRef(summary.displayRef) : undefined,
+    streamRef: summary.streamRef ? valueRefFromRef(summary.streamRef) : undefined,
+    dataShape: summary.dataShape,
+    explicitDataSchema: summary.explicitDataSchema,
+    createdAt: summary.createdAt,
+  };
+}
+
+export function sessionDescriptorFromLegacy(params: {
+  sessionId: string;
+  cwd: string;
+  defaultAgentSelection?: DownstreamAgentSelection;
+}): SessionDescriptor {
+  return {
+    session: createSessionRef(params.sessionId),
+    cwd: params.cwd,
+    defaultAgentSelection: params.defaultAgentSelection,
+  };
+}
+
+export function sessionMetadataRecordFromLegacy(params: {
+  sessionId: string;
+  cwd: string;
+  rootDir: string;
+  createdAt: string;
+  updatedAt: string;
+  defaultAgentSelection?: DownstreamAgentSelection;
+  defaultAgentSessionId?: string;
+  pendingProcedureContinuation?: PendingProcedureContinuation;
+}): SessionMetadataRecord {
+  return {
+    session: createSessionRef(params.sessionId),
+    cwd: params.cwd,
+    rootDir: params.rootDir,
+    createdAt: params.createdAt,
+    updatedAt: params.updatedAt,
+    defaultAgentSelection: params.defaultAgentSelection,
+    defaultAgentSessionId: params.defaultAgentSessionId,
+    pendingContinuation: params.pendingProcedureContinuation
+      ? pendingContinuationFromLegacy(params.pendingProcedureContinuation)
+      : undefined,
+  };
 }
 
 export interface RefStat {
@@ -320,6 +607,7 @@ export interface ProcedureResult<T extends KernelValue = KernelValue> {
 }
 
 export interface RunResult<T extends KernelValue = KernelValue> {
+  run?: RunRef;
   cell: CellRef;
   data?: T;
   dataRef?: ValueRef;
@@ -336,6 +624,13 @@ export interface AgentRunResult<T extends KernelValue = KernelValue> extends Run
   raw: string;
   logFile?: string;
   tokenSnapshot?: AgentTokenSnapshot;
+}
+
+export interface AgentSession {
+  sessionId?: string;
+  prompt(prompt: string | PromptInput): Promise<AgentRunResult>;
+  warm?(): Promise<void>;
+  close(): void;
 }
 
 export type ProcedureExecutionMode = "defaultConversation" | "harness";

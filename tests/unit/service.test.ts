@@ -9,7 +9,7 @@ const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
 const BUILD_HOOK_TIMEOUT_MS = 30_000;
 
 import { DefaultConversationSession } from "../../src/agent/default-session.ts";
-import type { Procedure } from "../../src/core/types.ts";
+import type { Procedure, PromptInput } from "../../src/core/types.ts";
 import { createTextPromptInput, promptInputDisplayText } from "../../src/core/prompt.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
@@ -836,8 +836,8 @@ describe("NanobossService", () => {
     const session = service.createSession({ cwd });
     const sessionState = getInternalSessionState(service, session.sessionId);
     const prepareDefaultPrompt = Reflect.get(service as object, "prepareDefaultPrompt") as
-      | ((session: InternalSessionState, promptInput: import("../../src/core/types.ts").PromptInput, runId: string) => {
-          promptInput: import("../../src/core/types.ts").PromptInput;
+      | ((session: InternalSessionState, promptInput: PromptInput, runId: string) => {
+          promptInput: PromptInput;
           markSubmitted: () => void;
         })
       | undefined;

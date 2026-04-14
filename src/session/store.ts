@@ -26,6 +26,7 @@ import type {
   TopLevelRunsOptions,
   ValueRef,
 } from "../core/types.ts";
+import { runRefFromCellRef } from "../core/types.ts";
 
 interface CellDraft {
   cell: CellRef;
@@ -207,6 +208,7 @@ export class SessionStore {
       : undefined;
 
     return {
+      run: runRefFromCellRef(draft.cell),
       cell: draft.cell,
       data: result.data,
       dataRef,

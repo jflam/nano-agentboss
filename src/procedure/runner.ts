@@ -32,11 +32,14 @@ import type {
   ProcedurePause,
   PromptInput,
   ProcedureRegistryLike,
+  RunRef,
   ValueRef,
 } from "../core/types.ts";
+import { runRefFromCellRef } from "../core/types.ts";
 
 export interface ProcedureExecutionResult {
   procedure: string;
+  run?: RunRef;
   cell: CellRef;
   summary?: string;
   display?: string;
@@ -223,6 +226,7 @@ export function buildProcedureExecutionResult(params: {
   const cellRef = { sessionId: params.sessionId, cellId: params.cell.cellId };
   return {
     procedure: params.cell.procedure,
+    run: runRefFromCellRef(cellRef),
     cell: cellRef,
     summary: params.cell.output.summary,
     display: params.cell.output.display,
