@@ -548,6 +548,13 @@ export interface CommandCallAgentOptions {
    */
   session?: AgentSessionMode;
   /**
+   * Resume a specific persisted ACP session when running outside the bound default session.
+   *
+   * This is primarily for workflows that need isolated fresh sessions per task while still
+   * preserving conversational continuity across later follow-up calls.
+   */
+  persistedSessionId?: string;
+  /**
    * Downstream agent selection for this call.
    *
    * In "default" mode this updates the session's default agent selection before
@@ -662,6 +669,7 @@ export interface LogEntry {
 
 export interface CallAgentOptions {
   config?: DownstreamAgentConfig;
+  persistedSessionId?: string;
   namedRefs?: Record<string, unknown>;
   onUpdate?: (update: acp.SessionUpdate) => Promise<void> | void;
   signal?: AbortSignal;

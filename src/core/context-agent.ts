@@ -7,7 +7,7 @@ import { promptInputDisplayText } from "./prompt.ts";
 import type { SessionStore } from "../session/index.ts";
 import { valueRefFromRef } from "../session/store-refs.ts";
 import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "./cancellation.ts";
-import { resolveDownstreamAgentConfig } from "./config.ts";
+import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
 import { formatErrorMessage } from "./error-format.ts";
 import type { RunLogger } from "./logger.ts";
 import { toPublicRunResult } from "./run-result.ts";
@@ -268,7 +268,9 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
     const promptInput = options?.promptInput;
     const displayPrompt = promptInput ? promptInputDisplayText(promptInput) : prompt;
     this.params.assertCanStartBoundary();
-    const useDefaultSession = sessionMode === "default" && this.params.sessionManager.hasDefaultAgentSession();
+    const useDefaultSession = sessionMode === "default"
+      && !options?.persistedSessionId
+      && this.params.sessionManager.hasDefaultAgentSession();
     const agentConfig = useDefaultSession && options?.agent
       ? this.params.sessionManager.setDefaultAgentSelection(options.agent)
       : options?.agent
@@ -297,6 +299,7 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
     try {
       const result = await invokeAgent(prompt, descriptor, {
         config: agentConfig,
+        persistedSessionId: options?.persistedSessionId,
         namedRefs,
         signal: this.params.signal,
         softStopSignal: this.params.softStopSignal,
@@ -315,7 +318,7 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
           }
         : undefined;
 
-      return this.params.recorder.complete(started, {
+      const recorded = this.params.recorder.complete(started, {
         data: result.data,
         raw: result.raw,
         updates: result.updates,
@@ -333,6 +336,12 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
           : tokenUsageExtra,
         agent: options?.agent,
       });
+
+      return {
+        ...recorded,
+        ...(tokenUsageExtra?.tokenUsage ? { tokenUsage: tokenUsageExtra.tokenUsage } : {}),
+        defaultAgentSelection: toDownstreamAgentSelection(agentConfig),
+      };
     } catch (error) {
       return this.params.recorder.fail(started, error, options?.agent);
     }

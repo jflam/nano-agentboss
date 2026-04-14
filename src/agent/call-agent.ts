@@ -404,11 +404,24 @@ async function runAcpPrompt(
   options.signal?.addEventListener("abort", abortListener);
 
   try {
-    const session = await state.connection.newSession({
-      cwd: state.cwd,
-      ...buildAgentRuntimeSessionRuntime(),
-    });
-    sessionId = session.sessionId;
+    if (options.persistedSessionId) {
+      if (!state.capabilities?.loadSession) {
+        throw new Error("Downstream agent does not support loading persisted sessions");
+      }
+
+      await state.connection.loadSession({
+        cwd: state.cwd,
+        ...buildAgentRuntimeSessionRuntime(),
+        sessionId: options.persistedSessionId,
+      });
+      sessionId = options.persistedSessionId;
+    } else {
+      const session = await state.connection.newSession({
+        cwd: state.cwd,
+        ...buildAgentRuntimeSessionRuntime(),
+      });
+      sessionId = session.sessionId;
+    }
 
     await applyAcpSessionConfig(state.connection, sessionId, config);
 

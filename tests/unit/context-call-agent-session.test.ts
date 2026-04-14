@@ -29,6 +29,7 @@ const MathResultType = jsonType<MathResult>(
   typia.json.schema<MathResult>(),
   typia.createValidate<MathResult>(),
 );
+const MOCK_AGENT_PATH = join(import.meta.dir, "..", "fixtures", "mock-agent.ts");
 
 const tempDirs: string[] = [];
 
@@ -141,6 +142,32 @@ describe("procedure API session namespaces", () => {
     expect(submittedCount).toBe(1);
 
     expect(emittedUpdates).toEqual([]);
+  });
+
+  test("fresh calls can resume a persisted isolated session when requested", async () => {
+    const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-mock-agent-store-"));
+    tempDirs.push(sessionStoreDir);
+    const { ctx } = createContext({
+      configOverride: {
+        env: {
+          MOCK_AGENT_SUPPORT_LOAD_SESSION: "1",
+          MOCK_AGENT_SESSION_STORE_DIR: sessionStoreDir,
+        },
+      },
+    });
+
+    const first = await ctx.agent.run("What is 2+2?", {
+      stream: false,
+    });
+    const persistedSessionId = first.tokenUsage?.sessionId;
+    const second = await ctx.agent.run("add 3 to result", {
+      stream: false,
+      persistedSessionId,
+    });
+
+    expect(first.data).toBe("4");
+    expect(typeof persistedSessionId).toBe("string");
+    expect(second.data).toBe("7");
   });
 
   test("ctx.procedures.run inherits the current default-session binding by default", async () => {
@@ -357,6 +384,7 @@ function createContext(options: {
     markSubmitted?: () => void;
   };
   createAgentSession?: (params: CreateAgentSessionParams) => AgentSession;
+  configOverride?: Partial<DownstreamAgentConfig>;
 } = {}): {
   conversation: AgentSession;
   ctx: ProcedureApi;
@@ -376,7 +404,7 @@ function createContext(options: {
     rootDir: join(cwd, ".nanoboss", "sessions", "test-session"),
   });
   const emittedUpdates: acp.SessionUpdate[] = [];
-  let config = createMockConfig(cwd);
+  let config = createMockConfig(cwd, options.configOverride);
   const createSession = options.createAgentSession ?? createAgentSession;
   const conversation = createSession({
     config,
@@ -421,10 +449,15 @@ function createContext(options: {
   };
 }
 
-function createMockConfig(cwd: string): DownstreamAgentConfig {
+function createMockConfig(
+  cwd: string,
+  overrides: Partial<DownstreamAgentConfig> = {},
+): DownstreamAgentConfig {
   return {
     command: "bun",
-    args: ["run", "tests/fixtures/mock-agent.ts"],
+    args: ["run", MOCK_AGENT_PATH],
     cwd,
+    ...overrides,
+    args: overrides.args ?? ["run", MOCK_AGENT_PATH],
   };
 }
