@@ -577,7 +577,6 @@ describe("nanoboss MCP server", () => {
       dispatchId: string;
       status: string;
       result?: {
-        procedure: string;
         run: { sessionId: string; runId: string };
         summary?: string;
         display?: string;
@@ -595,7 +594,6 @@ describe("nanoboss MCP server", () => {
     }
 
     expect(completed.result).toMatchObject({
-      procedure: "review",
       summary: "review patch",
       display: "reviewed: patch\n",
       memory: "Reviewed patch.",

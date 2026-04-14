@@ -4,11 +4,11 @@ import {
   defaultCancellationMessage,
 } from "../core/cancellation.ts";
 import { createTextPromptInput } from "../core/prompt.ts";
+import { runResultFromRunRecord } from "../core/run-result.ts";
 import type { DefaultConversationSession } from "../agent/default-session.ts";
-import { buildProcedureExecutionResult, type ProcedureExecutionResult } from "./runner.ts";
 import type { SessionStore } from "../session/index.ts";
 import { inferDataShape } from "../core/data-shape.ts";
-import type { AgentTokenUsage, DownstreamAgentConfig, Ref, RunRecord } from "../core/types.ts";
+import type { AgentTokenUsage, DownstreamAgentConfig, Ref, RunRecord, RunResult } from "../core/types.ts";
 import { createRef } from "../core/types.ts";
 import { summarizeText } from "../util/text.ts";
 
@@ -86,8 +86,8 @@ export async function syncRecoveredProcedureResultIntoDefaultConversation(params
   );
 }
 
-export function procedureDispatchResultFromRecoveredRun(run: RunRecord): ProcedureExecutionResult {
-  return buildProcedureExecutionResult({ run });
+export function procedureDispatchResultFromRecoveredRun(run: RunRecord): RunResult {
+  return runResultFromRunRecord(run);
 }
 
 export function buildRecoveredProcedureSyncPrompt(run: RunRecord): string {

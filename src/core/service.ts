@@ -55,7 +55,6 @@ import {
   executeTopLevelProcedure,
   TopLevelProcedureCancelledError,
   TopLevelProcedureExecutionError,
-  type ProcedureExecutionResult,
 } from "../procedure/runner.ts";
 import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from "../procedure/registry.ts";
 import { formatAgentBanner } from "./runtime-banner.ts";
@@ -73,6 +72,7 @@ import type {
   Procedure,
   ProcedureRegistryLike,
   RunRef,
+  RunResult,
 } from "./types.ts";
 import { cellRefFromRunRef } from "../session/store-refs.ts";
 
@@ -531,7 +531,7 @@ export class NanobossService {
       assertCanStartBoundary?: () => void;
       activeRun?: ActiveRunState;
     },
-  ): Promise<{ result: ProcedureExecutionResult; tokenUsage?: AgentTokenUsage }> {
+  ): Promise<{ result: RunResult; tokenUsage?: AgentTokenUsage }> {
     const dispatchCorrelationId = options.dispatchCorrelationId;
     options.activeRun?.dispatchCorrelationIds.add(dispatchCorrelationId);
     appendTimingTraceEvent(timingTrace, "service", "dispatch_via_default_started", {
@@ -772,7 +772,7 @@ export class NanobossService {
     sessionId: string;
     runId: string;
     procedure: string;
-    result: ProcedureExecutionResult;
+    result: RunResult;
     tokenUsage?: AgentTokenUsage;
     emitter: CompositeSessionUpdateEmitter;
     markRunActivity: () => void;
@@ -805,7 +805,7 @@ export class NanobossService {
     sessionId: string;
     runId: string;
     procedure: string;
-    result: ProcedureExecutionResult;
+    result: RunResult;
     tokenUsage?: AgentTokenUsage;
     emitter: CompositeSessionUpdateEmitter;
     markRunActivity: () => void;
@@ -1302,7 +1302,7 @@ function getRecoveredProcedureGuidanceWindowMs(): number {
   return Number.isFinite(value) && value > 0 ? value : 300000;
 }
 
-export function extractProcedureDispatchResult(updates: acp.SessionUpdate[]): ProcedureExecutionResult | undefined {
+export function extractProcedureDispatchResult(updates: acp.SessionUpdate[]): RunResult | undefined {
   for (const update of [...updates].reverse()) {
     if (update.sessionUpdate !== "tool_call_update" || update.status !== "completed") {
       continue;
@@ -1371,7 +1371,7 @@ function collectProcedureDispatchCandidates(update: Extract<acp.SessionUpdate, {
   return candidates;
 }
 
-function parseProcedureDispatchResultCandidate(value: unknown): ProcedureExecutionResult | undefined {
+function parseProcedureDispatchResultCandidate(value: unknown): RunResult | undefined {
   if (isProcedureDispatchResult(value)) {
     return value;
   }
@@ -1677,7 +1677,7 @@ function createDismissContinuationProcedure(session: SessionState): Procedure {
 
 function buildPendingContinuation(
   procedure: string,
-  result: ProcedureExecutionResult,
+  result: RunResult,
 ): PendingContinuation {
   if (!result.pause) {
     throw new Error("Cannot persist continuation without pause metadata.");

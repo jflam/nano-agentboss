@@ -7,8 +7,8 @@ import {
 import type { DefaultConversationSession } from "../agent/default-session.ts";
 import type { FrontendEvent } from "../http/frontend-events.ts";
 import { RunLogger } from "../core/logger.ts";
-import { inferDataShape } from "../core/data-shape.ts";
 import { formatErrorMessage } from "../core/error-format.ts";
+import { runResultFromRunRecord } from "../core/run-result.ts";
 import {
   promptInputDisplayText,
   promptInputToPlainText,
@@ -29,28 +29,10 @@ import type {
   Procedure,
   PromptInput,
   ProcedureRegistryLike,
-  Ref,
   RunRecord,
+  RunResult,
   RunRef,
 } from "../core/types.ts";
-import { createRef } from "../core/types.ts";
-
-export interface ProcedureExecutionResult {
-  procedure: string;
-  run: RunRef;
-  summary?: string;
-  display?: string;
-  memory?: string;
-  dataRef?: Ref;
-  displayRef?: Ref;
-  streamRef?: Ref;
-  pause?: Continuation;
-  pauseRef?: Ref;
-  dataShape?: unknown;
-  explicitDataSchema?: object;
-  tokenUsage?: AgentTokenUsage;
-  defaultAgentSelection?: DownstreamAgentSelection;
-}
 
 export interface ProcedureRunnerEmitter extends SessionUpdateEmitter {
   readonly currentTokenUsage?: AgentTokenUsage;
@@ -97,7 +79,7 @@ export async function executeTopLevelProcedure(params: {
     prompt: string;
     state: KernelValue;
   };
-}): Promise<ProcedureExecutionResult> {
+}): Promise<RunResult> {
   const logger = new RunLogger();
   const rootSpanId = logger.newSpan();
   const promptInput = params.promptInput;
@@ -165,8 +147,7 @@ export async function executeTopLevelProcedure(params: {
       raw: result.display,
     });
 
-    return buildProcedureExecutionResult({
-      run,
+    return runResultFromRunRecord(run, {
       tokenUsage: params.emitter.currentTokenUsage,
       defaultAgentSelection: changedSelection,
     });
@@ -217,41 +198,10 @@ export async function executeTopLevelProcedure(params: {
   }
 }
 
-export function buildProcedureExecutionResult(params: {
-  run: RunRecord;
-  tokenUsage?: AgentTokenUsage;
-  defaultAgentSelection?: DownstreamAgentSelection;
-}): ProcedureExecutionResult {
-  return {
-    procedure: params.run.procedure,
-    run: params.run.run,
-    summary: params.run.output.summary,
-    display: params.run.output.display,
-    memory: params.run.output.memory,
-    dataRef: params.run.output.data !== undefined
-      ? createRef(params.run.run, "output.data")
-      : undefined,
-    displayRef: params.run.output.display !== undefined
-      ? createRef(params.run.run, "output.display")
-      : undefined,
-    streamRef: params.run.output.stream !== undefined
-      ? createRef(params.run.run, "output.stream")
-      : undefined,
-    pause: params.run.output.pause,
-    pauseRef: params.run.output.pause !== undefined
-      ? createRef(params.run.run, "output.pause")
-      : undefined,
-    dataShape: params.run.output.data !== undefined ? inferDataShape(params.run.output.data) : undefined,
-    explicitDataSchema: params.run.output.explicitDataSchema,
-    tokenUsage: params.tokenUsage,
-    defaultAgentSelection: params.defaultAgentSelection ?? params.run.meta.defaultAgentSelection,
-  };
-}
-
 export function buildRunCompletedEvent(params: {
   runId: string;
   procedure: string;
-  result: Pick<ProcedureExecutionResult, "run" | "summary" | "display">;
+  result: Pick<RunResult, "run" | "summary" | "display">;
   completedAt?: string;
   tokenUsage?: AgentTokenUsage;
 }): Extract<FrontendEvent, { type: "run_completed" }> {
@@ -287,7 +237,7 @@ export function buildRunCancelledEvent(params: {
 export function buildRunPausedEvent(params: {
   runId: string;
   procedure: string;
-  result: Pick<ProcedureExecutionResult, "run" | "display" | "pause">;
+  result: Pick<RunResult, "run" | "display" | "pause">;
   pausedAt?: string;
   tokenUsage?: AgentTokenUsage;
 }): Extract<FrontendEvent, { type: "run_paused" }> {

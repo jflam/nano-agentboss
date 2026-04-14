@@ -1,4 +1,3 @@
-import type { ProcedureExecutionResult } from "../procedure/runner.ts";
 import type { ProcedureDispatchStartResult, ProcedureDispatchStatusResult } from "../procedure/dispatch-jobs.ts";
 import type {
   DownstreamAgentSelection,
@@ -6,6 +5,7 @@ import type {
   ProcedureRegistryLike,
   Ref,
   RunRef,
+  RunResult,
 } from "../core/types.ts";
 
 export interface RuntimeServiceParams {
@@ -20,7 +20,7 @@ export interface ProcedureListResult {
   procedures: ProcedureMetadata[];
 }
 
-export type ProcedureDispatchResult = ProcedureExecutionResult;
+export type ProcedureDispatchResult = RunResult;
 export type ProcedureDispatchStartToolResult = ProcedureDispatchStartResult;
 export type ProcedureDispatchStatusToolResult = ProcedureDispatchStatusResult;
 
@@ -73,10 +73,19 @@ export function isProcedureDispatchResult(value: unknown): value is ProcedureDis
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as { procedure?: unknown }).procedure === "string" &&
     isRunRefLike((value as { run?: unknown }).run) &&
     typeof (value as { status?: unknown }).status !== "string" &&
-    typeof (value as { dispatchId?: unknown }).dispatchId !== "string"
+    typeof (value as { dispatchId?: unknown }).dispatchId !== "string" &&
+    (
+      "summary" in (value as object)
+      || "display" in (value as object)
+      || "dataRef" in (value as object)
+      || "displayRef" in (value as object)
+      || "streamRef" in (value as object)
+      || "pause" in (value as object)
+      || "pauseRef" in (value as object)
+      || "rawRef" in (value as object)
+    )
   );
 }
 

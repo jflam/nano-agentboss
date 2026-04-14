@@ -215,12 +215,12 @@ describe("NanobossService", () => {
         toolCallId: "call_123",
         status: "completed",
         rawOutput: {
-          content: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
-          detailedContent: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
+          content: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
+          detailedContent: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
           contents: [
             {
               type: "text",
-              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
+              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
             },
           ],
         },
@@ -229,7 +229,7 @@ describe("NanobossService", () => {
             type: "content",
             content: {
               type: "text",
-              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
+              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
             },
           },
         ],
@@ -237,7 +237,6 @@ describe("NanobossService", () => {
     ]);
 
     expect(parsed).toEqual({
-      procedure: "research",
       run: { sessionId: "s1", runId: "c1" },
       display: "done",
     });

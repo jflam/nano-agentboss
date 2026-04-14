@@ -21,10 +21,9 @@ import {
 import {
   TopLevelProcedureCancelledError,
   TopLevelProcedureExecutionError,
-  buildProcedureExecutionResult,
   executeTopLevelProcedure,
-  type ProcedureExecutionResult,
 } from "./runner.ts";
+import { runResultFromRunRecord } from "../core/run-result.ts";
 import { ProcedureRegistry } from "./registry.ts";
 import { SessionStore } from "../session/index.ts";
 import { resolveSelfCommand } from "../core/self-command.ts";
@@ -32,6 +31,7 @@ import type {
   DownstreamAgentSelection,
   ProcedureRegistryLike,
   RunRef,
+  RunResult,
 } from "../core/types.ts";
 import { requireValue } from "../util/argv.ts";
 
@@ -56,7 +56,7 @@ export interface ProcedureDispatchJob {
   dispatchCorrelationId: string;
   defaultAgentSelection?: DownstreamAgentSelection;
   run?: RunRef;
-  result?: ProcedureExecutionResult;
+  result?: RunResult;
   error?: string;
   workerPid?: number;
 }
@@ -75,7 +75,7 @@ export interface ProcedureDispatchStatusResult {
   startedAt?: string;
   completedAt?: string;
   run?: RunRef;
-  result?: ProcedureExecutionResult;
+  result?: RunResult;
   error?: string;
 }
 
@@ -435,8 +435,7 @@ export class ProcedureDispatchJobManager {
       return failed;
     }
 
-    const result = buildProcedureExecutionResult({
-      run: record,
+    const result = runResultFromRunRecord(record, {
       tokenUsage: job.result?.tokenUsage,
       defaultAgentSelection: job.result?.defaultAgentSelection ?? job.defaultAgentSelection,
     });

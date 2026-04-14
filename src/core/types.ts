@@ -462,11 +462,17 @@ export interface RunResult<T extends KernelValue = KernelValue> {
   run: RunRef;
   data?: T;
   dataRef?: Ref;
+  display?: string;
   displayRef?: Ref;
   streamRef?: Ref;
+  memory?: string;
   pause?: Continuation;
   pauseRef?: Ref;
   summary?: string;
+  dataShape?: unknown;
+  explicitDataSchema?: object;
+  tokenUsage?: AgentTokenUsage;
+  defaultAgentSelection?: DownstreamAgentSelection;
   rawRef?: Ref;
 }
 

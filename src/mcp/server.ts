@@ -578,7 +578,7 @@ function serializeProcedureDispatchResult(result: ProcedureDispatchResult): stri
     return result.summary;
   }
 
-  return `${result.procedure} completed.`;
+  return "Procedure completed.";
 }
 
 function serializeProcedureDispatchStatus(result: ProcedureDispatchStatusToolResult): string {
