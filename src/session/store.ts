@@ -6,13 +6,19 @@ import { getSessionDir } from "../core/config.ts";
 import { inferDataShape } from "../core/data-shape.ts";
 import { writeJsonFileAtomicSync } from "../util/repo-artifacts.ts";
 import { summarizeText } from "../util/text.ts";
+import {
+  createCellRef,
+  createValueRef,
+  runRefFromCellRef,
+  type CellRef,
+  type ValueRef,
+} from "./store-refs.ts";
 import type {
   CellAncestorsOptions,
   CellDescendantsOptions,
   CellFilterOptions,
   CellKind,
   CellRecord,
-  CellRef,
   CellSummary,
   DownstreamAgentSelection,
   KernelValue,
@@ -25,9 +31,7 @@ import type {
   RefStat,
   RunRef,
   TopLevelRunsOptions,
-  ValueRef,
 } from "../core/types.ts";
-import { runRefFromCellRef } from "../core/types.ts";
 
 interface CellDraft {
   cell: CellRef;
@@ -73,14 +77,6 @@ export interface StoredRunResult<T extends KernelValue = KernelValue> {
 }
 
 const STALE_ATTACHMENT_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-export function createCellRef(sessionId: string, cellId: string): CellRef {
-  return { sessionId, cellId };
-}
-
-export function createValueRef(cell: CellRef, path: string): ValueRef {
-  return { cell, path };
-}
 
 export function normalizeProcedureResult<T extends KernelValue = KernelValue>(
   result: ProcedureResult<T> | string | void,

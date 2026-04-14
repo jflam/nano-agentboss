@@ -1,5 +1,6 @@
 import { inferDataShape } from "../core/data-shape.ts";
 import { shouldLoadDiskCommands } from "../core/runtime-mode.ts";
+import { cellRefFromRunRef, valueRefFromRef } from "../session/store-refs.ts";
 import type {
   CellDescendantsOptions,
   DownstreamAgentSelection,
@@ -10,11 +11,9 @@ import type {
   RunRef,
 } from "../core/types.ts";
 import {
-  cellRefFromRunRef,
   publicKernelValueFromStored,
   runRecordFromCellRecord,
   runSummaryFromCellSummary,
-  valueRefFromRef,
 } from "../core/types.ts";
 import {
   ProcedureDispatchJobManager,

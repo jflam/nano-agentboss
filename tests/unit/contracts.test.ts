@@ -1,17 +1,21 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  cellRecordFromRunRecord,
-  cellRefFromRunRef,
-  cellSummaryFromRunSummary,
   continuationFromPause,
   pauseFromContinuation,
-  refFromValueRef,
-  runRecordFromCellRecord,
-  runRefFromCellRef,
-  runSummaryFromCellSummary,
-  valueRefFromRef,
 } from "../../src/core/contracts.ts";
+import {
+  cellRecordFromRunRecord,
+  cellSummaryFromRunSummary,
+  runRecordFromCellRecord,
+  runSummaryFromCellSummary,
+} from "../../src/core/types.ts";
+import {
+  cellRefFromRunRef,
+  refFromValueRef,
+  runRefFromCellRef,
+  valueRefFromRef,
+} from "../../src/session/store-refs.ts";
 
 describe("core contracts", () => {
   test("round-trips run refs and value refs", () => {

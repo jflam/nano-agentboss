@@ -17,13 +17,13 @@ import {
   type SessionStore,
   normalizeProcedureResult,
 } from "../session/index.ts";
+import { runRefFromCellRef, type CellRef } from "../session/store-refs.ts";
 import { toDownstreamAgentSelection } from "../core/config.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "../core/timing-trace.ts";
 import { summarizeText } from "../util/text.ts";
 import type {
   AgentTokenUsage,
   CellRecord,
-  CellRef,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   KernelValue,
@@ -34,7 +34,7 @@ import type {
   Ref,
   RunRef,
 } from "../core/types.ts";
-import { createRef, runRefFromCellRef } from "../core/types.ts";
+import { createRef } from "../core/types.ts";
 
 export interface ProcedureExecutionResult {
   procedure: string;

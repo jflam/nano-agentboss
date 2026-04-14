@@ -1,7 +1,8 @@
 import { inferDataShape, stringifyCompactShape } from "./data-shape.ts";
 import type { SessionStore } from "../session/index.ts";
+import { cellRefFromRunRef } from "../session/store-refs.ts";
 import type { JsonValue, Ref, RunRef } from "./types.ts";
-import { cellRefFromRunRef, createRef } from "./types.ts";
+import { createRef } from "./types.ts";
 import { summarizeText } from "../util/text.ts";
 
 const DEFAULT_MAX_CARDS = 3;

@@ -1,6 +1,6 @@
 import type { StoredRunResult } from "../session/store.ts";
+import { refFromValueRef } from "../session/store-refs.ts";
 import type { KernelValue, Ref, RunResult } from "./types.ts";
-import { refFromValueRef } from "./types.ts";
 
 export function expectData<T extends KernelValue>(
   result: RunResult<T>,

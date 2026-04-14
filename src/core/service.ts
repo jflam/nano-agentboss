@@ -74,7 +74,7 @@ import type {
   ProcedureRegistryLike,
   RunRef,
 } from "./types.ts";
-import { cellRefFromRunRef } from "./types.ts";
+import { cellRefFromRunRef } from "../session/store-refs.ts";
 
 interface ActiveRunState {
   runId: string;

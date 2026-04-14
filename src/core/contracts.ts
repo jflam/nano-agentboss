@@ -15,17 +15,9 @@ export type {
 } from "./types.ts";
 
 export {
-  cellRefFromRunRef,
-  cellRecordFromRunRecord,
-  cellSummaryFromRunSummary,
   continuationFromPause,
   createRef,
   createRunRef,
   createSessionRef,
   pauseFromContinuation,
-  refFromValueRef,
-  runRecordFromCellRecord,
-  runRefFromCellRef,
-  runSummaryFromCellSummary,
-  valueRefFromRef,
 } from "./types.ts";

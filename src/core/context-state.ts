@@ -13,12 +13,11 @@ import type {
   TopLevelRunsOptions,
 } from "./types.ts";
 import type { SessionStore } from "../session/index.ts";
+import { cellRefFromRunRef, valueRefFromRef } from "../session/store-refs.ts";
 import {
-  cellRefFromRunRef,
   publicKernelValueFromStored,
   runRecordFromCellRecord,
   runSummaryFromCellSummary,
-  valueRefFromRef,
 } from "./types.ts";
 
 export class CommandRefs implements RefsApi {

@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 import { defaultCancellationMessage } from "../core/cancellation.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
-import { cellRefFromRunRef } from "../core/types.ts";
+import { cellRefFromRunRef } from "../session/store-refs.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "../core/timing-trace.ts";
 import { findRecoveredProcedureDispatchRecord } from "./dispatch-recovery.ts";
 import {

@@ -1,18 +1,15 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import type { ReplayableFrontendEvent } from "../http/frontend-events.ts";
+import type { CellRef, ValueRef } from "../session/store-refs.ts";
+import {
+  cellRefFromRunRef,
+  refFromValueRef,
+  runRefFromCellRef,
+  valueRefFromRef,
+} from "../session/store-refs.ts";
 
 export type KernelScalar = null | boolean | number | string;
 export type JsonValue = KernelScalar | JsonValue[] | { [key: string]: JsonValue };
-
-export interface CellRef {
-  sessionId: string;
-  cellId: string;
-}
-
-export interface ValueRef {
-  cell: CellRef;
-  path: string;
-}
 
 export interface RunRef {
   sessionId: string;
@@ -55,28 +52,6 @@ export function createRef(run: RunRef, path: string): Ref {
 
 export function createSessionRef(sessionId: string): SessionRef {
   return { sessionId };
-}
-
-export function runRefFromCellRef(cell: CellRef): RunRef {
-  return createRunRef(cell.sessionId, cell.cellId);
-}
-
-export function cellRefFromRunRef(run: RunRef): CellRef {
-  return {
-    sessionId: run.sessionId,
-    cellId: run.runId,
-  };
-}
-
-export function refFromValueRef(valueRef: ValueRef): Ref {
-  return createRef(runRefFromCellRef(valueRef.cell), valueRef.path);
-}
-
-export function valueRefFromRef(ref: Ref): ValueRef {
-  return {
-    cell: cellRefFromRunRef(ref.run),
-    path: ref.path,
-  };
 }
 
 export interface ProcedurePause<TState extends KernelValue = KernelValue> {

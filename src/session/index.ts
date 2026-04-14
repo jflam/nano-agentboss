@@ -1,7 +1,5 @@
 export {
   SessionStore,
-  createCellRef,
-  createValueRef,
   normalizeProcedureResult,
 } from "./store.ts";
 
