@@ -191,7 +191,7 @@ export function continuationFromPause<TState extends KernelValue = KernelValue>(
 ): Continuation<TState> {
   return {
     question: pause.question,
-    state: pause.state,
+    state: publicKernelValueFromStored(pause.state) as TState,
     inputHint: pause.inputHint,
     suggestedReplies: pause.suggestedReplies,
     ui: pause.continuationUi,
@@ -203,7 +203,7 @@ export function pauseFromContinuation<TState extends KernelValue = KernelValue>(
 ): ProcedurePause<TState> {
   return {
     question: continuation.question,
-    state: continuation.state,
+    state: storedKernelValueFromPublic(continuation.state) as TState,
     inputHint: continuation.inputHint,
     suggestedReplies: continuation.suggestedReplies,
     continuationUi: continuation.ui,
@@ -306,7 +306,7 @@ export function runRecordFromCellRecord(sessionId: string, record: CellRecord): 
     procedure: record.procedure,
     input: record.input,
     output: {
-      data: record.output.data,
+      data: publicKernelValueFromStored(record.output.data),
       display: record.output.display,
       stream: record.output.stream,
       summary: record.output.summary,
@@ -331,7 +331,7 @@ export function cellRecordFromRunRecord(run: RunRecord): CellRecord {
     procedure: run.procedure,
     input: run.input,
     output: {
-      data: run.output.data,
+      data: storedKernelValueFromPublic(run.output.data),
       display: run.output.display,
       stream: run.output.stream,
       summary: run.output.summary,
@@ -386,11 +386,101 @@ export function cellSummaryFromRunSummary(summary: RunSummary): CellSummary {
 }
 
 export interface RefStat {
-  cell: CellRef;
+  run: RunRef;
   path: string;
   type: string;
   size: number;
   preview?: string;
+}
+
+export function publicKernelValueFromStored(value: KernelValue | undefined): KernelValue | undefined {
+  if (value === undefined || value === null) {
+    return value;
+  }
+
+  if (isValueRefLike(value)) {
+    return refFromValueRef(value);
+  }
+
+  if (isCellRefLike(value)) {
+    return runRefFromCellRef(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => publicKernelValueFromStored(entry) as KernelValue);
+  }
+
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, publicKernelValueFromStored(entry as KernelValue)]),
+    );
+  }
+
+  return value;
+}
+
+export function storedKernelValueFromPublic(value: KernelValue | undefined): KernelValue | undefined {
+  if (value === undefined || value === null) {
+    return value;
+  }
+
+  if (isRefLike(value)) {
+    return valueRefFromRef(value);
+  }
+
+  if (isRunRefLike(value)) {
+    return cellRefFromRunRef(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => storedKernelValueFromPublic(entry) as KernelValue);
+  }
+
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, storedKernelValueFromPublic(entry as KernelValue)]),
+    );
+  }
+
+  return value;
+}
+
+function isCellRefLike(value: unknown): value is CellRef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { sessionId?: unknown }).sessionId === "string" &&
+    typeof (value as { cellId?: unknown }).cellId === "string" &&
+    !("path" in (value as object))
+  );
+}
+
+function isValueRefLike(value: unknown): value is ValueRef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { path?: unknown }).path === "string" &&
+    isCellRefLike((value as { cell?: unknown }).cell)
+  );
+}
+
+function isRunRefLike(value: unknown): value is RunRef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { sessionId?: unknown }).sessionId === "string" &&
+    typeof (value as { runId?: unknown }).runId === "string" &&
+    !("path" in (value as object))
+  );
+}
+
+function isRefLike(value: unknown): value is Ref {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { path?: unknown }).path === "string" &&
+    isRunRefLike((value as { run?: unknown }).run)
+  );
 }
 
 export interface CellFilterOptions {

@@ -215,12 +215,12 @@ describe("NanobossService", () => {
         toolCallId: "call_123",
         status: "completed",
         rawOutput: {
-          content: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
-          detailedContent: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
+          content: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
+          detailedContent: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
           contents: [
             {
               type: "text",
-              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
+              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
             },
           ],
         },
@@ -229,7 +229,7 @@ describe("NanobossService", () => {
             type: "content",
             content: {
               type: "text",
-              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
+              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
             },
           },
         ],
@@ -238,7 +238,7 @@ describe("NanobossService", () => {
 
     expect(parsed).toEqual({
       procedure: "research",
-      cell: { sessionId: "s1", cellId: "c1" },
+      run: { sessionId: "s1", runId: "c1" },
       display: "done",
     });
   });
@@ -445,8 +445,8 @@ describe("NanobossService", () => {
         expect(restored.data.procedure).toBe("default");
         expect(restored.data.prompt).toBe("nested tool trace demo");
         expect(restored.data.completedAt).toBe(liveCompletedAt);
-        expect(restored.data.cell.sessionId).toBe(session.sessionId);
-        expect(typeof restored.data.cell.cellId).toBe("string");
+        expect(restored.data.run.sessionId).toBe(session.sessionId);
+        expect(typeof restored.data.run.runId).toBe("string");
         expect(restored.data.status).toBe("complete");
         expect(normalizeReplayEvents(resumedEvents.slice(1))).toEqual(liveReplay);
         expect(commandsUpdated?.type).toBe("commands_updated");
@@ -519,8 +519,8 @@ describe("NanobossService", () => {
         expect(restored.data.procedure).toBe("default");
         expect(restored.data.prompt).toBe("cooperative cancel demo");
         expect(restored.data.completedAt).toBe(liveCancelledAt);
-        expect(restored.data.cell.sessionId).toBe(session.sessionId);
-        expect(typeof restored.data.cell.cellId).toBe("string");
+        expect(restored.data.run.sessionId).toBe(session.sessionId);
+        expect(typeof restored.data.run.runId).toBe("string");
         expect(restored.data.status).toBe("cancelled");
         expect(normalizeReplayEvents(resumedEvents.slice(1))).toEqual(liveReplay);
       } finally {

@@ -32,6 +32,7 @@ import type {
   CellRef,
   DownstreamAgentSelection,
   ProcedureRegistryLike,
+  RunRef,
 } from "../core/types.ts";
 import { requireValue } from "../util/argv.ts";
 
@@ -55,7 +56,7 @@ export interface ProcedureDispatchJob {
   completedAt?: string;
   dispatchCorrelationId: string;
   defaultAgentSelection?: DownstreamAgentSelection;
-  cell?: CellRef;
+  run?: RunRef;
   result?: ProcedureExecutionResult;
   error?: string;
   workerPid?: number;
@@ -74,7 +75,7 @@ export interface ProcedureDispatchStatusResult {
   updatedAt: string;
   startedAt?: string;
   completedAt?: string;
-  cell?: CellRef;
+  run?: RunRef;
   result?: ProcedureExecutionResult;
   error?: string;
 }
@@ -292,7 +293,7 @@ export class ProcedureDispatchJobManager {
       if (latest.status === "cancelled" || softStopController.signal.aborted) {
         this.writeJob({
           ...markJobCancelled(latest, completedAt),
-          cell: result.cell,
+          run: result.run,
           result,
           error: defaultCancellationMessage("soft_stop"),
           defaultAgentSelection: result.defaultAgentSelection ?? job.defaultAgentSelection,
@@ -305,26 +306,26 @@ export class ProcedureDispatchJobManager {
         status: "completed",
         updatedAt: completedAt,
         completedAt,
-        cell: result.cell,
+        run: result.run,
         result,
         error: undefined,
         defaultAgentSelection: result.defaultAgentSelection ?? job.defaultAgentSelection,
       });
       appendTimingTraceEvent(timingTrace, "dispatch_worker", "procedure_execution_completed", {
         procedure: job.procedure,
-        cellId: result.cell.cellId,
+        runId: result.run.runId,
       });
     } catch (error) {
       const completedAt = new Date().toISOString();
       const latest = this.readJob(dispatchId);
       const message = error instanceof Error ? error.message : String(error);
-      const cell = error instanceof TopLevelProcedureExecutionError || error instanceof TopLevelProcedureCancelledError
-        ? error.cell
-        : latest.cell;
+      const run = error instanceof TopLevelProcedureExecutionError || error instanceof TopLevelProcedureCancelledError
+        ? error.run
+        : latest.run;
       if (latest.status === "cancelled" || softStopController.signal.aborted) {
         this.writeJob({
           ...markJobCancelled(latest, completedAt),
-          cell,
+          run,
           error: message,
         });
         return;
@@ -335,7 +336,7 @@ export class ProcedureDispatchJobManager {
         status: "failed",
         updatedAt: completedAt,
         completedAt,
-        cell,
+        run,
         error: message,
       });
       appendTimingTraceEvent(timingTrace, "dispatch_worker", "procedure_execution_failed", {
@@ -394,8 +395,8 @@ export class ProcedureDispatchJobManager {
       return job;
     }
 
-    const cell = job.cell
-      ? this.tryReadCell(job.cell)
+    const cell = job.run
+      ? this.tryReadCell({ sessionId: job.run.sessionId, cellId: job.run.runId })
       : findRecoveredProcedureDispatchCell(this.createStore(), {
         procedureName: job.procedure,
         dispatchCorrelationId: job.dispatchCorrelationId,
@@ -428,7 +429,7 @@ export class ProcedureDispatchJobManager {
         status: "failed",
         updatedAt: new Date().toISOString(),
         completedAt,
-        cell: { sessionId: this.params.sessionId, cellId: cell.cellId },
+        run: { sessionId: this.params.sessionId, runId: cell.cellId },
         error: job.error ?? cell.output.summary ?? `${job.procedure} failed`,
       };
       this.writeJob(failed);
@@ -447,7 +448,7 @@ export class ProcedureDispatchJobManager {
       status: "completed",
       updatedAt: new Date().toISOString(),
       completedAt,
-      cell: result.cell,
+      run: result.run,
       result,
       error: undefined,
       defaultAgentSelection: result.defaultAgentSelection ?? job.defaultAgentSelection,
@@ -715,7 +716,7 @@ function toProcedureDispatchStatusResult(job: ProcedureDispatchJob): ProcedureDi
     updatedAt: job.updatedAt,
     startedAt: job.startedAt,
     completedAt: job.completedAt,
-    cell: job.cell,
+    run: job.run,
     result: job.result,
     error: job.error,
   };

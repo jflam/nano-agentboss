@@ -38,10 +38,6 @@ describe("nanoboss MCP formatting", () => {
           sessionId: "session_123",
           runId: "cell_123",
         },
-        cell: {
-          sessionId: "session_123",
-          cellId: "cell_123",
-        },
         display: "review completed",
       },
     });
@@ -61,10 +57,6 @@ describe("nanoboss MCP formatting", () => {
         run: {
           sessionId: "session_123",
           runId: "cell_123",
-        },
-        cell: {
-          sessionId: "session_123",
-          cellId: "cell_123",
         },
         display: "review completed",
       },

@@ -72,8 +72,8 @@ import type {
   PromptInput,
   Procedure,
   ProcedureRegistryLike,
+  RunRef,
 } from "./types.ts";
-import { runRefFromCellRef } from "./types.ts";
 
 interface ActiveRunState {
   runId: string;
@@ -375,9 +375,9 @@ export class NanobossService {
         procedure: record.procedure,
         prompt: record.input,
         completedAt: getRestoredRunEndedAt(terminalEvent) ?? record.meta.createdAt,
-        cell: {
+        run: {
           sessionId,
-          cellId: record.cellId,
+          runId: record.cellId,
         },
         status: getRestoredRunStatus(terminalEvent),
         ...(replayEvents && replayEvents.length > 0
@@ -511,7 +511,7 @@ export class NanobossService {
       promptInput: preparedPrompt,
       markSubmitted: () => {
         for (const card of cards) {
-          session.syncedProcedureMemoryCellIds.add(card.cell.cellId);
+          session.syncedProcedureMemoryCellIds.add(card.run.runId);
         }
       },
     };
@@ -588,7 +588,7 @@ export class NanobossService {
         appendTimingTraceEvent(timingTrace, "service", "dispatch_result_extracted_from_prompt", {
           procedure: procedureName,
         });
-        session.syncedProcedureMemoryCellIds.add(result.cell.cellId);
+        session.syncedProcedureMemoryCellIds.add(result.run.runId);
         return {
           result,
           tokenUsage: normalizeAgentTokenUsage(
@@ -618,7 +618,7 @@ export class NanobossService {
         });
       }
       if (dispatchStatus?.status === "completed" && dispatchStatus.result) {
-        session.syncedProcedureMemoryCellIds.add(dispatchStatus.result.cell.cellId);
+        session.syncedProcedureMemoryCellIds.add(dispatchStatus.result.run.runId);
         return {
           result: dispatchStatus.result,
           tokenUsage: normalizeAgentTokenUsage(
@@ -778,7 +778,7 @@ export class NanobossService {
   }): void {
     this.applyDefaultAgentSelection(params.session, params.result.defaultAgentSelection);
     this.emitDisplayIfNeeded(params.emitter, params.result.display);
-    publishStoredMemoryCard(params.session, params.sessionId, params.runId, params.result.cell);
+    publishStoredMemoryCard(params.session, params.sessionId, params.runId, params.result.run);
     if (params.tokenUsage) {
       params.session.events.publish(params.sessionId, {
         type: "token_usage",
@@ -814,7 +814,7 @@ export class NanobossService {
       params.emitter,
       params.result.display ?? params.result.pause?.question,
     );
-    publishStoredMemoryCard(params.session, params.sessionId, params.runId, params.result.cell);
+    publishStoredMemoryCard(params.session, params.sessionId, params.runId, params.result.run);
     if (params.tokenUsage) {
       params.session.events.publish(params.sessionId, {
         type: "token_usage",
@@ -842,7 +842,7 @@ export class NanobossService {
     procedure: string;
     error: string;
     markRunActivity: () => void;
-    cell?: { sessionId: string; cellId: string };
+    run?: RunRef;
   }): void {
     params.session.events.publish(params.sessionId, {
       type: "run_failed",
@@ -850,7 +850,7 @@ export class NanobossService {
       procedure: params.procedure,
       completedAt: new Date().toISOString(),
       error: params.error,
-      cell: params.cell,
+      run: params.run,
     });
     params.markRunActivity();
   }
@@ -862,7 +862,7 @@ export class NanobossService {
     procedure: string;
     message: string;
     markRunActivity: () => void;
-    cell?: { sessionId: string; cellId: string };
+    run?: RunRef;
   }): void {
     params.session.events.publish(
       params.sessionId,
@@ -870,7 +870,7 @@ export class NanobossService {
         runId: params.runId,
         procedure: params.procedure,
         message: params.message,
-        cell: params.cell,
+        run: params.run,
       }),
     );
     params.markRunActivity();
@@ -1123,7 +1123,7 @@ export class NanobossService {
             markRunActivity,
           });
         }
-        persistedTopLevelCell = result.cell;
+        persistedTopLevelCell = { sessionId: result.run.sessionId, cellId: result.run.runId };
       } catch (error) {
         if (error instanceof TopLevelProcedureExecutionError) {
           this.publishRunFailed({
@@ -1132,7 +1132,7 @@ export class NanobossService {
             runId,
             procedure: procedure.name,
             error: error.message,
-            cell: error.cell,
+            run: error.run,
             markRunActivity,
           });
         } else if (error instanceof TopLevelProcedureCancelledError) {
@@ -1142,10 +1142,10 @@ export class NanobossService {
             runId,
             procedure: procedure.name,
             message: error.message,
-            cell: error.cell,
+            run: error.run,
             markRunActivity,
           });
-          persistedTopLevelCell = error.cell;
+          persistedTopLevelCell = { sessionId: error.run.sessionId, cellId: error.run.runId };
         }
         throw error;
       }
@@ -1270,13 +1270,13 @@ function publishStoredMemoryCard(
   session: SessionState,
   sessionId: string,
   runId: string,
-  cellRef?: { sessionId: string; cellId: string },
+  runRef?: RunRef,
 ): void {
-  if (!cellRef) {
+  if (!runRef) {
     return;
   }
 
-  const storedMemoryCard = materializeProcedureMemoryCard(session.store, cellRef);
+  const storedMemoryCard = materializeProcedureMemoryCard(session.store, runRef);
   if (!storedMemoryCard) {
     return;
   }
@@ -1684,7 +1684,7 @@ function buildPendingContinuation(
 
   return {
     procedure,
-    run: result.run ?? runRefFromCellRef(result.cell),
+    run: result.run,
     question: result.pause.question,
     state: result.pause.state,
     inputHint: result.pause.inputHint,

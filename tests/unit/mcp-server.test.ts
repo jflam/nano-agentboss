@@ -7,6 +7,7 @@ import {
   callMcpTool,
   listMcpTools,
 } from "../../src/mcp/server.ts";
+import { refFromValueRef } from "../../src/core/types.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { createNanobossRuntimeService } from "../../src/runtime/service.ts";
 import { SessionStore } from "../../src/session/index.ts";
@@ -305,14 +306,14 @@ describe("nanoboss MCP server", () => {
       runRef: reviewResult.run,
     }) as { output: { summary?: string } }).output.summary).toBe("review summary");
 
-    const reviewDataRef = expectDefined(reviewResult.dataRef, "Expected review dataRef");
+    const reviewDataRef = refFromValueRef(expectDefined(reviewResult.dataRef, "Expected review dataRef"));
     const manifest = await callMcpTool(runtime, "ref_read", {
-      valueRef: reviewDataRef,
+      ref: reviewDataRef,
     });
     expect(manifest).toEqual({
       subject: "review the code",
-      plan: planResult.dataRef,
-      summary: summaryResult.dataRef,
+      plan: planResult.dataRef ? refFromValueRef(planResult.dataRef) : undefined,
+      summary: summaryResult.dataRef ? refFromValueRef(summaryResult.dataRef) : undefined,
       verdict: "mixed",
     });
 
@@ -321,9 +322,9 @@ describe("nanoboss MCP server", () => {
       "Expected plan ref in manifest",
     );
     expect(await callMcpTool(runtime, "ref_read", {
-      valueRef: planRef,
+      ref: planRef,
     })).toEqual({
-      critique: critiqueResult.dataRef,
+      critique: critiqueResult.dataRef ? refFromValueRef(critiqueResult.dataRef) : undefined,
       steps: ["inspect diff", "check tests"],
     });
     const summaryRef = expectDefined(
@@ -331,13 +332,13 @@ describe("nanoboss MCP server", () => {
       "Expected summary ref in manifest",
     );
     expect(await callMcpTool(runtime, "ref_read", {
-      valueRef: summaryRef,
+      ref: summaryRef,
     })).toEqual({
       outline: "review outline",
     });
 
     expect((await callMcpTool(runtime, "ref_stat", {
-      valueRef: reviewDataRef,
+      ref: reviewDataRef,
     }) as { type?: string }).type).toBe("object");
 
     const schema = await callMcpTool(runtime, "get_schema", {
@@ -578,11 +579,10 @@ describe("nanoboss MCP server", () => {
       result?: {
         procedure: string;
         run: { sessionId: string; runId: string };
-        cell: { sessionId: string; cellId: string };
         summary?: string;
         display?: string;
         memory?: string;
-        dataRef?: { cell: { sessionId: string; cellId: string }; path: string };
+        dataRef?: { run: { sessionId: string; runId: string }; path: string };
         dataShape?: { subject: string; verdict: string };
       };
     };
@@ -620,7 +620,7 @@ describe("nanoboss MCP server", () => {
       runRef: expectDefined(dispatched.run, "Expected dispatched run"),
     }) as { meta: { dispatchCorrelationId?: string } }).meta.dispatchCorrelationId).toBe(dispatchCorrelationId);
     expect(dispatched.dataRef ? await callMcpTool(runtime, "ref_read", {
-      valueRef: dispatched.dataRef,
+      ref: dispatched.dataRef,
     }) : undefined).toEqual({
       subject: "patch",
       verdict: "mixed",

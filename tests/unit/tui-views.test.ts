@@ -1011,8 +1011,8 @@ describe("NanobossAppView", () => {
             callPreview: { header: "callAgent: summarize the diff" },
             resultPreview: { bodyLines: ["stored result in cell-1"] },
             rawOutput: {
-              cell: { sessionId: "session-1", cellId: "cell-1" },
-              dataRef: { cell: { sessionId: "session-1", cellId: "cell-1" }, path: "data" },
+              run: { sessionId: "session-1", runId: "cell-1" },
+              dataRef: { run: { sessionId: "session-1", runId: "cell-1" }, path: "data" },
               expandedContent: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8",
             },
           },
@@ -1042,8 +1042,8 @@ describe("NanobossAppView", () => {
             callPreview: { header: "callAgent: summarize the diff" },
             resultPreview: { bodyLines: ["stored result in cell-1"] },
             rawOutput: {
-              cell: { sessionId: "session-1", cellId: "cell-1" },
-              dataRef: { cell: { sessionId: "session-1", cellId: "cell-1" }, path: "data" },
+              run: { sessionId: "session-1", runId: "cell-1" },
+              dataRef: { run: { sessionId: "session-1", runId: "cell-1" }, path: "data" },
               expandedContent: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8",
             },
           },
@@ -1145,7 +1145,7 @@ function createTranscriptContractState(mode: "live" | "restored") {
         procedure: "default",
         prompt: "review the repo",
         completedAt: new Date(1_000).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         status: "complete",
       }),
     });
@@ -1201,7 +1201,7 @@ function createTranscriptContractReplayEvents(): RenderedFrontendEventEnvelope[]
       runId: "run-1",
       procedure: "default",
       completedAt: new Date(1_000).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
     }),
   ];
 }

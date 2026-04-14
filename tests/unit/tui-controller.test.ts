@@ -211,7 +211,7 @@ describe("NanobossTuiController", () => {
       runId: "run-2",
       procedure: "default",
       completedAt: new Date(3).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-2" },
+      run: { sessionId: "session-1", runId: "cell-2" },
     }));
 
     await waitFor(() => sendCalls.length === 3);
@@ -505,7 +505,7 @@ describe("NanobossTuiController", () => {
       runId: "run-1",
       procedure: "default",
       completedAt: new Date(1).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
     }));
 
     expect(controller.getState().inputDisabled).toBe(false);
@@ -565,7 +565,7 @@ describe("NanobossTuiController", () => {
     streams[0]?.emit(eventEnvelope("memory_cards", {
       runId: "run-1",
       cards: [{
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         procedure: "default",
         input: "hello",
         summary: "stored summary",
@@ -575,7 +575,7 @@ describe("NanobossTuiController", () => {
     streams[0]?.emit(eventEnvelope("memory_card_stored", {
       runId: "run-1",
       card: {
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         procedure: "default",
         input: "hello",
         memory: "stored memory",
@@ -620,7 +620,7 @@ describe("NanobossTuiController", () => {
       runId: "run-1",
       procedure: "simplify",
       pausedAt: new Date(1).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
       question: "What would you like instead?",
       display: "Try deleting dead code first.\n\nWhat would you like instead?",
     }));
@@ -678,7 +678,7 @@ describe("NanobossTuiController", () => {
       runId: "run-1",
       procedure: "simplify2",
       pausedAt: new Date(1).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
       question: "Approve this simplify2 slice?",
       display: "paused",
       continuationUi: {
@@ -779,7 +779,7 @@ describe("NanobossTuiController", () => {
       runId: "run-1",
       procedure: "simplify2",
       pausedAt: new Date(1).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
       question: "Choose a focus",
       display: "paused",
       continuationUi: {

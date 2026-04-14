@@ -32,23 +32,22 @@ import type {
   ProcedurePause,
   PromptInput,
   ProcedureRegistryLike,
+  Ref,
   RunRef,
-  ValueRef,
 } from "../core/types.ts";
-import { runRefFromCellRef } from "../core/types.ts";
+import { refFromValueRef, runRefFromCellRef } from "../core/types.ts";
 
 export interface ProcedureExecutionResult {
   procedure: string;
-  run?: RunRef;
-  cell: CellRef;
+  run: RunRef;
   summary?: string;
   display?: string;
   memory?: string;
-  dataRef?: ValueRef;
-  displayRef?: ValueRef;
-  streamRef?: ValueRef;
+  dataRef?: Ref;
+  displayRef?: Ref;
+  streamRef?: Ref;
   pause?: ProcedurePause;
-  pauseRef?: ValueRef;
+  pauseRef?: Ref;
   dataShape?: unknown;
   explicitDataSchema?: object;
   tokenUsage?: AgentTokenUsage;
@@ -60,7 +59,7 @@ export interface ProcedureRunnerEmitter extends SessionUpdateEmitter {
 }
 
 export class TopLevelProcedureExecutionError extends Error {
-  constructor(message: string, readonly cell: CellRef) {
+  constructor(message: string, readonly run: RunRef) {
     super(message);
     this.name = "TopLevelProcedureExecutionError";
   }
@@ -69,7 +68,7 @@ export class TopLevelProcedureExecutionError extends Error {
 export class TopLevelProcedureCancelledError extends RunCancelledError {
   constructor(
     message: string,
-    readonly cell: CellRef,
+    readonly run: RunRef,
     reason: RunCancellationReason = "soft_stop",
   ) {
     super(message, reason);
@@ -192,7 +191,11 @@ export async function executeTopLevelProcedure(params: {
         display: cancelled.message,
         summary: summarizeText(cancelled.message),
       });
-      throw new TopLevelProcedureCancelledError(cancelled.message, finalized.cell, cancelled.reason);
+      throw new TopLevelProcedureCancelledError(
+        cancelled.message,
+        finalized.run ?? runRefFromCellRef(finalized.cell),
+        cancelled.reason,
+      );
     }
 
     const message = formatErrorMessage(error);
@@ -210,7 +213,7 @@ export async function executeTopLevelProcedure(params: {
     const finalized = params.store.finalizeCell(rootCell, {
       summary: summarizeText(errorText),
     });
-    throw new TopLevelProcedureExecutionError(message, finalized.cell);
+    throw new TopLevelProcedureExecutionError(message, finalized.run ?? runRefFromCellRef(finalized.cell));
   } finally {
     await params.emitter.flush();
     logger.close();
@@ -224,18 +227,26 @@ export function buildProcedureExecutionResult(params: {
   defaultAgentSelection?: DownstreamAgentSelection;
 }): ProcedureExecutionResult {
   const cellRef = { sessionId: params.sessionId, cellId: params.cell.cellId };
+  const run = runRefFromCellRef(cellRef);
   return {
     procedure: params.cell.procedure,
-    run: runRefFromCellRef(cellRef),
-    cell: cellRef,
+    run,
     summary: params.cell.output.summary,
     display: params.cell.output.display,
     memory: params.cell.output.memory,
-    dataRef: params.cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined,
-    displayRef: params.cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined,
-    streamRef: params.cell.output.stream !== undefined ? createValueRef(cellRef, "output.stream") : undefined,
+    dataRef: params.cell.output.data !== undefined
+      ? refFromValueRef(createValueRef(cellRef, "output.data"))
+      : undefined,
+    displayRef: params.cell.output.display !== undefined
+      ? refFromValueRef(createValueRef(cellRef, "output.display"))
+      : undefined,
+    streamRef: params.cell.output.stream !== undefined
+      ? refFromValueRef(createValueRef(cellRef, "output.stream"))
+      : undefined,
     pause: params.cell.output.pause,
-    pauseRef: params.cell.output.pause !== undefined ? createValueRef(cellRef, "output.pause") : undefined,
+    pauseRef: params.cell.output.pause !== undefined
+      ? refFromValueRef(createValueRef(cellRef, "output.pause"))
+      : undefined,
     dataShape: params.cell.output.data !== undefined ? inferDataShape(params.cell.output.data) : undefined,
     explicitDataSchema: params.cell.output.explicitDataSchema,
     tokenUsage: params.tokenUsage,
@@ -246,7 +257,7 @@ export function buildProcedureExecutionResult(params: {
 export function buildRunCompletedEvent(params: {
   runId: string;
   procedure: string;
-  result: Pick<ProcedureExecutionResult, "cell" | "summary" | "display">;
+  result: Pick<ProcedureExecutionResult, "run" | "summary" | "display">;
   completedAt?: string;
   tokenUsage?: AgentTokenUsage;
 }): Extract<FrontendEvent, { type: "run_completed" }> {
@@ -255,7 +266,7 @@ export function buildRunCompletedEvent(params: {
     runId: params.runId,
     procedure: params.procedure,
     completedAt: params.completedAt ?? new Date().toISOString(),
-    cell: params.result.cell,
+    run: params.result.run,
     summary: params.result.summary,
     display: params.result.display,
     tokenUsage: params.tokenUsage,
@@ -266,7 +277,7 @@ export function buildRunCancelledEvent(params: {
   runId: string;
   procedure: string;
   message: string;
-  cell?: CellRef;
+  run?: RunRef;
   completedAt?: string;
 }): Extract<FrontendEvent, { type: "run_cancelled" }> {
   return {
@@ -275,14 +286,14 @@ export function buildRunCancelledEvent(params: {
     procedure: params.procedure,
     completedAt: params.completedAt ?? new Date().toISOString(),
     message: params.message,
-    cell: params.cell,
+    run: params.run,
   };
 }
 
 export function buildRunPausedEvent(params: {
   runId: string;
   procedure: string;
-  result: Pick<ProcedureExecutionResult, "cell" | "display" | "pause">;
+  result: Pick<ProcedureExecutionResult, "run" | "display" | "pause">;
   pausedAt?: string;
   tokenUsage?: AgentTokenUsage;
 }): Extract<FrontendEvent, { type: "run_paused" }> {
@@ -295,7 +306,7 @@ export function buildRunPausedEvent(params: {
     runId: params.runId,
     procedure: params.procedure,
     pausedAt: params.pausedAt ?? new Date().toISOString(),
-    cell: params.result.cell,
+    run: params.result.run,
     question: params.result.pause.question,
     display: params.result.display,
     inputHint: params.result.pause.inputHint,

@@ -4,8 +4,8 @@ import type {
   DownstreamAgentSelection,
   ProcedureMetadata,
   ProcedureRegistryLike,
+  Ref,
   RunRef,
-  ValueRef,
 } from "../core/types.ts";
 
 export interface RuntimeServiceParams {
@@ -25,7 +25,7 @@ export type ProcedureDispatchStartToolResult = ProcedureDispatchStartResult;
 export type ProcedureDispatchStatusToolResult = ProcedureDispatchStatusResult;
 
 export interface RuntimeSchemaResult {
-  target: RunRef | ValueRef;
+  target: RunRef | Ref;
   dataShape: unknown;
   explicitDataSchema?: object;
 }
@@ -42,10 +42,10 @@ export interface RuntimeService {
   getRun(runRef: RunRef): unknown;
   getRunAncestors(runRef: RunRef, args?: { includeSelf?: boolean; limit?: number }): unknown;
   getRunDescendants(runRef: RunRef, args?: unknown): unknown;
-  refRead(valueRef: ValueRef): unknown;
-  refStat(valueRef: ValueRef): unknown;
-  refWriteToFile(valueRef: ValueRef, path: string): { path: string };
-  getSchema(args: { runRef?: RunRef; valueRef?: ValueRef }): RuntimeSchemaResult;
+  refRead(ref: Ref): unknown;
+  refStat(ref: Ref): unknown;
+  refWriteToFile(ref: Ref, path: string): { path: string };
+  getSchema(args: { runRef?: RunRef; ref?: Ref }): RuntimeSchemaResult;
   procedureList(args?: { includeHidden?: boolean; sessionId?: string }): Promise<ProcedureListResult>;
   procedureGet(args: { name: string; sessionId?: string }): Promise<ProcedureMetadata>;
   procedureDispatchStart(args: {

@@ -1,20 +1,21 @@
 import { inferDataShape, stringifyCompactShape } from "./data-shape.ts";
 import { createValueRef } from "../session/index.ts";
 import type { SessionStore } from "../session/index.ts";
-import type { CellRef, JsonValue, ValueRef } from "./types.ts";
+import type { JsonValue, Ref, RunRef } from "./types.ts";
+import { cellRefFromRunRef, refFromValueRef } from "./types.ts";
 import { summarizeText } from "../util/text.ts";
 
 const DEFAULT_MAX_CARDS = 3;
 const RECENT_SCAN_LIMIT = 200;
 
 export interface ProcedureMemoryCard {
-  cell: CellRef;
+  run: RunRef;
   procedure: string;
   input: string;
   summary?: string;
   memory?: string;
-  dataRef?: ValueRef;
-  displayRef?: ValueRef;
+  dataRef?: Ref;
+  displayRef?: Ref;
   dataShape?: JsonValue;
   dataPreview?: string;
   explicitDataSchema?: object;
@@ -35,7 +36,11 @@ export function collectUnsyncedProcedureMemoryCards(
       continue;
     }
 
-    const card = materializeProcedureMemoryCard(store, summary.cell, summary.dataShape);
+    const card = materializeProcedureMemoryCard(
+      store,
+      { sessionId: summary.cell.sessionId, runId: summary.cell.cellId },
+      summary.dataShape,
+    );
     if (!card) {
       continue;
     }
@@ -52,9 +57,10 @@ export function collectUnsyncedProcedureMemoryCards(
 
 export function materializeProcedureMemoryCard(
   store: SessionStore,
-  cell: CellRef,
+  run: RunRef,
   dataShape?: JsonValue,
 ): ProcedureMemoryCard | undefined {
+  const cell = cellRefFromRunRef(run);
   const record = store.readCell(cell);
   if (record.procedure === "default") {
     return undefined;
@@ -62,14 +68,14 @@ export function materializeProcedureMemoryCard(
 
   const memory = deriveProcedureMemory(record.output.memory, record.output.summary, record.output.display);
   const dataRef = record.output.data !== undefined
-    ? createValueRef(cell, "output.data")
+    ? refFromValueRef(createValueRef(cell, "output.data"))
     : undefined;
   const displayRef = record.output.display !== undefined
-    ? createValueRef(cell, "output.display")
+    ? refFromValueRef(createValueRef(cell, "output.display"))
     : undefined;
 
   return {
-    cell,
+    run,
     procedure: record.procedure,
     input: record.input,
     summary: record.output.summary,
@@ -115,11 +121,11 @@ export function renderProcedureMemoryCardLines(card: ProcedureMemoryCard): strin
   }
 
   if (card.dataRef) {
-    lines.push(`- result_ref: ${formatValueRef(card.dataRef)}`);
+    lines.push(`- result_ref: ${formatRef(card.dataRef)}`);
   }
 
   if (card.displayRef) {
-    lines.push(`- display_ref: ${formatValueRef(card.displayRef)}`);
+    lines.push(`- display_ref: ${formatRef(card.displayRef)}`);
   }
 
   if (card.dataPreview) {
@@ -183,10 +189,10 @@ function buildDataPreview(data: unknown): string | undefined {
   return summarizeText(JSON.stringify(Object.fromEntries(entries)), 220);
 }
 
-function formatValueRef(valueRef: ValueRef): string {
+function formatRef(ref: Ref): string {
   return [
-    `session=${valueRef.cell.sessionId}`,
-    `cell=${valueRef.cell.cellId}`,
-    `path=${valueRef.path}`,
+    `session=${ref.run.sessionId}`,
+    `run=${ref.run.runId}`,
+    `path=${ref.path}`,
   ].join(" ");
 }

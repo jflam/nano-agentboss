@@ -4,14 +4,16 @@ import type {
   CellDescendantsOptions,
   DownstreamAgentSelection,
   ProcedureMetadata,
+  Ref,
   ProcedureRegistryLike,
   RunRef,
-  ValueRef,
 } from "../core/types.ts";
 import {
   cellRefFromRunRef,
+  publicKernelValueFromStored,
   runRecordFromCellRecord,
   runSummaryFromCellSummary,
+  valueRefFromRef,
 } from "../core/types.ts";
 import {
   ProcedureDispatchJobManager,
@@ -59,32 +61,36 @@ export class NanobossRuntimeService {
     return this.createStoreForRunRef(runRef).descendants(cellRef, args).map(runSummaryFromCellSummary);
   }
 
-  refRead(valueRef: ValueRef): unknown {
-    return this.createStoreForValueRef(valueRef).readRef(valueRef);
+  refRead(ref: Ref): unknown {
+    const valueRef = valueRefFromRef(ref);
+    return publicKernelValueFromStored(this.createStoreForRef(ref).readRef(valueRef));
   }
 
-  refStat(valueRef: ValueRef) {
-    return this.createStoreForValueRef(valueRef).statRef(valueRef);
+  refStat(ref: Ref) {
+    const valueRef = valueRefFromRef(ref);
+    return this.createStoreForRef(ref).statRef(valueRef);
   }
 
-  refWriteToFile(valueRef: ValueRef, path: string): { path: string } {
-    const store = this.createStoreForValueRef(valueRef);
+  refWriteToFile(ref: Ref, path: string): { path: string } {
+    const valueRef = valueRefFromRef(ref);
+    const store = this.createStoreForRef(ref);
     store.writeRefToFile(valueRef, path, store.cwd);
     return { path };
   }
 
-  getSchema(args: { runRef?: RunRef; valueRef?: ValueRef }): RuntimeSchemaResult {
-    if (args.valueRef) {
-      const store = this.createStoreForValueRef(args.valueRef);
-      const value = store.readRef(args.valueRef);
+  getSchema(args: { runRef?: RunRef; ref?: Ref }): RuntimeSchemaResult {
+    if (args.ref) {
+      const valueRef = valueRefFromRef(args.ref);
+      const store = this.createStoreForRef(args.ref);
+      const value = store.readRef(valueRef);
       return {
-        target: args.valueRef,
+        target: args.ref,
         dataShape: inferDataShape(value),
       };
     }
 
     if (!args.runRef) {
-      throw new Error("get_schema requires runRef or valueRef");
+      throw new Error("get_schema requires runRef or ref");
     }
 
     const cellRef = cellRefFromRunRef(args.runRef);
@@ -157,8 +163,8 @@ export class NanobossRuntimeService {
     return this.createStore(runRef.sessionId);
   }
 
-  private createStoreForValueRef(valueRef: ValueRef): SessionStore {
-    return this.createStore(valueRef.cell.sessionId);
+  private createStoreForRef(ref: Ref): SessionStore {
+    return this.createStore(ref.run.sessionId);
   }
 
   private createDispatchJobManager(sessionIdOverride?: string): ProcedureDispatchJobManager {

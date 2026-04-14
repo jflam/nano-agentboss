@@ -262,7 +262,7 @@ export class SessionStore {
     const preview = buildPreview(value);
 
     return {
-      cell: valueRef.cell,
+      run: runRefFromCellRef(valueRef.cell),
       path: valueRef.path,
       type: inferType(value),
       size: Buffer.byteLength(serializeValue(value), "utf8"),

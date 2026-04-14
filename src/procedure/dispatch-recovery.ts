@@ -8,7 +8,8 @@ import type { DefaultConversationSession } from "../agent/default-session.ts";
 import { buildProcedureExecutionResult, type ProcedureExecutionResult } from "./runner.ts";
 import { createValueRef, type SessionStore } from "../session/index.ts";
 import { inferDataShape } from "../core/data-shape.ts";
-import type { AgentTokenUsage, CellRecord, DownstreamAgentConfig, ValueRef } from "../core/types.ts";
+import type { AgentTokenUsage, CellRecord, DownstreamAgentConfig, Ref } from "../core/types.ts";
+import { refFromValueRef } from "../core/types.ts";
 import { summarizeText } from "../util/text.ts";
 
 export function isProcedureDispatchTimeout(message: string | undefined): boolean {
@@ -92,8 +93,13 @@ export function procedureDispatchResultFromRecoveredCell(sessionId: string, cell
 
 export function buildRecoveredProcedureSyncPrompt(sessionId: string, cell: CellRecord): string {
   const cellRef = { sessionId, cellId: cell.cellId };
-  const dataRef = cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined;
-  const displayRef = cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined;
+  const run = { sessionId, runId: cell.cellId };
+  const dataRef = cell.output.data !== undefined
+    ? refFromValueRef(createValueRef(cellRef, "output.data"))
+    : undefined;
+  const displayRef = cell.output.display !== undefined
+    ? refFromValueRef(createValueRef(cellRef, "output.display"))
+    : undefined;
   const dataShape = cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined;
 
   return [
@@ -109,9 +115,9 @@ export function buildRecoveredProcedureSyncPrompt(sessionId: string, cell: CellR
     !cell.output.summary && !cell.output.memory && cell.output.display
       ? `Display preview: ${summarizeText(cell.output.display, 1200)}`
       : undefined,
-    `Cell: session=${sessionId} cell=${cell.cellId}`,
-    dataRef ? `Data ref: ${formatValueRef(dataRef)}` : undefined,
-    displayRef ? `Display ref: ${formatValueRef(displayRef)}` : undefined,
+    `Run: session=${run.sessionId} run=${run.runId}`,
+    dataRef ? `Data ref: ${formatRef(dataRef)}` : undefined,
+    displayRef ? `Display ref: ${formatRef(displayRef)}` : undefined,
     dataShape !== undefined ? `Data shape: ${JSON.stringify(dataShape)}` : undefined,
     cell.output.explicitDataSchema
       ? `Explicit data schema: ${summarizeText(JSON.stringify(cell.output.explicitDataSchema), 800)}`
@@ -126,10 +132,10 @@ function getProcedureDispatchRecoveryWaitMs(): number {
   return Number.isFinite(value) && value > 0 ? value : 30000;
 }
 
-function formatValueRef(valueRef: ValueRef): string {
+function formatRef(ref: Ref): string {
   return [
-    `session=${valueRef.cell.sessionId}`,
-    `cell=${valueRef.cell.cellId}`,
-    `path=${valueRef.path}`,
+    `session=${ref.run.sessionId}`,
+    `run=${ref.run.runId}`,
+    `path=${ref.path}`,
   ].join(" ");
 }

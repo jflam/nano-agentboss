@@ -251,9 +251,9 @@ describe("SessionStore", () => {
         runId: "run-1",
         procedure: "demo",
         completedAt: "2026-04-01T10:00:00.000Z",
-        cell: {
+        run: {
           sessionId: "session-replay",
-          cellId: cell.cell.cellId,
+          runId: cell.cell.cellId,
         },
         summary: "done",
         display: "hello\n",

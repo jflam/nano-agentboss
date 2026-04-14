@@ -16,8 +16,8 @@ import {
 import type {
   CellKind,
   ProcedureMetadata,
+  Ref,
   RunRef,
-  ValueRef,
 } from "../core/types.ts";
 
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
@@ -45,21 +45,21 @@ const RUN_REF_SCHEMA = {
   additionalProperties: false,
 };
 
-const VALUE_REF_SCHEMA = {
+const REF_SCHEMA = {
   type: "object",
   properties: {
-    cell: {
+    run: {
       type: "object",
       properties: {
         sessionId: { type: "string" },
-        cellId: { type: "string" },
+        runId: { type: "string" },
       },
-      required: ["sessionId", "cellId"],
+      required: ["sessionId", "runId"],
       additionalProperties: false,
     },
     path: { type: "string" },
   },
-  required: ["cell", "path"],
+  required: ["run", "path"],
   additionalProperties: false,
 };
 
@@ -322,23 +322,23 @@ const MCP_TOOLS: McpToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        valueRef: VALUE_REF_SCHEMA,
+        ref: REF_SCHEMA,
       },
-      required: ["valueRef"],
+      required: ["ref"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        valueRef: parseValueRef(args.valueRef),
+        ref: parseRef(args.ref),
       };
     },
     async call(api, args) {
-      return api.refRead(args.valueRef);
+      return api.refRead(args.ref);
     },
   }),
   defineTool({
     name: "session_recent",
-    description: "Return recent completed session cell summaries from the whole targeted session. Use this only for global recency scans, not as the primary structural retrieval path.",
+    description: "Return recent completed session run summaries from the whole targeted session. Use this only for global recency scans, not as the primary structural retrieval path.",
     inputSchema: {
       type: "object",
       properties: {
@@ -365,18 +365,18 @@ const MCP_TOOLS: McpToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        valueRef: VALUE_REF_SCHEMA,
+        ref: REF_SCHEMA,
       },
-      required: ["valueRef"],
+      required: ["ref"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        valueRef: parseValueRef(args.valueRef),
+        ref: parseRef(args.ref),
       };
     },
     async call(api, args) {
-      return api.refStat(args.valueRef);
+      return api.refStat(args.ref);
     },
   }),
   defineTool({
@@ -385,20 +385,20 @@ const MCP_TOOLS: McpToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        valueRef: VALUE_REF_SCHEMA,
+        ref: REF_SCHEMA,
         path: { type: "string" },
       },
-      required: ["valueRef", "path"],
+      required: ["ref", "path"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        valueRef: parseValueRef(args.valueRef),
+        ref: parseRef(args.ref),
         path: asString(args.path, "path"),
       };
     },
     async call(api, args) {
-      return api.refWriteToFile(args.valueRef, args.path);
+      return api.refWriteToFile(args.ref, args.path);
     },
   }),
   defineTool({
@@ -408,14 +408,14 @@ const MCP_TOOLS: McpToolDefinition[] = [
       type: "object",
       properties: {
         runRef: RUN_REF_SCHEMA,
-        valueRef: VALUE_REF_SCHEMA,
+        ref: REF_SCHEMA,
       },
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
         runRef: args.runRef !== undefined ? parseRunRef(args.runRef) : undefined,
-        valueRef: args.valueRef !== undefined ? parseValueRef(args.valueRef) : undefined,
+        ref: args.ref !== undefined ? parseRef(args.ref) : undefined,
       };
     },
     async call(api, args) {
@@ -605,19 +605,11 @@ function parseRunRef(value: unknown): RunRef {
   };
 }
 
-function parseValueRef(value: unknown): ValueRef {
+function parseRef(value: unknown): Ref {
   const record = asObject(value);
   return {
-    cell: parseValueCellRef(record.cell),
+    run: parseRunRef(record.run),
     path: asString(record.path, "path"),
-  };
-}
-
-function parseValueCellRef(value: unknown): ValueRef["cell"] {
-  const record = asObject(value);
-  return {
-    sessionId: asString(record.sessionId, "sessionId"),
-    cellId: asString(record.cellId, "cellId"),
   };
 }
 

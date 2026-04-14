@@ -86,7 +86,7 @@ describe("procedure memory cards", () => {
     const cards = collectUnsyncedProcedureMemoryCards(store, new Set());
     expect(cards).toHaveLength(1);
     expect(cards[0]?.procedure).toBe("review");
-    expect(cards[0]?.cell).toEqual(reviewResult.cell);
+    expect(cards[0]?.run).toEqual(reviewResult.run);
     expect(cards[0]?.memory).toContain("Most important issue");
     expect(cards[0]?.dataShape).toEqual({
       subject: "diff",

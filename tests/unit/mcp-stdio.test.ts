@@ -141,7 +141,7 @@ async function readMcpMessage(
     tools?: Array<{ name: string }>;
     structuredContent?: {
       items?: Array<{
-        cell: { sessionId: string; cellId: string };
+        run: { sessionId: string; runId: string };
         procedure: string;
         summary?: string;
       }>;
@@ -158,7 +158,7 @@ async function readMcpMessage(
       tools?: Array<{ name: string }>;
       structuredContent?: {
         items?: Array<{
-          cell: { sessionId: string; cellId: string };
+          run: { sessionId: string; runId: string };
           procedure: string;
           summary?: string;
         }>;
