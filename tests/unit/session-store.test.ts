@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 
-import type { ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
+import type { ReplayableFrontendEvent } from "@nanoboss/adapters-http";
 import type { PromptInput } from "../../src/core/types.ts";
 import { SessionStore } from "@nanoboss/store";
 

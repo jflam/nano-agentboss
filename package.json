@@ -22,6 +22,7 @@
     "prepare": "ts-patch install"
   },
   "dependencies": {
+    "@nanoboss/adapters-http": "workspace:*",
     "@nanoboss/agent-acp": "workspace:*",
     "@nanoboss/app-runtime": "workspace:*",
     "@nanoboss/contracts": "workspace:*",

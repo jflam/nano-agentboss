@@ -8,7 +8,7 @@ import {
   SessionEventLog,
   toReplayableFrontendEvent,
   toFrontendCommands,
-} from "../../src/http/frontend-events.ts";
+} from "@nanoboss/adapters-http";
 
 describe("frontend-events", () => {
   const statusEvent = {

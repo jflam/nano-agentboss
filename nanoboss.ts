@@ -46,7 +46,7 @@ export async function runNanoboss(argv: string[]): Promise<void> {
       await import("./resume.ts").then(({ runResumeCommand }) => runResumeCommand(parsed.args));
       return;
     case "http":
-      await import("./src/http/server.ts").then(({ runHttpServerCommand }) => runHttpServerCommand(parsed.args));
+      await import("@nanoboss/adapters-http").then(({ runHttpServerCommand }) => runHttpServerCommand(parsed.args));
       return;
     case "acp-server":
       await import("./src/core/acp-server.ts").then(({ runAcpServerCommand }) => runAcpServerCommand());

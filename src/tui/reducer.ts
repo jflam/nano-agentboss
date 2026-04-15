@@ -2,7 +2,7 @@ import type { ProcedureUiEvent } from "../core/context-shared.ts";
 import {
   type FrontendCommand,
   type RenderedFrontendEventEnvelope,
-} from "../http/frontend-events.ts";
+} from "@nanoboss/adapters-http";
 import type { DownstreamAgentSelection } from "../core/types.ts";
 import { formatProcedureStatusText } from "../core/ui-cli.ts";
 import type { ToolCardThemeMode } from "./state.ts";

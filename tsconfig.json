@@ -11,6 +11,9 @@
     "verbatimModuleSyntax": true,
     "baseUrl": ".",
     "paths": {
+      "@nanoboss/adapters-http": [
+        "./packages/adapters-http/src/index.ts"
+      ],
       "@nanoboss/agent-acp": [
         "./packages/agent-acp/src/index.ts"
       ],

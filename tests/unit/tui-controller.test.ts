@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FrontendCommand, FrontendEventEnvelope } from "../../src/http/frontend-events.ts";
+import type { FrontendCommand, FrontendEventEnvelope } from "@nanoboss/adapters-http";
 import { NanobossTuiController, type SessionResponse } from "../../src/tui/controller.ts";
 import type { DownstreamAgentSelection, PromptInput } from "../../src/core/types.ts";
 

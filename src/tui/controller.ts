@@ -3,20 +3,18 @@ import { createTextPromptInput, normalizePromptInput, promptInputDisplayText } f
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
 import { getBuildLabel } from "../core/build-info.ts";
 import { getBuildFreshnessNotice } from "../core/build-freshness.ts";
-import { ensureMatchingHttpServer } from "../http/server-supervisor.ts";
 import {
   cancelSessionRun,
   createHttpSession,
+  ensureMatchingHttpServer,
   resumeHttpSession,
   sendSessionPrompt,
   startSessionEventStream,
-  type SessionStreamHandle,
-} from "../http/client.ts";
-import {
   isRenderedFrontendEvent,
   type FrontendCommand,
   type FrontendEventEnvelope,
-} from "../http/frontend-events.ts";
+  type SessionStreamHandle,
+} from "@nanoboss/adapters-http";
 import { formatAgentBanner } from "../core/runtime-banner.ts";
 import type { ContinuationUi, DownstreamAgentSelection, PromptInput } from "../core/types.ts";
 

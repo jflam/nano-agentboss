@@ -14,7 +14,7 @@ import type { AgentSession } from "../../src/core/types.ts";
 import type { Procedure, PromptInput } from "@nanoboss/procedure-sdk";
 import { createTextPromptInput, promptInputDisplayText } from "../../src/core/prompt.ts";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
+import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "@nanoboss/adapters-http";
 import { SessionStore } from "@nanoboss/store";
 
 interface InternalSessionState {
