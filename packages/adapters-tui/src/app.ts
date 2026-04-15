@@ -110,7 +110,7 @@ interface ControllerLike {
   stop(): Promise<void>;
 }
 
-export interface NanobossTuiAppDeps {
+interface NanobossTuiAppDeps {
   createTheme?: () => NanobossTuiTheme;
   createTerminal?: () => TerminalLike;
   createTui?: (terminal: TerminalLike) => TuiLike;

@@ -50,7 +50,7 @@ export function renderPreviewToolCard(
   };
 }
 
-export function formatDuration(durationMs: number): string {
+function formatDuration(durationMs: number): string {
   if (durationMs < 1_000) {
     return `${durationMs}ms`;
   }

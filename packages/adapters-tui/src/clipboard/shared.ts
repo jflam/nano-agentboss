@@ -16,7 +16,7 @@ export async function readJsonFromCommand(
   }
 }
 
-export async function execFileText(
+async function execFileText(
   command: string,
   args: string[],
   env?: Record<string, string>,

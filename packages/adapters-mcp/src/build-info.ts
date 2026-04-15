@@ -6,7 +6,7 @@ interface BuildGlobals {
 
 let cachedCommit: string | undefined;
 
-export function getBuildCommit(): string {
+function getBuildCommit(): string {
   if (cachedCommit) {
     return cachedCommit;
   }

@@ -17,7 +17,7 @@ export const LOCAL_TUI_COMMANDS = [
   { name: "/light", description: "Use light tool card backgrounds" },
 ] as const;
 
-export function toLocalAutocompleteItems(): AutocompleteItem[] {
+function toLocalAutocompleteItems(): AutocompleteItem[] {
   return LOCAL_TUI_COMMANDS.map((command) => ({
     value: command.name,
     label: command.name,

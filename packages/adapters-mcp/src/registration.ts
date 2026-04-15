@@ -4,7 +4,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import type { SelfCommand } from "./self-command.ts";
 import { resolveSelfCommand } from "./self-command.ts";
 
 export const REGISTERED_MCP_SERVER_NAME = "nanoboss";
@@ -32,7 +31,7 @@ interface JsonObject {
 
 type JsonValue = null | boolean | number | string | JsonObject | JsonValue[];
 
-export function resolveMcpCommand(): SelfCommand {
+export function resolveMcpCommand(): ReturnType<typeof resolveSelfCommand> {
   return resolveSelfCommand("mcp");
 }
 

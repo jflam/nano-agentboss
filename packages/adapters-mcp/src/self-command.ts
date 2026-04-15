@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export interface SelfCommand {
+interface SelfCommand {
   command: string;
   args: string[];
 }
@@ -27,7 +27,7 @@ export function resolveSelfCommand(subcommand: string, args: string[] = []): Sel
   });
 }
 
-export function resolveSelfCommandWithRuntime(
+function resolveSelfCommandWithRuntime(
   subcommand: string,
   args: string[] = [],
   runtime: SelfCommandRuntime,

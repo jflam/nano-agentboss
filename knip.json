@@ -1,0 +1,51 @@
+{
+  "$schema": "./node_modules/knip/schema.json",
+  "entry": [
+    "nanoboss.ts",
+    "cli.ts",
+    "resume.ts",
+    "build.ts",
+    "preload.ts",
+    "scripts/**/*.ts",
+    "packages/*/src/index.ts",
+    "packages/app-runtime/src/runtime-service.ts",
+    "procedures/**/*.ts",
+    "src/runtime/service.ts"
+  ],
+  "include": [
+    "files",
+    "exports",
+    "types"
+  ],
+  "ignoreIssues": {
+    "packages/adapters-mcp/src/stdio-jsonrpc.ts": [
+      "exports",
+      "types"
+    ],
+    "packages/adapters-tui/src/controller.ts": [
+      "types"
+    ],
+    "packages/adapters-tui/src/model-catalog.ts": [
+      "exports",
+      "types"
+    ],
+    "packages/app-runtime/src/runtime-service.ts": [
+      "exports"
+    ],
+    "packages/procedure-catalog/src/names.ts": [
+      "exports"
+    ]
+  },
+  "project": [
+    "*.ts",
+    "scripts/**/*.ts",
+    "packages/**/*.ts",
+    "procedures/**/*.ts",
+    "src/**/*.ts"
+  ],
+  "ignore": [
+    "dist/**",
+    "coverage/**",
+    "tests/**"
+  ]
+}

@@ -30,7 +30,7 @@ const DEFAULT_COMPILER_OPTIONS: ts.CompilerOptions = {
   strict: true,
   strictNullChecks: true,
   skipLibCheck: true,
-  types: ["bun-types"],
+  types: ["bun"],
 };
 
 const tsconfigCache = new Map<string, ResolvedTypeScriptConfig>();

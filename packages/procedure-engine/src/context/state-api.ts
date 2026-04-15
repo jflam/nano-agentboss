@@ -15,7 +15,7 @@ import type {
 
 import { publicKernelValueFromStored } from "../stored-kernel.ts";
 
-export class CommandRefs implements RefsApi {
+class CommandRefs implements RefsApi {
   constructor(
     private readonly store: SessionStore,
     private readonly cwd: string,
@@ -34,7 +34,7 @@ export class CommandRefs implements RefsApi {
   }
 }
 
-export class CommandRuns implements StateRunsApi {
+class CommandRuns implements StateRunsApi {
   constructor(
     private readonly store: SessionStore,
     private readonly currentRunId: string,

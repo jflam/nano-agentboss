@@ -1,4 +1,4 @@
-export const PROCEDURE_UI_MARKER_PREFIX = "[[nanoboss-ui]] ";
+const PROCEDURE_UI_MARKER_PREFIX = "[[nanoboss-ui]] ";
 
 export function parseProcedureUiMarker(text: string): unknown | undefined {
   const trimmed = text.trim();

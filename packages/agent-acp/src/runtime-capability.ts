@@ -3,11 +3,11 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export interface AgentRuntimeSessionRuntime {
+interface AgentRuntimeSessionRuntime {
   mcpServers: NonNullable<acp.NewSessionRequest["mcpServers"]>;
 }
 
-export type AgentRuntimeSessionRuntimeFactory = () => AgentRuntimeSessionRuntime;
+type AgentRuntimeSessionRuntimeFactory = () => AgentRuntimeSessionRuntime;
 
 let runtimeFactory: AgentRuntimeSessionRuntimeFactory | undefined;
 

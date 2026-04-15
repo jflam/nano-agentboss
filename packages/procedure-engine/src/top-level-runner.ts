@@ -31,7 +31,7 @@ import { runResultFromRunRecord } from "./run-result.ts";
 import { summarizeText } from "./text.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "./timing-trace.ts";
 
-export interface ProcedureRunnerEmitter extends SessionUpdateEmitter {
+interface ProcedureRunnerEmitter extends SessionUpdateEmitter {
   readonly currentTokenUsage?: AgentTokenUsage;
 }
 

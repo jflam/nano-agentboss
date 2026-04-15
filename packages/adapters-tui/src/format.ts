@@ -1,7 +1,7 @@
 import { getAgentTokenUsagePercent } from "@nanoboss/agent-acp";
 import type { AgentTokenUsage } from "@nanoboss/contracts";
 
-export function formatToolTraceLine(depth: number, text: string): string {
+function formatToolTraceLine(depth: number, text: string): string {
   return `${"│ ".repeat(depth)}${text}`;
 }
 

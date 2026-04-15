@@ -25,7 +25,7 @@ export function getWorkspaceIdentity(cwd: string): WorkspaceIdentity {
   };
 }
 
-export function computeProceduresFingerprint(procedureRoots: string[]): string {
+function computeProceduresFingerprint(procedureRoots: string[]): string {
   const hash = createHash("sha256");
 
   for (const procedureRoot of uniquePaths(procedureRoots)) {

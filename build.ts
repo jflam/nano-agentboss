@@ -6,10 +6,12 @@ import {
   constants,
   copyFileSync,
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -346,7 +348,7 @@ function copyPackageClosure(
   }
   copiedPackages.add(packageName);
 
-  const sourcePackageDir = join(process.cwd(), "node_modules", ...packageName.split("/"));
+  const sourcePackageDir = resolveInstalledPackageDir(packageName);
   const targetPackageDir = join(targetNodeModulesDir, ...packageName.split("/"));
   mkdirSync(dirname(targetPackageDir), { recursive: true });
   cpSync(sourcePackageDir, targetPackageDir, { recursive: true });
@@ -363,4 +365,20 @@ function copyPackageClosure(
   })) {
     copyPackageClosure(dependencyName, targetNodeModulesDir, copiedPackages);
   }
+}
+
+function resolveInstalledPackageDir(packageName: string): string {
+  const packagePathSegments = packageName.split("/");
+  const candidatePaths = [
+    join(process.cwd(), "node_modules", ...packagePathSegments),
+    join(process.cwd(), "node_modules", ".bun", "node_modules", ...packagePathSegments),
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    if (existsSync(candidatePath)) {
+      return realpathSync(candidatePath);
+    }
+  }
+
+  throw new Error(`Unable to locate installed package directory for ${packageName}`);
 }

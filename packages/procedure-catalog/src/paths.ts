@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, parse, resolve } from "node:path";
 
-export function getNanobossHome(): string {
+function getNanobossHome(): string {
   return join(process.env.HOME?.trim() || homedir(), ".nanoboss");
 }
 
@@ -10,7 +10,7 @@ export function getProcedureRuntimeDir(): string {
   return join(getNanobossHome(), "runtime");
 }
 
-export function detectRepoRoot(cwd: string): string | undefined {
+function detectRepoRoot(cwd: string): string | undefined {
   let current = resolve(cwd);
 
   while (true) {

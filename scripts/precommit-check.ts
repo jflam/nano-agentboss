@@ -24,6 +24,10 @@ const phases: Array<{
     argv: ["bun", "run", "--silent", "typecheck"],
   },
   {
+    phase: "knip",
+    argv: ["bun", "run", "--silent", "knip"],
+  },
+  {
     phase: "test",
     argv: ["bun", "run", "--silent", "test"],
   },

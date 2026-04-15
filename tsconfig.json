@@ -54,7 +54,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "types": [
-      "bun-types"
+      "bun"
     ],
     "plugins": [
       {

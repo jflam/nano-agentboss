@@ -1,4 +1,4 @@
-export type RunCancellationReason = "soft_stop" | "abort";
+type RunCancellationReason = "soft_stop" | "abort";
 
 export class RunCancelledError extends Error {
   constructor(

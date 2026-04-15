@@ -17,7 +17,7 @@ export function createTextPromptInput(text: string): PromptInput {
   };
 }
 
-export function normalizePromptInput(input: string | PromptInput): PromptInput {
+function normalizePromptInput(input: string | PromptInput): PromptInput {
   if (typeof input === "string") {
     return createTextPromptInput(input);
   }
@@ -49,7 +49,7 @@ export function promptInputDisplayText(input: PromptInput): string {
     .join("");
 }
 
-export function promptInputAttachmentSummaries(input: PromptInput): PromptImageSummary[] {
+function promptInputAttachmentSummaries(input: PromptInput): PromptImageSummary[] {
   return input.parts
     .filter((part): part is PromptImagePart => part.type === "image")
     .map((part) => ({

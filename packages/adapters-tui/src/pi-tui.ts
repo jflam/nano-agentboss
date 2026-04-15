@@ -16,7 +16,6 @@ export {
   type Component,
   type EditorTheme,
   type MarkdownTheme,
-  type OverlayHandle,
   type SelectItem,
   type SelectListTheme,
 } from "@mariozechner/pi-tui";

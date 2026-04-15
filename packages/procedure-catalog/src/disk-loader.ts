@@ -554,8 +554,21 @@ async function withTemporaryNodeModulesOverlays<T>(
     return await run();
   } finally {
     for (const createdPath of createdPaths.reverse()) {
-      if (existsSync(createdPath) && isSymlinkPath(createdPath)) {
+      if (!existsSync(createdPath)) {
+        continue;
+      }
+
+      if (isSymlinkPath(createdPath)) {
         rmSync(createdPath, { recursive: true, force: true });
+        continue;
+      }
+
+      try {
+        if (lstatSync(createdPath).isDirectory() && readdirSync(createdPath).length === 0) {
+          rmSync(createdPath, { recursive: true, force: true });
+        }
+      } catch {
+        // Ignore cleanup errors in the temporary overlay path.
       }
     }
 
@@ -607,14 +620,13 @@ function linkMissingNodeModulesEntries(targetDir: string, sourceDir: string): st
     const targetPath = join(targetDir, entry.name);
 
     if (entry.isDirectory() && entry.name.startsWith("@")) {
-      if (!existsSync(targetPath)) {
-        symlinkSync(sourcePath, targetPath, "dir");
-        createdPaths.push(targetPath);
+      if (existsSync(targetPath) && !lstatSync(targetPath).isDirectory()) {
         continue;
       }
 
-      if (!lstatSync(targetPath).isDirectory()) {
-        continue;
+      if (!existsSync(targetPath)) {
+        mkdirSync(targetPath, { recursive: true });
+        createdPaths.push(targetPath);
       }
 
       createdPaths.push(...linkMissingNodeModulesEntries(targetPath, sourcePath));

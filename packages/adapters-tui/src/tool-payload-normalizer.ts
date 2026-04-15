@@ -1,6 +1,6 @@
 import type { ToolPayloadIdentity } from "./tool-preview.ts";
 
-export interface NormalizedToolPayload {
+interface NormalizedToolPayload {
   toolName?: string;
   header?: string;
   text?: string;
@@ -10,7 +10,7 @@ export interface NormalizedToolPayload {
 
 const MAX_FALLBACK_JSON_LENGTH = 200_000;
 
-export function normalizeToolName(identity: ToolPayloadIdentity): string | undefined {
+function normalizeToolName(identity: ToolPayloadIdentity): string | undefined {
   const explicitToolName = identity.toolName?.trim().toLowerCase();
   if (explicitToolName) {
     return explicitToolName;

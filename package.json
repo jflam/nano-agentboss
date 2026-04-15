@@ -9,6 +9,7 @@
   "scripts": {
     "nanoboss": "bun run nanoboss.ts",
     "build": "bun run build.ts",
+    "knip": "knip --production --reporter compact",
     "lint": "eslint procedures tests --cache",
     "lint:fix": "eslint procedures tests --cache --fix",
     "typecheck": "tsc -p tsconfig.json --noEmit --pretty false",
@@ -34,6 +35,7 @@
     "@nanoboss/procedure-sdk": "workspace:*",
     "@nanoboss/store": "workspace:*",
     "@agentclientprotocol/sdk": "^0.17.1",
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@mariozechner/pi-tui": "0.65.2",
     "@ryoppippi/unplugin-typia": "^2.6.5",
     "@typia/transform": "^12.0.1",
@@ -43,9 +45,11 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@jridgewell/gen-mapping": "^0.3.13",
     "@types/bun": "latest",
     "eslint": "^10.1.0",
     "globals": "^17.4.0",
+    "knip": "^6.4.1",
     "ts-patch": "^3.3.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.58.0"

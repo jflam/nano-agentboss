@@ -18,7 +18,7 @@ export function createValueRef(cell: CellRef, path: string): ValueRef {
   return { cell, path };
 }
 
-export function runRefFromCellRef(cell: CellRef): RunRef {
+function runRefFromCellRef(cell: CellRef): RunRef {
   return {
     sessionId: cell.sessionId,
     runId: cell.cellId,
@@ -32,7 +32,7 @@ export function cellRefFromRunRef(run: RunRef): CellRef {
   };
 }
 
-export function refFromValueRef(valueRef: ValueRef): Ref {
+function refFromValueRef(valueRef: ValueRef): Ref {
   return {
     run: runRefFromCellRef(valueRef.cell),
     path: valueRef.path,

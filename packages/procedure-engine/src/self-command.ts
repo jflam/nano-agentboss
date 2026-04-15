@@ -7,7 +7,7 @@ interface SelfCommandRuntime {
   scriptPath?: string;
 }
 
-export interface SelfCommand {
+interface SelfCommand {
   command: string;
   args: string[];
 }

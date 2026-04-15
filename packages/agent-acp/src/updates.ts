@@ -3,7 +3,7 @@ import type * as acp from "@agentclientprotocol/sdk";
 import { summarizeText } from "./text.ts";
 import { parseProcedureUiMarker } from "./ui-marker.ts";
 
-export interface AssistantNotice {
+interface AssistantNotice {
   text: string;
   tone: "info" | "warning" | "error";
 }
