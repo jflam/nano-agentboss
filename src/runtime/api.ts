@@ -1,4 +1,4 @@
-import type { ProcedureDispatchStartResult, ProcedureDispatchStatusResult } from "../procedure/dispatch-jobs.ts";
+import type { ProcedureDispatchStartResult, ProcedureDispatchStatusResult } from "@nanoboss/procedure-engine";
 import type {
   DownstreamAgentSelection,
   Ref,

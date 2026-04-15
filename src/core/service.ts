@@ -38,24 +38,23 @@ import {
   readStoredSessionMetadata,
   writeStoredSessionMetadata,
 } from "@nanoboss/store";
-import type { SessionMetadata } from "./contracts.ts";
-import { startProcedureDispatchProgressBridge } from "../procedure/dispatch-progress.ts";
-import {
-  procedureDispatchResultFromRecoveredRun,
-  waitForRecoveredProcedureDispatchRun,
-} from "../procedure/dispatch-recovery.ts";
 import {
   ProcedureDispatchJobManager,
   type ProcedureDispatchStatusResult,
-} from "../procedure/dispatch-jobs.ts";
+  procedureDispatchResultFromRecoveredRun,
+  resumeProcedure,
+  runProcedure,
+  TopLevelProcedureCancelledError,
+  TopLevelProcedureExecutionError,
+  waitForRecoveredProcedureDispatchRun,
+} from "@nanoboss/procedure-engine";
+import type { SessionMetadata } from "./contracts.ts";
+import { startProcedureDispatchProgressBridge } from "../procedure/dispatch-progress.ts";
 import {
   buildRunCancelledEvent,
   buildRunCompletedEvent,
   buildRunPausedEvent,
-  executeTopLevelProcedure,
-  TopLevelProcedureCancelledError,
-  TopLevelProcedureExecutionError,
-} from "../procedure/runner.ts";
+} from "./run-events.ts";
 import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from "@nanoboss/procedure-catalog";
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
@@ -1057,7 +1056,7 @@ export class NanobossService {
           procedure: procedure.name,
           mode: continuation ? "resume" : "direct",
         });
-        const result = await executeTopLevelProcedure({
+        const result = await (continuation ? resumeProcedure({
           cwd: session.cwd,
           sessionId,
           store: session.store,
@@ -1082,13 +1081,33 @@ export class NanobossService {
           },
           assertCanStartBoundary,
           timingTrace,
-          resume: continuation
-            ? {
-                prompt: commandPrompt,
-                state: continuation.state,
-              }
-            : undefined,
-        });
+          state: continuation.state,
+        }) : runProcedure({
+          cwd: session.cwd,
+          sessionId,
+          store: session.store,
+          registry: this.registry,
+          procedure,
+          prompt: commandPrompt,
+          promptInput: commandPromptInput,
+          emitter,
+          signal: activeRun.abortController.signal,
+          softStopSignal: activeRun.softStopController.signal,
+          agentSession: session.defaultAgentSession,
+          getDefaultAgentConfig: () => session.defaultAgentConfig,
+          setDefaultAgentSelection: (selection) => {
+            const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
+            session.defaultAgentConfig = nextConfig;
+            session.defaultAgentSession.updateConfig(nextConfig);
+            return nextConfig;
+          },
+          prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId, timingTrace),
+          onError: (ctx, errorText) => {
+            ctx.ui.text(errorText);
+          },
+          assertCanStartBoundary,
+          timingTrace,
+        }));
 
         if (result.pause) {
           this.setPendingContinuation(

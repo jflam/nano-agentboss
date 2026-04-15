@@ -1,0 +1,15 @@
+{
+  "name": "@nanoboss/procedure-engine",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@nanoboss/contracts": "workspace:*",
+    "@nanoboss/procedure-catalog": "workspace:*",
+    "@nanoboss/procedure-sdk": "workspace:*",
+    "@nanoboss/store": "workspace:*"
+  }
+}

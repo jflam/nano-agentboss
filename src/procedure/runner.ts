@@ -4,7 +4,6 @@ import {
   type RunCancellationReason,
   normalizeRunCancelledError,
 } from "../core/cancellation.ts";
-import type { FrontendEvent } from "../http/frontend-events.ts";
 import { RunLogger } from "../core/logger.ts";
 import { formatErrorMessage } from "../core/error-format.ts";
 import { runResultFromRunRecord } from "../core/run-result.ts";
@@ -22,12 +21,10 @@ import { summarizeText } from "../util/text.ts";
 import type { AgentSession } from "../core/types.ts";
 import type {
   AgentTokenUsage,
-  Continuation,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   KernelValue,
   PromptInput,
-  RunRecord,
   RunRef,
 } from "@nanoboss/contracts";
 import type {
@@ -198,68 +195,6 @@ export async function executeTopLevelProcedure(params: {
     await params.emitter.flush();
     logger.close();
   }
-}
-
-export function buildRunCompletedEvent(params: {
-  runId: string;
-  procedure: string;
-  result: Pick<RunResult, "run" | "summary" | "display">;
-  completedAt?: string;
-  tokenUsage?: AgentTokenUsage;
-}): Extract<FrontendEvent, { type: "run_completed" }> {
-  return {
-    type: "run_completed",
-    runId: params.runId,
-    procedure: params.procedure,
-    completedAt: params.completedAt ?? new Date().toISOString(),
-    run: params.result.run,
-    summary: params.result.summary,
-    display: params.result.display,
-    tokenUsage: params.tokenUsage,
-  };
-}
-
-export function buildRunCancelledEvent(params: {
-  runId: string;
-  procedure: string;
-  message: string;
-  run?: RunRef;
-  completedAt?: string;
-}): Extract<FrontendEvent, { type: "run_cancelled" }> {
-  return {
-    type: "run_cancelled",
-    runId: params.runId,
-    procedure: params.procedure,
-    completedAt: params.completedAt ?? new Date().toISOString(),
-    message: params.message,
-    run: params.run,
-  };
-}
-
-export function buildRunPausedEvent(params: {
-  runId: string;
-  procedure: string;
-  result: Pick<RunResult, "run" | "display" | "pause">;
-  pausedAt?: string;
-  tokenUsage?: AgentTokenUsage;
-}): Extract<FrontendEvent, { type: "run_paused" }> {
-  if (!params.result.pause) {
-    throw new Error("Paused run event requires pause metadata.");
-  }
-
-  return {
-    type: "run_paused",
-    runId: params.runId,
-    procedure: params.procedure,
-    pausedAt: params.pausedAt ?? new Date().toISOString(),
-    run: params.result.run,
-    question: params.result.pause.question,
-    display: params.result.display,
-    inputHint: params.result.pause.inputHint,
-    suggestedReplies: params.result.pause.suggestedReplies,
-    ui: params.result.pause.ui,
-    tokenUsage: params.tokenUsage,
-  };
 }
 
 async function resumeTopLevelProcedure(

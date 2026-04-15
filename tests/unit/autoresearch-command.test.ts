@@ -10,7 +10,7 @@ import { getSessionDir } from "../../src/core/config.ts";
 import {
   buildProcedureDispatchJobPath,
   isProcedureDispatchCancellationRequested,
-} from "../../src/procedure/dispatch-jobs.ts";
+} from "@nanoboss/procedure-engine";
 import {
   executeAutoresearchClearCommand,
   executeAutoresearchCommand,
