@@ -1,18 +1,33 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import type {
-  AgentInvocationApi,
   AgentSession as ContractAgentSession,
   AgentSessionPromptOptions as ContractAgentSessionPromptOptions,
   AgentSessionPromptResult as ContractAgentSessionPromptResult,
+} from "@nanoboss/contracts";
+import type {
+  AgentInvocationApi,
   AgentTokenSnapshot,
   ContinuationUi,
   DownstreamAgentConfig,
   DownstreamAgentProvider,
   KernelValue,
   PromptInput,
-} from "@nanoboss/contracts";
+} from "@nanoboss/procedure-sdk";
 import type { ReplayableFrontendEvent } from "../http/frontend-events.ts";
 import type { RunTimingTrace } from "./timing-trace.ts";
+
+export type {
+  JsonValue,
+  KernelScalar,
+  SessionDescriptor,
+  SessionMetadata,
+  SessionRef,
+  Simplify2CheckpointContinuationUi,
+  Simplify2CheckpointContinuationUiAction,
+  Simplify2FocusPickerContinuationUi,
+  Simplify2FocusPickerContinuationUiAction,
+  Simplify2FocusPickerContinuationUiEntry,
+} from "@nanoboss/contracts";
 
 export type {
   AgentRunResult,
@@ -28,8 +43,6 @@ export type {
   DownstreamAgentConfig,
   DownstreamAgentProvider,
   DownstreamAgentSelection,
-  JsonValue,
-  KernelScalar,
   KernelValue,
   PendingContinuation,
   Procedure,
@@ -58,14 +71,6 @@ export type {
   RunResult,
   RunSummary,
   SessionApi,
-  SessionDescriptor,
-  SessionMetadata,
-  SessionRef,
-  Simplify2CheckpointContinuationUi,
-  Simplify2CheckpointContinuationUiAction,
-  Simplify2FocusPickerContinuationUi,
-  Simplify2FocusPickerContinuationUiAction,
-  Simplify2FocusPickerContinuationUiEntry,
   StateApi,
   StateRunsApi,
   TypeDescriptor,
@@ -73,14 +78,14 @@ export type {
   UiCardKind,
   UiCardParams,
   UiStatusParams,
-} from "@nanoboss/contracts";
+} from "@nanoboss/procedure-sdk";
 
 export {
   createRef,
   createRunRef,
   createSessionRef,
-  jsonType,
 } from "@nanoboss/contracts";
+export { jsonType } from "@nanoboss/procedure-sdk";
 
 export interface FrontendContinuation {
   procedure: string;

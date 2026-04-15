@@ -5,7 +5,7 @@ import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { SessionStore } from "@nanoboss/store";
-import { jsonType, type Procedure } from "../../src/core/types.ts";
+import { jsonType, type Procedure } from "@nanoboss/procedure-sdk";
 import { describeE2E } from "./helpers.ts";
 
 interface MathResult {

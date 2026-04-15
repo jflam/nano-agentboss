@@ -15,16 +15,18 @@ import type { ContextSessionApiImpl } from "./context-session.ts";
 import type { SessionUpdateEmitter } from "./context-shared.ts";
 import { summarizeText } from "../util/text.ts";
 import type {
-  AgentInvocationApi,
   AgentSessionMode,
   BoundAgentInvocationApi,
   CommandCallAgentOptions,
   DownstreamAgentSelection,
   KernelValue,
-  Ref,
   RunResult,
-  RunRef,
   TypeDescriptor,
+} from "@nanoboss/procedure-sdk";
+import type {
+  AgentInvocationApi,
+  Ref,
+  RunRef,
 } from "./types.ts";
 import { publicKernelValueFromStored } from "./types.ts";
 

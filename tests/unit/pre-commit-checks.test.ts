@@ -18,7 +18,7 @@ import {
   type PreCommitChecksResult,
   type PreCommitChecksFreshRunReason,
 } from "../../procedures/nanoboss/test-cache-lib.ts";
-import type { ProcedureApi, Ref, RunResult } from "../../src/core/types.ts";
+import type { ProcedureApi, Ref, RunResult } from "@nanoboss/procedure-sdk";
 
 describe("pre-commit test cache helper", () => {
   test("returns the same fingerprint for the same workspace state", () => {

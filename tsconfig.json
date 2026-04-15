@@ -14,6 +14,9 @@
       "@nanoboss/contracts": [
         "./packages/contracts/src/index.ts"
       ],
+      "@nanoboss/procedure-sdk": [
+        "./packages/procedure-sdk/src/index.ts"
+      ],
       "@nanoboss/store": [
         "./packages/store/src/index.ts"
       ]

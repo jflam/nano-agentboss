@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import simplifyProcedure from "../../procedures/simplify.ts";
 import type {
-  ProcedureApi,
   DownstreamAgentConfig,
+  ProcedureApi,
   ProcedureResult,
   RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 describe("simplify procedure", () => {
   test("starts paused with the first opportunity", async () => {

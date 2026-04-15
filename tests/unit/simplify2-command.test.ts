@@ -6,11 +6,11 @@ import { dirname, join } from "node:path";
 
 import simplify2Procedure from "../../procedures/simplify2.ts";
 import type {
-  ProcedureApi,
   DownstreamAgentConfig,
+  ProcedureApi,
   ProcedureResult,
   RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 describe("simplify2 procedure", () => {
   test("blocks execute when the git worktree is dirty", async () => {

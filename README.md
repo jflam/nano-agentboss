@@ -238,7 +238,7 @@ Replace `claude` with `gemini`, `codex`, or `copilot` as needed.
 
 If you need Bun's native reporter output for debugging, run `bun run test:raw`.
 
-Typed downstream agent outputs should use `jsonType(...)` from `src/core/types.ts` with concrete `typia`
+Typed downstream agent outputs should use `jsonType(...)` from `@nanoboss/procedure-sdk` with concrete `typia`
 inputs, for example `jsonType<Result>(typia.json.schema<Result>(), typia.createValidate<Result>())`,
 instead of handwritten schema/validator descriptors. Bun preload for the typia transform is configured
 in `bunfig.toml`.

@@ -5,10 +5,10 @@ import { join } from "node:path";
 
 import researchProcedure from "../../procedures/research.ts";
 import type {
-  ProcedureApi,
   DownstreamAgentConfig,
+  ProcedureApi,
   RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 const tempDirs: string[] = [];
 

@@ -7,7 +7,7 @@ import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { SessionStore } from "@nanoboss/store";
-import type { DownstreamAgentConfig, DownstreamAgentSelection, ProcedureApi } from "../../src/core/types.ts";
+import type { DownstreamAgentConfig, DownstreamAgentSelection, ProcedureApi } from "@nanoboss/procedure-sdk";
 
 const tempDirs: string[] = [];
 

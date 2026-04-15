@@ -15,7 +15,7 @@ import {
   type RunResult,
   type Simplify2CheckpointContinuationUi,
   type Simplify2FocusPickerContinuationUi,
-} from "@nanoboss/contracts";
+} from "@nanoboss/procedure-sdk";
 import { formatErrorMessage } from "../src/core/error-format.ts";
 import { computeRepoFingerprint } from "../src/core/repo-fingerprint.ts";
 import { resolveRepoArtifactDir, writeJsonFileAtomicSync } from "../src/util/repo-artifacts.ts";

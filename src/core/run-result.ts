@@ -1,14 +1,14 @@
 import type { StoredRunResult } from "@nanoboss/store";
-import { inferDataShape } from "./data-shape.ts";
+import type { Ref } from "@nanoboss/contracts";
+import { createRef } from "@nanoboss/contracts";
 import type {
   AgentTokenUsage,
   DownstreamAgentSelection,
   KernelValue,
-  Ref,
   RunRecord,
   RunResult,
-} from "./types.ts";
-import { createRef } from "./types.ts";
+} from "@nanoboss/procedure-sdk";
+import { inferDataShape } from "./data-shape.ts";
 
 export function expectData<T extends KernelValue>(
   result: RunResult<T>,

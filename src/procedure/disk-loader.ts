@@ -20,7 +20,7 @@ import type {
   Procedure,
   ProcedureExecutionMode,
   ProcedureMetadata,
-} from "@nanoboss/contracts";
+} from "@nanoboss/procedure-sdk";
 import { resolveProcedureEntryRelativePath } from "./names.ts";
 import { createTypiaBunPlugin } from "./typia-bun-plugin.ts";
 

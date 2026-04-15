@@ -7,8 +7,9 @@ import { createTextPromptInput } from "../core/prompt.ts";
 import { runResultFromRunRecord } from "../core/run-result.ts";
 import type { SessionStore } from "@nanoboss/store";
 import { inferDataShape } from "../core/data-shape.ts";
-import type { AgentSession, AgentTokenUsage, DownstreamAgentConfig, Ref, RunRecord, RunResult } from "@nanoboss/contracts";
+import type { AgentSession } from "@nanoboss/contracts";
 import { createRef } from "@nanoboss/contracts";
+import type { AgentTokenUsage, DownstreamAgentConfig, Ref, RunRecord, RunResult } from "@nanoboss/procedure-sdk";
 import { summarizeText } from "../util/text.ts";
 
 export function isProcedureDispatchTimeout(message: string | undefined): boolean {

@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 
-import type { Procedure } from "@nanoboss/contracts";
+import type { Procedure } from "@nanoboss/procedure-sdk";
 import {
   appendKnowledgeBaseLog,
   collapseWhitespace,

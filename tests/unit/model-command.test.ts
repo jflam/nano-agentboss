@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import modelProcedure from "../../procedures/model.ts";
-import type { ProcedureApi, DownstreamAgentConfig } from "../../src/core/types.ts";
+import type { DownstreamAgentConfig, ProcedureApi } from "@nanoboss/procedure-sdk";
 
 describe("/model command", () => {
   test("shows the last observed default-session context window when available", async () => {

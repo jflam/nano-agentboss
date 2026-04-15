@@ -6,13 +6,13 @@ import typia from "typia";
 import { formatErrorMessage } from "../core/error-format.ts";
 import { detectRepoRoot } from "../core/procedure-paths.ts";
 import { expectData } from "../core/run-result.ts";
-import { jsonType } from "@nanoboss/contracts";
 import { normalizeProcedureName, resolveProcedureImportPrefix } from "./names.ts";
+import { jsonType } from "@nanoboss/procedure-sdk";
 import type {
   Procedure,
   ProcedureMetadata,
   ProcedureRegistryLike,
-} from "@nanoboss/contracts";
+} from "@nanoboss/procedure-sdk";
 
 interface GeneratedProcedure {
   name: string;
@@ -65,7 +65,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
           `- \`ctx.cwd\` for the current working directory (${ctx.cwd})`,
           "",
           "For typed agent outputs:",
-           '- import `typia` from `typia` and `jsonType` from "@nanoboss/contracts"`',
+           '- import `typia` from `typia` and `jsonType` from "@nanoboss/procedure-sdk"`',
           "- define descriptors as `const ResultType = jsonType<Result>(typia.json.schema<Result>(), typia.createValidate<Result>())`",
           "- do not hand-write JSON schema or `validate()` boilerplate when the `typia` + `jsonType(...)` pattern can express the shape",
           "",
@@ -81,7 +81,7 @@ export function createCreateProcedure(registry: ProcedureRegistryLike): Procedur
            "- set `pause: { question, state, inputHint?, suggestedReplies? }` when the procedure should ask the user an open-ended follow-up and resume on the next plain-text reply",
             "",
            "Generated procedures are persisted at `.nanoboss/procedures/<name>.ts` for unscoped names and `.nanoboss/procedures/<package>/<leaf>.ts` for scoped names.",
-           'Import public nanoboss contracts from `@nanoboss/contracts`; only use relative `src/` imports for runtime helpers such as `../../src/core/run-result.ts`.',
+           'Import procedure authoring types and `jsonType(...)` from `@nanoboss/procedure-sdk`; only use relative `src/` imports for runtime helpers such as `../../src/core/run-result.ts`.',
            "If you import helpers from src/, keep the path explicit with a `.ts` extension.",
            "",
            "Use existing built-in procedures as style references:",
@@ -148,5 +148,7 @@ function normalizeGeneratedProcedureSource(source: string, procedureName: string
   const importPrefix = resolveProcedureImportPrefix(procedureName);
   return source
     .replace(/name:\s*["'`][^"'`]+["'`]/, `name: "${procedureName}"`)
+    .replace(/(["'`])@nanoboss\/contracts\1/g, `$1@nanoboss/procedure-sdk$1`)
+    .replace(/(["'`])(?:\.\.?\/)+src\/core\/types\.ts\1/g, `$1@nanoboss/procedure-sdk$1`)
     .replace(/(["'`])(?:\.\.\/)+src\//g, `$1${importPrefix}src/`);
 }

@@ -1,7 +1,7 @@
 import typia from "typia";
 
 import { expectData } from "../../src/core/run-result.ts";
-import { jsonType, type Procedure } from "@nanoboss/contracts";
+import { jsonType, type Procedure } from "@nanoboss/procedure-sdk";
 import {
   answerIdFromPath,
   appendKnowledgeBaseLog,

@@ -26,13 +26,15 @@ import type {
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   KernelValue,
-  Procedure,
   PromptInput,
-  ProcedureRegistryLike,
   RunRecord,
-  RunResult,
   RunRef,
 } from "@nanoboss/contracts";
+import type {
+  Procedure,
+  ProcedureRegistryLike,
+  RunResult,
+} from "@nanoboss/procedure-sdk";
 
 export interface ProcedureRunnerEmitter extends SessionUpdateEmitter {
   readonly currentTokenUsage?: AgentTokenUsage;

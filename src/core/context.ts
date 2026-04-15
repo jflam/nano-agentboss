@@ -13,17 +13,19 @@ import type { RunLogger } from "./logger.ts";
 import { normalizeProcedurePromptInput } from "./prompt.ts";
 import type { RunTimingTrace } from "./timing-trace.ts";
 import type {
-  AgentSession,
-  AgentInvocationApi,
-  ProcedureApi,
-  ProcedurePromptInput,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   PromptInput,
+  ProcedureApi,
+  ProcedurePromptInput,
   ProcedureInvocationApi,
   ProcedureRegistryLike,
   SessionApi,
   StateApi,
+} from "@nanoboss/procedure-sdk";
+import type {
+  AgentSession,
+  AgentInvocationApi,
 } from "./types.ts";
 
 type ActiveRun = ReturnType<SessionStore["startRun"]>;

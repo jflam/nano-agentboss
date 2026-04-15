@@ -3,12 +3,14 @@ import { shouldLoadDiskCommands } from "../core/runtime-mode.ts";
 import type {
   DownstreamAgentSelection,
   KernelValue,
-  ProcedureMetadata,
-  ProcedureRegistryLike,
   Ref,
   RunRef,
   RunDescendantsOptions,
 } from "@nanoboss/contracts";
+import type {
+  ProcedureMetadata,
+  ProcedureRegistryLike,
+} from "@nanoboss/procedure-sdk";
 import { publicKernelValueFromStored } from "../core/types.ts";
 import {
   ProcedureDispatchJobManager,

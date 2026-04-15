@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ProcedureApi, ProcedureRegistryLike } from "@nanoboss/contracts";
+import type { ProcedureApi, ProcedureRegistryLike } from "@nanoboss/procedure-sdk";
 import { createCreateProcedure } from "../../src/procedure/create.ts";
 import { normalizeProcedureResult } from "@nanoboss/store";
 
@@ -50,7 +50,7 @@ describe("create procedure", () => {
         data: {
           name: "review",
           source: [
-            'import type { ProcedureApi } from "@nanoboss/contracts";',
+            'import type { ProcedureApi } from "@nanoboss/procedure-sdk";',
             "",
             "export default {",
             "  name: \"review\",",
@@ -67,7 +67,7 @@ describe("create procedure", () => {
     expect(generatedPrompt).toContain("ctx: ProcedureApi");
     expect(generatedPrompt).toContain("The procedure API provides:");
     expect(generatedPrompt).toContain(".nanoboss/procedures/<name>.ts");
-    expect(generatedPrompt).toContain('@nanoboss/contracts');
+    expect(generatedPrompt).toContain('@nanoboss/procedure-sdk');
     expect(generatedPrompt).toContain("Return exactly one JSON object matching the requested schema.");
     expect(generatedPrompt).not.toContain("CommandContext");
     expect(generatedOptions).toEqual({ stream: false });
@@ -119,7 +119,7 @@ describe("create procedure", () => {
       };
     })));
 
-    expect(persistedSource).toContain('import type { ProcedureApi } from "@nanoboss/contracts";');
+    expect(persistedSource).toContain('import type { ProcedureApi } from "@nanoboss/procedure-sdk";');
     expect(persistedSource).toContain('import { expectData } from "../../src/core/run-result.ts";');
     expect(persistedSource).toContain('name: "review"');
     expect(loadedPath).toBe(persistedPath);

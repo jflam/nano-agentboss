@@ -51,7 +51,7 @@ A file is treated as a procedure when it exports a default object with procedure
 That means this is a valid packaged procedure entrypoint:
 
 ```ts
-import type { Procedure } from "../../src/core/types.ts";
+import type { Procedure } from "@nanoboss/procedure-sdk";
 import { executeAutoresearchStartCommand } from "./runner.ts";
 
 export default {

@@ -1,4 +1,4 @@
-import type { Procedure } from "@nanoboss/contracts";
+import type { Procedure } from "@nanoboss/procedure-sdk";
 import { executeAutoresearchContinueCommand } from "./runner.ts";
 
 export default {

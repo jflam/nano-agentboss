@@ -1,12 +1,14 @@
 import type { ProcedureDispatchStartResult, ProcedureDispatchStatusResult } from "../procedure/dispatch-jobs.ts";
 import type {
   DownstreamAgentSelection,
-  ProcedureMetadata,
-  ProcedureRegistryLike,
   Ref,
   RunRef,
-  RunResult,
 } from "@nanoboss/contracts";
+import type {
+  ProcedureMetadata,
+  ProcedureRegistryLike,
+  RunResult,
+} from "@nanoboss/procedure-sdk";
 
 export interface RuntimeServiceParams {
   sessionId?: string;

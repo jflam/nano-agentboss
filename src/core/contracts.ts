@@ -10,16 +10,18 @@ export type {
   RunKind,
   RunRecord,
   RunRef,
-  RunResult,
   RunSummary,
   SessionDescriptor,
   SessionMetadata,
   SessionRef,
 } from "@nanoboss/contracts";
+export type {
+  RunResult,
+} from "@nanoboss/procedure-sdk";
 
 export {
   createRef,
   createRunRef,
   createSessionRef,
-  jsonType,
 } from "@nanoboss/contracts";
+export { jsonType } from "@nanoboss/procedure-sdk";

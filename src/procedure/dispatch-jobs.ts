@@ -29,11 +29,13 @@ import { SessionStore } from "@nanoboss/store";
 import { resolveSelfCommand } from "../core/self-command.ts";
 import type {
   DownstreamAgentSelection,
-  ProcedureRegistryLike,
   RunRecord,
   RunRef,
-  RunResult,
 } from "@nanoboss/contracts";
+import type {
+  ProcedureRegistryLike,
+  RunResult,
+} from "@nanoboss/procedure-sdk";
 import { requireValue } from "../util/argv.ts";
 
 const PROCEDURE_DISPATCH_JOBS_DIR = "procedure-dispatch-jobs";

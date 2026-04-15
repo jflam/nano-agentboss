@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import typia from "typia";
 
-import { jsonType } from "../../src/core/types.ts";
+import { jsonType } from "@nanoboss/procedure-sdk";
 
 describe("jsonType", () => {
   interface Answer {

@@ -7,14 +7,13 @@ import { join } from "node:path";
 import executePlan from "../../.nanoboss/procedures/execute-plan.ts";
 import {
   type CommandCallProcedureOptions,
-  createRef,
-  createRunRef,
   type KernelValue,
   type ProcedureApi,
   type Ref,
   type RunRef,
   type RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
+import { createRef, createRunRef } from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];
 

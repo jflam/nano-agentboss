@@ -39,7 +39,7 @@ import type {
   Procedure,
   ProcedureMetadata,
   ProcedureRegistryLike,
-} from "@nanoboss/contracts";
+} from "@nanoboss/procedure-sdk";
 
 interface ProcedureRegistryOptions {
   cwd?: string;

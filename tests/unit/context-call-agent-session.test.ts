@@ -13,7 +13,8 @@ import {
   normalizePromptInput,
   promptInputDisplayText,
 } from "../../src/core/prompt.ts";
-import { jsonType, type AgentSession, type DownstreamAgentConfig, type ProcedureApi, type PromptInput } from "../../src/core/types.ts";
+import type { AgentSession } from "../../src/core/types.ts";
+import { jsonType, type DownstreamAgentConfig, type ProcedureApi, type PromptInput } from "@nanoboss/procedure-sdk";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import { SessionStore } from "@nanoboss/store";
 

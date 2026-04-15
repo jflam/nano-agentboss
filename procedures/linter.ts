@@ -3,11 +3,11 @@ import { isAbsolute, relative, resolve } from "node:path";
 import typia from "typia";
 
 import { expectData } from "../src/core/run-result.ts";
-import { jsonType } from "@nanoboss/contracts";
+import { jsonType } from "@nanoboss/procedure-sdk";
 import type {
   ProcedureApi,
   Procedure,
-} from "@nanoboss/contracts";
+} from "@nanoboss/procedure-sdk";
 
 export interface LinterError {
   file: string;

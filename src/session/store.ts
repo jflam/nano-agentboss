@@ -19,7 +19,6 @@ import type {
   PromptImagePart,
   PromptImageSummary,
   PromptInput,
-  ProcedureResult,
   Ref,
   RefStat,
   RunAncestorsOptions,
@@ -32,6 +31,7 @@ import type {
   RunSummary,
 } from "@nanoboss/contracts";
 import { createRef, createRunRef } from "@nanoboss/contracts";
+import type { ProcedureResult } from "@nanoboss/procedure-sdk";
 import type { PersistedFrontendEvent } from "../core/types.ts";
 import { publicKernelValueFromStored } from "../core/types.ts";
 

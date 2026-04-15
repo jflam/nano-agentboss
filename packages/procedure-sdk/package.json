@@ -1,5 +1,5 @@
 {
-  "name": "@nanoboss/store",
+  "name": "@nanoboss/procedure-sdk",
   "version": "0.0.0",
   "type": "module",
   "private": true,
@@ -7,7 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@nanoboss/contracts": "workspace:*",
-    "@nanoboss/procedure-sdk": "workspace:*"
+    "@nanoboss/contracts": "workspace:*"
   }
 }

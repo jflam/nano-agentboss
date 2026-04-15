@@ -64,17 +64,19 @@ import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "../r
 import type {
   AgentSession,
   AgentTokenUsage,
+  FrontendContinuation,
+  PersistedFrontendEvent,
+} from "./types.ts";
+import type {
   DownstreamAgentConfig,
   DownstreamAgentSelection,
-  FrontendContinuation,
   PendingContinuation,
-  PersistedFrontendEvent,
   PromptInput,
   Procedure,
   ProcedureRegistryLike,
   RunRef,
   RunResult,
-} from "./types.ts";
+} from "@nanoboss/procedure-sdk";
 
 interface ActiveRunState {
   runId: string;

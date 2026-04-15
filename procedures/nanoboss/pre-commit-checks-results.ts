@@ -1,4 +1,4 @@
-import type { KernelValue, ProcedureResult } from "@nanoboss/contracts";
+import type { KernelValue, ProcedureResult } from "@nanoboss/procedure-sdk";
 import {
   renderPreCommitDisplay,
   renderPreCommitFailureDigest,

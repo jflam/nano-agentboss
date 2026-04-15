@@ -12,12 +12,12 @@ import kbLinkProcedure from "../../procedures/kb/link.ts";
 import kbRenderProcedure from "../../procedures/kb/render.ts";
 import kbRefreshProcedure from "../../procedures/kb/refresh.ts";
 import type {
-  ProcedureApi,
   DownstreamAgentConfig,
   Procedure,
+  ProcedureApi,
   ProcedureResult,
   RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 const tempDirs: string[] = [];
 

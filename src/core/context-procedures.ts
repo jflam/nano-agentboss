@@ -5,13 +5,13 @@ import type { RunLogger } from "./logger.ts";
 import { toPublicRunResult } from "./run-result.ts";
 import type { ContextSessionApiImpl, ProcedureInvocationBinding } from "./context-session.ts";
 import type {
-  ProcedureApi,
   CommandCallProcedureOptions,
   KernelValue,
+  ProcedureApi,
   ProcedureInvocationApi,
   ProcedureRegistryLike,
   RunResult,
-} from "./types.ts";
+} from "@nanoboss/procedure-sdk";
 
 type ActiveRun = ReturnType<SessionStore["startRun"]>;
 

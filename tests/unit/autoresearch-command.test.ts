@@ -30,7 +30,7 @@ import type {
   AutoresearchExperimentSpec,
   AutoresearchInitPlan,
 } from "../../procedures/autoresearch/types.ts";
-import type { ProcedureApi, DownstreamAgentConfig, RunResult } from "../../src/core/types.ts";
+import type { DownstreamAgentConfig, ProcedureApi, RunResult } from "@nanoboss/procedure-sdk";
 
 const tempDirs: string[] = [];
 

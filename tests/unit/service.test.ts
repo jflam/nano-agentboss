@@ -9,7 +9,8 @@ const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
 const BUILD_HOOK_TIMEOUT_MS = 30_000;
 
 import { createAgentSession } from "../../src/agent/acp-session.ts";
-import type { AgentSession, Procedure, PromptInput } from "../../src/core/types.ts";
+import type { AgentSession } from "../../src/core/types.ts";
+import type { Procedure, PromptInput } from "@nanoboss/procedure-sdk";
 import { createTextPromptInput, promptInputDisplayText } from "../../src/core/prompt.ts";
 import { ProcedureRegistry } from "../../src/procedure/registry.ts";
 import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
