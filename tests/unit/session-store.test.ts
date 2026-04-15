@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import type { ReplayableFrontendEvent } from "@nanoboss/adapters-http";
-import type { PromptInput } from "../../src/core/types.ts";
+import type { PromptInput } from "@nanoboss/contracts";
 import { SessionStore } from "@nanoboss/store";
 
 const tempDirs: string[] = [];

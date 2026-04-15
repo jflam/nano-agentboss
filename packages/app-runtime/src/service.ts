@@ -25,6 +25,7 @@ import {
   renderProcedureMemoryCardsSection,
 } from "../../../src/core/memory-cards.ts";
 import {
+  isReplayableFrontendEvent,
   mapProcedureUiEventToFrontendEvent,
   mapSessionUpdateToFrontendEvents,
   SessionEventLog,
@@ -400,7 +401,7 @@ export class NanobossService {
     const runs = session.store.listRuns().reverse();
     for (const summary of runs) {
       const record = session.store.getRun(summary.run);
-      const replayEvents = record.output.replayEvents;
+      const replayEvents = record.output.replayEvents?.filter(isReplayableFrontendEvent);
       const terminalEvent = getRestoredRunTerminalEvent(replayEvents);
       const runId = replayEvents?.[0]?.runId ?? record.run.runId;
 

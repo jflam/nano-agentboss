@@ -8,7 +8,7 @@ import {
   inspectSessionCleanupCandidates,
   selectCleanupCandidates,
   type SessionCleanupCandidate,
-} from "../../src/session/cleanup.ts";
+} from "@nanoboss/store";
 
 function expectCandidates(value: unknown): SessionCleanupCandidate[] {
   if (!Array.isArray(value)) {

@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
   formatSessionInitialPrompt,
   formatSessionLine,
-} from "../../src/session/picker-format.ts";
-import type { SessionMetadata } from "../../src/core/contracts.ts";
+} from "@nanoboss/store";
+import type { SessionMetadata } from "@nanoboss/contracts";
 
 function session(overrides: Partial<SessionMetadata> = {}): SessionMetadata {
   return {

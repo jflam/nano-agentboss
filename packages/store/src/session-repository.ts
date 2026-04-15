@@ -3,14 +3,9 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 
-import { getNanobossHome, getSessionDir } from "../../../src/core/config.ts";
-import { formatErrorMessage } from "../../../src/core/error-format.ts";
-import { parseDownstreamAgentSelection } from "../../../src/core/downstream-agent-selection.ts";
-import { resolveWorkspaceKey } from "../../../src/core/workspace-identity.ts";
 import type {
   ContinuationUi,
   KernelValue,
@@ -22,6 +17,10 @@ import type {
   Simplify2FocusPickerContinuationUiEntry,
 } from "@nanoboss/contracts";
 import { createSessionRef } from "@nanoboss/contracts";
+import { parseDownstreamAgentSelection } from "./agent-selection.ts";
+import { formatErrorMessage } from "./error-format.ts";
+import { writeTextFileAtomicSync } from "./json-file.ts";
+import { getNanobossHome, getSessionDir, resolveWorkspaceKey } from "./paths.ts";
 
 const SESSION_METADATA_FILE = "session.json";
 const CURRENT_SESSION_INDEX_FILE = "current-sessions.json";
@@ -32,10 +31,9 @@ function getSessionMetadataPath(sessionId: string, rootDir?: string): string {
 
 export function writeStoredSessionMetadata(metadata: SessionMetadata): SessionMetadata {
   mkdirSync(metadata.rootDir, { recursive: true });
-  writeFileSync(
+  writeTextFileAtomicSync(
     getSessionMetadataPath(metadata.session.sessionId, metadata.rootDir),
     `${JSON.stringify(metadata, null, 2)}\n`,
-    "utf8",
   );
   // `current-sessions.json` is a workspace-local cache of the canonical session snapshot.
   mkdirSync(getNanobossHome(), { recursive: true });
@@ -96,10 +94,9 @@ function getCurrentSessionMetadataIndexPath(): string {
 function writeCurrentWorkspaceIndex(metadata: SessionMetadata): void {
   const nextIndex = readCurrentWorkspaceIndex();
   nextIndex[resolveWorkspaceKey(metadata.cwd)] = metadata;
-  writeFileSync(
+  writeTextFileAtomicSync(
     getCurrentSessionMetadataIndexPath(),
     `${JSON.stringify({ workspaces: nextIndex }, null, 2)}\n`,
-    "utf8",
   );
 }
 

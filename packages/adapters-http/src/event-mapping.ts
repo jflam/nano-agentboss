@@ -348,6 +348,17 @@ export function isRenderedFrontendEvent(event: FrontendEventEnvelope): event is 
   return !isMemorySyncFrontendEvent(event);
 }
 
+export function isReplayableFrontendEvent(event: unknown): event is ReplayableFrontendEvent {
+  return (
+    typeof event === "object" &&
+    event !== null &&
+    "type" in event &&
+    REPLAYABLE_FRONTEND_EVENT_TYPES.has((event as { type: ReplayableFrontendEvent["type"] }).type) &&
+    "runId" in event &&
+    typeof (event as { runId?: unknown }).runId === "string"
+  );
+}
+
 export function toReplayableFrontendEvent(
   event: FrontendEventEnvelope,
   runId: string,

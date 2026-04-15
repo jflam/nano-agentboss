@@ -14,7 +14,11 @@ import type { AgentSession } from "../../src/core/types.ts";
 import type { Procedure, PromptInput } from "@nanoboss/procedure-sdk";
 import { createTextPromptInput, promptInputDisplayText } from "../../src/core/prompt.ts";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "@nanoboss/adapters-http";
+import {
+  isReplayableFrontendEvent,
+  type FrontendEventEnvelope,
+  type ReplayableFrontendEvent,
+} from "@nanoboss/adapters-http";
 import { SessionStore } from "@nanoboss/store";
 
 interface InternalSessionState {
@@ -589,6 +593,7 @@ describe("NanobossService", () => {
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "probe");
       const replayEvents = storedRun
         ? getInternalSessionState(service, session.sessionId).store.getRun(storedRun.run).output.replayEvents
+          ?.filter(isReplayableFrontendEvent)
         : undefined;
       const replayedNestedRead = replayEvents?.find((event) =>
         event.type === "tool_started" && event.title === "Mock read README.md"

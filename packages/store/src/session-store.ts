@@ -2,16 +2,17 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-import { getSessionDir } from "../../../src/core/config.ts";
-import { inferDataShape } from "../../../src/core/data-shape.ts";
-import { writeJsonFileAtomicSync } from "../../../src/util/repo-artifacts.ts";
-import { summarizeText } from "../../../src/util/text.ts";
 import {
   cellRefFromRunRef,
   createCellRef,
   createValueRef,
   valueRefFromRef,
 } from "./ref-store.ts";
+import { inferDataShape } from "./data-shape.ts";
+import { writeJsonFileAtomicSync } from "./json-file.ts";
+import { getSessionDir } from "./paths.ts";
+import { publicContinuationFromStored, publicKernelValueFromStored } from "./stored-values.ts";
+import { summarizeText } from "./text.ts";
 import type {
   Continuation,
   DownstreamAgentSelection,
@@ -32,8 +33,6 @@ import type {
 } from "@nanoboss/contracts";
 import { createRef, createRunRef } from "@nanoboss/contracts";
 import type { ProcedureResult } from "@nanoboss/procedure-sdk";
-import type { PersistedFrontendEvent } from "../../../src/core/types.ts";
-import { publicKernelValueFromStored } from "../../../src/core/types.ts";
 
 interface RunDraft {
   run: RunRef;
@@ -65,7 +64,7 @@ interface CellRecord {
     memory?: string;
     pause?: Continuation;
     explicitDataSchema?: object;
-    replayEvents?: PersistedFrontendEvent[];
+    replayEvents?: unknown[];
   };
   meta: {
     createdAt: string;
@@ -103,7 +102,7 @@ interface CompleteRunOptions {
   stream?: string;
   summary?: string;
   raw?: string;
-  replayEvents?: PersistedFrontendEvent[];
+  replayEvents?: unknown[];
   meta?: Partial<CellRecord["meta"]>;
 }
 
@@ -121,7 +120,7 @@ export interface StoredRunResult<T extends KernelValue = KernelValue> {
 
 interface StoredRunRecord extends RunRecord {
   output: Omit<RunRecord["output"], "replayEvents"> & {
-    replayEvents?: PersistedFrontendEvent[];
+    replayEvents?: unknown[];
   };
 }
 
@@ -819,7 +818,7 @@ function toRunRecord(sessionId: string, record: CellRecord): StoredRunRecord {
       stream: record.output.stream,
       summary: record.output.summary,
       memory: record.output.memory,
-      pause: record.output.pause ? publicKernelValueFromStored(record.output.pause) as Continuation : undefined,
+      pause: publicContinuationFromStored(record.output.pause),
       explicitDataSchema: record.output.explicitDataSchema,
       replayEvents: record.output.replayEvents,
     },
