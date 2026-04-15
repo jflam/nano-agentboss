@@ -4,18 +4,19 @@ import {
   defaultCancellationMessage,
 } from "../core/cancellation.ts";
 import { createTextPromptInput } from "../core/prompt.ts";
-import type { DefaultConversationSession } from "../agent/default-session.ts";
-import { buildProcedureExecutionResult, type ProcedureExecutionResult } from "./runner.ts";
-import { createValueRef, type SessionStore } from "../session/index.ts";
+import { runResultFromRunRecord } from "../core/run-result.ts";
+import type { SessionStore } from "@nanoboss/store";
 import { inferDataShape } from "../core/data-shape.ts";
-import type { AgentTokenUsage, CellRecord, DownstreamAgentConfig, ValueRef } from "../core/types.ts";
+import type { AgentSession } from "@nanoboss/contracts";
+import { createRef } from "@nanoboss/contracts";
+import type { AgentTokenUsage, DownstreamAgentConfig, Ref, RunRecord, RunResult } from "@nanoboss/procedure-sdk";
 import { summarizeText } from "../util/text.ts";
 
 export function isProcedureDispatchTimeout(message: string | undefined): boolean {
   return Boolean(message && /request timed out/i.test(message));
 }
 
-export async function waitForRecoveredProcedureDispatchCell(
+export async function waitForRecoveredProcedureDispatchRun(
   store: SessionStore,
   params: {
     procedureName: string;
@@ -23,7 +24,7 @@ export async function waitForRecoveredProcedureDispatchCell(
     signal?: AbortSignal;
     softStopSignal?: AbortSignal;
   },
-): Promise<CellRecord | undefined> {
+): Promise<RunRecord | undefined> {
   const deadline = Date.now() + getProcedureDispatchRecoveryWaitMs();
 
   for (;;) {
@@ -35,7 +36,7 @@ export async function waitForRecoveredProcedureDispatchCell(
       throw new RunCancelledError(defaultCancellationMessage("abort"), "abort");
     }
 
-    const found = findRecoveredProcedureDispatchCell(store, params);
+    const found = findRecoveredProcedureDispatchRun(store, params);
     if (found) {
       return found;
     }
@@ -48,18 +49,18 @@ export async function waitForRecoveredProcedureDispatchCell(
   }
 }
 
-export function findRecoveredProcedureDispatchCell(
+export function findRecoveredProcedureDispatchRun(
   store: SessionStore,
   params: {
     procedureName: string;
     dispatchCorrelationId: string;
   },
-): CellRecord | undefined {
-  const summaries = store.topLevelRuns({ procedure: params.procedureName, limit: 50 });
+): RunRecord | undefined {
+  const summaries = store.listRuns({ procedure: params.procedureName, limit: 50 });
   for (const summary of summaries) {
-    const cell = store.readCell(summary.cell);
-    if (cell.meta.dispatchCorrelationId === params.dispatchCorrelationId) {
-      return cell;
+    const run = store.getRun(summary.run);
+    if (run.meta.dispatchCorrelationId === params.dispatchCorrelationId) {
+      return run;
     }
   }
 
@@ -67,34 +68,36 @@ export function findRecoveredProcedureDispatchCell(
 }
 
 export async function syncRecoveredProcedureResultIntoDefaultConversation(params: {
-  defaultConversation: DefaultConversationSession;
-  sessionId: string;
-  cell: CellRecord;
+  agentSession: AgentSession;
+  run: RunRecord;
   signal?: AbortSignal;
   defaultAgentConfig: DownstreamAgentConfig;
 }): Promise<AgentTokenUsage | undefined> {
-  await params.defaultConversation.prompt(
-    createTextPromptInput(buildRecoveredProcedureSyncPrompt(params.sessionId, params.cell)),
+  await params.agentSession.prompt(
+    createTextPromptInput(buildRecoveredProcedureSyncPrompt(params.run)),
     {
       signal: params.signal,
     },
   );
 
   return normalizeAgentTokenUsage(
-    await params.defaultConversation.getCurrentTokenSnapshot(),
+    await params.agentSession.getCurrentTokenSnapshot(),
     params.defaultAgentConfig,
   );
 }
 
-export function procedureDispatchResultFromRecoveredCell(sessionId: string, cell: CellRecord): ProcedureExecutionResult {
-  return buildProcedureExecutionResult({ sessionId, cell });
+export function procedureDispatchResultFromRecoveredRun(run: RunRecord): RunResult {
+  return runResultFromRunRecord(run);
 }
 
-export function buildRecoveredProcedureSyncPrompt(sessionId: string, cell: CellRecord): string {
-  const cellRef = { sessionId, cellId: cell.cellId };
-  const dataRef = cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined;
-  const displayRef = cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined;
-  const dataShape = cell.output.data !== undefined ? inferDataShape(cell.output.data) : undefined;
+export function buildRecoveredProcedureSyncPrompt(run: RunRecord): string {
+  const dataRef = run.output.data !== undefined
+    ? createRef(run.run, "output.data")
+    : undefined;
+  const displayRef = run.output.display !== undefined
+    ? createRef(run.run, "output.display")
+    : undefined;
+  const dataShape = run.output.data !== undefined ? inferDataShape(run.output.data) : undefined;
 
   return [
     "Nanoboss internal recovered procedure synchronization.",
@@ -102,19 +105,19 @@ export function buildRecoveredProcedureSyncPrompt(sessionId: string, cell: CellR
     "Treat the following as the authoritative stored result for future turns in this same persistent master conversation.",
     "Do not answer the user. Respond with exactly: OK",
     "",
-    `Procedure: /${cell.procedure}`,
-    cell.input.trim() ? `Original input: ${summarizeText(cell.input, 500)}` : undefined,
-    cell.output.summary ? `Summary: ${summarizeText(cell.output.summary, 800)}` : undefined,
-    cell.output.memory ? `Memory: ${summarizeText(cell.output.memory, 800)}` : undefined,
-    !cell.output.summary && !cell.output.memory && cell.output.display
-      ? `Display preview: ${summarizeText(cell.output.display, 1200)}`
+    `Procedure: /${run.procedure}`,
+    run.input.trim() ? `Original input: ${summarizeText(run.input, 500)}` : undefined,
+    run.output.summary ? `Summary: ${summarizeText(run.output.summary, 800)}` : undefined,
+    run.output.memory ? `Memory: ${summarizeText(run.output.memory, 800)}` : undefined,
+    !run.output.summary && !run.output.memory && run.output.display
+      ? `Display preview: ${summarizeText(run.output.display, 1200)}`
       : undefined,
-    `Cell: session=${sessionId} cell=${cell.cellId}`,
-    dataRef ? `Data ref: ${formatValueRef(dataRef)}` : undefined,
-    displayRef ? `Display ref: ${formatValueRef(displayRef)}` : undefined,
+    `Run: session=${run.run.sessionId} run=${run.run.runId}`,
+    dataRef ? `Data ref: ${formatRef(dataRef)}` : undefined,
+    displayRef ? `Display ref: ${formatRef(displayRef)}` : undefined,
     dataShape !== undefined ? `Data shape: ${JSON.stringify(dataShape)}` : undefined,
-    cell.output.explicitDataSchema
-      ? `Explicit data schema: ${summarizeText(JSON.stringify(cell.output.explicitDataSchema), 800)}`
+    run.output.explicitDataSchema
+      ? `Explicit data schema: ${summarizeText(JSON.stringify(run.output.explicitDataSchema), 800)}`
       : undefined,
     "",
     "Use the global nanoboss MCP tools later if you need exact stored values.",
@@ -126,10 +129,10 @@ function getProcedureDispatchRecoveryWaitMs(): number {
   return Number.isFinite(value) && value > 0 ? value : 30000;
 }
 
-function formatValueRef(valueRef: ValueRef): string {
+function formatRef(ref: Ref): string {
   return [
-    `session=${valueRef.cell.sessionId}`,
-    `cell=${valueRef.cell.cellId}`,
-    `path=${valueRef.path}`,
+    `session=${ref.run.sessionId}`,
+    `run=${ref.run.runId}`,
+    `path=${ref.path}`,
   ].join(" ");
 }

@@ -1,4 +1,4 @@
-import type { KernelValue, ProcedureResult } from "../../src/core/types.ts";
+import type { KernelValue, ProcedureResult } from "@nanoboss/procedure-sdk";
 import {
   renderPreCommitDisplay,
   renderPreCommitFailureDigest,

@@ -6,11 +6,11 @@ import { dirname, join } from "node:path";
 
 import simplify2Procedure from "../../procedures/simplify2.ts";
 import type {
-  ProcedureApi,
   DownstreamAgentConfig,
+  ProcedureApi,
   ProcedureResult,
   RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 describe("simplify2 procedure", () => {
   test("blocks execute when the git worktree is dirty", async () => {
@@ -90,7 +90,7 @@ describe("simplify2 procedure", () => {
     expect(pausedState.mode).toBe("checkpoint");
     expect(pausedState.notebook.currentCheckpoint?.hypothesisId).toMatch(/^hyp-[0-9a-f]{12}$/);
     expect(pausedState.notebook.currentCheckpoint?.hypothesisId).not.toBe("hyp-boundary-checkpoint");
-    expect(normalized.pause?.continuationUi).toMatchObject({
+    expect(normalized.pause?.ui).toMatchObject({
       kind: "simplify2_checkpoint",
       actions: [
         { id: "approve", reply: "approve it" },
@@ -707,9 +707,9 @@ describe("simplify2 procedure", () => {
       ], [], {
         procedureResults: [
           {
-            cell: {
+            run: {
               sessionId: "test-session",
-              cellId: "procedure-commit",
+              runId: "procedure-commit",
             },
             data: {
               checks: {
@@ -1200,7 +1200,7 @@ describe("simplify2 procedure", () => {
 
     const normalized = normalizeProcedureResult(result);
     expect(normalized.summary).toBe("simplify2: choose focus");
-    expect(normalized.pause?.continuationUi).toMatchObject({
+    expect(normalized.pause?.ui).toMatchObject({
       kind: "simplify2_focus_picker",
       actions: [
         { id: "continue" },
@@ -1336,9 +1336,9 @@ function createMockContext(
       throw new Error(`Unexpected callAgent #${callCount}`);
     }
     return {
-      cell: {
+      run: {
         sessionId: "test-session",
-        cellId: `agent-${callCount}`,
+        runId: `agent-${callCount}`,
       },
       data: next,
     } as RunResult;
@@ -1346,16 +1346,16 @@ function createMockContext(
   const callProcedure = (async (name: string, prompt: string) => {
     options.procedureCalls?.push({ name, prompt });
     const next = options.procedureResults?.shift();
-    if (typeof next === "object" && next !== null && "cell" in next) {
+    if (typeof next === "object" && next !== null && "run" in next) {
       return next as RunResult;
     }
 
     if (next !== undefined) {
       procedureCallCount += 1;
       return {
-        cell: {
+        run: {
           sessionId: "test-session",
-          cellId: `procedure-${procedureCallCount}`,
+          runId: `procedure-${procedureCallCount}`,
         },
         data: next,
       } as RunResult;
@@ -1364,18 +1364,18 @@ function createMockContext(
     if (name === "nanoboss/commit") {
       procedureCallCount += 1;
       return {
-        cell: {
+        run: {
           sessionId: "test-session",
-          cellId: `procedure-${procedureCallCount}`,
+          runId: `procedure-${procedureCallCount}`,
         },
         data: {
           checks: {
             passed: true,
           },
           commit: {
-            cell: {
+            run: {
               sessionId: "test-session",
-              cellId: `commit-${procedureCallCount}`,
+              runId: `commit-${procedureCallCount}`,
             },
             path: "output.data",
           },
@@ -1399,28 +1399,16 @@ function createMockContext(
     },
   };
   const runs: ProcedureApi["state"]["runs"] = {
-    async recent() {
-      return [];
-    },
-    async latest() {
-      return undefined;
-    },
-    async topLevelRuns() {
+    async list() {
       return [];
     },
     async get() {
       throw new Error("Not implemented in test");
     },
-    async parent() {
-      return undefined;
-    },
-    async children() {
+    async getAncestors() {
       return [];
     },
-    async ancestors() {
-      return [];
-    },
-    async descendants() {
+    async getDescendants() {
       return [];
     },
   };

@@ -5,10 +5,10 @@ import { join } from "node:path";
 
 import researchProcedure from "../../procedures/research.ts";
 import type {
-  ProcedureApi,
   DownstreamAgentConfig,
+  ProcedureApi,
   RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 const tempDirs: string[] = [];
 
@@ -65,9 +65,9 @@ describe("/research", () => {
 
           if (agentRuns.length === 1) {
             return {
-              cell: {
+              run: {
                 sessionId: "test-session",
-                cellId: "brief-cell",
+                runId: "brief-cell",
               },
               data: {
                 researchQuestion: "What changed in the pi-tui update?",
@@ -76,9 +76,9 @@ describe("/research", () => {
                 constraints: ["keep it concise"],
               },
               dataRef: {
-                cell: {
+                run: {
                   sessionId: "test-session",
-                  cellId: "brief-cell",
+                  runId: "brief-cell",
                 },
                 path: "data",
               },
@@ -86,9 +86,9 @@ describe("/research", () => {
           }
 
           return {
-            cell: {
+            run: {
               sessionId: "test-session",
-              cellId: "report-cell",
+              runId: "report-cell",
             },
             data: {
               report,
@@ -96,9 +96,9 @@ describe("/research", () => {
               descriptionWords: ["pi", "tui", "review"],
             },
             dataRef: {
-              cell: {
+              run: {
                 sessionId: "test-session",
-                cellId: "report-cell",
+                runId: "report-cell",
               },
               path: "data",
             },
@@ -142,9 +142,9 @@ describe("/research", () => {
     expect(secondCall.options).toEqual({
       refs: {
         brief: {
-          cell: {
+          run: {
             sessionId: "test-session",
-            cellId: "brief-cell",
+            runId: "brief-cell",
           },
           path: "data",
         },
@@ -182,28 +182,16 @@ function createMockContext(params: {
     },
   };
   const runs: ProcedureApi["state"]["runs"] = {
-    async recent() {
-      return [];
-    },
-    async latest() {
-      return undefined;
-    },
-    async topLevelRuns() {
+    async list() {
       return [];
     },
     async get() {
       throw new Error("Not implemented in test");
     },
-    async parent() {
-      return undefined;
-    },
-    async children() {
+    async getAncestors() {
       return [];
     },
-    async ancestors() {
-      return [];
-    },
-    async descendants() {
+    async getDescendants() {
       return [];
     },
   };

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
 import { resolveSelfCommand } from "../../src/core/self-command.ts";
-import { SessionStore, writeSessionMetadata } from "../../src/session/index.ts";
+import { SessionStore, writeStoredSessionMetadata } from "@nanoboss/store";
 
 const tempDirs: string[] = [];
 
@@ -33,18 +33,18 @@ describe("global nanoboss MCP stdio transport", () => {
       cwd: process.cwd(),
       rootDir,
     });
-    const reviewCell = store.startCell({
+    const reviewCell = store.startRun({
       procedure: "second-opinion",
       input: "review the patch",
       kind: "top_level",
     });
-    store.finalizeCell(reviewCell, {
+    store.completeRun(reviewCell, {
       data: { verdict: "mixed" },
       display: "review display",
       summary: "review summary",
     });
-    writeSessionMetadata({
-      sessionId,
+    writeStoredSessionMetadata({
+      session: { sessionId },
       cwd: process.cwd(),
       rootDir,
       createdAt: "2026-04-03T00:00:00.000Z",
@@ -93,14 +93,14 @@ describe("global nanoboss MCP stdio transport", () => {
       const toolNames = list.result?.tools?.map((tool) => tool.name) ?? [];
       expect(toolNames).toContain("procedure_dispatch_start");
       expect(toolNames).toContain("procedure_dispatch_wait");
-      expect(toolNames).toContain("top_level_runs");
+      expect(toolNames).toContain("list_runs");
 
       writeMcpMessage(child.stdin, {
         jsonrpc: "2.0",
         id: 3,
         method: "tools/call",
         params: {
-          name: "top_level_runs",
+          name: "list_runs",
           arguments: {
             limit: 1,
           },
@@ -108,7 +108,7 @@ describe("global nanoboss MCP stdio transport", () => {
       });
       const call = await readMcpMessage(frames);
       expect(call.result?.structuredContent?.items?.[0]).toMatchObject({
-        cell: reviewCell.cell,
+        run: { sessionId, runId: reviewCell.run.runId },
         procedure: "second-opinion",
         summary: "review summary",
       });
@@ -141,7 +141,7 @@ async function readMcpMessage(
     tools?: Array<{ name: string }>;
     structuredContent?: {
       items?: Array<{
-        cell: { sessionId: string; cellId: string };
+        run: { sessionId: string; runId: string };
         procedure: string;
         summary?: string;
       }>;
@@ -158,7 +158,7 @@ async function readMcpMessage(
       tools?: Array<{ name: string }>;
       structuredContent?: {
         items?: Array<{
-          cell: { sessionId: string; cellId: string };
+          run: { sessionId: string; runId: string };
           procedure: string;
           summary?: string;
         }>;

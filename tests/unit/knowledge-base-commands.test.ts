@@ -12,12 +12,12 @@ import kbLinkProcedure from "../../procedures/kb/link.ts";
 import kbRenderProcedure from "../../procedures/kb/render.ts";
 import kbRefreshProcedure from "../../procedures/kb/refresh.ts";
 import type {
-  ProcedureApi,
   DownstreamAgentConfig,
   Procedure,
+  ProcedureApi,
   ProcedureResult,
   RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 const tempDirs: string[] = [];
 
@@ -414,28 +414,16 @@ describe("knowledge-base procedures", () => {
       },
     };
     const runs: ProcedureApi["state"]["runs"] = {
-      async recent() {
-        return [];
-      },
-      async latest() {
-        return undefined;
-      },
-      async topLevelRuns() {
+      async list() {
         return [];
       },
       async get() {
         throw new Error("Not implemented in test");
       },
-      async parent() {
-        return undefined;
-      },
-      async children() {
+      async getAncestors() {
         return [];
       },
-      async ancestors() {
-        return [];
-      },
-      async descendants() {
+      async getDescendants() {
         return [];
       },
     };
@@ -485,7 +473,7 @@ describe("knowledge-base procedures", () => {
           switch (name) {
             case "kb/ingest":
               return {
-                cell: { sessionId: "test-session", cellId: "proc-1" },
+                run: { sessionId: "test-session", runId: "proc-1" },
                 data: {
                   sourceCount: 1,
                   changedSourceIds: ["paper-1234"],
@@ -494,7 +482,7 @@ describe("knowledge-base procedures", () => {
               } as RunResult;
             case "kb/compile-source":
               return {
-                cell: { sessionId: "test-session", cellId: "proc-2" },
+                run: { sessionId: "test-session", runId: "proc-2" },
                 data: {
                   status: "compiled",
                   sourceId: "paper-1234",
@@ -502,7 +490,7 @@ describe("knowledge-base procedures", () => {
               } as RunResult;
             case "kb/compile-concepts":
               return {
-                cell: { sessionId: "test-session", cellId: "proc-3" },
+                run: { sessionId: "test-session", runId: "proc-3" },
                 data: {
                   conceptCount: 1,
                   touchedConceptIds: ["transformers"],
@@ -510,7 +498,7 @@ describe("knowledge-base procedures", () => {
               } as RunResult;
             case "kb/link":
               return {
-                cell: { sessionId: "test-session", cellId: "proc-4" },
+                run: { sessionId: "test-session", runId: "proc-4" },
                 data: {
                   indexPath: "wiki/index.md",
                   conceptIndexPath: "wiki/indexes/concepts.md",
@@ -837,9 +825,9 @@ function createHarness(params: {
         const normalized = normalizeProcedureOutput(nested);
         cellCounter += 1;
         return {
-          cell: {
+          run: {
             sessionId: "test-session",
-            cellId: `proc-${cellCounter}`,
+            runId: `proc-${cellCounter}`,
           },
           data: normalized.data,
         } as RunResult;
@@ -870,9 +858,9 @@ function createMockContext(params: {
   const runAgent = async () => {
     agentCounter += 1;
     return {
-      cell: {
+      run: {
         sessionId: "test-session",
-        cellId: `agent-${agentCounter}`,
+        runId: `agent-${agentCounter}`,
       },
       data: params.getNextAgentResult(),
     } as RunResult;
@@ -889,28 +877,16 @@ function createMockContext(params: {
     },
   };
   const runs: ProcedureApi["state"]["runs"] = {
-    async recent() {
-      return [];
-    },
-    async latest() {
-      return undefined;
-    },
-    async topLevelRuns() {
+    async list() {
       return [];
     },
     async get() {
       throw new Error("Not implemented in test");
     },
-    async parent() {
-      return undefined;
-    },
-    async children() {
+    async getAncestors() {
       return [];
     },
-    async ancestors() {
-      return [];
-    },
-    async descendants() {
+    async getDescendants() {
       return [];
     },
   };

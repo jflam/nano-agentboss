@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>nanoboss presentation editor</title>
+  <style>
+    :root {
+      --bg: #0a0f14;
+      --bg-2: #101923;
+      --panel: #141f2b;
+      --panel-2: #192635;
+      --panel-3: #1e3044;
+      --text: #eef5ff;
+      --muted: #a8bfd9;
+      --soft: #7f98b3;
+      --line: rgba(155, 202, 255, 0.18);
+      --accent: #8bd1ff;
+      --accent-2: #ffd280;
+      --good: #91e2a6;
+      --warn: #ffcb7d;
+      --danger: #ff9b9b;
+      --shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+      --radius: 18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(139, 209, 255, 0.12), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(255, 210, 128, 0.1), transparent 22%),
+        linear-gradient(135deg, var(--bg), var(--bg-2));
+      color: var(--text);
+      font-family: var(--sans);
+    }
+
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(10, 15, 20, 0.92);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .brand p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .shell {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 280px minmax(420px, 1fr) minmax(420px, 1fr);
+    }
+
+    .sidebar,
+    .editor,
+    .preview {
+      min-height: 0;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: rgba(11, 16, 22, 0.72);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .sidebar-head,
+    .sidebar-foot,
+    .editor-head,
+    .preview-head {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .sidebar-foot {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .slide-list {
+      overflow: auto;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .slide-item {
+      width: 100%;
+      text-align: left;
+      padding: 12px 13px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .slide-item:hover {
+      border-color: rgba(139, 209, 255, 0.16);
+      background: rgba(139, 209, 255, 0.06);
+    }
+
+    .slide-item.active {
+      border-color: rgba(139, 209, 255, 0.35);
+      background: rgba(139, 209, 255, 0.11);
+      box-shadow: inset 0 0 0 1px rgba(139, 209, 255, 0.12);
+    }
+
+    .slide-item .index {
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .slide-item .title {
+      font-size: 15px;
+      line-height: 1.3;
+      margin-bottom: 5px;
+    }
+
+    .slide-item .meta {
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .editor,
+    .preview {
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .editor {
+      border-right: 1px solid var(--line);
+      background: rgba(14, 21, 29, 0.68);
+    }
+
+    .editor-body {
+      overflow: auto;
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .preview {
+      background: rgba(10, 15, 21, 0.72);
+    }
+
+    .preview-body {
+      min-height: 0;
+      padding: 14px;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(27, 38, 51, 0.92), rgba(18, 26, 36, 0.92));
+      box-shadow: var(--shadow);
+    }
+
+    .panel h2,
+    .panel h3 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      background: rgba(10, 15, 21, 0.88);
+      color: var(--text);
+      padding: 11px 12px;
+      font: inherit;
+      resize: vertical;
+    }
+
+    textarea {
+      min-height: 110px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    textarea.large {
+      min-height: 320px;
+    }
+
+    input:focus,
+    textarea:focus,
+    button:focus {
+      outline: 2px solid rgba(139, 209, 255, 0.35);
+      outline-offset: 2px;
+    }
+
+    button,
+    .button-like {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: linear-gradient(180deg, #223448, #162433);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:hover,
+    .button-like:hover {
+      border-color: rgba(139, 209, 255, 0.24);
+      background: linear-gradient(180deg, #29405a, #1a2d40);
+    }
+
+    button.secondary {
+      background: linear-gradient(180deg, #2a2a33, #1d1d23);
+    }
+
+    button.good {
+      background: linear-gradient(180deg, #244132, #193023);
+      border-color: rgba(145, 226, 166, 0.24);
+    }
+
+    button.warn {
+      background: linear-gradient(180deg, #4b3a1e, #332713);
+      border-color: rgba(255, 203, 125, 0.22);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .status {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(139, 209, 255, 0.08);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .status.good {
+      border-color: rgba(145, 226, 166, 0.24);
+      background: rgba(145, 226, 166, 0.08);
+      color: #d9ffe3;
+    }
+
+    .status.warn {
+      border-color: rgba(255, 203, 125, 0.24);
+      background: rgba(255, 203, 125, 0.08);
+      color: #ffecc8;
+    }
+
+    .status.danger {
+      border-color: rgba(255, 155, 155, 0.24);
+      background: rgba(255, 155, 155, 0.08);
+      color: #ffdada;
+    }
+
+    .small {
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .mono {
+      font-family: var(--mono);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 1460px) {
+      .shell {
+        grid-template-columns: 250px 1fr;
+        grid-template-rows: auto auto;
+      }
+
+      .preview {
+        grid-column: 1 / -1;
+        border-top: 1px solid var(--line);
+      }
+
+      .preview-body {
+        height: 70vh;
+      }
+    }
+
+    @media (max-width: 960px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar,
+      .editor {
+        border-right: 0;
+      }
+
+      .sidebar,
+      .editor,
+      .preview {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .grid.two {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>nanoboss presentation editor</h1>
+      <p>Edit <span class="mono">nanoboss-lightsaber-presentation.html</span> slide-by-slide, preview live, then export.</p>
+    </div>
+    <div class="actions">
+      <button id="load-default">Load target deck</button>
+      <button id="open-file">Open HTML file</button>
+      <button id="restore-autosave" class="secondary">Restore autosave</button>
+      <button id="save-local" class="secondary">Save As...</button>
+      <button id="download" class="good">Export download</button>
+      <input id="file-input" class="hidden" type="file" accept=".html,text/html" />
+    </div>
+  </header>
+
+  <main class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div><strong>Slides</strong></div>
+        <div class="small" id="deck-meta">No deck loaded yet.</div>
+      </div>
+      <div class="slide-list" id="slide-list"></div>
+      <div class="sidebar-foot">
+        <div>Best workflow:</div>
+        <div>1. Load the deck</div>
+        <div>2. Edit fields or raw content HTML</div>
+        <div>3. Preview on the right</div>
+        <div>4. Export the updated deck</div>
+      </div>
+    </aside>
+
+    <section class="editor">
+      <div class="editor-head">
+        <strong>Slide editor</strong>
+        <div class="small">Structured fields update the slide shell. Use raw content HTML for layout-level tweaks inside the slide body.</div>
+      </div>
+      <div class="editor-body">
+        <div id="status" class="status warn">Load a presentation file to begin editing.</div>
+
+        <div class="panel">
+          <h2>Deck controls</h2>
+          <div class="toolbar">
+            <button id="apply-now">Apply edits now</button>
+            <button id="reset-slide" class="secondary">Reset current slide</button>
+            <button id="refresh-preview" class="secondary">Refresh preview</button>
+          </div>
+          <div class="small" style="margin-top:10px">
+            Autosave is stored in <span class="mono">localStorage</span>. Direct save with the browser file picker usually works only on <span class="mono">localhost</span> or another secure origin.
+          </div>
+        </div>
+
+        <div class="panel grid">
+          <h2>Slide metadata</h2>
+          <div class="grid two">
+            <label>
+              Slide label
+              <input id="field-data-title" type="text" placeholder="Sidebar title" />
+            </label>
+            <label>
+              Eyebrow
+              <input id="field-eyebrow" type="text" placeholder="3 · transport stack" />
+            </label>
+          </div>
+          <div class="grid two">
+            <label>
+              Title
+              <input id="field-title" type="text" placeholder="Slide title" />
+            </label>
+            <label>
+              Subtitle
+              <input id="field-subtitle" type="text" placeholder="Optional subtitle" />
+            </label>
+          </div>
+        </div>
+
+        <div class="panel grid">
+          <h2>Content HTML</h2>
+          <label>
+            Raw inner HTML for <span class="mono">&lt;div class="content"&gt;...&lt;/div&gt;</span>
+            <textarea id="field-content" class="large" spellcheck="false"></textarea>
+          </label>
+        </div>
+
+        <div class="panel grid">
+          <h2>Footer</h2>
+          <label>
+            Footer left text
+            <textarea id="field-footer-left" spellcheck="false"></textarea>
+          </label>
+          <label>
+            Footer refs
+            <textarea id="field-footer-refs" spellcheck="false"></textarea>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="preview">
+      <div class="preview-head">
+        <strong>Live preview</strong>
+        <div class="small" id="preview-meta">Preview updates after edits are applied.</div>
+      </div>
+      <div class="preview-body">
+        <iframe id="preview-frame" title="Presentation preview"></iframe>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const DEFAULT_TARGET = "nanoboss-lightsaber-presentation.html";
+    const AUTOSAVE_KEY = "nanoboss-lightsaber-editor-autosave-v1";
+
+    const elements = {
+      loadDefault: document.getElementById("load-default"),
+      openFile: document.getElementById("open-file"),
+      fileInput: document.getElementById("file-input"),
+      restoreAutosave: document.getElementById("restore-autosave"),
+      saveLocal: document.getElementById("save-local"),
+      download: document.getElementById("download"),
+      applyNow: document.getElementById("apply-now"),
+      resetSlide: document.getElementById("reset-slide"),
+      refreshPreview: document.getElementById("refresh-preview"),
+      slideList: document.getElementById("slide-list"),
+      status: document.getElementById("status"),
+      deckMeta: document.getElementById("deck-meta"),
+      previewMeta: document.getElementById("preview-meta"),
+      previewFrame: document.getElementById("preview-frame"),
+      dataTitle: document.getElementById("field-data-title"),
+      eyebrow: document.getElementById("field-eyebrow"),
+      title: document.getElementById("field-title"),
+      subtitle: document.getElementById("field-subtitle"),
+      content: document.getElementById("field-content"),
+      footerLeft: document.getElementById("field-footer-left"),
+      footerRefs: document.getElementById("field-footer-refs"),
+    };
+
+    const formFields = [
+      elements.dataTitle,
+      elements.eyebrow,
+      elements.title,
+      elements.subtitle,
+      elements.content,
+      elements.footerLeft,
+      elements.footerRefs,
+    ];
+
+    const state = {
+      sourceName: DEFAULT_TARGET,
+      sourceHtml: "",
+      workingDoc: null,
+      selectedIndex: 0,
+      autoApplyTimer: 0,
+      dirty: false,
+      lastSavedAt: "",
+    };
+
+    function parseHtml(html) {
+      return new DOMParser().parseFromString(html, "text/html");
+    }
+
+    function serializeDoc(doc) {
+      const doctype = doc.doctype
+        ? `<!doctype ${doc.doctype.name}>`
+        : "<!doctype html>";
+      return `${doctype}\n${doc.documentElement.outerHTML}`;
+    }
+
+    function getSlides(doc = state.workingDoc) {
+      return doc ? [...doc.querySelectorAll("section.slide")] : [];
+    }
+
+    function getSlide(index) {
+      return getSlides()[index] || null;
+    }
+
+    function getHeaderFields(slide) {
+      const header = slide.querySelector(":scope > header");
+      const eyebrow = header?.querySelector(".eyebrow");
+      const titleEl = header?.querySelector("h1, h2");
+      const subtitle = header?.querySelector(".subtitle");
+      return { header, eyebrow, titleEl, subtitle };
+    }
+
+    function getSlideContent(slide) {
+      return slide.querySelector(":scope > .content");
+    }
+
+    function getFooterFields(slide) {
+      const footer = slide.querySelector(":scope > footer.footer");
+      if (!footer) {
+        return { footer: null, left: null, refs: null };
+      }
+
+      const refs = footer.querySelector(".refs");
+      const divs = [...footer.children].filter((node) => node.tagName === "DIV");
+      const left = divs.find((node) => node !== refs) || divs[0] || null;
+      return { footer, left, refs };
+    }
+
+    function slideTitleForList(slide, index) {
+      const explicit = slide.dataset.title?.trim();
+      if (explicit) {
+        return explicit;
+      }
+      const title = slide.querySelector("h1, h2")?.textContent?.trim();
+      return title || `Slide ${index + 1}`;
+    }
+
+    function slideMetaForList(slide) {
+      const eyebrow = slide.querySelector(".eyebrow")?.textContent?.trim() || "No eyebrow";
+      return eyebrow;
+    }
+
+    function setStatus(text, kind = "warn") {
+      elements.status.textContent = text;
+      elements.status.className = `status ${kind}`;
+    }
+
+    function clearForm() {
+      for (const field of formFields) {
+        field.value = "";
+      }
+    }
+
+    function loadSlideIntoForm(index) {
+      const slide = getSlide(index);
+      if (!slide) {
+        clearForm();
+        return;
+      }
+
+      const { eyebrow, titleEl, subtitle } = getHeaderFields(slide);
+      const content = getSlideContent(slide);
+      const { left, refs } = getFooterFields(slide);
+
+      elements.dataTitle.value = slide.dataset.title || "";
+      elements.eyebrow.value = eyebrow?.textContent || "";
+      elements.title.value = titleEl?.textContent || "";
+      elements.subtitle.value = subtitle?.textContent || "";
+      elements.content.value = content?.innerHTML.trim() || "";
+      elements.footerLeft.value = left?.textContent || "";
+      elements.footerRefs.value = refs?.textContent || "";
+    }
+
+    function renderSlideList() {
+      const slides = getSlides();
+      elements.slideList.innerHTML = "";
+
+      slides.forEach((slide, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `slide-item${index === state.selectedIndex ? " active" : ""}`;
+        button.innerHTML = `
+          <div class="index">Slide ${index + 1}</div>
+          <div class="title"></div>
+          <div class="meta"></div>
+        `;
+        button.querySelector(".title").textContent = slideTitleForList(slide, index);
+        button.querySelector(".meta").textContent = slideMetaForList(slide);
+        button.addEventListener("click", () => {
+          applyEditsToCurrentSlide();
+          state.selectedIndex = index;
+          loadSlideIntoForm(index);
+          renderSlideList();
+          updatePreviewMeta();
+        });
+        elements.slideList.appendChild(button);
+      });
+
+      elements.deckMeta.textContent = slides.length
+        ? `${slides.length} slides loaded from ${state.sourceName}`
+        : "No slides found.";
+    }
+
+    function ensureSubtitle(slide) {
+      const { header, titleEl, subtitle } = getHeaderFields(slide);
+      if (!header || subtitle) {
+        return subtitle;
+      }
+
+      const node = slide.ownerDocument.createElement("div");
+      node.className = "subtitle";
+      if (titleEl && titleEl.nextSibling) {
+        header.insertBefore(node, titleEl.nextSibling);
+      } else {
+        header.appendChild(node);
+      }
+      return node;
+    }
+
+    function ensureEyebrow(slide) {
+      const { header, eyebrow } = getHeaderFields(slide);
+      if (!header || eyebrow) {
+        return eyebrow;
+      }
+
+      const node = slide.ownerDocument.createElement("div");
+      node.className = "eyebrow";
+      header.insertBefore(node, header.firstChild);
+      return node;
+    }
+
+    function ensureFooter(slide) {
+      const existing = getFooterFields(slide).footer;
+      if (existing) {
+        return existing;
+      }
+
+      const footer = slide.ownerDocument.createElement("footer");
+      footer.className = "footer";
+      const left = slide.ownerDocument.createElement("div");
+      const refs = slide.ownerDocument.createElement("div");
+      refs.className = "refs";
+      footer.append(left, refs);
+      slide.appendChild(footer);
+      return footer;
+    }
+
+    function applyEditsToCurrentSlide() {
+      const slide = getSlide(state.selectedIndex);
+      if (!slide) {
+        return;
+      }
+
+      const { titleEl } = getHeaderFields(slide);
+      const eyebrow = ensureEyebrow(slide);
+      const subtitle = ensureSubtitle(slide);
+      const content = getSlideContent(slide);
+      const footer = ensureFooter(slide);
+      let { left, refs } = getFooterFields(slide);
+
+      slide.dataset.title = elements.dataTitle.value.trim();
+
+      if (eyebrow) {
+        eyebrow.textContent = elements.eyebrow.value;
+        eyebrow.style.display = elements.eyebrow.value.trim() ? "" : "none";
+      }
+
+      if (titleEl) {
+        titleEl.textContent = elements.title.value;
+      }
+
+      if (subtitle) {
+        subtitle.textContent = elements.subtitle.value;
+        subtitle.style.display = elements.subtitle.value.trim() ? "" : "none";
+      }
+
+      if (content) {
+        content.innerHTML = elements.content.value;
+      }
+
+      if (footer) {
+        ({ left, refs } = getFooterFields(slide));
+        if (left) {
+          left.textContent = elements.footerLeft.value;
+        }
+        if (refs) {
+          refs.textContent = elements.footerRefs.value;
+        }
+      }
+
+      markDirtyAndRefresh();
+    }
+
+    function markDirtyAndRefresh() {
+      state.dirty = true;
+      renderSlideList();
+      refreshPreview();
+      autosave();
+    }
+
+    function refreshPreview() {
+      if (!state.workingDoc) {
+        return;
+      }
+
+      elements.previewFrame.srcdoc = serializeDoc(state.workingDoc);
+      updatePreviewMeta();
+    }
+
+    function updatePreviewMeta() {
+      const slide = getSlide(state.selectedIndex);
+      if (!slide) {
+        elements.previewMeta.textContent = "No active slide.";
+        return;
+      }
+
+      elements.previewMeta.textContent = `Editing slide ${state.selectedIndex + 1}: ${slideTitleForList(slide, state.selectedIndex)}`;
+    }
+
+    function autosave() {
+      if (!state.workingDoc) {
+        return;
+      }
+
+      const payload = {
+        sourceName: state.sourceName,
+        html: serializeDoc(state.workingDoc),
+        selectedIndex: state.selectedIndex,
+        savedAt: new Date().toISOString(),
+      };
+
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
+      elements.restoreAutosave.disabled = false;
+      state.lastSavedAt = payload.savedAt;
+      setStatus(`Autosaved locally at ${new Date(payload.savedAt).toLocaleTimeString()}.`, "good");
+    }
+
+    function queueAutoApply() {
+      clearTimeout(state.autoApplyTimer);
+      state.autoApplyTimer = setTimeout(() => {
+        applyEditsToCurrentSlide();
+      }, 240);
+    }
+
+    function loadHtmlIntoEditor(html, sourceName) {
+      const doc = parseHtml(html);
+      const slides = [...doc.querySelectorAll("section.slide")];
+      if (slides.length === 0) {
+        throw new Error("No slides found. Expected at least one <section class=\"slide\">.");
+      }
+
+      state.sourceName = sourceName || DEFAULT_TARGET;
+      state.sourceHtml = html;
+      state.workingDoc = doc;
+      state.selectedIndex = Math.min(state.selectedIndex, slides.length - 1);
+
+      loadSlideIntoForm(state.selectedIndex);
+      renderSlideList();
+      refreshPreview();
+      setStatus(`Loaded ${slides.length} slides from ${state.sourceName}.`, "good");
+    }
+
+    function resetCurrentSlide() {
+      if (!state.sourceHtml) {
+        return;
+      }
+
+      const sourceDoc = parseHtml(serializeDoc(state.workingDoc));
+      const originalDoc = parseHtml(state.sourceHtml);
+      const currentSlide = sourceDoc.querySelectorAll("section.slide")[state.selectedIndex];
+      const originalSlide = originalDoc.querySelectorAll("section.slide")[state.selectedIndex];
+      if (!currentSlide || !originalSlide) {
+        return;
+      }
+
+      currentSlide.replaceWith(originalSlide);
+      state.workingDoc = sourceDoc;
+      loadSlideIntoForm(state.selectedIndex);
+      renderSlideList();
+      refreshPreview();
+      autosave();
+      setStatus(`Reset slide ${state.selectedIndex + 1} to the original loaded version.`, "warn");
+    }
+
+    async function tryLoadDefaultDeck() {
+      try {
+        const response = await fetch(DEFAULT_TARGET, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const html = await response.text();
+        loadHtmlIntoEditor(html, DEFAULT_TARGET);
+      } catch (error) {
+        setStatus(
+          `Could not fetch ${DEFAULT_TARGET}. Use "Open HTML file" if you opened this editor from file:// or another non-served path.`,
+          "warn"
+        );
+      }
+    }
+
+    function downloadCurrentDeck() {
+      if (!state.workingDoc) {
+        setStatus("Load a deck before exporting.", "danger");
+        return;
+      }
+
+      applyEditsToCurrentSlide();
+      const blob = new Blob([serializeDoc(state.workingDoc)], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = state.sourceName || DEFAULT_TARGET;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setStatus(`Downloaded ${state.sourceName || DEFAULT_TARGET}.`, "good");
+    }
+
+    async function saveUsingFilePicker() {
+      if (!state.workingDoc) {
+        setStatus("Load a deck before saving.", "danger");
+        return;
+      }
+
+      if (!window.showSaveFilePicker) {
+        setStatus("Save As... is not available here. Use Export download instead.", "warn");
+        return;
+      }
+
+      try {
+        applyEditsToCurrentSlide();
+        const handle = await window.showSaveFilePicker({
+          suggestedName: state.sourceName || DEFAULT_TARGET,
+          types: [{
+            description: "HTML file",
+            accept: { "text/html": [".html"] },
+          }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(serializeDoc(state.workingDoc));
+        await writable.close();
+        setStatus(`Saved ${handle.name}.`, "good");
+      } catch (error) {
+        if (error && error.name === "AbortError") {
+          return;
+        }
+        setStatus(`Save failed: ${error.message || String(error)}`, "danger");
+      }
+    }
+
+    async function openUsingFilePicker() {
+      if (window.showOpenFilePicker) {
+        try {
+          const [handle] = await window.showOpenFilePicker({
+            multiple: false,
+            types: [{
+              description: "HTML file",
+              accept: { "text/html": [".html"] },
+            }],
+          });
+          if (!handle) {
+            return;
+          }
+          const file = await handle.getFile();
+          const html = await file.text();
+          loadHtmlIntoEditor(html, file.name);
+          state.sourceHtml = html;
+          return;
+        } catch (error) {
+          if (error && error.name === "AbortError") {
+            return;
+          }
+        }
+      }
+
+      elements.fileInput.click();
+    }
+
+    function restoreAutosave() {
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) {
+        setStatus("No autosave found.", "warn");
+        return;
+      }
+
+      try {
+        const payload = JSON.parse(raw);
+        state.selectedIndex = Number.isInteger(payload.selectedIndex) ? payload.selectedIndex : 0;
+        loadHtmlIntoEditor(payload.html, payload.sourceName || DEFAULT_TARGET);
+        setStatus(`Restored autosave from ${new Date(payload.savedAt).toLocaleString()}.`, "good");
+      } catch (error) {
+        setStatus(`Autosave restore failed: ${error.message || String(error)}`, "danger");
+      }
+    }
+
+    elements.loadDefault.addEventListener("click", tryLoadDefaultDeck);
+    elements.openFile.addEventListener("click", openUsingFilePicker);
+    elements.restoreAutosave.addEventListener("click", restoreAutosave);
+    elements.download.addEventListener("click", downloadCurrentDeck);
+    elements.saveLocal.addEventListener("click", saveUsingFilePicker);
+    elements.applyNow.addEventListener("click", applyEditsToCurrentSlide);
+    elements.resetSlide.addEventListener("click", resetCurrentSlide);
+    elements.refreshPreview.addEventListener("click", refreshPreview);
+
+    elements.fileInput.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) {
+        return;
+      }
+      const html = await file.text();
+      loadHtmlIntoEditor(html, file.name);
+      state.sourceHtml = html;
+      event.target.value = "";
+    });
+
+    formFields.forEach((field) => {
+      field.addEventListener("input", queueAutoApply);
+    });
+
+    const autosaveExists = Boolean(localStorage.getItem(AUTOSAVE_KEY));
+    elements.restoreAutosave.disabled = !autosaveExists;
+
+    if (autosaveExists) {
+      setStatus("Autosave found. You can restore it or load the target deck.", "warn");
+    } else {
+      tryLoadDefaultDeck();
+    }
+  </script>
+</body>
+</html>

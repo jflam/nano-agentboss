@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseSessionPromptRequestBody } from "../../src/http/server.ts";
+import { parseSessionPromptRequestBody } from "@nanoboss/adapters-http";
 
 describe("HTTP prompt submission", () => {
   test("rejects empty structured prompt input before accepting the request", () => {

@@ -3,22 +3,20 @@ import { createTextPromptInput, normalizePromptInput, promptInputDisplayText } f
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
 import { getBuildLabel } from "../core/build-info.ts";
 import { getBuildFreshnessNotice } from "../core/build-freshness.ts";
-import { ensureMatchingHttpServer } from "../http/server-supervisor.ts";
 import {
   cancelSessionRun,
   createHttpSession,
+  ensureMatchingHttpServer,
   resumeHttpSession,
   sendSessionPrompt,
   startSessionEventStream,
-  type SessionStreamHandle,
-} from "../http/client.ts";
-import {
   isRenderedFrontendEvent,
   type FrontendCommand,
   type FrontendEventEnvelope,
-} from "../http/frontend-events.ts";
+  type SessionStreamHandle,
+} from "@nanoboss/adapters-http";
 import { formatAgentBanner } from "../core/runtime-banner.ts";
-import type { DownstreamAgentSelection, ProcedureContinuationUi, PromptInput } from "../core/types.ts";
+import type { ContinuationUi, DownstreamAgentSelection, PromptInput } from "../core/types.ts";
 
 import {
   isExitRequest,
@@ -283,7 +281,7 @@ export class NanobossTuiController {
 
   private dispatch(action: UiAction): void {
     this.state = reduceUiState(this.state, action);
-    const continuation = this.state.pendingProcedureContinuation;
+    const continuation = this.state.pendingContinuation;
     if (!continuation) {
       this.lastAutoApprovedContinuationSignature = undefined;
     } else if (
@@ -492,7 +490,7 @@ export class NanobossTuiController {
     if (
       event.type !== "run_paused"
       || event.data.procedure !== "simplify2"
-      || event.data.continuationUi?.kind !== "simplify2_checkpoint"
+      || event.data.ui?.kind !== "simplify2_checkpoint"
       || !this.state.simplify2AutoApprove
     ) {
       return;
@@ -503,16 +501,16 @@ export class NanobossTuiController {
       question: event.data.question,
       inputHint: event.data.inputHint,
       suggestedReplies: event.data.suggestedReplies,
-      continuationUi: event.data.continuationUi,
+      ui: event.data.ui,
     }));
   }
 
   private async maybeAutoApproveCurrentContinuation(): Promise<void> {
-    const continuation = this.state.pendingProcedureContinuation;
+    const continuation = this.state.pendingContinuation;
     if (
       !continuation
       || continuation.procedure !== "simplify2"
-      || continuation.continuationUi?.kind !== "simplify2_checkpoint"
+      || continuation.ui?.kind !== "simplify2_checkpoint"
       || this.state.inputDisabled
     ) {
       return;
@@ -567,13 +565,13 @@ function buildContinuationSignature(continuation: {
   question: string;
   inputHint?: string;
   suggestedReplies?: string[];
-  continuationUi?: ProcedureContinuationUi;
+  ui?: ContinuationUi;
 }): string {
   return JSON.stringify({
     procedure: continuation.procedure,
     question: continuation.question,
     inputHint: continuation.inputHint,
     suggestedReplies: continuation.suggestedReplies,
-    continuationUi: continuation.continuationUi,
+    ui: continuation.ui,
   });
 }

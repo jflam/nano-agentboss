@@ -17,7 +17,8 @@ import {
 import { buildAgentRuntimeSessionRuntime } from "./runtime-capability.ts";
 import { RunCancelledError, defaultCancellationMessage } from "../core/cancellation.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
-import { SessionStore } from "../session/index.ts";
+import { toPublicRunResult } from "../core/run-result.ts";
+import { SessionStore } from "@nanoboss/store";
 import { collectTokenSnapshot, enrichToolCallUpdateWithTokenUsage } from "./token-metrics.ts";
 import type {
   AgentRunResult,
@@ -52,13 +53,13 @@ export async function callAgent<T = string>(
     sessionId: crypto.randomUUID(),
     cwd,
   });
-  const cell = store.startCell({
+  const run = store.startRun({
     procedure: "callAgent",
     input: displayPrompt,
     kind: "agent",
     promptImages: options.promptInput ? store.persistPromptImages(options.promptInput) : undefined,
   });
-  const finalized = store.finalizeCell(cell, {
+  const finalized = store.completeRun(run, {
     data: result.data as T & KernelValue,
     display: result.raw,
     summary: summarizeAgentOutput(result.data, result.raw),
@@ -66,9 +67,10 @@ export async function callAgent<T = string>(
     stream: collectTextSessionUpdates(result.updates),
     raw: result.raw,
   });
+  const publicResult = toPublicRunResult(finalized);
 
   return {
-    ...finalized,
+    ...publicResult,
     durationMs: result.durationMs,
     raw: result.raw,
     logFile: result.logFile,
@@ -402,11 +404,24 @@ async function runAcpPrompt(
   options.signal?.addEventListener("abort", abortListener);
 
   try {
-    const session = await state.connection.newSession({
-      cwd: state.cwd,
-      ...buildAgentRuntimeSessionRuntime(),
-    });
-    sessionId = session.sessionId;
+    if (options.persistedSessionId) {
+      if (!state.capabilities?.loadSession) {
+        throw new Error("Downstream agent does not support loading persisted sessions");
+      }
+
+      await state.connection.loadSession({
+        cwd: state.cwd,
+        ...buildAgentRuntimeSessionRuntime(),
+        sessionId: options.persistedSessionId,
+      });
+      sessionId = options.persistedSessionId;
+    } else {
+      const session = await state.connection.newSession({
+        cwd: state.cwd,
+        ...buildAgentRuntimeSessionRuntime(),
+      });
+      sessionId = session.sessionId;
+    }
 
     await applyAcpSessionConfig(state.connection, sessionId, config);
 

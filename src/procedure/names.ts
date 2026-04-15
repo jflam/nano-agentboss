@@ -22,7 +22,8 @@ export function resolveProcedureEntryRelativePath(name: string): string {
 }
 
 export function resolveProcedureImportPrefix(name: string): string {
-  return "../".repeat(normalizeProcedureName(name).split("/").length);
+  // Generated procedures live under .nanoboss/procedures/<scope...>/file.ts.
+  return "../".repeat(normalizeProcedureName(name).split("/").length + 1);
 }
 
 function normalizeProcedureNameSegment(value: string): string {

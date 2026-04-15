@@ -240,13 +240,13 @@ function summarizeToolOutput(identity: ToolPayloadIdentity, rawOutput: unknown):
     });
   }
 
-  const cell = record?.cell;
-  if (isCellRef(cell)) {
-    return { bodyLines: [`stored result in ${cell.cellId}`] };
+  const run = record?.run;
+  if (isRunRef(run)) {
+    return { bodyLines: [`stored result in ${run.runId}`] };
   }
 
   const dataRef = asRecord(record?.dataRef);
-  if (dataRef && isCellRef(dataRef.cell) && typeof dataRef.path === "string") {
+  if (dataRef && isRunRef(dataRef.run) && typeof dataRef.path === "string") {
     return { bodyLines: [summarizeInline(`stored ref ${dataRef.path}`, MAX_PREVIEW_LINE_LENGTH)] };
   }
 
@@ -503,7 +503,7 @@ function cleanPreviewBlock(block: ToolPreviewBlock | undefined): ToolPreviewBloc
   };
 }
 
-function isCellRef(value: unknown): value is { sessionId: string; cellId: string } {
+function isRunRef(value: unknown): value is { sessionId: string; runId: string } {
   const record = asRecord(value);
-  return record !== undefined && typeof record.sessionId === "string" && typeof record.cellId === "string";
+  return record !== undefined && typeof record.sessionId === "string" && typeof record.runId === "string";
 }

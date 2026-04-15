@@ -17,15 +17,24 @@ import { pathToFileURL } from "node:url";
 
 import { getProcedureRuntimeDir } from "../core/config.ts";
 import type {
-  DeferredProcedureMetadata,
   Procedure,
   ProcedureExecutionMode,
-} from "../core/types.ts";
+  ProcedureMetadata,
+} from "@nanoboss/procedure-sdk";
 import { resolveProcedureEntryRelativePath } from "./names.ts";
 import { createTypiaBunPlugin } from "./typia-bun-plugin.ts";
 
-export interface DiskProcedureDefinition extends DeferredProcedureMetadata {
+interface DiskProcedureDefinition extends ProcedureMetadata {
+  continuation?: {
+    supportsResume: true;
+  };
   path: string;
+}
+
+interface LoadableProcedureMetadata extends ProcedureMetadata {
+  continuation?: {
+    supportsResume: true;
+  };
 }
 
 interface ProcedureSourceFile {
@@ -259,7 +268,7 @@ function walkProcedureSourcePaths(dir: string, files: string[]): void {
   }
 }
 
-function readProcedureMetadata(path: string): DeferredProcedureMetadata | undefined {
+function readProcedureMetadata(path: string): LoadableProcedureMetadata | undefined {
   const source = readFileSync(path, "utf8");
   if (!looksLikeProcedureModule(source)) {
     return undefined;
@@ -270,7 +279,9 @@ function readProcedureMetadata(path: string): DeferredProcedureMetadata | undefi
     description: readStaticStringProperty(source, "description") ?? `Lazy-loaded procedure from ${basename(path)}`,
     inputHint: readStaticStringProperty(source, "inputHint"),
     executionMode: parseExecutionMode(readStaticStringProperty(source, "executionMode")),
-    supportsResume: looksLikeResumableProcedureModule(source),
+    continuation: looksLikeResumableProcedureModule(source)
+      ? { supportsResume: true }
+      : undefined,
   };
 }
 
@@ -284,7 +295,7 @@ function looksLikeResumableProcedureModule(source: string): boolean {
 }
 
 function parseExecutionMode(value: string | undefined): ProcedureExecutionMode | undefined {
-  if (value === "defaultConversation" || value === "harness") {
+  if (value === "agentSession" || value === "harness") {
     return value;
   }
 
@@ -421,4 +432,3 @@ async function withTemporarySymlink<T>(targetPath: string, sourcePath: string, r
     }
   }
 }
-

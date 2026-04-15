@@ -10,7 +10,7 @@ import { getSessionDir } from "../../src/core/config.ts";
 import {
   buildProcedureDispatchJobPath,
   isProcedureDispatchCancellationRequested,
-} from "../../src/procedure/dispatch-jobs.ts";
+} from "@nanoboss/procedure-engine";
 import {
   executeAutoresearchClearCommand,
   executeAutoresearchCommand,
@@ -30,7 +30,7 @@ import type {
   AutoresearchExperimentSpec,
   AutoresearchInitPlan,
 } from "../../procedures/autoresearch/types.ts";
-import type { ProcedureApi, DownstreamAgentConfig, RunResult } from "../../src/core/types.ts";
+import type { DownstreamAgentConfig, ProcedureApi, RunResult } from "@nanoboss/procedure-sdk";
 
 const tempDirs: string[] = [];
 
@@ -672,9 +672,9 @@ function createMockContext(
   const callAgent = (async (prompt: string) => {
     callCount += 1;
     return {
-      cell: {
+      run: {
         sessionId: options.sessionId ?? "test-session",
-        cellId: `agent-${callCount}`,
+        runId: `agent-${callCount}`,
       },
       data: await handler(prompt, callCount),
     } as RunResult;
@@ -691,28 +691,16 @@ function createMockContext(
     },
   };
   const runs: ProcedureApi["state"]["runs"] = {
-    async recent() {
-      return [];
-    },
-    async latest() {
-      return undefined;
-    },
-    async topLevelRuns() {
+    async list() {
       return [];
     },
     async get() {
       throw new Error("Not implemented in test");
     },
-    async parent() {
-      return undefined;
-    },
-    async children() {
+    async getAncestors() {
       return [];
     },
-    async ancestors() {
-      return [];
-    },
-    async descendants() {
+    async getDescendants() {
       return [];
     },
   };

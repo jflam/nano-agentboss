@@ -8,8 +8,8 @@ import {
   buildProcedureDispatchJobPath,
   clearProcedureDispatchCancellation,
   isProcedureDispatchCancellationRequested,
-} from "../../src/procedure/dispatch-jobs.ts";
-import type { ProcedureRegistryLike } from "../../src/core/types.ts";
+} from "@nanoboss/procedure-engine";
+import type { ProcedureRegistryLike } from "@nanoboss/procedure-sdk";
 const MOCK_AGENT_PATH = join(process.cwd(), "tests/fixtures/mock-agent.ts");
 
 function createManager(

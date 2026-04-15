@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { readStoredSessionMetadata } from "@nanoboss/store";
 import { getNanobossHome } from "../core/config.ts";
 import { formatErrorMessage } from "../core/error-format.ts";
-import { readSessionMetadata } from "./index.ts";
 
 export type SessionCleanupReason =
   | "empty_dir"
@@ -131,7 +131,7 @@ function inspectSessionDirectory(rootDir: string): SessionCleanupCandidate | und
   const hasSessionJson = existsSync(sessionJsonPath);
   let metadata;
   try {
-    metadata = readSessionMetadata(sessionId, rootDir);
+    metadata = readStoredSessionMetadata(sessionId, rootDir);
   } catch (error) {
     console.warn(`Ignoring unreadable session metadata at ${sessionJsonPath}: ${formatErrorMessage(error)}`);
   }
@@ -141,7 +141,7 @@ function inspectSessionDirectory(rootDir: string): SessionCleanupCandidate | und
   const cwd = metadata?.cwd ?? partialMetadata?.cwd;
   const initialPrompt = metadata?.initialPrompt ?? partialMetadata?.initialPrompt;
   const reasons = classifyCleanupReasons({
-    sessionId,
+    sessionId: metadata?.session.sessionId ?? sessionId,
     cwd,
     initialPrompt,
     hasSessionJson,

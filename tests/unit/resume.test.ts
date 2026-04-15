@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { runResumeCommand, type StoredSessionSelectionResult } from "../../resume.ts";
 import { resolveWorkspaceKey } from "../../src/core/workspace-identity.ts";
-import { writeSessionMetadata } from "../../src/session/index.ts";
+import { writeStoredSessionMetadata } from "@nanoboss/store";
 
 let tempHome: string | undefined;
 
@@ -48,8 +48,8 @@ describe("runResumeCommand", () => {
     let launchCwd: string | undefined;
 
     try {
-      writeSessionMetadata({
-        sessionId: "session-123",
+      writeStoredSessionMetadata({
+        session: { sessionId: "session-123" },
         cwd: "/repo-one",
         rootDir: join(tempHome, ".nanoboss", "sessions", "session-123"),
         createdAt: "2026-04-01T10:00:00.000Z",
@@ -81,15 +81,15 @@ describe("runResumeCommand", () => {
     const cwd = process.cwd();
 
     try {
-      writeSessionMetadata({
-        sessionId: "session-most-recent",
+      writeStoredSessionMetadata({
+        session: { sessionId: "session-most-recent" },
         cwd,
         rootDir: join(tempHome, ".nanoboss", "sessions", "session-most-recent"),
         createdAt: "2026-04-01T10:00:00.000Z",
         updatedAt: "2026-04-01T12:00:00.000Z",
       });
-      writeSessionMetadata({
-        sessionId: "session-current",
+      writeStoredSessionMetadata({
+        session: { sessionId: "session-current" },
         cwd,
         rootDir: join(tempHome, ".nanoboss", "sessions", "session-current"),
         createdAt: "2026-04-01T09:00:00.000Z",
@@ -121,22 +121,22 @@ describe("runResumeCommand", () => {
     const cwd = process.cwd();
 
     try {
-      writeSessionMetadata({
-        sessionId: "session-other-workspace",
+      writeStoredSessionMetadata({
+        session: { sessionId: "session-other-workspace" },
         cwd: "/repo-one",
         rootDir: join(tempHome, ".nanoboss", "sessions", "session-other-workspace"),
         createdAt: "2026-04-01T08:00:00.000Z",
         updatedAt: "2026-04-01T13:00:00.000Z",
       });
-      writeSessionMetadata({
-        sessionId: "session-older",
+      writeStoredSessionMetadata({
+        session: { sessionId: "session-older" },
         cwd,
         rootDir: join(tempHome, ".nanoboss", "sessions", "session-older"),
         createdAt: "2026-04-01T09:00:00.000Z",
         updatedAt: "2026-04-01T10:00:00.000Z",
       });
-      writeSessionMetadata({
-        sessionId: "session-latest",
+      writeStoredSessionMetadata({
+        session: { sessionId: "session-latest" },
         cwd,
         rootDir: join(tempHome, ".nanoboss", "sessions", "session-latest"),
         createdAt: "2026-04-01T10:00:00.000Z",
@@ -148,7 +148,7 @@ describe("runResumeCommand", () => {
         `${JSON.stringify({
           workspaces: {
             [resolveWorkspaceKey(cwd)]: {
-              sessionId: "session-missing",
+              session: { sessionId: "session-missing" },
               cwd,
               rootDir: join(tempHome, ".nanoboss", "sessions", "session-missing"),
               createdAt: "2026-04-01T11:00:00.000Z",

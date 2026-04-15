@@ -1,22 +1,26 @@
 import { inferDataShape } from "../core/data-shape.ts";
 import { shouldLoadDiskCommands } from "../core/runtime-mode.ts";
 import type {
-  CellDescendantsOptions,
-  CellRecord,
-  CellRef,
   DownstreamAgentSelection,
+  KernelValue,
+  Ref,
+  RunRef,
+  RunDescendantsOptions,
+} from "@nanoboss/contracts";
+import type {
   ProcedureMetadata,
   ProcedureRegistryLike,
-  SessionRecentOptions,
-  TopLevelRunsOptions,
-  ValueRef,
-} from "../core/types.ts";
+} from "@nanoboss/procedure-sdk";
+import { ProcedureDispatchJobManager } from "@nanoboss/procedure-engine";
+import { ProcedureRegistry, projectProcedureMetadata } from "@nanoboss/procedure-catalog";
+import { publicKernelValueFromStored } from "../core/types.ts";
 import {
-  ProcedureDispatchJobManager,
-} from "../procedure/dispatch-jobs.ts";
-import { ProcedureRegistry, projectProcedureMetadata } from "../procedure/registry.ts";
-import { SessionStore, readCurrentSessionMetadata, readSessionMetadata } from "../session/index.ts";
+  SessionStore,
+  readCurrentWorkspaceSessionMetadata,
+  readStoredSessionMetadata,
+} from "@nanoboss/store";
 import type {
+  ListRunsArgs,
   ProcedureListResult,
   RuntimeSchemaResult,
   RuntimeServiceParams,
@@ -27,66 +31,59 @@ import type {
 export class NanobossRuntimeService {
   constructor(private readonly params: RuntimeServiceParams) {}
 
-  sessionRecent(args: SessionRecentOptions & { sessionId?: string } = {}): ReturnType<SessionStore["recent"]> {
-    return this.createStore(args.sessionId).recent(args);
+  listRuns(args: ListRunsArgs = {}) {
+    const store = this.createStore(args.sessionId);
+    return store.listRuns(args);
   }
 
-  topLevelRuns(args: TopLevelRunsOptions & { sessionId?: string } = {}): ReturnType<SessionStore["topLevelRuns"]> {
-    return this.createStore(args.sessionId).topLevelRuns(args);
+  getRun(runRef: RunRef) {
+    return this.createStoreForRunRef(runRef).getRun(runRef);
   }
 
-  cellGet(cellRef: CellRef): CellRecord {
-    return this.createStoreForCellRef(cellRef).readCell(cellRef);
-  }
-
-  cellAncestors(
-    cellRef: CellRef,
+  getRunAncestors(
+    runRef: RunRef,
     args: { includeSelf?: boolean; limit?: number } = {},
-  ): ReturnType<SessionStore["ancestors"]> {
-    return this.createStoreForCellRef(cellRef).ancestors(cellRef, args);
+  ) {
+    return this.createStoreForRunRef(runRef).getRunAncestors(runRef, args);
   }
 
-  cellDescendants(
-    cellRef: CellRef,
-    args: CellDescendantsOptions = {},
-  ): ReturnType<SessionStore["descendants"]> {
-    return this.createStoreForCellRef(cellRef).descendants(cellRef, args);
+  getRunDescendants(
+    runRef: RunRef,
+    args: RunDescendantsOptions = {},
+  ) {
+    return this.createStoreForRunRef(runRef).getRunDescendants(runRef, args);
   }
 
-  refRead(valueRef: ValueRef): unknown {
-    return this.createStoreForValueRef(valueRef).readRef(valueRef);
+  readRef(ref: Ref): unknown {
+    return publicKernelValueFromStored(this.createStoreForRef(ref).readRef(ref) as KernelValue);
   }
 
-  refStat(valueRef: ValueRef) {
-    return this.createStoreForValueRef(valueRef).statRef(valueRef);
+  statRef(ref: Ref) {
+    return this.createStoreForRef(ref).statRef(ref);
   }
 
-  refWriteToFile(valueRef: ValueRef, path: string): { path: string } {
-    const store = this.createStoreForValueRef(valueRef);
-    store.writeRefToFile(valueRef, path, store.cwd);
+  refWriteToFile(ref: Ref, path: string): { path: string } {
+    const store = this.createStoreForRef(ref);
+    store.writeRefToFile(ref, path, store.cwd);
     return { path };
   }
 
-  getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): RuntimeSchemaResult {
-    if (args.valueRef) {
-      const store = this.createStoreForValueRef(args.valueRef);
-      const value = store.readRef(args.valueRef);
-      return {
-        target: args.valueRef,
-        dataShape: inferDataShape(value),
-      };
-    }
-
-    if (!args.cellRef) {
-      throw new Error("get_schema requires cellRef or valueRef");
-    }
-
-    const store = this.createStoreForCellRef(args.cellRef);
-    const cell = store.readCell(args.cellRef);
+  getRefSchema(ref: Ref): RuntimeSchemaResult {
+    const store = this.createStoreForRef(ref);
+    const value = store.readRef(ref);
     return {
-      target: args.cellRef,
-      dataShape: inferDataShape(cell.output.data),
-      explicitDataSchema: cell.output.explicitDataSchema,
+      target: ref,
+      dataShape: inferDataShape(value),
+    };
+  }
+
+  getRunSchema(runRef: RunRef): RuntimeSchemaResult {
+    const store = this.createStoreForRunRef(runRef);
+    const run = store.getRun(runRef);
+    return {
+      target: runRef,
+      dataShape: inferDataShape(run.output.data),
+      explicitDataSchema: run.output.explicitDataSchema,
     };
   }
 
@@ -146,12 +143,12 @@ export class NanobossRuntimeService {
     });
   }
 
-  private createStoreForCellRef(cellRef: CellRef): SessionStore {
-    return this.createStore(cellRef.sessionId);
+  private createStoreForRunRef(runRef: RunRef): SessionStore {
+    return this.createStore(runRef.sessionId);
   }
 
-  private createStoreForValueRef(valueRef: ValueRef): SessionStore {
-    return this.createStore(valueRef.cell.sessionId);
+  private createStoreForRef(ref: Ref): SessionStore {
+    return this.createStore(ref.run.sessionId);
   }
 
   private createDispatchJobManager(sessionIdOverride?: string): ProcedureDispatchJobManager {
@@ -176,10 +173,10 @@ export class NanobossRuntimeService {
   private resolveEffectiveContext(sessionIdOverride?: string): { sessionId?: string; cwd: string; rootDir?: string } {
     const explicitSessionId = sessionIdOverride ?? this.params.sessionId;
     if (explicitSessionId) {
-      const metadata = readSessionMetadata(explicitSessionId);
+      const metadata = readStoredSessionMetadata(explicitSessionId);
       if (metadata) {
         return {
-          sessionId: metadata.sessionId,
+          sessionId: metadata.session.sessionId,
           cwd: metadata.cwd,
           rootDir: metadata.rootDir,
         };
@@ -193,10 +190,10 @@ export class NanobossRuntimeService {
     }
 
     if (this.params.allowCurrentSessionFallback) {
-      const current = readCurrentSessionMetadata(this.params.cwd);
+      const current = readCurrentWorkspaceSessionMetadata(this.params.cwd);
       if (current) {
         return {
-          sessionId: current.sessionId,
+          sessionId: current.session.sessionId,
           cwd: current.cwd,
           rootDir: current.rootDir,
         };

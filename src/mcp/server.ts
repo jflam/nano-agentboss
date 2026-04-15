@@ -4,6 +4,7 @@ import { parseRequiredDownstreamAgentSelection } from "../core/downstream-agent-
 import { dispatchMcpToolsMethod, type JsonRpcToolMetadata } from "./jsonrpc.ts";
 import { runStdioJsonRpcServer } from "./stdio-jsonrpc.ts";
 import {
+  type ListRunsArgs,
   type ProcedureListResult,
   type ProcedureDispatchResult,
   type ProcedureDispatchStartToolResult,
@@ -13,15 +14,15 @@ import {
   isProcedureDispatchStatusResult,
 } from "../runtime/api.ts";
 import type {
-  CellKind,
-  CellRef,
   ProcedureMetadata,
-  ValueRef,
+  Ref,
+  RunRef,
+  RunKind,
 } from "../core/types.ts";
 
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
 export const MCP_SERVER_NAME = "nanoboss";
-export const MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state. Prefer an explicit sessionId for session-scoped operations such as procedure_dispatch_start, top_level_runs, and session_recent. If sessionId is omitted, the current session for the server working directory may be used when available.";
+export const MCP_INSTRUCTIONS = "Use these tools to dispatch nanoboss procedures and inspect durable session state. Prefer an explicit sessionId for session-scoped operations such as procedure_dispatch_start and list_runs. Use list_runs with scope='recent' only for true global recency scans. If sessionId is omitted, the current session for the server working directory may be used when available.";
 
 export interface McpServerOptions {
   instructions?: string;
@@ -34,23 +35,31 @@ interface McpToolDefinition extends JsonRpcToolMetadata {
   call(runtime: RuntimeService, args: unknown): Promise<unknown>;
 }
 
-const CELL_REF_SCHEMA = {
+const RUN_REF_SCHEMA = {
   type: "object",
   properties: {
     sessionId: { type: "string" },
-    cellId: { type: "string" },
+    runId: { type: "string" },
   },
-  required: ["sessionId", "cellId"],
+  required: ["sessionId", "runId"],
   additionalProperties: false,
 };
 
-const VALUE_REF_SCHEMA = {
+const REF_SCHEMA = {
   type: "object",
   properties: {
-    cell: CELL_REF_SCHEMA,
+    run: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+        runId: { type: "string" },
+      },
+      required: ["sessionId", "runId"],
+      additionalProperties: false,
+    },
     path: { type: "string" },
   },
-  required: ["cell", "path"],
+  required: ["run", "path"],
   additionalProperties: false,
 };
 
@@ -204,14 +213,18 @@ const MCP_TOOLS: McpToolDefinition[] = [
     },
   }),
   defineTool({
-    name: "top_level_runs",
-    description: "Return top-level completed runs in reverse chronological order. Use this to find prior chat-visible commands such as /default, /linter, or /second-opinion.",
+    name: "list_runs",
+    description: "List stored runs for the targeted session. Defaults to top-level runs; use scope='recent' only for true global recency scans.",
     inputSchema: {
       type: "object",
       properties: {
         sessionId: { type: "string" },
         procedure: { type: "string" },
         limit: { type: "number" },
+        scope: {
+          type: "string",
+          enum: ["recent", "top_level"],
+        },
       },
       additionalProperties: false,
     },
@@ -220,32 +233,33 @@ const MCP_TOOLS: McpToolDefinition[] = [
         sessionId: asOptionalString(args.sessionId),
         procedure: asOptionalString(args.procedure),
         limit: asOptionalNonNegativeNumber(args.limit, "limit"),
+        scope: asOptionalRunScope(args.scope),
       };
     },
     async call(api, args) {
-      return api.topLevelRuns(args);
+      return api.listRuns(args);
     },
   }),
   defineTool({
-    name: "cell_descendants",
-    description: "Return descendant cell summaries in depth-first pre-order. Use maxDepth: 1 when you only want direct children.",
+    name: "get_run_descendants",
+    description: "Return descendant run summaries in depth-first pre-order. Use maxDepth: 1 when you only want direct children.",
     inputSchema: {
       type: "object",
       properties: {
-        cellRef: CELL_REF_SCHEMA,
+        runRef: RUN_REF_SCHEMA,
         kind: CELL_KIND_SCHEMA,
         procedure: { type: "string" },
         maxDepth: { type: "number" },
         limit: { type: "number" },
       },
-      required: ["cellRef"],
+      required: ["runRef"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        cellRef: parseCellRef(args.cellRef),
+        runRef: parseRunRef(args.runRef),
         options: {
-          kind: asOptionalCellKind(args.kind),
+          kind: asOptionalRunKind(args.kind),
           procedure: asOptionalString(args.procedure),
           maxDepth: asOptionalNonNegativeNumber(args.maxDepth, "maxDepth"),
           limit: asOptionalNonNegativeNumber(args.limit, "limit"),
@@ -253,25 +267,25 @@ const MCP_TOOLS: McpToolDefinition[] = [
       };
     },
     async call(api, args) {
-      return api.cellDescendants(args.cellRef, args.options);
+      return api.getRunDescendants(args.runRef, args.options);
     },
   }),
   defineTool({
-    name: "cell_ancestors",
-    description: "Return ancestor cell summaries nearest-first. Set includeSelf to prepend the starting cell. Use limit: 1 when you only want the direct parent.",
+    name: "get_run_ancestors",
+    description: "Return ancestor run summaries nearest-first. Set includeSelf to prepend the starting run. Use limit: 1 when you only want the direct parent.",
     inputSchema: {
       type: "object",
       properties: {
-        cellRef: CELL_REF_SCHEMA,
+        runRef: RUN_REF_SCHEMA,
         includeSelf: { type: "boolean" },
         limit: { type: "number" },
       },
-      required: ["cellRef"],
+      required: ["runRef"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        cellRef: parseCellRef(args.cellRef),
+        runRef: parseRunRef(args.runRef),
         options: {
           includeSelf: asOptionalBoolean(args.includeSelf),
           limit: asOptionalNonNegativeNumber(args.limit, "limit"),
@@ -279,90 +293,67 @@ const MCP_TOOLS: McpToolDefinition[] = [
       };
     },
     async call(api, args) {
-      return api.cellAncestors(args.cellRef, args.options);
+      return api.getRunAncestors(args.runRef, args.options);
     },
   }),
   defineTool({
-    name: "cell_get",
-    description: "Return one exact stored cell record.",
+    name: "get_run",
+    description: "Return one exact stored run record.",
     inputSchema: {
       type: "object",
       properties: {
-        cellRef: CELL_REF_SCHEMA,
+        runRef: RUN_REF_SCHEMA,
       },
-      required: ["cellRef"],
+      required: ["runRef"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        cellRef: parseCellRef(args.cellRef),
+        runRef: parseRunRef(args.runRef),
       };
     },
     async call(api, args) {
-      return api.cellGet(args.cellRef);
+      return api.getRun(args.runRef);
     },
   }),
   defineTool({
-    name: "ref_read",
+    name: "read_ref",
     description: "Read the exact value at a durable session ref.",
     inputSchema: {
       type: "object",
       properties: {
-        valueRef: VALUE_REF_SCHEMA,
+        ref: REF_SCHEMA,
       },
-      required: ["valueRef"],
+      required: ["ref"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        valueRef: parseValueRef(args.valueRef),
+        ref: parseRef(args.ref),
       };
     },
     async call(api, args) {
-      return api.refRead(args.valueRef);
+      return api.readRef(args.ref);
     },
   }),
   defineTool({
-    name: "session_recent",
-    description: "Return recent completed session cell summaries from the whole targeted session. Use this only for global recency scans, not as the primary structural retrieval path.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        sessionId: { type: "string" },
-        procedure: { type: "string" },
-        limit: { type: "number" },
-      },
-      additionalProperties: false,
-    },
-    parseArgs(args) {
-      return {
-        sessionId: asOptionalString(args.sessionId),
-        procedure: asOptionalString(args.procedure),
-        limit: asOptionalNonNegativeNumber(args.limit, "limit"),
-      };
-    },
-    async call(api, args) {
-      return api.sessionRecent(args);
-    },
-  }),
-  defineTool({
-    name: "ref_stat",
+    name: "stat_ref",
     description: "Return lightweight metadata for a durable session ref.",
     inputSchema: {
       type: "object",
       properties: {
-        valueRef: VALUE_REF_SCHEMA,
+        ref: REF_SCHEMA,
       },
-      required: ["valueRef"],
+      required: ["ref"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        valueRef: parseValueRef(args.valueRef),
+        ref: parseRef(args.ref),
       };
     },
     async call(api, args) {
-      return api.refStat(args.valueRef);
+      return api.statRef(args.ref);
     },
   }),
   defineTool({
@@ -371,41 +362,60 @@ const MCP_TOOLS: McpToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        valueRef: VALUE_REF_SCHEMA,
+        ref: REF_SCHEMA,
         path: { type: "string" },
       },
-      required: ["valueRef", "path"],
+      required: ["ref", "path"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        valueRef: parseValueRef(args.valueRef),
+        ref: parseRef(args.ref),
         path: asString(args.path, "path"),
       };
     },
     async call(api, args) {
-      return api.refWriteToFile(args.valueRef, args.path);
+      return api.refWriteToFile(args.ref, args.path);
     },
   }),
   defineTool({
-    name: "get_schema",
-    description: "Return compact shape metadata for a cell result or value ref.",
+    name: "get_ref_schema",
+    description: "Return compact shape metadata for a durable value ref.",
     inputSchema: {
       type: "object",
       properties: {
-        cellRef: CELL_REF_SCHEMA,
-        valueRef: VALUE_REF_SCHEMA,
+        ref: REF_SCHEMA,
       },
+      required: ["ref"],
       additionalProperties: false,
     },
     parseArgs(args) {
       return {
-        cellRef: args.cellRef !== undefined ? parseCellRef(args.cellRef) : undefined,
-        valueRef: args.valueRef !== undefined ? parseValueRef(args.valueRef) : undefined,
+        ref: parseRef(args.ref),
       };
     },
     async call(api, args) {
-      return api.getSchema(args);
+      return api.getRefSchema(args.ref);
+    },
+  }),
+  defineTool({
+    name: "get_run_schema",
+    description: "Return compact shape metadata for a stored run result.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runRef: RUN_REF_SCHEMA,
+      },
+      required: ["runRef"],
+      additionalProperties: false,
+    },
+    parseArgs(args) {
+      return {
+        runRef: parseRunRef(args.runRef),
+      };
+    },
+    async call(api, args) {
+      return api.getRunSchema(args.runRef);
     },
   }),
 ];
@@ -564,7 +574,7 @@ function serializeProcedureDispatchResult(result: ProcedureDispatchResult): stri
     return result.summary;
   }
 
-  return `${result.procedure} completed.`;
+  return "Procedure completed.";
 }
 
 function serializeProcedureDispatchStatus(result: ProcedureDispatchStatusToolResult): string {
@@ -583,18 +593,18 @@ function serializeProcedureDispatchStatus(result: ProcedureDispatchStatusToolRes
   return `${result.procedure} ${result.status}. dispatchId=${result.dispatchId}. Call procedure_dispatch_wait again with this same dispatch id.`;
 }
 
-function parseCellRef(value: unknown): CellRef {
+function parseRunRef(value: unknown): RunRef {
   const record = asObject(value);
   return {
     sessionId: asString(record.sessionId, "sessionId"),
-    cellId: asString(record.cellId, "cellId"),
+    runId: asString(record.runId, "runId"),
   };
 }
 
-function parseValueRef(value: unknown): ValueRef {
+function parseRef(value: unknown): Ref {
   const record = asObject(value);
   return {
-    cell: parseCellRef(record.cell),
+    run: parseRunRef(record.run),
     path: asString(record.path, "path"),
   };
 }
@@ -623,7 +633,7 @@ function asOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
-function asOptionalCellKind(value: unknown): CellKind | undefined {
+function asOptionalRunKind(value: unknown): RunKind | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -633,6 +643,18 @@ function asOptionalCellKind(value: unknown): CellKind | undefined {
   }
 
   throw new Error("Expected kind to be one of top_level, procedure, or agent");
+}
+
+function asOptionalRunScope(value: unknown): ListRunsArgs["scope"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === "recent" || value === "top_level") {
+    return value;
+  }
+
+  throw new Error("Expected scope to be 'recent' or 'top_level'");
 }
 
 function asOptionalNonNegativeNumber(value: unknown, name: string): number | undefined {

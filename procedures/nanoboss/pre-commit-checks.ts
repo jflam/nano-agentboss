@@ -1,4 +1,4 @@
-import type { Procedure } from "../../src/core/types.ts";
+import type { Procedure } from "@nanoboss/procedure-sdk";
 import type { ResolvedPreCommitChecksResult } from "./test-cache-lib.ts";
 import { ensureTrailingNewline, resolvePreCommitChecks } from "./test-cache-lib.ts";
 import {

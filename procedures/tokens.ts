@@ -1,6 +1,6 @@
 import { formatAgentBanner } from "../src/core/runtime-banner.ts";
 import { getAgentTokenUsagePercent } from "../src/agent/token-usage.ts";
-import type { AgentTokenUsage, Procedure } from "../src/core/types.ts";
+import type { AgentTokenUsage, Procedure } from "@nanoboss/procedure-sdk";
 
 export default {
   name: "tokens",

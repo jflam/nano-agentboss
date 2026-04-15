@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { RenderedFrontendEventEnvelope } from "../../src/http/frontend-events.ts";
+import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
 import { reduceUiState } from "../../src/tui/reducer.ts";
 import { createInitialUiState } from "../../src/tui/state.ts";
 
@@ -73,7 +73,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         procedure: "default",
         completedAt: new Date(1).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         tokenUsage: {
           source: "acp_usage_update",
           currentContextTokens: 512,
@@ -172,7 +172,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         procedure: "default",
         completedAt: new Date(1).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
       }),
     });
 
@@ -251,7 +251,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         procedure: "default",
         completedAt: new Date(2_500).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
       }),
     });
 
@@ -362,7 +362,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         procedure: "default",
         completedAt: new Date(1_000).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
       }),
     });
 
@@ -403,7 +403,7 @@ describe("tui reducer", () => {
         runId: "run-2",
         procedure: "default",
         completedAt: new Date(3_500).toISOString(),
-        cell: { sessionId: "session-2", cellId: "cell-2" },
+        run: { sessionId: "session-2", runId: "cell-2" },
       }),
     });
 
@@ -575,7 +575,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         procedure: "default",
         completedAt: new Date(1).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
       }),
     });
 
@@ -616,7 +616,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         procedure: "default",
         completedAt: new Date(3).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-2" },
+        run: { sessionId: "session-1", runId: "cell-2" },
         display: "stale",
       }),
     });
@@ -711,7 +711,7 @@ describe("tui reducer", () => {
         procedure: "default",
         prompt: "hello",
         completedAt: new Date(1).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         status: "complete",
       }),
     });
@@ -750,7 +750,7 @@ describe("tui reducer", () => {
         runId: "run-1",
         procedure: "default",
         completedAt: new Date(1).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
       }),
     });
 
@@ -1206,12 +1206,12 @@ describe("tui reducer", () => {
         runId: "run-1",
         procedure: "dismiss",
         completedAt: new Date(1).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         display: "Cleared the pending continuation for /simplify.",
       }),
     });
 
-    expect(state.pendingProcedureContinuation).toBeUndefined();
+    expect(state.pendingContinuation).toBeUndefined();
     expect(state.statusLine).toBe("[continuation] cleared /simplify");
   });
 

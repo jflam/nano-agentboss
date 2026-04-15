@@ -1,14 +1,14 @@
-import type { ProcedureExecutionResult } from "../procedure/runner.ts";
-import type { ProcedureDispatchStartResult, ProcedureDispatchStatusResult } from "../procedure/dispatch-jobs.ts";
+import type { ProcedureDispatchStartResult, ProcedureDispatchStatusResult } from "@nanoboss/procedure-engine";
 import type {
-  CellRef,
   DownstreamAgentSelection,
+  Ref,
+  RunRef,
+} from "@nanoboss/contracts";
+import type {
   ProcedureMetadata,
   ProcedureRegistryLike,
-  SessionRecentOptions,
-  TopLevelRunsOptions,
-  ValueRef,
-} from "../core/types.ts";
+  RunResult,
+} from "@nanoboss/procedure-sdk";
 
 export interface RuntimeServiceParams {
   sessionId?: string;
@@ -22,26 +22,33 @@ export interface ProcedureListResult {
   procedures: ProcedureMetadata[];
 }
 
-export type ProcedureDispatchResult = ProcedureExecutionResult;
+export type ProcedureDispatchResult = RunResult;
 export type ProcedureDispatchStartToolResult = ProcedureDispatchStartResult;
 export type ProcedureDispatchStatusToolResult = ProcedureDispatchStatusResult;
 
 export interface RuntimeSchemaResult {
-  target: CellRef | ValueRef;
+  target: RunRef | Ref;
   dataShape: unknown;
   explicitDataSchema?: object;
 }
 
+export interface ListRunsArgs {
+  sessionId?: string;
+  procedure?: string;
+  limit?: number;
+  scope?: "recent" | "top_level";
+}
+
 export interface RuntimeService {
-  sessionRecent(args?: SessionRecentOptions & { sessionId?: string }): unknown;
-  topLevelRuns(args?: TopLevelRunsOptions & { sessionId?: string }): unknown;
-  cellGet(cellRef: CellRef): unknown;
-  cellAncestors(cellRef: CellRef, args?: { includeSelf?: boolean; limit?: number }): unknown;
-  cellDescendants(cellRef: CellRef, args?: unknown): unknown;
-  refRead(valueRef: ValueRef): unknown;
-  refStat(valueRef: ValueRef): unknown;
-  refWriteToFile(valueRef: ValueRef, path: string): { path: string };
-  getSchema(args: { cellRef?: CellRef; valueRef?: ValueRef }): RuntimeSchemaResult;
+  listRuns(args?: ListRunsArgs): unknown;
+  getRun(runRef: RunRef): unknown;
+  getRunAncestors(runRef: RunRef, args?: { includeSelf?: boolean; limit?: number }): unknown;
+  getRunDescendants(runRef: RunRef, args?: unknown): unknown;
+  readRef(ref: Ref): unknown;
+  statRef(ref: Ref): unknown;
+  refWriteToFile(ref: Ref, path: string): { path: string };
+  getRefSchema(ref: Ref): RuntimeSchemaResult;
+  getRunSchema(runRef: RunRef): RuntimeSchemaResult;
   procedureList(args?: { includeHidden?: boolean; sessionId?: string }): Promise<ProcedureListResult>;
   procedureGet(args: { name: string; sessionId?: string }): Promise<ProcedureMetadata>;
   procedureDispatchStart(args: {
@@ -69,18 +76,27 @@ export function isProcedureDispatchResult(value: unknown): value is ProcedureDis
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as { procedure?: unknown }).procedure === "string" &&
-    isCellRefLike((value as { cell?: unknown }).cell) &&
+    isRunRefLike((value as { run?: unknown }).run) &&
     typeof (value as { status?: unknown }).status !== "string" &&
-    typeof (value as { dispatchId?: unknown }).dispatchId !== "string"
+    typeof (value as { dispatchId?: unknown }).dispatchId !== "string" &&
+    (
+      "summary" in (value as object)
+      || "display" in (value as object)
+      || "dataRef" in (value as object)
+      || "displayRef" in (value as object)
+      || "streamRef" in (value as object)
+      || "pause" in (value as object)
+      || "pauseRef" in (value as object)
+      || "rawRef" in (value as object)
+    )
   );
 }
 
-function isCellRefLike(value: unknown): value is CellRef {
+function isRunRefLike(value: unknown): value is RunRef {
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { sessionId?: unknown }).sessionId === "string" &&
-    typeof (value as { cellId?: unknown }).cellId === "string"
+    typeof (value as { runId?: unknown }).runId === "string"
   );
 }

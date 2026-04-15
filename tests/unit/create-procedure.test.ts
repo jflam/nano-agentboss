@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import type { ProcedureApi, ProcedureRegistryLike } from "@nanoboss/procedure-sdk";
 import { createCreateProcedure } from "../../src/procedure/create.ts";
-import type { ProcedureApi, ProcedureRegistryLike } from "../../src/core/types.ts";
+import { normalizeProcedureResult } from "@nanoboss/store";
 
 describe("create procedure", () => {
   test("reports invalid generated procedure names without obscuring the cause", async () => {
@@ -26,6 +27,7 @@ describe("create procedure", () => {
 
   test("teaches generated procedures the ProcedureApi surface", async () => {
     let generatedPrompt = "";
+    let generatedOptions: unknown;
     const procedure = createCreateProcedure(createRegistry({
       async loadProcedureFromPath() {
         return {
@@ -43,11 +45,12 @@ describe("create procedure", () => {
 
     await procedure.execute("make something", createProcedureApi(async (...args: unknown[]) => {
       generatedPrompt = args[0] as string;
+      generatedOptions = args[2];
       return {
         data: {
           name: "review",
           source: [
-            "import type { ProcedureApi } from \"../src/core/types.ts\";",
+            'import type { ProcedureApi } from "@nanoboss/procedure-sdk";',
             "",
             "export default {",
             "  name: \"review\",",
@@ -63,7 +66,65 @@ describe("create procedure", () => {
 
     expect(generatedPrompt).toContain("ctx: ProcedureApi");
     expect(generatedPrompt).toContain("The procedure API provides:");
+    expect(generatedPrompt).toContain(".nanoboss/procedures/<name>.ts");
+    expect(generatedPrompt).toContain('@nanoboss/procedure-sdk');
+    expect(generatedPrompt).toContain("Return exactly one JSON object matching the requested schema.");
     expect(generatedPrompt).not.toContain("CommandContext");
+    expect(generatedOptions).toEqual({ stream: false });
+  });
+
+  test("rewrites generated src imports, then loads and registers the new procedure", async () => {
+    let persistedSource = "";
+    let persistedPath = "";
+    let loadedPath = "";
+    let registeredName = "";
+    const procedure = createCreateProcedure(createRegistry({
+      async loadProcedureFromPath(path) {
+        loadedPath = path;
+        return {
+          name: "review",
+          description: "review",
+          async execute() {
+            return {};
+          },
+        };
+      },
+      async persist(_name, source) {
+        persistedSource = source;
+        persistedPath = "/repo/.nanoboss/procedures/review.ts";
+        return persistedPath;
+      },
+      register(procedure) {
+        registeredName = procedure.name;
+      },
+    }));
+
+    const result = normalizeProcedureResult(await procedure.execute("make something", createProcedureApi(async () => {
+      return {
+        data: {
+          name: "review",
+          source: [
+            'import type { ProcedureApi } from "@nanoboss/contracts";',
+            "import { expectData } from \"../src/core/run-result.ts\";",
+            "",
+            "export default {",
+            "  name: \"wrong-name\",",
+            "  description: \"review\",",
+            "  async execute(prompt: string, ctx: ProcedureApi) {",
+            "    return { summary: prompt + String(Boolean(expectData) && ctx.cwd) };",
+            "  },",
+            "};",
+          ].join("\n"),
+        },
+      };
+    })));
+
+    expect(persistedSource).toContain('import type { ProcedureApi } from "@nanoboss/procedure-sdk";');
+    expect(persistedSource).toContain('import { expectData } from "../../src/core/run-result.ts";');
+    expect(persistedSource).toContain('name: "review"');
+    expect(loadedPath).toBe(persistedPath);
+    expect(registeredName).toBe("review");
+    expect(result.display).toContain("Created and loaded procedure /review");
   });
 });
 
@@ -98,9 +159,9 @@ function createProcedureApi(
   ) => {
     const result = await agentRun(prompt, descriptorOrOptions, options);
     return {
-      cell: {
+      run: {
         sessionId: "session",
-        cellId: "agent-run",
+        runId: "agent-run",
       },
       ...result,
     };

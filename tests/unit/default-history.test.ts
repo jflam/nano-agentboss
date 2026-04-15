@@ -3,9 +3,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DefaultConversationSession } from "../../src/agent/default-session.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import { NanobossService } from "../../src/core/service.ts";
+import { createAgentSession } from "@nanoboss/agent-acp";
+import { NanobossService } from "@nanoboss/app-runtime";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import type { DownstreamAgentConfig } from "../../src/core/types.ts";
 
 function createMockConfig(
@@ -43,7 +43,7 @@ describe("/default native session continuity", () => {
     "first prompt persists an ACP session id and second prompt reuses the live session",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-live-"));
-      const conversation = new DefaultConversationSession({
+      const conversation = createAgentSession({
         config: createMockConfig(process.cwd(), {
           supportLoadSession: true,
           sessionStoreDir,
@@ -53,14 +53,14 @@ describe("/default native session continuity", () => {
       try {
         const first = await conversation.prompt("what is 2+2");
         expect(first.raw).toBe("4");
-        const acpSessionId = conversation.currentSessionId;
+        const acpSessionId = conversation.sessionId;
         expect(acpSessionId).toBeTruthy();
 
         const second = await conversation.prompt("add 3 to result");
         expect(second.raw).toBe("7");
-        expect(conversation.currentSessionId).toBe(acpSessionId);
+        expect(conversation.sessionId).toBe(acpSessionId);
       } finally {
-        conversation.closeLiveSession();
+        conversation.close();
       }
     },
     30_000,
@@ -70,7 +70,7 @@ describe("/default native session continuity", () => {
     "falls back to session/load when the live session is gone",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-load-"));
-      const conversation = new DefaultConversationSession({
+      const conversation = createAgentSession({
         config: createMockConfig(process.cwd(), {
           supportLoadSession: true,
           sessionStoreDir,
@@ -79,16 +79,16 @@ describe("/default native session continuity", () => {
 
       try {
         await conversation.prompt("what is 2+2");
-        const acpSessionId = conversation.currentSessionId;
+        const acpSessionId = conversation.sessionId;
         expect(acpSessionId).toBeTruthy();
 
-        conversation.closeLiveSession();
+        conversation.close();
 
         const second = await conversation.prompt("add 3 to result");
         expect(second.raw).toBe("7");
-        expect(conversation.currentSessionId).toBe(acpSessionId);
+        expect(conversation.sessionId).toBe(acpSessionId);
       } finally {
-        conversation.closeLiveSession();
+        conversation.close();
       }
     },
     30_000,
@@ -98,7 +98,7 @@ describe("/default native session continuity", () => {
     "starts fresh when native resume is unavailable",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-fresh-"));
-      const conversation = new DefaultConversationSession({
+      const conversation = createAgentSession({
         config: createMockConfig(process.cwd(), {
           supportLoadSession: false,
           sessionStoreDir,
@@ -107,17 +107,17 @@ describe("/default native session continuity", () => {
 
       try {
         await conversation.prompt("what is 2+2");
-        const firstSessionId = conversation.currentSessionId;
+        const firstSessionId = conversation.sessionId;
         expect(firstSessionId).toBeTruthy();
 
-        conversation.closeLiveSession();
+        conversation.close();
 
         const second = await conversation.prompt("add 3 to result");
         expect(second.raw).toBe("no prior result");
-        expect(conversation.currentSessionId).toBeTruthy();
-        expect(conversation.currentSessionId).not.toBe(firstSessionId);
+        expect(conversation.sessionId).toBeTruthy();
+        expect(conversation.sessionId).not.toBe(firstSessionId);
       } finally {
-        conversation.closeLiveSession();
+        conversation.close();
       }
     },
     30_000,
@@ -127,7 +127,7 @@ describe("/default native session continuity", () => {
     "changing the default agent config resets native session continuity",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-reset-"));
-      const conversation = new DefaultConversationSession({
+      const conversation = createAgentSession({
         config: createMockConfig(process.cwd(), {
           supportLoadSession: true,
           sessionStoreDir,
@@ -136,7 +136,7 @@ describe("/default native session continuity", () => {
 
       try {
         await conversation.prompt("what is 2+2");
-        const firstSessionId = conversation.currentSessionId;
+        const firstSessionId = conversation.sessionId;
         expect(firstSessionId).toBeTruthy();
 
         conversation.updateConfig({
@@ -147,14 +147,14 @@ describe("/default native session continuity", () => {
           provider: "claude",
         });
 
-        expect(conversation.currentSessionId).toBeUndefined();
+        expect(conversation.sessionId).toBeUndefined();
 
         const second = await conversation.prompt("add 3 to result");
         expect(second.raw).toBe("no prior result");
-        expect(conversation.currentSessionId).toBeTruthy();
-        expect(conversation.currentSessionId).not.toBe(firstSessionId);
+        expect(conversation.sessionId).toBeTruthy();
+        expect(conversation.sessionId).not.toBe(firstSessionId);
       } finally {
-        conversation.closeLiveSession();
+        conversation.close();
       }
     },
     30_000,
@@ -164,7 +164,7 @@ describe("/default native session continuity", () => {
     "ignores late previous-turn chunks when a live session is reused",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-default-late-chunk-"));
-      const conversation = new DefaultConversationSession({
+      const conversation = createAgentSession({
         config: createMockConfig(process.cwd(), {
           supportLoadSession: true,
           sessionStoreDir,
@@ -183,7 +183,7 @@ describe("/default native session continuity", () => {
         expect(second.raw).toBe("7");
         expect(second.raw).not.toContain("late previous turn");
       } finally {
-        conversation.closeLiveSession();
+        conversation.close();
       }
     },
     30_000,
@@ -214,7 +214,7 @@ describe("/default native session continuity", () => {
         const session = service.createSession({ cwd: process.cwd() });
 
         try {
-          await service.prompt(session.sessionId, "nested tool trace demo");
+          await service.promptSession(session.sessionId, "nested tool trace demo");
 
           const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
           const tokenUsageIndex = events.findIndex((event) =>
@@ -272,8 +272,8 @@ describe("/default native session continuity", () => {
       const session = service.createSession({ cwd: process.cwd() });
 
       try {
-        await service.prompt(session.sessionId, "what is 2+2");
-        await service.prompt(session.sessionId, "add 3 to result");
+        await service.promptSession(session.sessionId, "what is 2+2");
+        await service.promptSession(session.sessionId, "add 3 to result");
 
         const completed = (service.getSessionEvents(session.sessionId)?.after(-1) ?? [])
           .filter((event) => event.type === "run_completed");
@@ -311,7 +311,7 @@ describe("/default native session continuity", () => {
         const session = service.createSession({ cwd: process.cwd() });
 
         try {
-          await service.prompt(session.sessionId, "what is 2+2");
+          await service.promptSession(session.sessionId, "what is 2+2");
         } finally {
           service.destroySession(session.sessionId);
         }
@@ -323,7 +323,7 @@ describe("/default native session continuity", () => {
         });
 
         try {
-          await resumedService.prompt(resumed.sessionId, "add 3 to result");
+          await resumedService.promptSession(resumed.sessionId, "add 3 to result");
 
           const completed = (resumedService.getSessionEvents(resumed.sessionId)?.after(-1) ?? [])
             .filter((event) => event.type === "run_completed");

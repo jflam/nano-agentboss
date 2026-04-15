@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { getWorkspaceIdentity } from "../../src/core/workspace-identity.ts";
-import { describeWorkspaceMismatch, matchesServerBuild } from "../../src/http/server-supervisor.ts";
+import { describeWorkspaceMismatch, matchesServerBuild } from "@nanoboss/adapters-http";
 
 describe("http server supervisor", () => {
   test("treats dirty and clean builds as different", () => {

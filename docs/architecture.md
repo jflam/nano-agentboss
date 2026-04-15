@@ -35,15 +35,15 @@ Used in two places:
 
 Relevant files:
 - nanoboss ACP server:
-  - `src/core/acp-server.ts`
-  - `cli.ts`
+  - `@nanoboss/adapters-acp-server`
+  - `@nanoboss/adapters-tui`
 - downstream ACP client/runtime:
   - `src/agent/acp-runtime.ts`
   - `src/agent/call-agent.ts`
   - `src/agent/default-session.ts`
 
 ### 3. Global nanoboss MCP over stdio
-Used so downstream agents can inspect durable nanoboss session cells and refs and dispatch slash commands through one shared MCP surface.
+Used so downstream agents can inspect durable nanoboss session runs and refs and dispatch slash commands through one shared MCP surface.
 
 This is **not** ACP. It is a globally registered MCP server surfaced as `nanoboss` over stdio.
 
@@ -59,10 +59,10 @@ Relevant files:
 
 ```mermaid
 flowchart TD
-  U[User] -->|local terminal| CLI[CLI\ncli.ts]
+  U[User] -->|local terminal| CLI[TUI / CLI adapter\n@nanoboss/adapters-tui]
   U -->|HTTP requests| HTTPClient[HTTP client / UI\nsrc/http/client.ts]
 
-  CLI -->|stdio ACP| ACPServer[nanoboss ACP server\nsrc/core/acp-server.ts]
+  CLI -->|stdio ACP| ACPServer[nanoboss ACP server\n@nanoboss/adapters-acp-server]
   HTTPClient -->|HTTP + SSE| HTTPServer[nanoboss HTTP/SSE server\nsrc/http/server.ts]
 
   ACPServer --> Service[NanobossService\nsrc/core/service.ts]
@@ -98,15 +98,15 @@ sequenceDiagram
   Server-->>CLI: readiness payload with baseUrl
   User->>CLI: type prompt / command
   CLI->>Server: HTTP + SSE
-  Server->>Service: createSession / prompt / cancel
+  Server->>Service: createSession / promptSession / cancel
   Service-->>Server: frontend events
   Server-->>CLI: SSE updates
   CLI-->>User: render output and tool traces
 ```
 
 Relevant files:
-- `cli.ts`
-- `src/core/acp-server.ts`
+- `@nanoboss/adapters-tui`
+- `@nanoboss/adapters-acp-server`
 - `src/core/service.ts`
 
 ---
@@ -125,7 +125,7 @@ sequenceDiagram
 
   User->>Client: send prompt
   Client->>HTTP: POST /v1/sessions/:id/prompts
-  HTTP->>Service: prompt(...)
+  HTTP->>Service: promptSession(...)
   Service-->>HTTP: accept request
   Client->>HTTP: GET /v1/sessions/:id/stream
   HTTP-->>SSE: event stream
@@ -157,7 +157,7 @@ Both session modes share the same prompt-building, named-ref injection, and type
 
 For procedure authors, the namespace split is:
 
-- `ctx.state`: durable stored cells, structural traversal, and refs
+- `ctx.state`: durable stored runs, structural traversal, and refs
 - `ctx.session`: live default-agent control and token usage for the current binding
 
 ```mermaid
@@ -197,14 +197,14 @@ sequenceDiagram
   participant MCP as Global nanoboss MCP stdio server
   participant Store as SessionStore
 
-  Ctx->>ACP: create/load downstream ACP session
+  Ctx->>ACP: open/reuse downstream agent session
   ACP->>Agent: stdio ACP session
 
   Agent->>MCP: tools/list
   MCP-->>Agent: nanoboss MCP tool definitions
 
-  Agent->>MCP: tools/call procedure_dispatch_start / top_level_runs / cell_get / ref_read ...
-  MCP->>Store: read cells / refs or start async dispatch jobs
+  Agent->>MCP: tools/call procedure_dispatch_start / list_runs / get_run / read_ref ...
+  MCP->>Store: read runs / refs or start async dispatch jobs
   Store-->>MCP: durable session data
   MCP-->>Agent: MCP tool result
 ```

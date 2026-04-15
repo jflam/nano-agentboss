@@ -5,8 +5,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import { SessionStore } from "../../src/session/index.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import { SessionStore } from "@nanoboss/store";
 import type { DownstreamAgentConfig } from "../../src/core/types.ts";
 
 const tempDirs: string[] = [];
@@ -83,7 +83,7 @@ describe("/second-opinion", () => {
           async flush() {},
         },
         store,
-        cell: store.startCell({
+        run: store.startRun({
           procedure: "second-opinion",
           input: "Explain pagination bugs.",
           kind: "top_level",

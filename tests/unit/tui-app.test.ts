@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import { createNanobossTuiTheme } from "@nanoboss/adapters-tui";
 import { NanobossTuiApp } from "../../src/tui/app.ts";
 import type { PromptInput } from "../../src/core/types.ts";
 import { createInitialUiState, type UiState } from "../../src/tui/state.ts";
-import { createNanobossTuiTheme } from "../../src/tui/theme.ts";
 
 class FakeEditor {
   text = "";
@@ -695,10 +695,10 @@ describe("NanobossTuiApp", () => {
     currentState = {
       ...currentState,
       sessionId: "session-1",
-      pendingProcedureContinuation: {
+      pendingContinuation: {
         procedure: "simplify2",
         question: "Approve this simplify2 slice?",
-        continuationUi: {
+        ui: {
           kind: "simplify2_checkpoint",
           title: "Simplify2 checkpoint",
           actions: [
@@ -771,10 +771,10 @@ describe("NanobossTuiApp", () => {
     currentState = {
       ...currentState,
       sessionId: "session-1",
-      pendingProcedureContinuation: {
+      pendingContinuation: {
         procedure: "simplify2",
         question: "Choose a focus",
-        continuationUi: {
+        ui: {
           kind: "simplify2_focus_picker",
           title: "Simplify2 focuses",
           entries: [

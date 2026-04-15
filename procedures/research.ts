@@ -8,7 +8,7 @@ import {
   jsonType,
   type ProcedureApi,
   type Procedure,
-} from "../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 interface ResearchBrief {
   researchQuestion: string;

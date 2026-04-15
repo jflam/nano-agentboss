@@ -1,11 +1,10 @@
 import type { ToolPreviewBlock } from "../core/tool-call-preview.ts";
 import type {
   DownstreamAgentSelection,
-  FrontendPendingProcedureContinuation,
+  FrontendContinuation,
   PromptInput,
 } from "../core/types.ts";
-
-export type ToolCardThemeMode = "dark" | "light";
+import type { ToolCardThemeMode } from "./theme.ts";
 
 export interface UiPendingPrompt {
   id: string;
@@ -77,7 +76,7 @@ export interface UiState {
   stopRequestedRunId?: string;
   statusLine?: string;
   tokenUsageLine?: string;
-  pendingProcedureContinuation?: FrontendPendingProcedureContinuation;
+  pendingContinuation?: FrontendContinuation;
   inputDisabled: boolean;
   showToolCalls: boolean;
   expandedToolOutput: boolean;

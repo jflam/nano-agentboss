@@ -9,6 +9,42 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
+    "baseUrl": ".",
+    "paths": {
+      "@nanoboss/adapters-acp-server": [
+        "./packages/adapters-acp-server/src/index.ts"
+      ],
+      "@nanoboss/adapters-tui": [
+        "./packages/adapters-tui/src/index.ts"
+      ],
+      "@nanoboss/adapters-mcp": [
+        "./packages/adapters-mcp/src/index.ts"
+      ],
+      "@nanoboss/adapters-http": [
+        "./packages/adapters-http/src/index.ts"
+      ],
+      "@nanoboss/agent-acp": [
+        "./packages/agent-acp/src/index.ts"
+      ],
+      "@nanoboss/app-runtime": [
+        "./packages/app-runtime/src/index.ts"
+      ],
+      "@nanoboss/contracts": [
+        "./packages/contracts/src/index.ts"
+      ],
+      "@nanoboss/procedure-engine": [
+        "./packages/procedure-engine/src/index.ts"
+      ],
+      "@nanoboss/procedure-catalog": [
+        "./packages/procedure-catalog/src/index.ts"
+      ],
+      "@nanoboss/procedure-sdk": [
+        "./packages/procedure-sdk/src/index.ts"
+      ],
+      "@nanoboss/store": [
+        "./packages/store/src/index.ts"
+      ]
+    },
     "noEmit": true,
     "strict": true,
     "skipLibCheck": true,
@@ -36,6 +72,7 @@
     "scripts/compact-test.ts",
     "scripts/probe-acp-usage.ts",
     "src/**/*.ts",
+    "packages/**/*.ts",
     "procedures/**/*.ts",
     "tests/**/*.ts"
   ]

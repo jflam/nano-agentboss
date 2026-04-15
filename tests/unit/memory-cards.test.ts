@@ -6,7 +6,7 @@ import {
   collectUnsyncedProcedureMemoryCards,
   renderProcedureMemoryCardsSection,
 } from "../../src/core/memory-cards.ts";
-import { SessionStore } from "../../src/session/index.ts";
+import { SessionStore } from "@nanoboss/store";
 
 const tempDirs: string[] = [];
 
@@ -30,12 +30,12 @@ describe("procedure memory cards", () => {
       rootDir,
     });
 
-    const reviewCell = store.startCell({
+    const reviewCell = store.startRun({
       procedure: "review",
       input: "check the diff",
       kind: "top_level",
     });
-    const reviewResult = store.finalizeCell(reviewCell, {
+    const reviewResult = store.completeRun(reviewCell, {
       data: {
         subject: "diff",
         verdict: "mixed",
@@ -46,8 +46,8 @@ describe("procedure memory cards", () => {
       memory: "Most important issue was missing edge-case coverage.",
     });
 
-    store.finalizeCell(
-      store.startCell({
+    store.completeRun(
+      store.startRun({
         procedure: "default",
         input: "hello",
         kind: "top_level",
@@ -57,12 +57,12 @@ describe("procedure memory cards", () => {
       },
     );
 
-    store.finalizeCell(
-      store.startCell({
+    store.completeRun(
+      store.startRun({
         procedure: "child-proc",
         input: "internal",
         kind: "procedure",
-        parentCellId: reviewCell.cell.cellId,
+        parentRunId: reviewCell.run.runId,
       }),
       {
         display: "internal child result",
@@ -70,12 +70,12 @@ describe("procedure memory cards", () => {
       },
     );
 
-    store.finalizeCell(
-      store.startCell({
+    store.completeRun(
+      store.startRun({
         procedure: "callAgent",
         input: "internal agent",
         kind: "agent",
-        parentCellId: reviewCell.cell.cellId,
+        parentRunId: reviewCell.run.runId,
       }),
       {
         display: "internal agent result",
@@ -86,7 +86,7 @@ describe("procedure memory cards", () => {
     const cards = collectUnsyncedProcedureMemoryCards(store, new Set());
     expect(cards).toHaveLength(1);
     expect(cards[0]?.procedure).toBe("review");
-    expect(cards[0]?.cell).toEqual(reviewResult.cell);
+    expect(cards[0]?.run).toEqual(reviewResult.run);
     expect(cards[0]?.memory).toContain("Most important issue");
     expect(cards[0]?.dataShape).toEqual({
       subject: "diff",
@@ -114,8 +114,8 @@ describe("procedure memory cards", () => {
       rootDir,
     });
 
-    store.finalizeCell(
-      store.startCell({
+    store.completeRun(
+      store.startRun({
         procedure: "review",
         input: "check the diff",
         kind: "top_level",

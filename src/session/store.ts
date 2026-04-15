@@ -6,40 +6,90 @@ import { getSessionDir } from "../core/config.ts";
 import { inferDataShape } from "../core/data-shape.ts";
 import { writeJsonFileAtomicSync } from "../util/repo-artifacts.ts";
 import { summarizeText } from "../util/text.ts";
+import {
+  cellRefFromRunRef,
+  createCellRef,
+  createValueRef,
+  valueRefFromRef,
+} from "./store-refs.ts";
 import type {
-  CellAncestorsOptions,
-  CellDescendantsOptions,
-  CellFilterOptions,
-  CellKind,
-  CellRecord,
-  CellRef,
-  CellSummary,
+  Continuation,
   DownstreamAgentSelection,
   KernelValue,
-  PersistedFrontendEvent,
   PromptImagePart,
   PromptImageSummary,
   PromptInput,
-  ProcedureResult,
+  Ref,
   RefStat,
-  RunResult,
-  TopLevelRunsOptions,
-  ValueRef,
-} from "../core/types.ts";
+  RunAncestorsOptions,
+  RunDescendantsOptions,
+  RunFilterOptions,
+  RunKind,
+  RunListOptions,
+  RunRecord,
+  RunRef,
+  RunSummary,
+} from "@nanoboss/contracts";
+import { createRef, createRunRef } from "@nanoboss/contracts";
+import type { ProcedureResult } from "@nanoboss/procedure-sdk";
+import type { PersistedFrontendEvent } from "../core/types.ts";
+import { publicKernelValueFromStored } from "../core/types.ts";
 
-interface CellDraft {
-  cell: CellRef;
+interface RunDraft {
+  run: RunRef;
   procedure: string;
   input: string;
   meta: {
     createdAt: string;
-    parentCellId?: string;
-    kind: CellKind;
+    parentRunId?: string;
+    kind: RunKind;
     dispatchCorrelationId?: string;
     defaultAgentSelection?: DownstreamAgentSelection;
     promptImages?: CellRecord["meta"]["promptImages"];
   };
   streamChunks: string[];
+}
+
+type CellRef = ReturnType<typeof createCellRef>;
+type ValueRef = ReturnType<typeof createValueRef>;
+
+interface CellRecord {
+  cellId: string;
+  procedure: string;
+  input: string;
+  output: {
+    data?: KernelValue;
+    display?: string;
+    stream?: string;
+    summary?: string;
+    memory?: string;
+    pause?: Continuation;
+    explicitDataSchema?: object;
+    replayEvents?: PersistedFrontendEvent[];
+  };
+  meta: {
+    createdAt: string;
+    parentCellId?: string;
+    kind: RunKind;
+    dispatchCorrelationId?: string;
+    defaultAgentSelection?: DownstreamAgentSelection;
+    promptImages?: PromptImageSummary[];
+  };
+}
+
+interface CellSummary {
+  cell: CellRef;
+  procedure: string;
+  kind: RunKind;
+  parentCellId?: string;
+  summary?: string;
+  memory?: string;
+  dataRef?: ValueRef;
+  displayRef?: ValueRef;
+  streamRef?: ValueRef;
+  dataShape?: ReturnType<typeof inferDataShape>;
+  explicitDataSchema?: object;
+  createdAt: string;
 }
 
 interface RecentOptions {
@@ -48,7 +98,7 @@ interface RecentOptions {
   excludeCellId?: string;
 }
 
-interface FinalizeCellOptions {
+interface CompleteRunOptions {
   display?: string;
   stream?: string;
   summary?: string;
@@ -57,15 +107,25 @@ interface FinalizeCellOptions {
   meta?: Partial<CellRecord["meta"]>;
 }
 
+export interface StoredRunResult<T extends KernelValue = KernelValue> {
+  run: RunRef;
+  data?: T;
+  dataRef?: Ref;
+  displayRef?: Ref;
+  streamRef?: Ref;
+  pause?: Continuation;
+  pauseRef?: Ref;
+  summary?: string;
+  rawRef?: Ref;
+}
+
+interface StoredRunRecord extends RunRecord {
+  output: Omit<RunRecord["output"], "replayEvents"> & {
+    replayEvents?: PersistedFrontendEvent[];
+  };
+}
+
 const STALE_ATTACHMENT_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-export function createCellRef(sessionId: string, cellId: string): CellRef {
-  return { sessionId, cellId };
-}
-
-export function createValueRef(cell: CellRef, path: string): ValueRef {
-  return { cell, path };
-}
 
 export function normalizeProcedureResult<T extends KernelValue = KernelValue>(
   result: ProcedureResult<T> | string | void,
@@ -116,21 +176,21 @@ export class SessionStore {
     return images.map((image) => this.persistPromptImage(image));
   }
 
-  startCell(params: {
+  startRun(params: {
     procedure: string;
     input: string;
-    kind: CellKind;
-    parentCellId?: string;
+    kind: RunKind;
+    parentRunId?: string;
     dispatchCorrelationId?: string;
     promptImages?: CellRecord["meta"]["promptImages"];
-  }): CellDraft {
+  }): RunDraft {
     return {
-      cell: createCellRef(this.sessionId, crypto.randomUUID()),
+      run: createRunRef(this.sessionId, crypto.randomUUID()),
       procedure: params.procedure,
       input: params.input,
       meta: {
         createdAt: new Date().toISOString(),
-        parentCellId: params.parentCellId,
+        parentRunId: params.parentRunId,
         kind: params.kind,
         dispatchCorrelationId: params.dispatchCorrelationId,
         promptImages: params.promptImages,
@@ -139,15 +199,15 @@ export class SessionStore {
     };
   }
 
-  appendStream(draft: CellDraft, text: string): void {
+  appendStream(draft: RunDraft, text: string): void {
     draft.streamChunks.push(text);
   }
 
-  finalizeCell<T extends KernelValue = KernelValue>(
-    draft: CellDraft,
+  completeRun<T extends KernelValue = KernelValue>(
+    draft: RunDraft,
     result: ProcedureResult<T>,
-    options: FinalizeCellOptions = {},
-  ): RunResult<T> {
+    options: CompleteRunOptions = {},
+  ): StoredRunResult<T> {
     const stream = draft.streamChunks.join("") || options.stream;
     const display = result.display ?? options.display ?? options.raw;
     const summary = result.summary ?? options.summary ?? (
@@ -157,9 +217,10 @@ export class SessionStore {
     );
     const memory = result.memory;
     const pause = result.pause;
+    const cell = cellRefFromRunRef(draft.run);
 
     const record: CellRecord = {
-      cellId: draft.cell.cellId,
+      cellId: draft.run.runId,
       procedure: draft.procedure,
       input: draft.input,
       output: {
@@ -177,7 +238,12 @@ export class SessionStore {
           : {}),
       },
       meta: {
-        ...draft.meta,
+        createdAt: draft.meta.createdAt,
+        parentCellId: draft.meta.parentRunId,
+        kind: draft.meta.kind,
+        dispatchCorrelationId: draft.meta.dispatchCorrelationId,
+        defaultAgentSelection: draft.meta.defaultAgentSelection,
+        promptImages: draft.meta.promptImages,
         ...options.meta,
       },
     };
@@ -194,20 +260,20 @@ export class SessionStore {
     this.storeCellRecord(record, filePath);
 
     const dataRef = record.output.data !== undefined
-      ? createValueRef(draft.cell, "output.data")
+      ? createRef(draft.run, "output.data")
       : undefined;
     const displayRef = record.output.display !== undefined
-      ? createValueRef(draft.cell, "output.display")
+      ? createRef(draft.run, "output.display")
       : undefined;
     const streamRef = record.output.stream !== undefined
-      ? createValueRef(draft.cell, "output.stream")
+      ? createRef(draft.run, "output.stream")
       : undefined;
     const pauseRef = record.output.pause !== undefined
-      ? createValueRef(draft.cell, "output.pause")
+      ? createRef(draft.run, "output.pause")
       : undefined;
 
     return {
-      cell: draft.cell,
+      run: draft.run,
       data: result.data,
       dataRef,
       displayRef,
@@ -219,14 +285,15 @@ export class SessionStore {
     };
   }
 
-  patchCell(
-    cellRef: CellRef,
+  patchRun(
+    runRef: RunRef,
     patch: {
       output?: Partial<CellRecord["output"]>;
       meta?: Partial<CellRecord["meta"]>;
     },
-  ): CellRecord {
+  ): StoredRunRecord {
     this.loadExistingCells();
+    const cellRef = cellRefFromRunRef(runRef);
     const existing = this.readCell(cellRef);
     const filePath = this.cellFilePaths.get(cellRef.cellId);
     if (!filePath) {
@@ -247,35 +314,62 @@ export class SessionStore {
 
     this.cells.set(cellRef.cellId, updated);
     writeJsonFileAtomicSync(filePath, updated);
-    return updated;
+    return toRunRecord(this.sessionId, updated);
   }
 
-  readRef(valueRef: ValueRef): unknown {
+  readRef(ref: Ref): unknown {
+    const valueRef = valueRefFromRef(ref);
     const cell = this.readCell(valueRef.cell);
     return getValueAtPath(cell, valueRef.path);
   }
 
-  statRef(valueRef: ValueRef): RefStat {
-    const value = this.readRef(valueRef);
+  getRun(runRef: RunRef): StoredRunRecord {
+    return toRunRecord(this.sessionId, this.readCell(cellRefFromRunRef(runRef)));
+  }
+
+  statRef(ref: Ref): RefStat {
+    const value = this.readRef(ref);
     const preview = buildPreview(value);
 
     return {
-      cell: valueRef.cell,
-      path: valueRef.path,
+      run: ref.run,
+      path: ref.path,
       type: inferType(value),
       size: Buffer.byteLength(serializeValue(value), "utf8"),
       ...(preview ? { preview } : {}),
     };
   }
 
-  writeRefToFile(valueRef: ValueRef, path: string, cwd = this.cwd): void {
-    const value = this.readRef(valueRef);
+  writeRefToFile(ref: Ref, path: string, cwd = this.cwd): void {
+    const value = this.readRef(ref);
     const targetPath = resolve(cwd, path);
     mkdirSync(dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, materializeForFile(value), "utf8");
   }
 
-  recent(options: RecentOptions = {}): CellSummary[] {
+  listRuns(options: RunListOptions = {}): RunSummary[] {
+    const summaries = options.scope === "recent"
+      ? this.listRecentCellSummaries({
+        procedure: options.procedure,
+        limit: options.limit,
+      })
+      : this.listTopLevelCellSummaries({
+        procedure: options.procedure,
+        limit: options.limit,
+      });
+
+    return summaries.map(toRunSummary);
+  }
+
+  getRunAncestors(runRef: RunRef, options: RunAncestorsOptions = {}): RunSummary[] {
+    return this.listRunAncestorSummaries(cellRefFromRunRef(runRef), options).map(toRunSummary);
+  }
+
+  getRunDescendants(runRef: RunRef, options: RunDescendantsOptions = {}): RunSummary[] {
+    return this.listRunDescendantSummaries(cellRefFromRunRef(runRef), options).map(toRunSummary);
+  }
+
+  private listRecentCellSummaries(options: RecentOptions = {}): CellSummary[] {
     this.loadExistingCells();
     return this.collectReverseSummaries(this.order, {
       ...options,
@@ -283,28 +377,7 @@ export class SessionStore {
     });
   }
 
-  latest(options: RecentOptions = {}): CellSummary | undefined {
-    return this.recent({
-      ...options,
-      limit: 1,
-    })[0];
-  }
-
-  parent(cellRef: CellRef): CellSummary | undefined {
-    this.loadExistingCells();
-    this.readCell(cellRef);
-    const parentCellId = this.parentByCellId.get(cellRef.cellId);
-    return parentCellId ? this.toSummaryByCellId(parentCellId) : undefined;
-  }
-
-  children(cellRef: CellRef, options: Omit<CellDescendantsOptions, "maxDepth"> = {}): CellSummary[] {
-    return this.descendants(cellRef, {
-      ...options,
-      maxDepth: 1,
-    });
-  }
-
-  ancestors(cellRef: CellRef, options: CellAncestorsOptions = {}): CellSummary[] {
+  private listRunAncestorSummaries(cellRef: CellRef, options: RunAncestorsOptions = {}): CellSummary[] {
     this.loadExistingCells();
     const cell = this.readCell(cellRef);
     const limit = normalizeLimit(options.limit);
@@ -322,7 +395,7 @@ export class SessionStore {
     return ancestors;
   }
 
-  descendants(cellRef: CellRef, options: CellDescendantsOptions = {}): CellSummary[] {
+  private listRunDescendantSummaries(cellRef: CellRef, options: RunDescendantsOptions = {}): CellSummary[] {
     this.loadExistingCells();
     this.readCell(cellRef);
     const limit = normalizeLimit(options.limit);
@@ -375,12 +448,12 @@ export class SessionStore {
     return descendants;
   }
 
-  topLevelRuns(options: TopLevelRunsOptions = {}): CellSummary[] {
+  private listTopLevelCellSummaries(options: RecentOptions = {}): CellSummary[] {
     this.loadExistingCells();
     return this.collectReverseSummaries(this.topLevelCellIds, options);
   }
 
-  readCell(cellRef: CellRef): CellRecord {
+  private readCell(cellRef: CellRef): CellRecord {
     this.loadExistingCells();
     if (cellRef.sessionId !== this.sessionId) {
       throw new Error(`Unknown session: ${cellRef.sessionId}`);
@@ -408,7 +481,7 @@ export class SessionStore {
       cell,
       procedure: record.procedure,
       kind: record.meta.kind,
-      ...(record.meta.parentCellId ? { parentCellId: record.meta.parentCellId } : {}),
+      ...(record.meta.parentCellId ? { parentRunId: record.meta.parentCellId } : {}),
       summary: record.output.summary,
       memory: record.output.memory,
       dataRef: record.output.data !== undefined ? createValueRef(cell, "output.data") : undefined,
@@ -719,7 +792,7 @@ function buildAttachmentTempPath(path: string): string {
   return `${path}.tmp`;
 }
 
-function matchesCell(record: CellRecord, options: Pick<CellFilterOptions, "kind" | "procedure">): boolean {
+function matchesCell(record: CellRecord, options: Pick<RunFilterOptions, "kind" | "procedure">): boolean {
   if (options.kind && record.meta.kind !== options.kind) {
     return false;
   }
@@ -729,6 +802,58 @@ function matchesCell(record: CellRecord, options: Pick<CellFilterOptions, "kind"
   }
 
   return true;
+}
+
+function toRunRecord(sessionId: string, record: CellRecord): StoredRunRecord {
+  return {
+    run: {
+      sessionId,
+      runId: record.cellId,
+    },
+    kind: record.meta.kind,
+    procedure: record.procedure,
+    input: record.input,
+    output: {
+      data: publicKernelValueFromStored(record.output.data),
+      display: record.output.display,
+      stream: record.output.stream,
+      summary: record.output.summary,
+      memory: record.output.memory,
+      pause: record.output.pause ? publicKernelValueFromStored(record.output.pause) as Continuation : undefined,
+      explicitDataSchema: record.output.explicitDataSchema,
+      replayEvents: record.output.replayEvents,
+    },
+    meta: {
+      createdAt: record.meta.createdAt,
+      parentRunId: record.meta.parentCellId,
+      dispatchCorrelationId: record.meta.dispatchCorrelationId,
+      defaultAgentSelection: record.meta.defaultAgentSelection,
+      promptImages: record.meta.promptImages,
+    },
+  };
+}
+
+function toRunSummary(summary: CellSummary): RunSummary {
+  return {
+    run: createRunRef(summary.cell.sessionId, summary.cell.cellId),
+    procedure: summary.procedure,
+    kind: summary.kind,
+    parentRunId: summary.parentCellId,
+    summary: summary.summary,
+    memory: summary.memory,
+    dataRef: summary.dataRef
+      ? createRef(createRunRef(summary.dataRef.cell.sessionId, summary.dataRef.cell.cellId), summary.dataRef.path)
+      : undefined,
+    displayRef: summary.displayRef
+      ? createRef(createRunRef(summary.displayRef.cell.sessionId, summary.displayRef.cell.cellId), summary.displayRef.path)
+      : undefined,
+    streamRef: summary.streamRef
+      ? createRef(createRunRef(summary.streamRef.cell.sessionId, summary.streamRef.cell.cellId), summary.streamRef.path)
+      : undefined,
+    dataShape: summary.dataShape,
+    explicitDataSchema: summary.explicitDataSchema,
+    createdAt: summary.createdAt,
+  };
 }
 
 function normalizeLimit(value: number | undefined): number | undefined {

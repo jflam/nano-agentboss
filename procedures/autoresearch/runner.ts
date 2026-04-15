@@ -3,13 +3,13 @@ import typia from "typia";
 import { normalizeRunCancelledError } from "../../src/core/cancellation.ts";
 import { getSessionDir } from "../../src/core/config.ts";
 import { formatErrorMessage } from "../../src/core/error-format.ts";
-import { ProcedureDispatchJobManager } from "../../src/procedure/dispatch-jobs.ts";
 import { expectData } from "../../src/core/run-result.ts";
+import { ProcedureDispatchJobManager } from "@nanoboss/procedure-engine";
 import {
   jsonType,
   type ProcedureApi,
   type ProcedureResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 import { summarizeText } from "../../src/util/text.ts";
 
 import { runBenchmark, runChecks } from "./benchmark.ts";

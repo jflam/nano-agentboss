@@ -8,7 +8,7 @@ import {
   SessionEventLog,
   toReplayableFrontendEvent,
   toFrontendCommands,
-} from "../../src/http/frontend-events.ts";
+} from "@nanoboss/adapters-http";
 
 describe("frontend-events", () => {
   const statusEvent = {
@@ -557,9 +557,9 @@ describe("frontend-events", () => {
       runId: "run-1",
       procedure: "default",
       completedAt: "2026-03-31T00:00:01.000Z",
-      cell: {
+      run: {
         sessionId: "session-1",
-        cellId: "cell-1",
+        runId: "cell-1",
       },
       summary: "done",
       display: "done\n",
@@ -580,9 +580,9 @@ describe("frontend-events", () => {
       runId: "run-1",
       procedure: "default",
       completedAt: "2026-03-31T00:00:01.000Z",
-      cell: {
+      run: {
         sessionId: "session-1",
-        cellId: "cell-1",
+        runId: "cell-1",
       },
       summary: "done",
       display: "done\n",

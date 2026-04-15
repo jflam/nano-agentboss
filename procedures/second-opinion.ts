@@ -5,7 +5,7 @@ import { expectData, expectDataRef } from "../src/core/run-result.ts";
 import {
   jsonType,
   type Procedure,
-} from "../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 interface CritiqueResult {
   verdict: "sound" | "mixed" | "flawed";

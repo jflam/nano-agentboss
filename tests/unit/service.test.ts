@@ -3,22 +3,23 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createAgentSession } from "@nanoboss/agent-acp";
+import { extractProcedureDispatchResult, NanobossService } from "@nanoboss/app-runtime";
 
 const MOCK_AGENT_PATH = join(process.cwd(), "tests/fixtures/mock-agent.ts");
 const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
 const BUILD_HOOK_TIMEOUT_MS = 30_000;
 
-import { DefaultConversationSession } from "../../src/agent/default-session.ts";
-import type { Procedure } from "../../src/core/types.ts";
+import type { AgentSession } from "../../src/core/types.ts";
+import type { Procedure, PromptInput } from "@nanoboss/procedure-sdk";
 import { createTextPromptInput, promptInputDisplayText } from "../../src/core/prompt.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
-import { SessionStore } from "../../src/session/index.ts";
-import { extractProcedureDispatchResult, NanobossService } from "../../src/core/service.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "@nanoboss/adapters-http";
+import { SessionStore } from "@nanoboss/store";
 
 interface InternalSessionState {
   store: SessionStore;
-  defaultConversation: DefaultConversationSession;
+  defaultAgentSession: AgentSession;
 }
 
 beforeAll(() => {
@@ -193,7 +194,7 @@ function createPausedSimplify2LikeProcedure(): Procedure {
           state: {
             step: 1,
           },
-          continuationUi: {
+          ui: {
             kind: "simplify2_checkpoint",
             title: "Simplify2 checkpoint",
             actions: [
@@ -215,12 +216,12 @@ describe("NanobossService", () => {
         toolCallId: "call_123",
         status: "completed",
         rawOutput: {
-          content: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
-          detailedContent: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
+          content: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
+          detailedContent: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
           contents: [
             {
               type: "text",
-              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
+              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
             },
           ],
         },
@@ -229,7 +230,7 @@ describe("NanobossService", () => {
             type: "content",
             content: {
               type: "text",
-              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"procedure":"research","cell":{"sessionId":"s1","cellId":"c1"},"display":"done"}}',
+              text: '{"dispatchId":"dispatch_123","status":"completed","procedure":"research","result":{"run":{"sessionId":"s1","runId":"c1"},"display":"done"}}',
             },
           },
         ],
@@ -237,8 +238,7 @@ describe("NanobossService", () => {
     ]);
 
     expect(parsed).toEqual({
-      procedure: "research",
-      cell: { sessionId: "s1", cellId: "c1" },
+      run: { sessionId: "s1", runId: "c1" },
       display: "done",
     });
   });
@@ -259,7 +259,7 @@ describe("NanobossService", () => {
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
-    await service.prompt(session.sessionId, "what is 2+2");
+    await service.promptSession(session.sessionId, "what is 2+2");
 
     const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
     const textEvents = events.filter((event) => event.type === "text_delta");
@@ -275,7 +275,7 @@ describe("NanobossService", () => {
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
-    await service.prompt(session.sessionId, {
+    await service.promptSession(session.sessionId, {
       parts: [
         { type: "text", text: "/model " },
         {
@@ -316,7 +316,7 @@ describe("NanobossService", () => {
       const service = new NanobossService(registry);
       const session = service.createSession({ cwd: process.cwd() });
 
-      await service.prompt(session.sessionId, {
+      await service.promptSession(session.sessionId, {
         parts: [
           { type: "text", text: "describe " },
           {
@@ -332,13 +332,13 @@ describe("NanobossService", () => {
       });
 
       const sessionState = getInternalSessionState(service, session.sessionId);
-      const topLevel = sessionState.store.topLevelRuns({ limit: 1 })[0];
+      const topLevel = sessionState.store.listRuns({ limit: 1 })[0];
       expect(topLevel).toBeDefined();
       if (!topLevel) {
         throw new Error("Missing stored top-level run");
       }
 
-      const topLevelRecord = sessionState.store.readCell(topLevel.cell);
+      const topLevelRecord = sessionState.store.getRun(topLevel.run);
       const topLevelImage = topLevelRecord.meta.promptImages?.[0];
       expect(topLevelImage?.attachmentPath).toMatch(/^attachments\/.+\.png$/);
       expect(topLevelImage?.attachmentId).toMatch(/.+\.png$/);
@@ -363,7 +363,7 @@ describe("NanobossService", () => {
       const service = new NanobossService(registry);
       const session = service.createSession({ cwd: process.cwd() });
 
-      await service.prompt(session.sessionId, "what is 2+2");
+      await service.promptSession(session.sessionId, "what is 2+2");
 
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
       const completedIndex = events.findLastIndex((event) => event.type === "run_completed");
@@ -401,12 +401,12 @@ describe("NanobossService", () => {
       const session = service.createSession({ cwd: process.cwd() });
 
       try {
-        await service.prompt(session.sessionId, "nested tool trace demo");
+        await service.promptSession(session.sessionId, "nested tool trace demo");
         const liveReplay = normalizeReplayEvents(
           service.getSessionEvents(session.sessionId)?.after(-1) ?? [],
         );
         const liveCompletedAt = liveReplay.findLast((event) => event.type === "run_completed")?.completedAt;
-        const storedRun = getInternalSessionState(service, session.sessionId).store.topLevelRuns({ limit: 1 })[0];
+        const storedRun = getInternalSessionState(service, session.sessionId).store.listRuns({ limit: 1 })[0];
 
         expect(liveReplay.some((event) => event.type === "tool_started")).toBe(true);
         expect(liveReplay.some((event) => event.type === "text_delta")).toBe(true);
@@ -420,7 +420,7 @@ describe("NanobossService", () => {
         }
 
         expect(
-          getInternalSessionState(service, session.sessionId).store.readCell(storedRun.cell).output.replayEvents,
+          getInternalSessionState(service, session.sessionId).store.getRun(storedRun.run).output.replayEvents,
         ).toEqual(liveReplay);
 
         service.destroySession(session.sessionId);
@@ -445,8 +445,8 @@ describe("NanobossService", () => {
         expect(restored.data.procedure).toBe("default");
         expect(restored.data.prompt).toBe("nested tool trace demo");
         expect(restored.data.completedAt).toBe(liveCompletedAt);
-        expect(restored.data.cell.sessionId).toBe(session.sessionId);
-        expect(typeof restored.data.cell.cellId).toBe("string");
+        expect(restored.data.run.sessionId).toBe(session.sessionId);
+        expect(typeof restored.data.run.runId).toBe("string");
         expect(restored.data.status).toBe("complete");
         expect(normalizeReplayEvents(resumedEvents.slice(1))).toEqual(liveReplay);
         expect(commandsUpdated?.type).toBe("commands_updated");
@@ -472,7 +472,7 @@ describe("NanobossService", () => {
       const session = service.createSession({ cwd: process.cwd() });
 
       try {
-        const promptPromise = service.prompt(session.sessionId, "cooperative cancel demo");
+        const promptPromise = service.promptSession(session.sessionId, "cooperative cancel demo");
 
         await waitForCondition(() => {
           const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
@@ -519,8 +519,8 @@ describe("NanobossService", () => {
         expect(restored.data.procedure).toBe("default");
         expect(restored.data.prompt).toBe("cooperative cancel demo");
         expect(restored.data.completedAt).toBe(liveCancelledAt);
-        expect(restored.data.cell.sessionId).toBe(session.sessionId);
-        expect(typeof restored.data.cell.cellId).toBe("string");
+        expect(restored.data.run.sessionId).toBe(session.sessionId);
+        expect(typeof restored.data.run.runId).toBe("string");
         expect(restored.data.status).toBe("cancelled");
         expect(normalizeReplayEvents(resumedEvents.slice(1))).toEqual(liveReplay);
       } finally {
@@ -551,10 +551,10 @@ describe("NanobossService", () => {
       const service = new NanobossService(registry);
       const session = service.createSession({ cwd });
 
-      await service.prompt(session.sessionId, "/probe");
+      await service.promptSession(session.sessionId, "/probe");
 
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
-      const storedRun = getInternalSessionState(service, session.sessionId).store.topLevelRuns({ limit: 1 })[0];
+      const storedRun = getInternalSessionState(service, session.sessionId).store.listRuns({ limit: 1 })[0];
       const toolTitles = events
         .filter((event) => event.type === "tool_started")
         .map((event) => event.data.title);
@@ -566,7 +566,7 @@ describe("NanobossService", () => {
         .map((event) => event.data.text);
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "probe");
       const replayEvents = storedRun
-        ? getInternalSessionState(service, session.sessionId).store.readCell(storedRun.cell).output.replayEvents
+        ? getInternalSessionState(service, session.sessionId).store.getRun(storedRun.run).output.replayEvents
         : undefined;
       const replayedNestedRead = replayEvents?.find((event) =>
         event.type === "tool_started" && event.title === "Mock read README.md"
@@ -619,7 +619,7 @@ describe("NanobossService", () => {
     const session = service.createSession({ cwd });
 
     try {
-      await service.prompt(session.sessionId, "/slowreview patch");
+      await service.promptSession(session.sessionId, "/slowreview patch");
 
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
       const firstProgressIndex = events.findIndex((event) => event.type === "text_delta" && event.data.text.includes("starting: patch"));
@@ -654,7 +654,7 @@ describe("NanobossService", () => {
     const session = service.createSession({ cwd });
 
     try {
-      await service.prompt(session.sessionId, "/slowreview patch");
+      await service.promptSession(session.sessionId, "/slowreview patch");
 
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "slowreview");
@@ -697,7 +697,7 @@ describe("NanobossService", () => {
       const session = service.createSession({ cwd });
 
       try {
-        await service.prompt(session.sessionId, "/probe");
+        await service.promptSession(session.sessionId, "/probe");
 
         const stored = readStoredMockSession(sessionStoreDir);
         const userPrompt = stored.turns.find((turn) => turn.role === "user")?.text ?? "";
@@ -755,8 +755,8 @@ describe("NanobossService", () => {
     const session = service.createSession({ cwd });
 
     try {
-      await service.prompt(session.sessionId, "/slowreview patch");
-      await service.prompt(session.sessionId, "what mattered most?");
+      await service.promptSession(session.sessionId, "/slowreview patch");
+      await service.promptSession(session.sessionId, "what mattered most?");
 
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "slowreview");
@@ -809,8 +809,8 @@ describe("NanobossService", () => {
     const session = service.createSession({ cwd });
 
     try {
-      await service.prompt(session.sessionId, "/review the code");
-      await service.prompt(session.sessionId, "what mattered most?");
+      await service.promptSession(session.sessionId, "/review the code");
+      await service.promptSession(session.sessionId, "what mattered most?");
 
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
       const storedCard = events.find((event) => event.type === "memory_card_stored");
@@ -836,14 +836,14 @@ describe("NanobossService", () => {
     const session = service.createSession({ cwd });
     const sessionState = getInternalSessionState(service, session.sessionId);
     const prepareDefaultPrompt = Reflect.get(service as object, "prepareDefaultPrompt") as
-      | ((session: InternalSessionState, promptInput: import("../../src/core/types.ts").PromptInput, runId: string) => {
-          promptInput: import("../../src/core/types.ts").PromptInput;
+      | ((session: InternalSessionState, promptInput: PromptInput, runId: string) => {
+          promptInput: PromptInput;
           markSubmitted: () => void;
         })
       | undefined;
 
-    sessionState.store.finalizeCell(
-      sessionState.store.startCell({
+    sessionState.store.completeRun(
+      sessionState.store.startRun({
         procedure: "review",
         input: "the code",
         kind: "top_level",
@@ -868,7 +868,7 @@ describe("NanobossService", () => {
       expect(followUpPrompt).toContain("Nanoboss session memory update:");
       expect(followUpPrompt).toContain("procedure: /review");
       expect(followUpPrompt).toContain("Nanoboss session tool guidance:");
-      expect(followUpPrompt).toContain("Use top_level_runs(...) to find prior chat-visible commands");
+      expect(followUpPrompt).toContain("Use list_runs(...) to find prior chat-visible commands");
       expect(followUpPrompt).toContain("Never inspect ~/.nanoboss/agent-logs directly");
     } finally {
       service.destroySession(session.sessionId);
@@ -902,12 +902,12 @@ describe("NanobossService", () => {
       sessionState.recentRecoverySyncAtMs = Date.now();
 
       try {
-        await service.prompt(session.sessionId, "how did you do that earlier?");
+        await service.promptSession(session.sessionId, "how did you do that earlier?");
 
         const stored = readStoredMockSession(mockSessionStoreDir);
         const userPrompt = stored.turns[0]?.text ?? "";
         expect(userPrompt).toContain("Nanoboss session tool guidance:");
-        expect(userPrompt).toContain("Use top_level_runs(...) to find prior chat-visible commands");
+        expect(userPrompt).toContain("Use list_runs(...) to find prior chat-visible commands");
         expect(userPrompt).toContain("Never inspect ~/.nanoboss/agent-logs directly");
         expect(userPrompt).not.toContain("Nanoboss session memory update:");
       } finally {
@@ -923,7 +923,7 @@ describe("NanobossService", () => {
       const service = new NanobossService(registry);
       const session = service.createSession({ cwd });
 
-      await service.prompt(session.sessionId, "/model copilot gpt-5.4/xhigh");
+      await service.promptSession(session.sessionId, "/model copilot gpt-5.4/xhigh");
 
       expect(service.getSession(session.sessionId)?.agentLabel).toBe("copilot/gpt-5.4/x-high");
     });
@@ -935,7 +935,7 @@ describe("NanobossService", () => {
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd });
 
-    await service.prompt(session.sessionId, "/model copilot gpt-5.4/xhigh");
+    await service.promptSession(session.sessionId, "/model copilot gpt-5.4/xhigh");
 
     expect(service.getSession(session.sessionId)?.agentLabel).toBe("copilot/gpt-5.4/x-high");
     const toolTitles = (service.getSessionEvents(session.sessionId)?.after(-1) ?? [])
@@ -951,7 +951,7 @@ describe("NanobossService", () => {
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd });
 
-    await service.prompt(session.sessionId, "  /model copilot gpt-5.4/xhigh");
+    await service.promptSession(session.sessionId, "  /model copilot gpt-5.4/xhigh");
 
     const started = (service.getSessionEvents(session.sessionId)?.after(-1) ?? [])
       .find((event) => event.type === "run_started");
@@ -981,7 +981,7 @@ describe("NanobossService", () => {
 
       const service = new NanobossService(registry);
       const session = service.createSession({ cwd });
-      const promptPromise = service.prompt(session.sessionId, "/review the code");
+      const promptPromise = service.promptSession(session.sessionId, "/review the code");
 
       await waitForCondition(() => {
         const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
@@ -1031,7 +1031,7 @@ describe("NanobossService", () => {
 
       const service = new NanobossService(registry);
       const session = service.createSession({ cwd: process.cwd() });
-      const promptPromise = service.prompt(session.sessionId, "stop after this boundary");
+      const promptPromise = service.promptSession(session.sessionId, "stop after this boundary");
 
       await waitForCondition(() => {
         const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
@@ -1093,7 +1093,7 @@ describe("NanobossService", () => {
 
       const service = new NanobossService(registry);
       const session = service.createSession({ cwd });
-      const promptPromise = service.prompt(session.sessionId, "/review stop this");
+      const promptPromise = service.promptSession(session.sessionId, "/review stop this");
 
       await waitForCondition(() => {
         const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
@@ -1132,7 +1132,7 @@ describe("NanobossService", () => {
 
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
-    const promptPromise = service.prompt(session.sessionId, "hello");
+    const promptPromise = service.promptSession(session.sessionId, "hello");
 
     await waitForCondition(() => {
       const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
@@ -1149,7 +1149,7 @@ describe("NanobossService", () => {
 
   test("soft stop keeps the persistent default ACP session alive", async () => {
     await withMockAgentEnv(async () => {
-      const session = new DefaultConversationSession({
+      const session = createAgentSession({
         config: {
           provider: "copilot",
           command: "bun",
@@ -1167,12 +1167,12 @@ describe("NanobossService", () => {
 
       await expect(promptPromise).rejects.toThrow("Stopped.");
 
-      const persistedSessionId = session.currentSessionId;
+      const persistedSessionId = session.sessionId;
       expect(typeof persistedSessionId).toBe("string");
       await expect(session.prompt("what is 2+2")).resolves.toMatchObject({ raw: "4" });
-      expect(session.currentSessionId).toBe(persistedSessionId);
+      expect(session.sessionId).toBe(persistedSessionId);
 
-      session.closeLiveSession();
+      session.close();
     }, {
       MOCK_AGENT_COOPERATIVE_CANCEL: "1",
     });
@@ -1220,9 +1220,9 @@ describe("NanobossService", () => {
     const session = service.createSession({ cwd: process.cwd() });
 
     expect(session.commands.some((command) => command.name === "default")).toBe(false);
-    expect(session.commands.some((command) => command.name === "top_level_runs")).toBe(false);
-    expect(session.commands.some((command) => command.name === "cell_get")).toBe(false);
-    expect(session.commands.some((command) => command.name === "ref_read")).toBe(false);
+    expect(session.commands.some((command) => command.name === "list_runs")).toBe(false);
+    expect(session.commands.some((command) => command.name === "get_run")).toBe(false);
+    expect(session.commands.some((command) => command.name === "read_ref")).toBe(false);
     expect(session.commands.some((command) => command.name === "dismiss")).toBe(true);
   });
 
@@ -1240,7 +1240,7 @@ describe("NanobossService", () => {
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
-    await service.prompt(session.sessionId, "/wizard first");
+    await service.promptSession(session.sessionId, "/wizard first");
     let events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
     const paused = events.findLast((event) => event.type === "run_paused");
     expect(paused?.type).toBe("run_paused");
@@ -1250,7 +1250,7 @@ describe("NanobossService", () => {
     expect(paused.data.question).toContain("What should I do next");
     expect(events.some((event) => event.type === "run_completed" && event.data.procedure === "wizard")).toBe(false);
 
-    await service.prompt(session.sessionId, "focus on dead code");
+    await service.promptSession(session.sessionId, "focus on dead code");
 
     events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
     const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "wizard");
@@ -1268,7 +1268,7 @@ describe("NanobossService", () => {
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
-    await service.prompt(session.sessionId, "/simplify2-like");
+    await service.promptSession(session.sessionId, "/simplify2-like");
 
     const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
     const paused = events.findLast((event) => event.type === "run_paused");
@@ -1277,7 +1277,7 @@ describe("NanobossService", () => {
       throw new Error("Expected run_paused event");
     }
 
-    expect(paused.data.continuationUi).toEqual({
+    expect(paused.data.ui).toEqual({
       kind: "simplify2_checkpoint",
       title: "Simplify2 checkpoint",
       actions: [
@@ -1301,9 +1301,9 @@ describe("NanobossService", () => {
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
-    await service.prompt(session.sessionId, "/wizard first");
-    await service.prompt(session.sessionId, "/default hello");
-    await service.prompt(session.sessionId, "resume now");
+    await service.promptSession(session.sessionId, "/wizard first");
+    await service.promptSession(session.sessionId, "/default hello");
+    await service.promptSession(session.sessionId, "resume now");
 
     const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
     const defaultCompleted = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "default");
@@ -1331,9 +1331,9 @@ describe("NanobossService", () => {
     const service = new NanobossService(registry);
     const session = service.createSession({ cwd: process.cwd() });
 
-    await service.prompt(session.sessionId, "/wizard first");
-    await service.prompt(session.sessionId, "/dismiss");
-    await service.prompt(session.sessionId, "back to default");
+    await service.promptSession(session.sessionId, "/wizard first");
+    await service.promptSession(session.sessionId, "/dismiss");
+    await service.promptSession(session.sessionId, "back to default");
 
     const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
     const dismissCompleted = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "dismiss");
@@ -1369,7 +1369,7 @@ describe("NanobossService", () => {
       const service = new NanobossService(registry);
       const session = service.createSession({ cwd: process.cwd() });
 
-      await service.prompt(session.sessionId, "/wizard first");
+      await service.promptSession(session.sessionId, "/wizard first");
 
       const resumedService = new NanobossService(registry);
       resumedService.resumeSession({ sessionId: session.sessionId, cwd: process.cwd() });
@@ -1382,7 +1382,7 @@ describe("NanobossService", () => {
       }
       expect(restoredPaused.data.status).toBe("paused");
 
-      await resumedService.prompt(session.sessionId, "keep going");
+      await resumedService.promptSession(session.sessionId, "keep going");
 
       const events = resumedService.getSessionEvents(session.sessionId)?.after(-1) ?? [];
       const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "wizard");

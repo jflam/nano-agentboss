@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { defaultCancellationMessage } from "../core/cancellation.ts";
 import { resolveDownstreamAgentConfig } from "../core/config.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "../core/timing-trace.ts";
-import { findRecoveredProcedureDispatchCell } from "./dispatch-recovery.ts";
+import { findRecoveredProcedureDispatchRun } from "./dispatch-recovery.ts";
 import {
   ProcedureDispatchProgressEmitter,
   buildProcedureDispatchProgressPath,
@@ -21,18 +21,21 @@ import {
 import {
   TopLevelProcedureCancelledError,
   TopLevelProcedureExecutionError,
-  buildProcedureExecutionResult,
   executeTopLevelProcedure,
-  type ProcedureExecutionResult,
 } from "./runner.ts";
-import { ProcedureRegistry } from "./registry.ts";
-import { SessionStore } from "../session/index.ts";
+import { runResultFromRunRecord } from "../core/run-result.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import { SessionStore } from "@nanoboss/store";
 import { resolveSelfCommand } from "../core/self-command.ts";
 import type {
-  CellRef,
   DownstreamAgentSelection,
+  RunRecord,
+  RunRef,
+} from "@nanoboss/contracts";
+import type {
   ProcedureRegistryLike,
-} from "../core/types.ts";
+  RunResult,
+} from "@nanoboss/procedure-sdk";
 import { requireValue } from "../util/argv.ts";
 
 const PROCEDURE_DISPATCH_JOBS_DIR = "procedure-dispatch-jobs";
@@ -55,8 +58,8 @@ export interface ProcedureDispatchJob {
   completedAt?: string;
   dispatchCorrelationId: string;
   defaultAgentSelection?: DownstreamAgentSelection;
-  cell?: CellRef;
-  result?: ProcedureExecutionResult;
+  run?: RunRef;
+  result?: RunResult;
   error?: string;
   workerPid?: number;
 }
@@ -74,8 +77,8 @@ export interface ProcedureDispatchStatusResult {
   updatedAt: string;
   startedAt?: string;
   completedAt?: string;
-  cell?: CellRef;
-  result?: ProcedureExecutionResult;
+  run?: RunRef;
+  result?: RunResult;
   error?: string;
 }
 
@@ -292,7 +295,7 @@ export class ProcedureDispatchJobManager {
       if (latest.status === "cancelled" || softStopController.signal.aborted) {
         this.writeJob({
           ...markJobCancelled(latest, completedAt),
-          cell: result.cell,
+          run: result.run,
           result,
           error: defaultCancellationMessage("soft_stop"),
           defaultAgentSelection: result.defaultAgentSelection ?? job.defaultAgentSelection,
@@ -305,26 +308,26 @@ export class ProcedureDispatchJobManager {
         status: "completed",
         updatedAt: completedAt,
         completedAt,
-        cell: result.cell,
+        run: result.run,
         result,
         error: undefined,
         defaultAgentSelection: result.defaultAgentSelection ?? job.defaultAgentSelection,
       });
       appendTimingTraceEvent(timingTrace, "dispatch_worker", "procedure_execution_completed", {
         procedure: job.procedure,
-        cellId: result.cell.cellId,
+        runId: result.run.runId,
       });
     } catch (error) {
       const completedAt = new Date().toISOString();
       const latest = this.readJob(dispatchId);
       const message = error instanceof Error ? error.message : String(error);
-      const cell = error instanceof TopLevelProcedureExecutionError || error instanceof TopLevelProcedureCancelledError
-        ? error.cell
-        : latest.cell;
+      const run = error instanceof TopLevelProcedureExecutionError || error instanceof TopLevelProcedureCancelledError
+        ? error.run
+        : latest.run;
       if (latest.status === "cancelled" || softStopController.signal.aborted) {
         this.writeJob({
           ...markJobCancelled(latest, completedAt),
-          cell,
+          run,
           error: message,
         });
         return;
@@ -335,7 +338,7 @@ export class ProcedureDispatchJobManager {
         status: "failed",
         updatedAt: completedAt,
         completedAt,
-        cell,
+        run,
         error: message,
       });
       appendTimingTraceEvent(timingTrace, "dispatch_worker", "procedure_execution_failed", {
@@ -394,14 +397,14 @@ export class ProcedureDispatchJobManager {
       return job;
     }
 
-    const cell = job.cell
-      ? this.tryReadCell(job.cell)
-      : findRecoveredProcedureDispatchCell(this.createStore(), {
+    const record = job.run
+      ? this.tryReadStoredRunRecord(job.run)
+      : findRecoveredProcedureDispatchRun(this.createStore(), {
         procedureName: job.procedure,
         dispatchCorrelationId: job.dispatchCorrelationId,
       });
 
-    if (!cell) {
+    if (!record) {
       if (!isTerminalStatus(job.status) && isDeadWorkerJob(job)) {
         const failed: ProcedureDispatchJob = {
           ...job,
@@ -421,23 +424,21 @@ export class ProcedureDispatchJobManager {
       return job;
     }
 
-    if (job.status !== "completed" && looksLikeProcedureFailureCell(cell)) {
+    if (job.status !== "completed" && looksLikeProcedureFailureRecord(record)) {
       const completedAt = job.completedAt ?? new Date().toISOString();
       const failed: ProcedureDispatchJob = {
         ...job,
         status: "failed",
         updatedAt: new Date().toISOString(),
         completedAt,
-        cell: { sessionId: this.params.sessionId, cellId: cell.cellId },
-        error: job.error ?? cell.output.summary ?? `${job.procedure} failed`,
+        run: record.run,
+        error: job.error ?? record.output.summary ?? `${job.procedure} failed`,
       };
       this.writeJob(failed);
       return failed;
     }
 
-    const result = buildProcedureExecutionResult({
-      sessionId: this.params.sessionId,
-      cell,
+    const result = runResultFromRunRecord(record, {
       tokenUsage: job.result?.tokenUsage,
       defaultAgentSelection: job.result?.defaultAgentSelection ?? job.defaultAgentSelection,
     });
@@ -447,7 +448,7 @@ export class ProcedureDispatchJobManager {
       status: "completed",
       updatedAt: new Date().toISOString(),
       completedAt,
-      cell: result.cell,
+      run: result.run,
       result,
       error: undefined,
       defaultAgentSelection: result.defaultAgentSelection ?? job.defaultAgentSelection,
@@ -456,9 +457,9 @@ export class ProcedureDispatchJobManager {
     return reconciled;
   }
 
-  private tryReadCell(cell: CellRef) {
+  private tryReadStoredRunRecord(run: RunRef) {
     try {
-      return this.createStore().readCell(cell);
+      return this.createStore().getRun(run);
     } catch {
       return undefined;
     }
@@ -696,13 +697,13 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function looksLikeProcedureFailureCell(cell: ReturnType<SessionStore["readCell"]>): boolean {
+function looksLikeProcedureFailureRecord(record: RunRecord): boolean {
   return (
-    cell.output.data === undefined &&
-    cell.output.display === undefined &&
-    cell.output.memory === undefined &&
-    typeof cell.output.summary === "string" &&
-    /^Error:/i.test(cell.output.summary)
+    record.output.data === undefined &&
+    record.output.display === undefined &&
+    record.output.memory === undefined &&
+    typeof record.output.summary === "string" &&
+    /^Error:/i.test(record.output.summary)
   );
 }
 
@@ -715,7 +716,7 @@ function toProcedureDispatchStatusResult(job: ProcedureDispatchJob): ProcedureDi
     updatedAt: job.updatedAt,
     startedAt: job.startedAt,
     completedAt: job.completedAt,
-    cell: job.cell,
+    run: job.run,
     result: job.result,
     error: job.error,
   };

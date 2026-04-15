@@ -1,5 +1,5 @@
 import { createTextPromptInput } from "../src/core/prompt.ts";
-import type { Procedure } from "../src/core/types.ts";
+import type { Procedure } from "@nanoboss/procedure-sdk";
 
 export default {
   name: "default",

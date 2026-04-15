@@ -1,12 +1,15 @@
-import { promptForStoredSessionSelection } from "./src/tui/overlays/session-picker.ts";
-import { createNanobossTuiTheme } from "./src/tui/theme.ts";
-import { assertInteractiveTty, runTuiCli } from "./src/tui/run.ts";
+import {
+  assertInteractiveTty,
+  createNanobossTuiTheme,
+  promptForStoredSessionSelection,
+  runTuiCli,
+} from "@nanoboss/adapters-tui";
+import type { SessionMetadata } from "@nanoboss/contracts";
 import { parseResumeOptions } from "./src/options/resume.ts";
 import {
-  listSessionSummaries,
-  readCurrentSessionMetadata,
-  type SessionMetadata,
-} from "./src/session/index.ts";
+  listStoredSessions,
+  readCurrentWorkspaceSessionMetadata,
+} from "@nanoboss/store";
 
 export type StoredSessionSelectionResult =
   | { kind: "selected"; session: SessionMetadata }
@@ -59,19 +62,19 @@ export async function runResumeCommand(
     serverUrl: options.serverUrl,
     showToolCalls: options.showToolCalls,
     simplify2AutoApprove: options.simplify2AutoApprove,
-    sessionId: selected.sessionId,
+    sessionId: selected.session.sessionId,
   });
 }
 
 function resolveExplicitSession(sessionId: string): SessionMetadata | undefined {
-  return listSessionSummaries().find((session) => session.sessionId === sessionId);
+  return listStoredSessions().find((session) => session.session.sessionId === sessionId);
 }
 
 function resolveDefaultSession(cwd: string): SessionMetadata | undefined {
-  const sessions = listSessionSummaries();
-  const currentSessionId = readCurrentSessionMetadata(cwd)?.sessionId;
+  const sessions = listStoredSessions();
+  const currentSessionId = readCurrentWorkspaceSessionMetadata(cwd)?.session.sessionId;
   if (currentSessionId) {
-    const current = sessions.find((session) => session.sessionId === currentSessionId);
+    const current = sessions.find((session) => session.session.sessionId === currentSessionId);
     if (current) {
       return current;
     }
@@ -81,7 +84,7 @@ function resolveDefaultSession(cwd: string): SessionMetadata | undefined {
 }
 
 async function selectStoredSession(cwd: string): Promise<StoredSessionSelectionResult> {
-  const sessions = orderSessions(cwd, listSessionSummaries());
+  const sessions = orderSessions(cwd, listStoredSessions());
   if (sessions.length === 0) {
     return { kind: "empty" };
   }

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { getServerHealth } from "../../src/http/client.ts";
-import { startPrivateHttpServer } from "../../src/http/private-server.ts";
+import { getServerHealth, startPrivateHttpServer } from "@nanoboss/adapters-http";
 
 describe("private HTTP server launcher", () => {
   test("starts an owned private loopback server and stops it cleanly", async () => {

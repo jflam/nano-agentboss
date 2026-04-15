@@ -12,9 +12,9 @@ import {
 import { normalizeToolName } from "../core/tool-payload-normalizer.ts";
 import type {
   AgentTokenUsage,
-  CellRef,
-  FrontendPendingProcedureContinuation,
-  ProcedureContinuationUi,
+  ContinuationUi,
+  FrontendContinuation,
+  RunRef,
 } from "../core/types.ts";
 
 export interface FrontendCommand {
@@ -34,7 +34,7 @@ export type FrontendEvent =
       procedure: string;
       prompt: string;
       completedAt: string;
-      cell: CellRef;
+      run: RunRef;
       status: "complete" | "failed" | "cancelled" | "paused";
       text?: string;
     }
@@ -47,7 +47,7 @@ export type FrontendEvent =
     }
   | {
       type: "continuation_updated";
-      continuation?: FrontendPendingProcedureContinuation;
+      continuation?: FrontendContinuation;
     }
   | {
       type: "memory_cards";
@@ -129,7 +129,7 @@ export type FrontendEvent =
       runId: string;
       procedure: string;
       completedAt: string;
-      cell: CellRef;
+      run: RunRef;
       summary?: string;
       display?: string;
       tokenUsage?: AgentTokenUsage;
@@ -139,12 +139,12 @@ export type FrontendEvent =
       runId: string;
       procedure: string;
       pausedAt: string;
-      cell: CellRef;
+      run: RunRef;
       question: string;
       display?: string;
       inputHint?: string;
       suggestedReplies?: string[];
-      continuationUi?: ProcedureContinuationUi;
+      ui?: ContinuationUi;
       tokenUsage?: AgentTokenUsage;
     }
   | {
@@ -153,7 +153,7 @@ export type FrontendEvent =
       procedure: string;
       completedAt: string;
       error: string;
-      cell?: CellRef;
+      run?: RunRef;
     }
   | {
       type: "run_cancelled";
@@ -161,7 +161,7 @@ export type FrontendEvent =
       procedure: string;
       completedAt: string;
       message: string;
-      cell?: CellRef;
+      run?: RunRef;
     };
 
 export type MemorySyncFrontendEvent = Extract<FrontendEvent, { type: "memory_cards" | "memory_card_stored" }>;

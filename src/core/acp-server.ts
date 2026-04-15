@@ -1,11 +1,11 @@
 import * as acp from "@agentclientprotocol/sdk";
+import { NanobossService } from "@nanoboss/app-runtime";
 import { Readable, Writable } from "node:stream";
 
 import { getBuildLabel } from "./build-info.ts";
 import type { ProcedureUiEvent, SessionUpdateEmitter } from "./context.ts";
 import { promptInputFromAcpBlocks } from "./prompt.ts";
 import { parseDownstreamAgentSelection } from "./downstream-agent-selection.ts";
-import { NanobossService } from "./service.ts";
 import type { DownstreamAgentSelection } from "./types.ts";
 import { toProcedureUiSessionUpdate } from "./ui-cli.ts";
 
@@ -89,7 +89,7 @@ class Nanoboss implements acp.Agent {
 
   async prompt(params: acp.PromptRequest): Promise<acp.PromptResponse> {
     const emitter = new QueuedSessionUpdateEmitter(this.connection, params.sessionId);
-    await this.service.prompt(params.sessionId, promptInputFromAcpBlocks(params.prompt), emitter);
+    await this.service.promptSession(params.sessionId, promptInputFromAcpBlocks(params.prompt), emitter);
     return { stopReason: "end_turn" };
   }
 

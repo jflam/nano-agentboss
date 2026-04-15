@@ -21,7 +21,7 @@ describe("procedure name helpers", () => {
   });
 
   test("computes src import prefixes from scope depth", () => {
-    expect(resolveProcedureImportPrefix("review")).toBe("../");
-    expect(resolveProcedureImportPrefix("kb/answer")).toBe("../../");
+    expect(resolveProcedureImportPrefix("review")).toBe("../../");
+    expect(resolveProcedureImportPrefix("kb/answer")).toBe("../../../");
   });
 });

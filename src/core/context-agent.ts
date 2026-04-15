@@ -4,17 +4,17 @@ import { collectTextSessionUpdates, summarizeAgentOutput } from "../agent/acp-up
 import { invokeAgent } from "../agent/call-agent.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
 import { promptInputDisplayText } from "./prompt.ts";
-import type { SessionStore } from "../session/index.ts";
+import type { SessionStore } from "@nanoboss/store";
 import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "./cancellation.ts";
-import { resolveDownstreamAgentConfig } from "./config.ts";
+import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "./config.ts";
 import { formatErrorMessage } from "./error-format.ts";
 import type { RunLogger } from "./logger.ts";
+import { toPublicRunResult } from "./run-result.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "./timing-trace.ts";
 import type { ContextSessionApiImpl } from "./context-session.ts";
 import type { SessionUpdateEmitter } from "./context-shared.ts";
 import { summarizeText } from "../util/text.ts";
 import type {
-  AgentInvocationApi,
   AgentSessionMode,
   BoundAgentInvocationApi,
   CommandCallAgentOptions,
@@ -22,16 +22,22 @@ import type {
   KernelValue,
   RunResult,
   TypeDescriptor,
+} from "@nanoboss/procedure-sdk";
+import type {
+  AgentInvocationApi,
+  Ref,
+  RunRef,
 } from "./types.ts";
+import { publicKernelValueFromStored } from "./types.ts";
 
-type ActiveCell = ReturnType<SessionStore["startCell"]>;
+type ActiveRun = ReturnType<SessionStore["startRun"]>;
 
 interface StartedAgentRun {
   childSpanId: string;
   startedAt: number;
   toolCallId?: string;
   emitToolCallEvents: boolean;
-  childCell: ActiveCell;
+  childRun: ActiveRun;
 }
 
 interface AgentRunRecorderParams {
@@ -40,7 +46,7 @@ interface AgentRunRecorderParams {
   emitter: SessionUpdateEmitter;
   procedureName: string;
   spanId: string;
-  cell: ActiveCell;
+  run: ActiveRun;
   softStopSignal?: AbortSignal;
   timingTrace?: RunTimingTrace;
 }
@@ -63,11 +69,11 @@ export class AgentRunRecorder {
       startedAt: Date.now(),
       toolCallId: params.emitToolCallEvents ? crypto.randomUUID() : undefined,
       emitToolCallEvents: params.emitToolCallEvents,
-      childCell: this.params.store.startCell({
+      childRun: this.params.store.startRun({
         procedure: "callAgent",
         input: prompt,
         kind: "agent",
-        parentCellId: this.params.cell.cell.cellId,
+        parentRunId: this.params.run.run.runId,
         promptImages: params.promptInput ? this.params.store.persistPromptImages(params.promptInput) : undefined,
       }),
     };
@@ -131,7 +137,7 @@ export class AgentRunRecorder {
       agent?: DownstreamAgentSelection;
     },
   ) {
-    const finalized = this.params.store.finalizeCell(started.childCell, {
+    const finalized = this.params.store.completeRun(started.childRun, {
       data: params.data,
       display: params.raw,
       summary: params.summary,
@@ -139,6 +145,7 @@ export class AgentRunRecorder {
       stream: params.streamText ? collectTextSessionUpdates(params.updates) : undefined,
       raw: params.raw,
     });
+    const publicResult = toPublicRunResult(finalized);
 
     this.params.logger.write({
       spanId: started.childSpanId,
@@ -164,8 +171,8 @@ export class AgentRunRecorder {
           },
         },
         rawOutput: {
-          cell: finalized.cell,
-          dataRef: finalized.dataRef,
+          run: publicResult.run,
+          dataRef: publicResult.dataRef,
           durationMs: params.durationMs,
           logFile: params.logFile,
           expandedContent: params.raw,
@@ -174,7 +181,7 @@ export class AgentRunRecorder {
       });
     }
 
-    return finalized;
+    return publicResult;
   }
 
   fail(
@@ -198,7 +205,7 @@ export class AgentRunRecorder {
       agentProvider: agent?.provider,
       agentModel: agent?.model,
     });
-    this.params.store.discardPendingPromptImages(started.childCell.meta.promptImages);
+    this.params.store.discardPendingPromptImages(started.childRun.meta.promptImages);
 
     if (started.emitToolCallEvents && started.toolCallId) {
       this.params.emitter.emit({
@@ -262,7 +269,9 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
     const promptInput = options?.promptInput;
     const displayPrompt = promptInput ? promptInputDisplayText(promptInput) : prompt;
     this.params.assertCanStartBoundary();
-    const useDefaultSession = sessionMode === "default" && this.params.sessionManager.hasDefaultConversation();
+    const useDefaultSession = sessionMode === "default"
+      && !options?.persistedSessionId
+      && this.params.sessionManager.hasDefaultAgentSession();
     const agentConfig = useDefaultSession && options?.agent
       ? this.params.sessionManager.setDefaultAgentSelection(options.agent)
       : options?.agent
@@ -291,6 +300,7 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
     try {
       const result = await invokeAgent(prompt, descriptor, {
         config: agentConfig,
+        persistedSessionId: options?.persistedSessionId,
         namedRefs,
         signal: this.params.signal,
         softStopSignal: this.params.softStopSignal,
@@ -309,7 +319,7 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
           }
         : undefined;
 
-      return this.params.recorder.complete(started, {
+      const recorded = this.params.recorder.complete(started, {
         data: result.data,
         raw: result.raw,
         updates: result.updates,
@@ -321,12 +331,18 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
         streamText: options?.stream !== false,
         rawOutputExtra: useDefaultSession
           ? {
-              sessionId: this.params.sessionManager.getDefaultConversationSessionId(),
+              sessionId: this.params.sessionManager.getDefaultAgentSessionId(),
               ...tokenUsageExtra,
             }
           : tokenUsageExtra,
         agent: options?.agent,
       });
+
+      return {
+        ...recorded,
+        ...(tokenUsageExtra?.tokenUsage ? { tokenUsage: tokenUsageExtra.tokenUsage } : {}),
+        defaultAgentSelection: toDownstreamAgentSelection(agentConfig),
+      };
     } catch (error) {
       return this.params.recorder.fail(started, error, options?.agent);
     }
@@ -391,7 +407,7 @@ function isTypeDescriptor<T>(value: unknown): value is TypeDescriptor<T> {
 
 function resolveNamedRefs(
   store: SessionStore,
-  refs: Record<string, { sessionId: string; cellId: string } | { cell: { sessionId: string; cellId: string }; path: string }> | undefined,
+  refs: Record<string, RunRef | Ref> | undefined,
 ): Record<string, unknown> | undefined {
   if (!refs || Object.keys(refs).length === 0) {
     return undefined;
@@ -400,12 +416,14 @@ function resolveNamedRefs(
   return Object.fromEntries(
     Object.entries(refs).map(([name, ref]) => [
       name,
-      isValueRef(ref) ? store.readRef(ref) : store.readCell(ref),
+      isRef(ref)
+        ? publicKernelValueFromStored(store.readRef(ref) as KernelValue)
+        : store.getRun(ref),
     ]),
   );
 }
 
-function isValueRef(value: { sessionId: string; cellId: string } | { cell: { sessionId: string; cellId: string }; path: string }): value is { cell: { sessionId: string; cellId: string }; path: string } {
+function isRef(value: RunRef | Ref): value is Ref {
   return "path" in value;
 }
 

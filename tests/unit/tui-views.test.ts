@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { summarizeToolCallStart, summarizeToolCallUpdate } from "../../src/core/tool-call-preview.ts";
-import type { RenderedFrontendEventEnvelope } from "../../src/http/frontend-events.ts";
+import { createNanobossTuiTheme } from "@nanoboss/adapters-tui";
+import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
 import { reduceUiState } from "../../src/tui/reducer.ts";
 import { createInitialUiState } from "../../src/tui/state.ts";
-import { createNanobossTuiTheme } from "../../src/tui/theme.ts";
 import { NanobossAppView } from "../../src/tui/views.ts";
 
 function stripAnsi(text: string): string {
@@ -159,7 +159,7 @@ describe("NanobossAppView", () => {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
       statusLine: "[continuation] /simplify active - waiting for your reply",
-      pendingProcedureContinuation: {
+      pendingContinuation: {
         procedure: "simplify",
         question: "What would you like instead?",
       },
@@ -1011,8 +1011,8 @@ describe("NanobossAppView", () => {
             callPreview: { header: "callAgent: summarize the diff" },
             resultPreview: { bodyLines: ["stored result in cell-1"] },
             rawOutput: {
-              cell: { sessionId: "session-1", cellId: "cell-1" },
-              dataRef: { cell: { sessionId: "session-1", cellId: "cell-1" }, path: "data" },
+              run: { sessionId: "session-1", runId: "cell-1" },
+              dataRef: { run: { sessionId: "session-1", runId: "cell-1" }, path: "data" },
               expandedContent: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8",
             },
           },
@@ -1042,8 +1042,8 @@ describe("NanobossAppView", () => {
             callPreview: { header: "callAgent: summarize the diff" },
             resultPreview: { bodyLines: ["stored result in cell-1"] },
             rawOutput: {
-              cell: { sessionId: "session-1", cellId: "cell-1" },
-              dataRef: { cell: { sessionId: "session-1", cellId: "cell-1" }, path: "data" },
+              run: { sessionId: "session-1", runId: "cell-1" },
+              dataRef: { run: { sessionId: "session-1", runId: "cell-1" }, path: "data" },
               expandedContent: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8",
             },
           },
@@ -1145,7 +1145,7 @@ function createTranscriptContractState(mode: "live" | "restored") {
         procedure: "default",
         prompt: "review the repo",
         completedAt: new Date(1_000).toISOString(),
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         status: "complete",
       }),
     });
@@ -1201,7 +1201,7 @@ function createTranscriptContractReplayEvents(): RenderedFrontendEventEnvelope[]
       runId: "run-1",
       procedure: "default",
       completedAt: new Date(1_000).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
     }),
   ];
 }

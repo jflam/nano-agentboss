@@ -4,7 +4,7 @@ import type { RunLogger } from "./logger.ts";
 import type { SessionUpdateEmitter } from "./context-shared.ts";
 import { formatProcedureStatusText } from "./ui-cli.ts";
 import type { UiApi, UiCardParams, UiStatusParams } from "./ui-api.ts";
-import type { SessionStore } from "../session/index.ts";
+import type { SessionStore } from "@nanoboss/store";
 
 const NOTICE_LABELS = {
   info: "Info",
@@ -12,13 +12,13 @@ const NOTICE_LABELS = {
   error: "Error",
 } as const;
 
-type ActiveCell = ReturnType<SessionStore["startCell"]>;
+type ActiveRun = ReturnType<SessionStore["startRun"]>;
 type NoticeTone = keyof typeof NOTICE_LABELS;
 
 export class UiApiImpl implements UiApi {
   constructor(
     private readonly store: SessionStore,
-    private readonly cell: ActiveCell,
+    private readonly run: ActiveRun,
     private readonly logger: RunLogger,
     private readonly spanId: string,
     private readonly procedureName: string,
@@ -26,7 +26,7 @@ export class UiApiImpl implements UiApi {
   ) {}
 
   text(text: string): void {
-    this.store.appendStream(this.cell, text);
+    this.store.appendStream(this.run, text);
     this.log(text);
     this.emitter.emit({
       sessionUpdate: "agent_message_chunk",

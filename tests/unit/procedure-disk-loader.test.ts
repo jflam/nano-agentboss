@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadProcedureFromPath, persistProcedureSource } from "../../src/procedure/disk-loader.ts";
+import { loadProcedureFromPath, persistProcedureSource } from "@nanoboss/procedure-catalog";
 
 describe("procedure disk loader", () => {
   test("loads typia-based procedures through the runtime build pipeline", async () => {

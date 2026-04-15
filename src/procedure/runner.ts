@@ -4,60 +4,41 @@ import {
   type RunCancellationReason,
   normalizeRunCancelledError,
 } from "../core/cancellation.ts";
-import type { DefaultConversationSession } from "../agent/default-session.ts";
-import type { FrontendEvent } from "../http/frontend-events.ts";
 import { RunLogger } from "../core/logger.ts";
-import { inferDataShape } from "../core/data-shape.ts";
 import { formatErrorMessage } from "../core/error-format.ts";
+import { runResultFromRunRecord } from "../core/run-result.ts";
 import {
   promptInputDisplayText,
   promptInputToPlainText,
 } from "../core/prompt.ts";
 import {
   type SessionStore,
-  createValueRef,
   normalizeProcedureResult,
-} from "../session/index.ts";
+} from "@nanoboss/store";
 import { toDownstreamAgentSelection } from "../core/config.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "../core/timing-trace.ts";
 import { summarizeText } from "../util/text.ts";
+import type { AgentSession } from "../core/types.ts";
 import type {
   AgentTokenUsage,
-  CellRecord,
-  CellRef,
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   KernelValue,
-  Procedure,
-  ProcedurePause,
   PromptInput,
+  RunRef,
+} from "@nanoboss/contracts";
+import type {
+  Procedure,
   ProcedureRegistryLike,
-  ValueRef,
-} from "../core/types.ts";
-
-export interface ProcedureExecutionResult {
-  procedure: string;
-  cell: CellRef;
-  summary?: string;
-  display?: string;
-  memory?: string;
-  dataRef?: ValueRef;
-  displayRef?: ValueRef;
-  streamRef?: ValueRef;
-  pause?: ProcedurePause;
-  pauseRef?: ValueRef;
-  dataShape?: unknown;
-  explicitDataSchema?: object;
-  tokenUsage?: AgentTokenUsage;
-  defaultAgentSelection?: DownstreamAgentSelection;
-}
+  RunResult,
+} from "@nanoboss/procedure-sdk";
 
 export interface ProcedureRunnerEmitter extends SessionUpdateEmitter {
   readonly currentTokenUsage?: AgentTokenUsage;
 }
 
 export class TopLevelProcedureExecutionError extends Error {
-  constructor(message: string, readonly cell: CellRef) {
+  constructor(message: string, readonly run: RunRef) {
     super(message);
     this.name = "TopLevelProcedureExecutionError";
   }
@@ -66,7 +47,7 @@ export class TopLevelProcedureExecutionError extends Error {
 export class TopLevelProcedureCancelledError extends RunCancelledError {
   constructor(
     message: string,
-    readonly cell: CellRef,
+    readonly run: RunRef,
     reason: RunCancellationReason = "soft_stop",
   ) {
     super(message, reason);
@@ -85,7 +66,7 @@ export async function executeTopLevelProcedure(params: {
   emitter: ProcedureRunnerEmitter;
   signal?: AbortSignal;
   softStopSignal?: AbortSignal;
-  defaultConversation?: DefaultConversationSession;
+  agentSession?: AgentSession;
   getDefaultAgentConfig: () => DownstreamAgentConfig;
   setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
   prepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
@@ -97,13 +78,13 @@ export async function executeTopLevelProcedure(params: {
     prompt: string;
     state: KernelValue;
   };
-}): Promise<ProcedureExecutionResult> {
+}): Promise<RunResult> {
   const logger = new RunLogger();
   const rootSpanId = logger.newSpan();
   const promptInput = params.promptInput;
   const displayPrompt = promptInput ? promptInputDisplayText(promptInput) : params.prompt;
   const plainTextPrompt = promptInput ? promptInputToPlainText(promptInput) : params.prompt;
-  const rootCell = params.store.startCell({
+  const rootRun = params.store.startRun({
     procedure: params.procedure.name,
     input: displayPrompt,
     kind: "top_level",
@@ -122,11 +103,11 @@ export async function executeTopLevelProcedure(params: {
     spanId: rootSpanId,
     emitter: params.emitter,
     store: params.store,
-    cell: rootCell,
+    run: rootRun,
     promptInput,
     signal: params.signal,
     softStopSignal: params.softStopSignal,
-    defaultConversation: params.defaultConversation,
+    agentSession: params.agentSession,
     getDefaultAgentConfig: params.getDefaultAgentConfig,
     setDefaultAgentSelection: params.setDefaultAgentSelection,
     prepareDefaultPrompt: params.prepareDefaultPrompt,
@@ -151,10 +132,10 @@ export async function executeTopLevelProcedure(params: {
     const result = normalizeProcedureResult(rawResult);
     const afterSelection = toDownstreamAgentSelection(params.getDefaultAgentConfig());
     const changedSelection = sameSelection(beforeSelection, afterSelection) ? undefined : afterSelection;
-    const finalized = params.store.finalizeCell(rootCell, result, {
+    const finalized = params.store.completeRun(rootRun, result, {
       meta: changedSelection ? { defaultAgentSelection: changedSelection } : undefined,
     });
-    const record = params.store.readCell(finalized.cell);
+    const run = params.store.getRun(finalized.run);
 
     logger.write({
       spanId: rootSpanId,
@@ -165,9 +146,7 @@ export async function executeTopLevelProcedure(params: {
       raw: result.display,
     });
 
-    return buildProcedureExecutionResult({
-      sessionId: params.sessionId,
-      cell: record,
+    return runResultFromRunRecord(run, {
       tokenUsage: params.emitter.currentTokenUsage,
       defaultAgentSelection: changedSelection,
     });
@@ -185,11 +164,15 @@ export async function executeTopLevelProcedure(params: {
         error: cancelled.message,
       });
 
-      const finalized = params.store.finalizeCell(rootCell, {
+      const finalized = params.store.completeRun(rootRun, {
         display: cancelled.message,
         summary: summarizeText(cancelled.message),
       });
-      throw new TopLevelProcedureCancelledError(cancelled.message, finalized.cell, cancelled.reason);
+      throw new TopLevelProcedureCancelledError(
+        cancelled.message,
+        finalized.run,
+        cancelled.reason,
+      );
     }
 
     const message = formatErrorMessage(error);
@@ -204,101 +187,14 @@ export async function executeTopLevelProcedure(params: {
     });
 
     await params.onError?.(ctx, errorText);
-    const finalized = params.store.finalizeCell(rootCell, {
+    const finalized = params.store.completeRun(rootRun, {
       summary: summarizeText(errorText),
     });
-    throw new TopLevelProcedureExecutionError(message, finalized.cell);
+    throw new TopLevelProcedureExecutionError(message, finalized.run);
   } finally {
     await params.emitter.flush();
     logger.close();
   }
-}
-
-export function buildProcedureExecutionResult(params: {
-  sessionId: string;
-  cell: CellRecord;
-  tokenUsage?: AgentTokenUsage;
-  defaultAgentSelection?: DownstreamAgentSelection;
-}): ProcedureExecutionResult {
-  const cellRef = { sessionId: params.sessionId, cellId: params.cell.cellId };
-  return {
-    procedure: params.cell.procedure,
-    cell: cellRef,
-    summary: params.cell.output.summary,
-    display: params.cell.output.display,
-    memory: params.cell.output.memory,
-    dataRef: params.cell.output.data !== undefined ? createValueRef(cellRef, "output.data") : undefined,
-    displayRef: params.cell.output.display !== undefined ? createValueRef(cellRef, "output.display") : undefined,
-    streamRef: params.cell.output.stream !== undefined ? createValueRef(cellRef, "output.stream") : undefined,
-    pause: params.cell.output.pause,
-    pauseRef: params.cell.output.pause !== undefined ? createValueRef(cellRef, "output.pause") : undefined,
-    dataShape: params.cell.output.data !== undefined ? inferDataShape(params.cell.output.data) : undefined,
-    explicitDataSchema: params.cell.output.explicitDataSchema,
-    tokenUsage: params.tokenUsage,
-    defaultAgentSelection: params.defaultAgentSelection ?? params.cell.meta.defaultAgentSelection,
-  };
-}
-
-export function buildRunCompletedEvent(params: {
-  runId: string;
-  procedure: string;
-  result: Pick<ProcedureExecutionResult, "cell" | "summary" | "display">;
-  completedAt?: string;
-  tokenUsage?: AgentTokenUsage;
-}): Extract<FrontendEvent, { type: "run_completed" }> {
-  return {
-    type: "run_completed",
-    runId: params.runId,
-    procedure: params.procedure,
-    completedAt: params.completedAt ?? new Date().toISOString(),
-    cell: params.result.cell,
-    summary: params.result.summary,
-    display: params.result.display,
-    tokenUsage: params.tokenUsage,
-  };
-}
-
-export function buildRunCancelledEvent(params: {
-  runId: string;
-  procedure: string;
-  message: string;
-  cell?: CellRef;
-  completedAt?: string;
-}): Extract<FrontendEvent, { type: "run_cancelled" }> {
-  return {
-    type: "run_cancelled",
-    runId: params.runId,
-    procedure: params.procedure,
-    completedAt: params.completedAt ?? new Date().toISOString(),
-    message: params.message,
-    cell: params.cell,
-  };
-}
-
-export function buildRunPausedEvent(params: {
-  runId: string;
-  procedure: string;
-  result: Pick<ProcedureExecutionResult, "cell" | "display" | "pause">;
-  pausedAt?: string;
-  tokenUsage?: AgentTokenUsage;
-}): Extract<FrontendEvent, { type: "run_paused" }> {
-  if (!params.result.pause) {
-    throw new Error("Paused run event requires pause metadata.");
-  }
-
-  return {
-    type: "run_paused",
-    runId: params.runId,
-    procedure: params.procedure,
-    pausedAt: params.pausedAt ?? new Date().toISOString(),
-    cell: params.result.cell,
-    question: params.result.pause.question,
-    display: params.result.display,
-    inputHint: params.result.pause.inputHint,
-    suggestedReplies: params.result.pause.suggestedReplies,
-    continuationUi: params.result.pause.continuationUi,
-    tokenUsage: params.tokenUsage,
-  };
 }
 
 async function resumeTopLevelProcedure(

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import typia from "typia";
 
-import { DefaultConversationSession } from "../../src/agent/default-session.ts";
+import { createAgentSession, type CreateAgentSessionParams } from "@nanoboss/agent-acp";
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { resolveDownstreamAgentConfig } from "../../src/core/config.ts";
 import { RunLogger } from "../../src/core/logger.ts";
@@ -13,9 +13,10 @@ import {
   normalizePromptInput,
   promptInputDisplayText,
 } from "../../src/core/prompt.ts";
-import { jsonType, type DownstreamAgentConfig, type ProcedureApi, type PromptInput } from "../../src/core/types.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import { SessionStore } from "../../src/session/index.ts";
+import type { AgentSession } from "../../src/core/types.ts";
+import { jsonType, type DownstreamAgentConfig, type ProcedureApi, type PromptInput } from "@nanoboss/procedure-sdk";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import { SessionStore } from "@nanoboss/store";
 
 interface MathResult {
   result: number;
@@ -29,6 +30,7 @@ const MathResultType = jsonType<MathResult>(
   typia.json.schema<MathResult>(),
   typia.createValidate<MathResult>(),
 );
+const MOCK_AGENT_PATH = join(import.meta.dir, "..", "fixtures", "mock-agent.ts");
 
 const tempDirs: string[] = [];
 
@@ -143,6 +145,32 @@ describe("procedure API session namespaces", () => {
     expect(emittedUpdates).toEqual([]);
   });
 
+  test("fresh calls can resume a persisted isolated session when requested", async () => {
+    const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-mock-agent-store-"));
+    tempDirs.push(sessionStoreDir);
+    const { ctx } = createContext({
+      configOverride: {
+        env: {
+          MOCK_AGENT_SUPPORT_LOAD_SESSION: "1",
+          MOCK_AGENT_SESSION_STORE_DIR: sessionStoreDir,
+        },
+      },
+    });
+
+    const first = await ctx.agent.run("What is 2+2?", {
+      stream: false,
+    });
+    const persistedSessionId = first.tokenUsage?.sessionId;
+    const second = await ctx.agent.run("add 3 to result", {
+      stream: false,
+      persistedSessionId,
+    });
+
+    expect(first.data).toBe("4");
+    expect(typeof persistedSessionId).toBe("string");
+    expect(second.data).toBe("7");
+  });
+
   test("ctx.procedures.run inherits the current default-session binding by default", async () => {
     const { conversation, ctx, registry } = createContext();
     const prompts: string[] = [];
@@ -182,28 +210,30 @@ describe("procedure API session namespaces", () => {
   });
 
   test("ctx.procedures.run with session fresh gives the child a private default binding", async () => {
-    const { conversation, ctx, registry } = createContext();
+    const promptedSessions: AgentSession[] = [];
+    let rootSession: AgentSession | undefined;
+    const { conversation, ctx, registry } = createContext({
+      createAgentSession: (params) => {
+        const session = createAgentSession(params);
+        Reflect.set(
+          session as object,
+          "prompt",
+          async function prompt(this: AgentSession, promptText: string | PromptInput) {
+            promptedSessions.push(this);
+            return {
+              raw: `${toPromptText(promptText)} via ${this === rootSession ? "root" : "fresh"}`,
+              updates: [],
+              durationMs: 0,
+            };
+          },
+        );
+        rootSession ??= session;
+        return session;
+      },
+    });
     const rootConfigBefore = ctx.session.getDefaultAgentConfig();
-    const promptedConversations: DefaultConversationSession[] = [];
-    const originalPrompt = DefaultConversationSession.prototype.prompt;
 
     Reflect.set(conversation as object, "persistedSessionId", "default-session-root");
-
-    Reflect.set(
-      DefaultConversationSession.prototype as object,
-      "prompt",
-      async function prompt(
-        this: DefaultConversationSession,
-        promptText: string | PromptInput,
-      ) {
-        promptedConversations.push(this);
-        return {
-          raw: `${toPromptText(promptText)} via ${this === conversation ? "root" : "fresh"}`,
-          updates: [],
-          durationMs: 0,
-        };
-      },
-    );
 
     registry.register({
       name: "child",
@@ -228,41 +258,43 @@ describe("procedure API session namespaces", () => {
       },
     });
 
-    try {
-      const result = await ctx.procedures.run<{
-        reply: string;
-        selection: DownstreamAgentConfig;
-      }>("child", "private child session", { session: "fresh" });
+    const result = await ctx.procedures.run<{
+      reply: string;
+      selection: DownstreamAgentConfig;
+    }>("child", "private child session", { session: "fresh" });
 
-      expect(result.data?.reply).toBe("private child session via fresh");
-      expect(promptedConversations).toHaveLength(1);
-      expect(promptedConversations[0]).not.toBe(conversation);
-      expect(result.data?.selection.provider).toBe("codex");
-      expect(result.data?.selection.model).toBe("gpt-5.4/high");
-      expect(ctx.session.getDefaultAgentConfig()).toEqual(rootConfigBefore);
-    } finally {
-      Reflect.set(DefaultConversationSession.prototype as object, "prompt", originalPrompt);
-    }
+    expect(result.data?.reply).toBe("private child session via fresh");
+    expect(promptedSessions).toHaveLength(1);
+    expect(promptedSessions[0]).not.toBe(conversation);
+    expect(result.data?.selection.provider).toBe("codex");
+    expect(result.data?.selection.model).toBe("gpt-5.4/high");
+    expect(ctx.session.getDefaultAgentConfig()).toEqual(rootConfigBefore);
   });
 
   test("ctx.procedures.run with session default rebinds nested children to the master session", async () => {
-    const { conversation, ctx, registry } = createContext();
-    const promptedConversations: DefaultConversationSession[] = [];
-    const originalPrompt = DefaultConversationSession.prototype.prompt;
+    const promptedSessions: AgentSession[] = [];
+    let rootSession: AgentSession | undefined;
+    const { conversation, ctx, registry } = createContext({
+      createAgentSession: (params) => {
+        const session = createAgentSession(params);
+        Reflect.set(
+          session as object,
+          "prompt",
+          async function prompt(this: AgentSession) {
+            promptedSessions.push(this);
+            return {
+              raw: "master session reply",
+              updates: [],
+              durationMs: 0,
+            };
+          },
+        );
+        rootSession ??= session;
+        return session;
+      },
+    });
 
     Reflect.set(conversation as object, "persistedSessionId", "default-session-master");
-    Reflect.set(
-      DefaultConversationSession.prototype as object,
-      "prompt",
-      async function prompt(this: DefaultConversationSession) {
-        promptedConversations.push(this);
-        return {
-          raw: "master session reply",
-          updates: [],
-          durationMs: 0,
-        };
-      },
-    );
 
     registry.register({
       name: "inner",
@@ -288,20 +320,16 @@ describe("procedure API session namespaces", () => {
       },
     });
 
-    try {
-      const result = await ctx.procedures.run("outer", "", { session: "fresh" });
+    const result = await ctx.procedures.run("outer", "", { session: "fresh" });
 
-      expect(result.data).toBe("master session reply");
-      expect(promptedConversations).toEqual([conversation]);
-    } finally {
-      Reflect.set(DefaultConversationSession.prototype as object, "prompt", originalPrompt);
-    }
+    expect(result.data).toBe("master session reply");
+    expect(promptedSessions).toEqual([conversation]);
   });
 
   test("ctx.state owns durable run traversal while ctx.session owns live default-agent control", async () => {
     const { ctx, store } = createContext();
-    const otherTopLevel = store.finalizeCell(
-      store.startCell({
+    const otherTopLevel = store.completeRun(
+      store.startRun({
         procedure: "other-procedure",
         input: "other input",
         kind: "top_level",
@@ -311,16 +339,15 @@ describe("procedure API session namespaces", () => {
       },
     );
 
-    expect("recent" in ctx.session).toBe(false);
-    expect("topLevelRuns" in ctx.session).toBe(false);
+    expect("list" in ctx.session).toBe(false);
     expect("getDefaultAgentConfig" in ctx.state).toBe(false);
 
-    const latest = await ctx.state.runs.latest();
-    const topLevelRuns = await ctx.state.runs.topLevelRuns();
+    const recentRuns = await ctx.state.runs.list({ scope: "recent", limit: 1 });
+    const topLevelRuns = await ctx.state.runs.list();
 
     expect(ctx.session.getDefaultAgentConfig()).toEqual(createMockConfig(ctx.cwd));
-    expect(latest?.cell).toEqual(otherTopLevel.cell);
-    expect(topLevelRuns.map((run) => run.cell)).toContainEqual(otherTopLevel.cell);
+    expect(recentRuns[0]?.run).toEqual(otherTopLevel.run);
+    expect(topLevelRuns.map((run) => run.run)).toContainEqual(otherTopLevel.run);
   });
 
   test("failed typed image calls discard staged prompt attachments", async () => {
@@ -356,8 +383,10 @@ function createContext(options: {
     promptInput: PromptInput;
     markSubmitted?: () => void;
   };
+  createAgentSession?: (params: CreateAgentSessionParams) => AgentSession;
+  configOverride?: Partial<DownstreamAgentConfig>;
 } = {}): {
-  conversation: DefaultConversationSession;
+  conversation: AgentSession;
   ctx: ProcedureApi;
   emittedUpdates: acp.SessionUpdate[];
   registry: ProcedureRegistry;
@@ -375,8 +404,9 @@ function createContext(options: {
     rootDir: join(cwd, ".nanoboss", "sessions", "test-session"),
   });
   const emittedUpdates: acp.SessionUpdate[] = [];
-  let config = createMockConfig(cwd);
-  const conversation = new DefaultConversationSession({
+  let config = createMockConfig(cwd, options.configOverride);
+  const createSession = options.createAgentSession ?? createAgentSession;
+  const conversation = createSession({
     config,
   });
 
@@ -393,12 +423,12 @@ function createContext(options: {
       async flush() {},
     },
     store,
-    cell: store.startCell({
+    run: store.startRun({
       procedure: "test-procedure",
       input: "test",
       kind: "top_level",
     }),
-    defaultConversation: conversation,
+    agentSession: conversation,
     getDefaultAgentConfig: () => config,
     setDefaultAgentSelection: (selection) => {
       const nextConfig = resolveDownstreamAgentConfig(cwd, selection);
@@ -407,6 +437,7 @@ function createContext(options: {
       return nextConfig;
     },
     prepareDefaultPrompt: options.prepareDefaultPrompt,
+    createAgentSession: createSession,
   });
 
   return {
@@ -418,10 +449,14 @@ function createContext(options: {
   };
 }
 
-function createMockConfig(cwd: string): DownstreamAgentConfig {
+function createMockConfig(
+  cwd: string,
+  overrides: Partial<DownstreamAgentConfig> = {},
+): DownstreamAgentConfig {
   return {
     command: "bun",
-    args: ["run", "tests/fixtures/mock-agent.ts"],
     cwd,
+    ...overrides,
+    args: overrides.args ?? ["run", MOCK_AGENT_PATH],
   };
 }

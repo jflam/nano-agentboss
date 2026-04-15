@@ -5,8 +5,8 @@ import { afterEach, expect, test } from "bun:test";
 
 import { CommandContextImpl, type SessionUpdateEmitter } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import { SessionStore } from "../../src/session/index.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import { SessionStore } from "@nanoboss/store";
 import { describeE2E } from "./helpers.ts";
 
 const repoRoot = process.cwd();
@@ -45,7 +45,7 @@ describeE2E("/linter fixture (real agent)", () => {
         spanId: logger.newSpan(),
         emitter: createEmitter(output),
         store,
-        cell: store.startCell({
+        run: store.startRun({
           procedure: "linter",
           input: "",
           kind: "top_level",

@@ -4,8 +4,8 @@ import {
   createHttpSession,
   sendSessionPrompt,
   startSessionEventStream,
-} from "../../src/http/client.ts";
-import type { FrontendEventEnvelope } from "../../src/http/frontend-events.ts";
+  type FrontendEventEnvelope,
+} from "@nanoboss/adapters-http";
 import {
   reservePort,
   spawnNanoboss,

@@ -51,7 +51,7 @@ A file is treated as a procedure when it exports a default object with procedure
 That means this is a valid packaged procedure entrypoint:
 
 ```ts
-import type { Procedure } from "../../src/core/types.ts";
+import type { Procedure } from "@nanoboss/procedure-sdk";
 import { executeAutoresearchStartCommand } from "./runner.ts";
 
 export default {
@@ -85,9 +85,9 @@ export function chooseNextExperiment(): string {
 There are two ways procedure packages show up in nanoboss:
 
 1. **Disk-loaded procedures** live under a workspace or profile procedure root and are discovered automatically.
-2. **Built-in procedures** live in the repo and are imported explicitly from `src/procedure/registry.ts`.
+2. **Built-in procedures** live in the repo and are registered through `@nanoboss/procedure-catalog`.
 
-If you are adding a new built-in procedure package to nanoboss itself, create it under `procedures/` and update the builtin imports in `src/procedure/registry.ts`.
+If you are adding a new built-in procedure package to nanoboss itself, create it under `procedures/` and update the builtin imports in `packages/procedure-catalog`'s registry surface.
 
 ## Generated procedure layout
 

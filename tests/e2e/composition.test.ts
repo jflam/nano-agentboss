@@ -3,9 +3,9 @@ import typia from "typia";
 
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import { SessionStore } from "../../src/session/index.ts";
-import { jsonType, type Procedure } from "../../src/core/types.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import { SessionStore } from "@nanoboss/store";
+import { jsonType, type Procedure } from "@nanoboss/procedure-sdk";
 import { describeE2E } from "./helpers.ts";
 
 interface MathResult {
@@ -93,7 +93,7 @@ describeE2E("ctx.procedures.run composition (real agent)", () => {
           async flush() {},
         },
         store,
-        cell: store.startCell({
+        run: store.startRun({
           procedure: "quadruple",
           input: "5",
           kind: "top_level",

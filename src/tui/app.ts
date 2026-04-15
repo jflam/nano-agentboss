@@ -26,7 +26,7 @@ import {
 import type {
   DownstreamAgentSelection,
   DownstreamAgentProvider,
-  FrontendPendingProcedureContinuation,
+  FrontendContinuation,
   PromptInput,
   Simplify2CheckpointContinuationUi,
   Simplify2CheckpointContinuationUiAction,
@@ -123,12 +123,12 @@ export interface NanobossTuiAppDeps {
   now?: () => number;
 }
 
-type FrontendSimplify2CheckpointContinuation = FrontendPendingProcedureContinuation & {
-  continuationUi: Simplify2CheckpointContinuationUi;
+type FrontendSimplify2CheckpointContinuation = FrontendContinuation & {
+  ui: Simplify2CheckpointContinuationUi;
 };
 
-type FrontendSimplify2FocusPickerContinuation = FrontendPendingProcedureContinuation & {
-  continuationUi: Simplify2FocusPickerContinuationUi;
+type FrontendSimplify2FocusPickerContinuation = FrontendContinuation & {
+  ui: Simplify2FocusPickerContinuationUi;
 };
 
 const TOOL_OUTPUT_TOGGLE_COOLDOWN_MS = 150;
@@ -518,7 +518,7 @@ export class NanobossTuiApp {
   }
 
   private syncSimplify2ContinuationComposer(): void {
-    const continuation = getSimplify2Continuation(this.state.pendingProcedureContinuation);
+    const continuation = getSimplify2Continuation(this.state.pendingContinuation);
     const signature = continuation ? buildSimplify2ContinuationSignature(continuation) : undefined;
     if (signature !== this.lastSeenSimplify2ContinuationSignature) {
       this.lastSeenSimplify2ContinuationSignature = signature;
@@ -557,8 +557,8 @@ export class NanobossTuiApp {
     const component = new Simplify2ContinuationOverlay(
       this.tui as TUI,
       this.theme,
-      continuation.continuationUi.title,
-      continuation.continuationUi.actions,
+      continuation.ui.title,
+      continuation.ui.actions,
       (action) => {
         this.handleSimplify2ContinuationAction(action);
       },
@@ -577,8 +577,8 @@ export class NanobossTuiApp {
     const component = new Simplify2FocusPickerOverlay(
       this.tui as TUI,
       this.theme,
-      continuation.continuationUi.title,
-      continuation.continuationUi.entries,
+      continuation.ui.title,
+      continuation.ui.entries,
       (action) => {
         this.handleSimplify2FocusPickerAction(action);
       },
@@ -736,20 +736,20 @@ function textIndexToCursor(text: string, index: number): { line: number; col: nu
 }
 
 function getSimplify2Continuation(
-  continuation: FrontendPendingProcedureContinuation | undefined,
+  continuation: FrontendContinuation | undefined,
 ): FrontendSimplify2CheckpointContinuation | FrontendSimplify2FocusPickerContinuation | undefined {
   if (
     !continuation
     || continuation.procedure !== "simplify2"
     || (
-      continuation.continuationUi?.kind !== "simplify2_checkpoint"
-      && continuation.continuationUi?.kind !== "simplify2_focus_picker"
+      continuation.ui?.kind !== "simplify2_checkpoint"
+      && continuation.ui?.kind !== "simplify2_focus_picker"
     )
   ) {
     return undefined;
   }
 
-  return continuation.continuationUi.kind === "simplify2_checkpoint"
+  return continuation.ui.kind === "simplify2_checkpoint"
     ? continuation as FrontendSimplify2CheckpointContinuation
     : continuation as FrontendSimplify2FocusPickerContinuation;
 }
@@ -757,17 +757,17 @@ function getSimplify2Continuation(
 function isSimplify2CheckpointContinuation(
   continuation: FrontendSimplify2CheckpointContinuation | FrontendSimplify2FocusPickerContinuation,
 ): continuation is FrontendSimplify2CheckpointContinuation {
-  return continuation.continuationUi.kind === "simplify2_checkpoint";
+  return continuation.ui.kind === "simplify2_checkpoint";
 }
 
 function buildSimplify2ContinuationSignature(
-  continuation: FrontendPendingProcedureContinuation,
+  continuation: FrontendContinuation,
 ): string {
   return JSON.stringify({
     procedure: continuation.procedure,
     question: continuation.question,
     inputHint: continuation.inputHint,
     suggestedReplies: continuation.suggestedReplies,
-    continuationUi: continuation.continuationUi,
+    ui: continuation.ui,
   });
 }

@@ -3,6 +3,9 @@
   "module": "nanoboss.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "nanoboss": "bun run nanoboss.ts",
     "build": "bun run build.ts",
@@ -19,6 +22,17 @@
     "prepare": "ts-patch install"
   },
   "dependencies": {
+    "@nanoboss/adapters-acp-server": "workspace:*",
+    "@nanoboss/adapters-tui": "workspace:*",
+    "@nanoboss/adapters-mcp": "workspace:*",
+    "@nanoboss/adapters-http": "workspace:*",
+    "@nanoboss/agent-acp": "workspace:*",
+    "@nanoboss/app-runtime": "workspace:*",
+    "@nanoboss/contracts": "workspace:*",
+    "@nanoboss/procedure-engine": "workspace:*",
+    "@nanoboss/procedure-catalog": "workspace:*",
+    "@nanoboss/procedure-sdk": "workspace:*",
+    "@nanoboss/store": "workspace:*",
     "@agentclientprotocol/sdk": "^0.17.1",
     "@mariozechner/pi-tui": "0.65.2",
     "@ryoppippi/unplugin-typia": "^2.6.5",

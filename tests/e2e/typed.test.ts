@@ -6,9 +6,9 @@ import typia from "typia";
 
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
-import { jsonType, type ProcedureApi } from "../../src/core/types.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import { SessionStore } from "../../src/session/index.ts";
+import { jsonType, type ProcedureApi } from "@nanoboss/procedure-sdk";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import { SessionStore } from "@nanoboss/store";
 import { describeE2E } from "./helpers.ts";
 
 interface MathResult {
@@ -120,7 +120,7 @@ function createContext(): CommandContextImpl {
       async flush() {},
     },
     store,
-    cell: store.startCell({
+    run: store.startRun({
       procedure: "typed-e2e",
       input: "typed-e2e",
       kind: "top_level",

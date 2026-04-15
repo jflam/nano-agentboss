@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FrontendCommand, FrontendEventEnvelope } from "../../src/http/frontend-events.ts";
+import type { FrontendCommand, FrontendEventEnvelope } from "@nanoboss/adapters-http";
 import { NanobossTuiController, type SessionResponse } from "../../src/tui/controller.ts";
 import type { DownstreamAgentSelection, PromptInput } from "../../src/core/types.ts";
 
@@ -211,7 +211,7 @@ describe("NanobossTuiController", () => {
       runId: "run-2",
       procedure: "default",
       completedAt: new Date(3).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-2" },
+      run: { sessionId: "session-1", runId: "cell-2" },
     }));
 
     await waitFor(() => sendCalls.length === 3);
@@ -505,7 +505,7 @@ describe("NanobossTuiController", () => {
       runId: "run-1",
       procedure: "default",
       completedAt: new Date(1).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
     }));
 
     expect(controller.getState().inputDisabled).toBe(false);
@@ -565,7 +565,7 @@ describe("NanobossTuiController", () => {
     streams[0]?.emit(eventEnvelope("memory_cards", {
       runId: "run-1",
       cards: [{
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         procedure: "default",
         input: "hello",
         summary: "stored summary",
@@ -575,7 +575,7 @@ describe("NanobossTuiController", () => {
     streams[0]?.emit(eventEnvelope("memory_card_stored", {
       runId: "run-1",
       card: {
-        cell: { sessionId: "session-1", cellId: "cell-1" },
+        run: { sessionId: "session-1", runId: "cell-1" },
         procedure: "default",
         input: "hello",
         memory: "stored memory",
@@ -620,14 +620,14 @@ describe("NanobossTuiController", () => {
       runId: "run-1",
       procedure: "simplify",
       pausedAt: new Date(1).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
       question: "What would you like instead?",
       display: "Try deleting dead code first.\n\nWhat would you like instead?",
     }));
 
     expect(controller.getState().inputDisabled).toBe(false);
     expect(controller.getState().statusLine).toBe("[continuation] /simplify active - waiting for your reply");
-    expect(controller.getState().pendingProcedureContinuation).toEqual({
+    expect(controller.getState().pendingContinuation).toEqual({
       procedure: "simplify",
       question: "What would you like instead?",
       inputHint: undefined,
@@ -678,10 +678,10 @@ describe("NanobossTuiController", () => {
       runId: "run-1",
       procedure: "simplify2",
       pausedAt: new Date(1).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
       question: "Approve this simplify2 slice?",
       display: "paused",
-      continuationUi: {
+      ui: {
         kind: "simplify2_checkpoint",
         title: "Simplify2 checkpoint",
         actions: [
@@ -728,7 +728,7 @@ describe("NanobossTuiController", () => {
       continuation: {
         procedure: "simplify2",
         question: "Approve this simplify2 slice?",
-        continuationUi: {
+        ui: {
           kind: "simplify2_checkpoint",
           title: "Simplify2 checkpoint",
           actions: [
@@ -743,7 +743,7 @@ describe("NanobossTuiController", () => {
 
     expect(sendCalls).toEqual([]);
     expect(controller.getState().simplify2AutoApprove).toBe(true);
-    expect(controller.getState().pendingProcedureContinuation).toMatchObject({
+    expect(controller.getState().pendingContinuation).toMatchObject({
       procedure: "simplify2",
       question: "Approve this simplify2 slice?",
     });
@@ -779,10 +779,10 @@ describe("NanobossTuiController", () => {
       runId: "run-1",
       procedure: "simplify2",
       pausedAt: new Date(1).toISOString(),
-      cell: { sessionId: "session-1", cellId: "cell-1" },
+      run: { sessionId: "session-1", runId: "cell-1" },
       question: "Choose a focus",
       display: "paused",
-      continuationUi: {
+      ui: {
         kind: "simplify2_focus_picker",
         title: "Simplify2 focuses",
         entries: [
@@ -836,7 +836,7 @@ describe("NanobossTuiController", () => {
       continuation: {
         procedure: "simplify2",
         question: "Approve this simplify2 slice?",
-        continuationUi: {
+        ui: {
           kind: "simplify2_checkpoint",
           title: "Simplify2 checkpoint",
           actions: [

@@ -2,15 +2,15 @@ import { expect, test } from "bun:test";
 
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import { SessionStore } from "../../src/session/index.ts";
-import type { ValueRef } from "../../src/core/types.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import { SessionStore } from "@nanoboss/store";
+import type { Ref } from "../../src/core/types.ts";
 import { describeE2E } from "./helpers.ts";
 
 interface SecondOpinionData {
   subject: string;
-  answer: ValueRef;
-  critique: ValueRef;
+  answer: Ref;
+  critique: Ref;
   verdict: "sound" | "mixed" | "flawed";
 }
 
@@ -50,7 +50,7 @@ describeE2E("/second-opinion (real agents)", () => {
           async flush() {},
         },
         store,
-        cell: store.startCell({
+        run: store.startRun({
           procedure: "second-opinion",
           input: "What is 2 + 2? Reply with just the number.",
           kind: "top_level",

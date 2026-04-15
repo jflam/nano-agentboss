@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import simplifyProcedure from "../../procedures/simplify.ts";
 import type {
-  ProcedureApi,
   DownstreamAgentConfig,
+  ProcedureApi,
   ProcedureResult,
   RunResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 describe("simplify procedure", () => {
   test("starts paused with the first opportunity", async () => {
@@ -143,9 +143,9 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Pro
       throw new Error(`Unexpected callAgent #${callCount}`);
     }
     return {
-      cell: {
+      run: {
         sessionId: "test-session",
-        cellId: `agent-${callCount}`,
+        runId: `agent-${callCount}`,
       },
       data: next,
     } as RunResult;
@@ -162,28 +162,16 @@ function createMockContext(agentResults: unknown[], prompts: string[] = []): Pro
     },
   };
   const runs: ProcedureApi["state"]["runs"] = {
-    async recent() {
-      return [];
-    },
-    async latest() {
-      return undefined;
-    },
-    async topLevelRuns() {
+    async list() {
       return [];
     },
     async get() {
       throw new Error("Not implemented in test");
     },
-    async parent() {
-      return undefined;
-    },
-    async children() {
+    async getAncestors() {
       return [];
     },
-    async ancestors() {
-      return [];
-    },
-    async descendants() {
+    async getDescendants() {
       return [];
     },
   };

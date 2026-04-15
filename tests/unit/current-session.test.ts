@@ -6,10 +6,10 @@ import { afterEach, expect, test } from "bun:test";
 
 import { resolveWorkspaceKey } from "../../src/core/workspace-identity.ts";
 import {
-  readCurrentSessionMetadata,
-  readSessionMetadata,
-  writeSessionMetadata,
-} from "../../src/session/index.ts";
+  readCurrentWorkspaceSessionMetadata,
+  readStoredSessionMetadata,
+  writeStoredSessionMetadata,
+} from "@nanoboss/store";
 
 let tempHome: string | undefined;
 
@@ -27,8 +27,8 @@ test("derives the current session metadata from the stored session snapshot", ()
 
   try {
     const rootDir = join(tempHome, ".nanoboss", "sessions", "session-123");
-    const metadata = writeSessionMetadata({
-      sessionId: "session-123",
+    const metadata = writeStoredSessionMetadata({
+      session: { sessionId: "session-123" },
       cwd: "/repo",
       rootDir,
       createdAt: "2026-04-01T10:00:00.000Z",
@@ -36,9 +36,9 @@ test("derives the current session metadata from the stored session snapshot", ()
       initialPrompt: "review this patch",
     });
 
-    expect(readSessionMetadata("session-123", rootDir)).toEqual(metadata);
-    expect(readCurrentSessionMetadata("/repo")).toEqual(metadata);
-    expect(readCurrentSessionMetadata("/other-repo")).toBeUndefined();
+    expect(readStoredSessionMetadata("session-123", rootDir)).toEqual(metadata);
+    expect(readCurrentWorkspaceSessionMetadata("/repo")).toEqual(metadata);
+    expect(readCurrentWorkspaceSessionMetadata("/other-repo")).toBeUndefined();
   } finally {
     if (originalHome === undefined) {
       delete process.env.HOME;
@@ -54,24 +54,24 @@ test("keeps derived current session cache entries isolated by workspace", () => 
   process.env.HOME = tempHome;
 
   try {
-    writeSessionMetadata({
-      sessionId: "session-one",
+    writeStoredSessionMetadata({
+      session: { sessionId: "session-one" },
       cwd: "/repo-one",
       rootDir: join(tempHome, ".nanoboss", "sessions", "session-one"),
       createdAt: "2026-04-01T10:00:00.000Z",
       updatedAt: "2026-04-01T11:00:00.000Z",
     });
-    writeSessionMetadata({
-      sessionId: "session-two",
+    writeStoredSessionMetadata({
+      session: { sessionId: "session-two" },
       cwd: "/repo-two",
       rootDir: join(tempHome, ".nanoboss", "sessions", "session-two"),
       createdAt: "2026-04-01T12:00:00.000Z",
       updatedAt: "2026-04-01T13:00:00.000Z",
     });
 
-    expect(readCurrentSessionMetadata("/repo-one")?.sessionId).toBe("session-one");
-    expect(readCurrentSessionMetadata("/repo-two")?.sessionId).toBe("session-two");
-    expect(readCurrentSessionMetadata("/repo-three")).toBeUndefined();
+    expect(readCurrentWorkspaceSessionMetadata("/repo-one")?.session.sessionId).toBe("session-one");
+    expect(readCurrentWorkspaceSessionMetadata("/repo-two")?.session.sessionId).toBe("session-two");
+    expect(readCurrentWorkspaceSessionMetadata("/repo-three")).toBeUndefined();
   } finally {
     if (originalHome === undefined) {
       delete process.env.HOME;
@@ -88,23 +88,23 @@ test("round-trips continuation UI metadata through stored session snapshots", ()
 
   try {
     const rootDir = join(tempHome, ".nanoboss", "sessions", "session-ui");
-    const metadata = writeSessionMetadata({
-      sessionId: "session-ui",
+    const metadata = writeStoredSessionMetadata({
+      session: { sessionId: "session-ui" },
       cwd: "/repo",
       rootDir,
       createdAt: "2026-04-01T10:00:00.000Z",
       updatedAt: "2026-04-01T11:00:00.000Z",
-      pendingProcedureContinuation: {
+      pendingContinuation: {
         procedure: "simplify2",
-        cell: {
+        run: {
           sessionId: "session-ui",
-          cellId: "cell-1",
+          runId: "cell-1",
         },
         question: "Approve this simplify2 slice?",
         state: {
           step: 1,
         },
-        continuationUi: {
+        ui: {
           kind: "simplify2_checkpoint",
           title: "Simplify2 checkpoint",
           actions: [
@@ -115,8 +115,8 @@ test("round-trips continuation UI metadata through stored session snapshots", ()
       },
     });
 
-    expect(readSessionMetadata("session-ui", rootDir)).toEqual(metadata);
-    expect(readCurrentSessionMetadata("/repo")).toEqual(metadata);
+    expect(readStoredSessionMetadata("session-ui", rootDir)).toEqual(metadata);
+    expect(readCurrentWorkspaceSessionMetadata("/repo")).toEqual(metadata);
   } finally {
     if (originalHome === undefined) {
       delete process.env.HOME;
@@ -138,7 +138,7 @@ test("ignores current session workspace entries missing createdAt", () => {
       `${JSON.stringify({
         workspaces: {
           [resolveWorkspaceKey("/repo")]: {
-            sessionId: "session-123",
+            session: { sessionId: "session-123" },
             cwd: "/repo",
             rootDir: "/repo/.nanoboss/session-123",
             updatedAt: "2026-04-01T11:00:00.000Z",
@@ -148,7 +148,7 @@ test("ignores current session workspace entries missing createdAt", () => {
       "utf8",
     );
 
-    expect(readCurrentSessionMetadata("/repo")).toBeUndefined();
+    expect(readCurrentWorkspaceSessionMetadata("/repo")).toBeUndefined();
   } finally {
     if (originalHome === undefined) {
       delete process.env.HOME;
@@ -170,7 +170,7 @@ test("ignores current session cache entries when the canonical session snapshot 
       `${JSON.stringify({
         workspaces: {
           [resolveWorkspaceKey("/repo")]: {
-            sessionId: "session-missing",
+            session: { sessionId: "session-missing" },
             cwd: "/repo",
             rootDir: join(tempHome, ".nanoboss", "sessions", "session-missing"),
             createdAt: "2026-04-01T10:00:00.000Z",
@@ -181,7 +181,7 @@ test("ignores current session cache entries when the canonical session snapshot 
       "utf8",
     );
 
-    expect(readCurrentSessionMetadata("/repo")).toBeUndefined();
+    expect(readCurrentWorkspaceSessionMetadata("/repo")).toBeUndefined();
   } finally {
     if (originalHome === undefined) {
       delete process.env.HOME;

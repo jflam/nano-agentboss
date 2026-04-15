@@ -1,20 +1,20 @@
 import { inferDataShape, stringifyCompactShape } from "./data-shape.ts";
-import { createValueRef } from "../session/index.ts";
-import type { SessionStore } from "../session/index.ts";
-import type { CellRef, JsonValue, ValueRef } from "./types.ts";
+import type { SessionStore } from "@nanoboss/store";
+import type { JsonValue, Ref, RunRef } from "./types.ts";
+import { createRef } from "./types.ts";
 import { summarizeText } from "../util/text.ts";
 
 const DEFAULT_MAX_CARDS = 3;
 const RECENT_SCAN_LIMIT = 200;
 
 export interface ProcedureMemoryCard {
-  cell: CellRef;
+  run: RunRef;
   procedure: string;
   input: string;
   summary?: string;
   memory?: string;
-  dataRef?: ValueRef;
-  displayRef?: ValueRef;
+  dataRef?: Ref;
+  displayRef?: Ref;
   dataShape?: JsonValue;
   dataPreview?: string;
   explicitDataSchema?: object;
@@ -23,19 +23,23 @@ export interface ProcedureMemoryCard {
 
 export function collectUnsyncedProcedureMemoryCards(
   store: SessionStore,
-  syncedCellIds: ReadonlySet<string>,
+  syncedRunIds: ReadonlySet<string>,
   options: { maxCards?: number } = {},
 ): ProcedureMemoryCard[] {
   const maxCards = options.maxCards ?? DEFAULT_MAX_CARDS;
-  const summaries = store.topLevelRuns({ limit: RECENT_SCAN_LIMIT });
+  const summaries = store.listRuns({ limit: RECENT_SCAN_LIMIT });
   const unsynced: ProcedureMemoryCard[] = [];
 
   for (const summary of summaries) {
-    if (syncedCellIds.has(summary.cell.cellId)) {
+    if (syncedRunIds.has(summary.run.runId)) {
       continue;
     }
 
-    const card = materializeProcedureMemoryCard(store, summary.cell, summary.dataShape);
+    const card = materializeProcedureMemoryCard(
+      store,
+      summary.run,
+      summary.dataShape,
+    );
     if (!card) {
       continue;
     }
@@ -52,24 +56,24 @@ export function collectUnsyncedProcedureMemoryCards(
 
 export function materializeProcedureMemoryCard(
   store: SessionStore,
-  cell: CellRef,
+  run: RunRef,
   dataShape?: JsonValue,
 ): ProcedureMemoryCard | undefined {
-  const record = store.readCell(cell);
+  const record = store.getRun(run);
   if (record.procedure === "default") {
     return undefined;
   }
 
   const memory = deriveProcedureMemory(record.output.memory, record.output.summary, record.output.display);
   const dataRef = record.output.data !== undefined
-    ? createValueRef(cell, "output.data")
+    ? createRef(run, "output.data")
     : undefined;
   const displayRef = record.output.display !== undefined
-    ? createValueRef(cell, "output.display")
+    ? createRef(run, "output.display")
     : undefined;
 
   return {
-    cell,
+    run,
     procedure: record.procedure,
     input: record.input,
     summary: record.output.summary,
@@ -115,11 +119,11 @@ export function renderProcedureMemoryCardLines(card: ProcedureMemoryCard): strin
   }
 
   if (card.dataRef) {
-    lines.push(`- result_ref: ${formatValueRef(card.dataRef)}`);
+    lines.push(`- result_ref: ${formatRef(card.dataRef)}`);
   }
 
   if (card.displayRef) {
-    lines.push(`- display_ref: ${formatValueRef(card.displayRef)}`);
+    lines.push(`- display_ref: ${formatRef(card.displayRef)}`);
   }
 
   if (card.dataPreview) {
@@ -140,8 +144,8 @@ export function renderProcedureMemoryCardLines(card: ProcedureMemoryCard): strin
 }
 
 export function hasTopLevelNonDefaultProcedureHistory(store: SessionStore): boolean {
-  return store.topLevelRuns({ limit: RECENT_SCAN_LIMIT }).some((summary) => {
-    const record = store.readCell(summary.cell);
+  return store.listRuns({ limit: RECENT_SCAN_LIMIT }).some((summary) => {
+    const record = store.getRun(summary.run);
     return record.procedure !== "default";
   });
 }
@@ -183,10 +187,10 @@ function buildDataPreview(data: unknown): string | undefined {
   return summarizeText(JSON.stringify(Object.fromEntries(entries)), 220);
 }
 
-function formatValueRef(valueRef: ValueRef): string {
+function formatRef(ref: Ref): string {
   return [
-    `session=${valueRef.cell.sessionId}`,
-    `cell=${valueRef.cell.cellId}`,
-    `path=${valueRef.path}`,
+    `session=${ref.run.sessionId}`,
+    `run=${ref.run.runId}`,
+    `path=${ref.path}`,
   ].join(" ");
 }

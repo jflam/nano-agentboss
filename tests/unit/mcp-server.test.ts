@@ -6,10 +6,11 @@ import { join } from "node:path";
 import {
   callMcpTool,
   listMcpTools,
-} from "../../src/mcp/server.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+} from "@nanoboss/adapters-mcp";
+import { createRef } from "../../src/core/types.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { createNanobossRuntimeService } from "../../src/runtime/service.ts";
-import { SessionStore } from "../../src/session/index.ts";
+import { SessionStore } from "@nanoboss/store";
 
 const tempDirs: string[] = [];
 const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
@@ -72,35 +73,35 @@ function seedSession(rootDir: string) {
     rootDir,
   });
 
-  const reviewCell = store.startCell({
+  const reviewCell = store.startRun({
     procedure: "second-opinion",
     input: "review the code",
     kind: "top_level",
   });
   reviewCell.meta.createdAt = "2026-04-01T10:00:00.000Z";
-  const planCell = store.startCell({
+  const planCell = store.startRun({
     procedure: "review-plan",
     input: "collect the main issues",
     kind: "procedure",
-    parentCellId: reviewCell.cell.cellId,
+    parentRunId: reviewCell.run.runId,
   });
   planCell.meta.createdAt = "2026-04-01T10:00:01.000Z";
-  const critiqueCell = store.startCell({
+  const critiqueCell = store.startRun({
     procedure: "callAgent",
     input: "critique the code",
     kind: "agent",
-    parentCellId: planCell.cell.cellId,
+    parentRunId: planCell.run.runId,
   });
   critiqueCell.meta.createdAt = "2026-04-01T10:00:02.000Z";
-  const summaryCell = store.startCell({
+  const summaryCell = store.startRun({
     procedure: "callAgent",
     input: "summarize the review",
     kind: "agent",
-    parentCellId: reviewCell.cell.cellId,
+    parentRunId: reviewCell.run.runId,
   });
   summaryCell.meta.createdAt = "2026-04-01T10:00:03.000Z";
 
-  const critiqueResult = store.finalizeCell(critiqueCell, {
+  const critiqueResult = store.completeRun(critiqueCell, {
     data: {
       verdict: "mixed",
       issues: ["missing evidence"],
@@ -108,7 +109,7 @@ function seedSession(rootDir: string) {
     display: "critique display",
     summary: "critique summary",
   });
-  const planResult = store.finalizeCell(planCell, {
+  const planResult = store.completeRun(planCell, {
     data: {
       critique: expectDefined(critiqueResult.dataRef, "Expected critique dataRef"),
       steps: ["inspect diff", "check tests"],
@@ -116,14 +117,14 @@ function seedSession(rootDir: string) {
     display: "plan display",
     summary: "plan summary",
   });
-  const summaryResult = store.finalizeCell(summaryCell, {
+  const summaryResult = store.completeRun(summaryCell, {
     data: {
       outline: "review outline",
     },
     display: "summary display",
     summary: "summary summary",
   });
-  const reviewResult = store.finalizeCell(reviewCell, {
+  const reviewResult = store.completeRun(reviewCell, {
     data: {
       subject: "review the code",
       plan: expectDefined(planResult.dataRef, "Expected plan dataRef"),
@@ -144,9 +145,9 @@ function seedSession(rootDir: string) {
     },
   });
 
-  store.finalizeCell(
+  store.completeRun(
     (() => {
-      const linterCell = store.startCell({
+      const linterCell = store.startRun({
         procedure: "linter",
         input: "lint the repo",
         kind: "top_level",
@@ -235,9 +236,10 @@ describe("nanoboss MCP server", () => {
       rootDir,
     });
 
-    const recent = await callMcpTool(runtime, "session_recent", {
+    const recent = await callMcpTool(runtime, "list_runs", {
       procedure: "second-opinion",
       limit: 5,
+      scope: "recent",
     }) as Array<{
       summary?: string;
       memory?: string;
@@ -250,69 +252,69 @@ describe("nanoboss MCP server", () => {
     expect(recent[0]?.kind).toBe("top_level");
     expect(recent[0]?.dataShape).toEqual({
       subject: "string",
-      plan: "ValueRef",
-      summary: "ValueRef",
+      plan: "Ref",
+      summary: "Ref",
       verdict: "mixed",
     });
 
-    expect((await callMcpTool(runtime, "top_level_runs", {}) as Array<{ procedure: string }>).map((item) => item.procedure)).toEqual([
+    expect((await callMcpTool(runtime, "list_runs", {}) as Array<{ procedure: string }>).map((item) => item.procedure)).toEqual([
       "linter",
       "second-opinion",
     ]);
-    expect((await callMcpTool(runtime, "cell_ancestors", {
-      cellRef: critiqueResult.cell,
-    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
-      planResult.cell.cellId,
-      reviewResult.cell.cellId,
+    expect((await callMcpTool(runtime, "get_run_ancestors", {
+      runRef: critiqueResult.run,
+    }) as Array<{ run: { runId: string } }>).map((item) => item.run.runId)).toEqual([
+      expectDefined(planResult.run, "Expected plan run").runId,
+      expectDefined(reviewResult.run, "Expected review run").runId,
     ]);
-    expect((await callMcpTool(runtime, "cell_ancestors", {
-      cellRef: critiqueResult.cell,
+    expect((await callMcpTool(runtime, "get_run_ancestors", {
+      runRef: critiqueResult.run,
       limit: 1,
-    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
-      planResult.cell.cellId,
+    }) as Array<{ run: { runId: string } }>).map((item) => item.run.runId)).toEqual([
+      expectDefined(planResult.run, "Expected plan run").runId,
     ]);
-    expect((await callMcpTool(runtime, "cell_ancestors", {
-      cellRef: critiqueResult.cell,
+    expect((await callMcpTool(runtime, "get_run_ancestors", {
+      runRef: critiqueResult.run,
       includeSelf: true,
       limit: 2,
-    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
-      critiqueResult.cell.cellId,
-      planResult.cell.cellId,
+    }) as Array<{ run: { runId: string } }>).map((item) => item.run.runId)).toEqual([
+      expectDefined(critiqueResult.run, "Expected critique run").runId,
+      expectDefined(planResult.run, "Expected plan run").runId,
     ]);
-    expect((await callMcpTool(runtime, "cell_descendants", {
-      cellRef: reviewResult.cell,
-    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
-      planResult.cell.cellId,
-      critiqueResult.cell.cellId,
-      summaryResult.cell.cellId,
+    expect((await callMcpTool(runtime, "get_run_descendants", {
+      runRef: reviewResult.run,
+    }) as Array<{ run: { runId: string } }>).map((item) => item.run.runId)).toEqual([
+      expectDefined(planResult.run, "Expected plan run").runId,
+      expectDefined(critiqueResult.run, "Expected critique run").runId,
+      expectDefined(summaryResult.run, "Expected summary run").runId,
     ]);
-    expect((await callMcpTool(runtime, "cell_descendants", {
-      cellRef: reviewResult.cell,
+    expect((await callMcpTool(runtime, "get_run_descendants", {
+      runRef: reviewResult.run,
       kind: "agent",
-    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
-      critiqueResult.cell.cellId,
-      summaryResult.cell.cellId,
+    }) as Array<{ run: { runId: string } }>).map((item) => item.run.runId)).toEqual([
+      expectDefined(critiqueResult.run, "Expected critique run").runId,
+      expectDefined(summaryResult.run, "Expected summary run").runId,
     ]);
-    expect((await callMcpTool(runtime, "cell_descendants", {
-      cellRef: reviewResult.cell,
+    expect((await callMcpTool(runtime, "get_run_descendants", {
+      runRef: reviewResult.run,
       maxDepth: 1,
-    }) as Array<{ cell: { cellId: string } }>).map((item) => item.cell.cellId)).toEqual([
-      planResult.cell.cellId,
-      summaryResult.cell.cellId,
+    }) as Array<{ run: { runId: string } }>).map((item) => item.run.runId)).toEqual([
+      expectDefined(planResult.run, "Expected plan run").runId,
+      expectDefined(summaryResult.run, "Expected summary run").runId,
     ]);
 
-    expect((await callMcpTool(runtime, "cell_get", {
-      cellRef: reviewResult.cell,
+    expect((await callMcpTool(runtime, "get_run", {
+      runRef: reviewResult.run,
     }) as { output: { summary?: string } }).output.summary).toBe("review summary");
 
-    const reviewDataRef = expectDefined(reviewResult.dataRef, "Expected review dataRef");
-    const manifest = await callMcpTool(runtime, "ref_read", {
-      valueRef: reviewDataRef,
+    const reviewDataRef = createRef(reviewResult.run, "output.data");
+    const manifest = await callMcpTool(runtime, "read_ref", {
+      ref: reviewDataRef,
     });
     expect(manifest).toEqual({
       subject: "review the code",
-      plan: planResult.dataRef,
-      summary: summaryResult.dataRef,
+      plan: planResult.dataRef ? createRef(planResult.run, "output.data") : undefined,
+      summary: summaryResult.dataRef ? createRef(summaryResult.run, "output.data") : undefined,
       verdict: "mixed",
     });
 
@@ -320,36 +322,36 @@ describe("nanoboss MCP server", () => {
       (manifest as { plan?: typeof planResult.dataRef }).plan,
       "Expected plan ref in manifest",
     );
-    expect(await callMcpTool(runtime, "ref_read", {
-      valueRef: planRef,
+    expect(await callMcpTool(runtime, "read_ref", {
+      ref: planRef,
     })).toEqual({
-      critique: critiqueResult.dataRef,
+      critique: critiqueResult.dataRef ? createRef(critiqueResult.run, "output.data") : undefined,
       steps: ["inspect diff", "check tests"],
     });
     const summaryRef = expectDefined(
       (manifest as { summary?: typeof summaryResult.dataRef }).summary,
       "Expected summary ref in manifest",
     );
-    expect(await callMcpTool(runtime, "ref_read", {
-      valueRef: summaryRef,
+    expect(await callMcpTool(runtime, "read_ref", {
+      ref: summaryRef,
     })).toEqual({
       outline: "review outline",
     });
 
-    expect((await callMcpTool(runtime, "ref_stat", {
-      valueRef: reviewDataRef,
+    expect((await callMcpTool(runtime, "stat_ref", {
+      ref: reviewDataRef,
     }) as { type?: string }).type).toBe("object");
 
-    const schema = await callMcpTool(runtime, "get_schema", {
-      cellRef: reviewResult.cell,
+    const schema = await callMcpTool(runtime, "get_run_schema", {
+      runRef: reviewResult.run,
     }) as {
       dataShape?: unknown;
       explicitDataSchema?: unknown;
     };
     expect(schema.dataShape).toEqual({
       subject: "string",
-      plan: "ValueRef",
-      summary: "ValueRef",
+      plan: "Ref",
+      summary: "Ref",
       verdict: "mixed",
     });
     expect(schema.explicitDataSchema).toEqual({
@@ -368,7 +370,7 @@ describe("nanoboss MCP server", () => {
       cwd: process.cwd(),
     });
 
-    await expect(callMcpTool(runtime, "top_level_runs", {})).rejects.toThrow(
+    await expect(callMcpTool(runtime, "list_runs", {})).rejects.toThrow(
       "Nanoboss MCP requires an explicit sessionId or a current session for the server working directory.",
     );
   });
@@ -386,14 +388,22 @@ describe("nanoboss MCP server", () => {
     });
 
     const toolNames = listMcpTools().map((tool) => tool.name);
-    expect(toolNames).toContain("top_level_runs");
-    expect(toolNames).toContain("cell_ancestors");
-    expect(toolNames).toContain("cell_descendants");
-    expect(toolNames).toContain("cell_get");
-    expect(toolNames).toContain("ref_read");
+    expect(toolNames).toContain("list_runs");
+    expect(toolNames).toContain("get_run_ancestors");
+    expect(toolNames).toContain("get_run_descendants");
+    expect(toolNames).toContain("get_run");
+    expect(toolNames).toContain("read_ref");
+    expect(toolNames).toContain("stat_ref");
+    expect(toolNames).toContain("get_ref_schema");
+    expect(toolNames).toContain("get_run_schema");
     expect(toolNames).not.toContain("session_last");
+    expect(toolNames).not.toContain("session_recent");
     expect(toolNames).not.toContain("cell_parent");
     expect(toolNames).not.toContain("cell_children");
+    expect(toolNames).not.toContain("top_level_runs");
+    expect(toolNames).not.toContain("cell_ancestors");
+    expect(toolNames).not.toContain("cell_descendants");
+    expect(toolNames).not.toContain("cell_get");
 
     expect(toolNames).toContain("procedure_list");
     expect(toolNames).toContain("procedure_get");
@@ -402,8 +412,8 @@ describe("nanoboss MCP server", () => {
     expect(toolNames).toContain("procedure_dispatch_wait");
 
     expect(
-      await callMcpTool(runtime, "cell_ancestors", {
-        cellRef: critiqueResult.cell,
+      await callMcpTool(runtime, "get_run_ancestors", {
+        runRef: critiqueResult.run,
         limit: 1,
       }),
     ).toMatchObject([
@@ -411,8 +421,8 @@ describe("nanoboss MCP server", () => {
     ]);
 
     expect(
-      await callMcpTool(runtime, "cell_descendants", {
-        cellRef: reviewResult.cell,
+      await callMcpTool(runtime, "get_run_descendants", {
+        runRef: reviewResult.run,
         kind: "agent",
       }),
     ).toMatchObject([
@@ -572,12 +582,11 @@ describe("nanoboss MCP server", () => {
       dispatchId: string;
       status: string;
       result?: {
-        procedure: string;
-        cell: { sessionId: string; cellId: string };
+        run: { sessionId: string; runId: string };
         summary?: string;
         display?: string;
         memory?: string;
-        dataRef?: { cell: { sessionId: string; cellId: string }; path: string };
+        dataRef?: { run: { sessionId: string; runId: string }; path: string };
         dataShape?: { subject: string; verdict: string };
       };
     };
@@ -590,7 +599,6 @@ describe("nanoboss MCP server", () => {
     }
 
     expect(completed.result).toMatchObject({
-      procedure: "review",
       summary: "review patch",
       display: "reviewed: patch\n",
       memory: "Reviewed patch.",
@@ -602,20 +610,20 @@ describe("nanoboss MCP server", () => {
 
     const dispatched = expectDefined(completed.result, "Expected completed async dispatch result");
     expect(dispatched.dataRef).toBeDefined();
-    expect(await callMcpTool(runtime, "top_level_runs", {
+    expect(await callMcpTool(runtime, "list_runs", {
       procedure: "review",
     })).toMatchObject([
       {
-        cell: dispatched.cell,
+        run: expectDefined(dispatched.run, "Expected dispatched run"),
         procedure: "review",
         summary: "review patch",
       },
     ]);
-    expect((await callMcpTool(runtime, "cell_get", {
-      cellRef: dispatched.cell,
+    expect((await callMcpTool(runtime, "get_run", {
+      runRef: expectDefined(dispatched.run, "Expected dispatched run"),
     }) as { meta: { dispatchCorrelationId?: string } }).meta.dispatchCorrelationId).toBe(dispatchCorrelationId);
-    expect(dispatched.dataRef ? await callMcpTool(runtime, "ref_read", {
-      valueRef: dispatched.dataRef,
+    expect(dispatched.dataRef ? await callMcpTool(runtime, "read_ref", {
+      ref: dispatched.dataRef,
     }) : undefined).toEqual({
       subject: "patch",
       verdict: "mixed",

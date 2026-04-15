@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import modelProcedure from "../../procedures/model.ts";
-import type { ProcedureApi, DownstreamAgentConfig } from "../../src/core/types.ts";
+import type { DownstreamAgentConfig, ProcedureApi } from "@nanoboss/procedure-sdk";
 
 describe("/model command", () => {
   test("shows the last observed default-session context window when available", async () => {
@@ -36,28 +36,16 @@ function createMockContext(): ProcedureApi {
     },
   };
   const runs: ProcedureApi["state"]["runs"] = {
-    async recent() {
-      return [];
-    },
-    async latest() {
-      return undefined;
-    },
-    async topLevelRuns() {
+    async list() {
       return [];
     },
     async get() {
       throw new Error("Not implemented in test");
     },
-    async parent() {
-      return undefined;
-    },
-    async children() {
+    async getAncestors() {
       return [];
     },
-    async ancestors() {
-      return [];
-    },
-    async descendants() {
+    async getDescendants() {
       return [];
     },
   };

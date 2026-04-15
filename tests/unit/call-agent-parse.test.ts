@@ -8,7 +8,8 @@ import {
   parseAgentResponse,
   sanitizeJsonResponse,
 } from "../../src/agent/call-agent.ts";
-import { jsonType, type CallAgentTransport } from "../../src/core/types.ts";
+import type { CallAgentTransport } from "../../src/core/types.ts";
+import { jsonType } from "@nanoboss/procedure-sdk";
 
 interface MathResult {
   result: number;

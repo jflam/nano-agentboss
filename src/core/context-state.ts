@@ -1,15 +1,18 @@
 import type {
-  CellAncestorsOptions,
-  CellDescendantsOptions,
-  CellRef,
+  KernelValue,
+  Ref,
+  RunListOptions,
   RefsApi,
-  SessionRecentOptions,
+  RunAncestorsOptions,
+  RunDescendantsOptions,
+  RunRef,
+  RunRecord,
+  RunSummary,
   StateApi,
   StateRunsApi,
-  TopLevelRunsOptions,
-  ValueRef,
 } from "./types.ts";
-import type { SessionStore } from "../session/index.ts";
+import type { SessionStore } from "@nanoboss/store";
+import { publicKernelValueFromStored } from "./types.ts";
 
 export class CommandRefs implements RefsApi {
   constructor(
@@ -17,61 +20,42 @@ export class CommandRefs implements RefsApi {
     private readonly cwd: string,
   ) {}
 
-  async read<T>(valueRef: ValueRef): Promise<T> {
-    return this.store.readRef(valueRef) as T;
+  async read<T>(ref: Ref): Promise<T> {
+    return publicKernelValueFromStored(this.store.readRef(ref) as KernelValue) as T;
   }
 
-  async stat(valueRef: ValueRef) {
-    return this.store.statRef(valueRef);
+  async stat(ref: Ref) {
+    return this.store.statRef(ref);
   }
 
-  async writeToFile(valueRef: ValueRef, path: string): Promise<void> {
-    this.store.writeRefToFile(valueRef, path, this.cwd);
+  async writeToFile(ref: Ref, path: string): Promise<void> {
+    this.store.writeRefToFile(ref, path, this.cwd);
   }
 }
 
 export class CommandRuns implements StateRunsApi {
   constructor(
     private readonly store: SessionStore,
-    private readonly currentCellId: string,
+    private readonly currentRunId: string,
   ) {}
 
-  async recent(options?: SessionRecentOptions) {
-    return this.store.recent({
-      ...options,
-      excludeCellId: this.currentCellId,
-    });
+  async list(options: RunListOptions = {}): Promise<RunSummary[]> {
+    const runs = this.store.listRuns(options);
+    return options.scope === "recent"
+      ? runs.filter((summary) => summary.run.runId !== this.currentRunId)
+      : runs;
   }
 
-  async latest(options?: SessionRecentOptions) {
-    return this.store.latest({
-      ...options,
-      excludeCellId: this.currentCellId,
-    });
+  async get(run: RunRef): Promise<RunRecord> {
+    return this.store.getRun(run);
   }
 
-  async topLevelRuns(options?: TopLevelRunsOptions) {
-    return this.store.topLevelRuns(options);
+  async getAncestors(run: RunRef, options?: RunAncestorsOptions): Promise<RunSummary[]> {
+    return this.store.getRunAncestors(run, options);
   }
 
-  async get(cellRef: CellRef) {
-    return this.store.readCell(cellRef);
-  }
-
-  async parent(cellRef: CellRef) {
-    return this.store.parent(cellRef);
-  }
-
-  async children(cellRef: CellRef, options?: Omit<CellDescendantsOptions, "maxDepth">) {
-    return this.store.children(cellRef, options);
-  }
-
-  async ancestors(cellRef: CellRef, options?: CellAncestorsOptions) {
-    return this.store.ancestors(cellRef, options);
-  }
-
-  async descendants(cellRef: CellRef, options?: CellDescendantsOptions) {
-    return this.store.descendants(cellRef, options);
+  async getDescendants(run: RunRef, options?: RunDescendantsOptions): Promise<RunSummary[]> {
+    return this.store.getRunDescendants(run, options);
   }
 }
 
@@ -79,8 +63,8 @@ export class CommandState implements StateApi {
   readonly refs: RefsApi;
   readonly runs: StateRunsApi;
 
-  constructor(store: SessionStore, cwd: string, currentCellId: string) {
+  constructor(store: SessionStore, cwd: string, currentRunId: string) {
     this.refs = new CommandRefs(store, cwd);
-    this.runs = new CommandRuns(store, currentCellId);
+    this.runs = new CommandRuns(store, currentRunId);
   }
 }

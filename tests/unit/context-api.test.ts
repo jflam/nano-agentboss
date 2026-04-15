@@ -5,9 +5,9 @@ import { join } from "node:path";
 
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
-import { SessionStore } from "../../src/session/index.ts";
-import type { DownstreamAgentConfig, DownstreamAgentSelection, ProcedureApi } from "../../src/core/types.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
+import { SessionStore } from "@nanoboss/store";
+import type { DownstreamAgentConfig, DownstreamAgentSelection, ProcedureApi } from "@nanoboss/procedure-sdk";
 
 const tempDirs: string[] = [];
 
@@ -48,8 +48,7 @@ describe("procedure API surface", () => {
     expect(ctx.session).toBeDefined();
     expect(ctx.state.refs).toBeDefined();
     expect(ctx.state.runs).toBeDefined();
-    expect("recent" in ctx.session).toBe(false);
-    expect("topLevelRuns" in ctx.session).toBe(false);
+    expect("list" in ctx.session).toBe(false);
     expect("getDefaultAgentConfig" in ctx.state).toBe(false);
     expect(ctx.session.getDefaultAgentConfig()).toEqual(expectedConfig);
     expect(ctx.session.setDefaultAgentSelection({ provider: "copilot", model: "gpt-5.4/xhigh" })).toEqual({
@@ -66,9 +65,9 @@ describe("procedure API surface", () => {
     Reflect.set(ctx.agent as object, "run", async (...args: unknown[]) => {
       captured.push(args);
       return {
-        cell: {
+        run: {
           sessionId: "session",
-          cellId: "agent-2",
+          runId: "agent-2",
         },
         data: "bound",
       };
@@ -113,7 +112,7 @@ function createContext(overrides: {
       async flush() {},
     },
     store,
-    cell: store.startCell({
+    run: store.startRun({
       procedure: "default",
       input: "hello",
       kind: "top_level",
