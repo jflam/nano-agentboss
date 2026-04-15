@@ -29,6 +29,7 @@ interface ContextSessionApiImplParams {
   current: SessionBindingSource;
   root: SessionBindingSource;
   createAgentSession?: CreateAgentSession;
+  isAutoApproveEnabled?: () => boolean;
 }
 
 export class ContextSessionApiImpl implements SessionApi {
@@ -51,6 +52,10 @@ export class ContextSessionApiImpl implements SessionApi {
       await this.params.current.agentSession?.getCurrentTokenSnapshot(),
       this.getDefaultAgentConfig(),
     );
+  }
+
+  isAutoApproveEnabled(): boolean {
+    return this.params.isAutoApproveEnabled?.() === true;
   }
 
   createCallAgentTransport(

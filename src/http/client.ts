@@ -24,6 +24,7 @@ interface SessionResponse {
   }>;
   buildLabel: string;
   agentLabel: string;
+  autoApprove: boolean;
   defaultAgentSelection?: DownstreamAgentSelection;
 }
 
@@ -66,6 +67,7 @@ export async function requestServerShutdown(baseUrl: string): Promise<void> {
 export async function createHttpSession(
   baseUrl: string,
   cwd: string,
+  autoApprove?: boolean,
   defaultAgentSelection?: DownstreamAgentSelection,
 ): Promise<SessionResponse> {
   const response = await fetch(new URL("/v1/sessions", baseUrl), {
@@ -74,7 +76,7 @@ export async function createHttpSession(
       "content-type": "application/json",
       connection: "close",
     },
-    body: JSON.stringify({ cwd, defaultAgentSelection }),
+    body: JSON.stringify({ cwd, autoApprove, defaultAgentSelection }),
   });
 
   if (!response.ok) {
@@ -88,6 +90,7 @@ export async function resumeHttpSession(
   baseUrl: string,
   sessionId: string,
   cwd: string,
+  autoApprove?: boolean,
   defaultAgentSelection?: DownstreamAgentSelection,
 ): Promise<SessionResponse> {
   const response = await fetch(new URL("/v1/sessions/resume", baseUrl), {
@@ -96,11 +99,32 @@ export async function resumeHttpSession(
       "content-type": "application/json",
       connection: "close",
     },
-    body: JSON.stringify({ sessionId, cwd, defaultAgentSelection }),
+    body: JSON.stringify({ sessionId, cwd, autoApprove, defaultAgentSelection }),
   });
 
   if (!response.ok) {
     throw new Error(`Failed to resume session: ${response.status}`);
+  }
+
+  return response.json() as Promise<SessionResponse>;
+}
+
+export async function setSessionAutoApprove(
+  baseUrl: string,
+  sessionId: string,
+  enabled: boolean,
+): Promise<SessionResponse> {
+  const response = await fetch(new URL(`/v1/sessions/${sessionId}/auto-approve`, baseUrl), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      connection: "close",
+    },
+    body: JSON.stringify({ enabled }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to update auto-approve: ${response.status}`);
   }
 
   return response.json() as Promise<SessionResponse>;

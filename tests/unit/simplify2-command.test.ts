@@ -109,6 +109,96 @@ describe("simplify2 procedure", () => {
     expect(existsSync(join(focusDir, "analysis-cache.json"))).toBe(true);
   });
 
+  test("auto-approve mode skips an initial checkpoint during execute", async () => {
+    const cwd = createFixtureWorkspace({
+      sourceFiles: ["src/session/repository.ts"],
+      tests: [
+        {
+          path: "tests/unit/current-session.test.ts",
+          contents: [
+            'import { expect, test } from "bun:test";',
+            'test("current session slice", () => {',
+            "  expect(1 + 1).toBe(2);",
+            "});",
+          ].join("\n"),
+        },
+      ],
+    });
+    const procedureCalls: Array<{ name: string; prompt: string }> = [];
+
+    const result = await simplify2Procedure.execute(
+      "focus on continuation persistence",
+      createMockContext(cwd, [
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-dup-boundary",
+            kind: "boundary_candidate",
+            summary: "Two layers still share continuation parsing responsibilities.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            confidence: "medium",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "hyp-auto-approve",
+            title: "Collapse continuation parsing ownership",
+            kind: "collapse_boundary",
+            summary: "Pick one layer to own continuation parsing.",
+            rationale: "This removes duplicated parsing decisions.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            expectedDelta: {
+              boundariesReduced: 1,
+            },
+            risk: "medium",
+            needsHumanCheckpoint: true,
+            checkpointReason: "Ownership changes should be reviewed before apply.",
+            implementationScope: ["src/session/repository.ts"],
+            testImplications: ["keep current session parsing covered"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "hyp-auto-approve",
+            score: 7,
+            reason: "Worth doing after a checkpoint.",
+            needsHumanCheckpoint: true,
+          },
+        ]),
+        {
+          summary: "Moved continuation parsing ownership into the repository layer.",
+          touchedFiles: ["src/session/repository.ts"],
+          conceptualChanges: ["one owner now enforces parsing invariants"],
+          testChanges: ["kept the current-session unit test aligned with the invariant"],
+          validationNotes: ["selected unit slice should pass"],
+        },
+        {
+          journalSummary: "Recorded the ownership collapse as the preferred design.",
+          memorySummary: "The repository layer now owns continuation parsing.",
+          memoryUpdates: {
+            concepts: ["continuation parsing"],
+            invariants: ["repository owns parsing invariants"],
+            boundaries: ["session repository"],
+            exceptions: [],
+            staleItems: [],
+          },
+          nextQuestions: [],
+          resolvedHypothesisIds: ["hyp-auto-approve"],
+          followupRecommendations: [],
+        },
+      ], [], {
+        autoApproveEnabled: true,
+        procedureCalls,
+      }),
+    );
+
+    const normalized = normalizeProcedureResult(result);
+    expect(normalized.pause).toBeUndefined();
+    expect(normalized.display).toContain("Landed one simplify2 slice for this focus after applying Collapse continuation parsing ownership.");
+    expect(procedureCalls).toHaveLength(1);
+    expect(procedureCalls[0]?.name).toBe("nanoboss/commit");
+  });
+
   test("accepts a max-iterations directive in the prompt", async () => {
     const cwd = createFixtureWorkspace();
     const prompts: string[] = [];
@@ -627,6 +717,162 @@ describe("simplify2 procedure", () => {
       latestHypothesis: "Collapse continuation parsing ownership",
       validationStatus: "passed",
     });
+  });
+
+  test("resume path auto-approves later checkpoints when session auto-approve is enabled", async () => {
+    const cwd = createFixtureWorkspace({
+      sourceFiles: ["src/session/repository.ts", "src/core/service.ts"],
+      tests: [
+        {
+          path: "tests/unit/current-session.test.ts",
+          contents: [
+            'import { expect, test } from "bun:test";',
+            'test("current session slice", () => {',
+            "  expect(1 + 1).toBe(2);",
+            "});",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    const executeResult = await simplify2Procedure.execute(
+      "max 2 iterations focus on continuation persistence",
+      createMockContext(cwd, [
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-first-checkpoint",
+            kind: "boundary_candidate",
+            summary: "Two layers still share continuation parsing responsibilities.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            confidence: "medium",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "hyp-first-checkpoint",
+            title: "Collapse continuation parsing ownership",
+            kind: "collapse_boundary",
+            summary: "Pick one layer to own continuation parsing.",
+            rationale: "This removes duplicated parsing decisions.",
+            evidence: [{ kind: "file", ref: "src/session/repository.ts" }],
+            expectedDelta: {
+              boundariesReduced: 1,
+            },
+            risk: "medium",
+            needsHumanCheckpoint: true,
+            checkpointReason: "Ownership changes should be reviewed before apply.",
+            implementationScope: ["src/session/repository.ts"],
+            testImplications: ["keep current session parsing covered"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "hyp-first-checkpoint",
+            score: 7,
+            reason: "Worth doing after a checkpoint.",
+            needsHumanCheckpoint: true,
+          },
+        ]),
+      ]),
+    );
+
+    const pausedState = requirePauseState(normalizeProcedureResult(executeResult));
+    const resumeResult = await simplify2Procedure.resume(
+      "approve it",
+      pausedState,
+      createMockContext(cwd, [
+        {
+          kind: "approve_hypothesis",
+          reason: "The ownership change is fine.",
+          hypothesisId: "hyp-first-checkpoint",
+        },
+        {
+          summary: "Moved continuation parsing ownership into the repository layer.",
+          touchedFiles: ["src/session/repository.ts"],
+          conceptualChanges: ["one owner now enforces parsing invariants"],
+          testChanges: ["kept the current-session unit test aligned with the invariant"],
+          validationNotes: ["selected unit slice should pass"],
+        },
+        {
+          journalSummary: "Recorded the ownership collapse as the preferred design.",
+          memorySummary: "The repository layer now owns continuation parsing.",
+          memoryUpdates: {
+            concepts: ["continuation parsing"],
+            invariants: ["repository owns parsing invariants"],
+            boundaries: ["session repository"],
+            exceptions: [],
+            staleItems: [],
+          },
+          nextQuestions: [],
+          resolvedHypothesisIds: ["hyp-first-checkpoint"],
+          followupRecommendations: ["Look for the next fake boundary around continuation persistence."],
+        },
+        emptyRefreshProposal(),
+        observationBatch([
+          {
+            id: "obs-second-checkpoint",
+            kind: "boundary_candidate",
+            summary: "The service and repository still split continuation persistence semantics.",
+            evidence: [{ kind: "file", ref: "src/core/service.ts" }],
+            confidence: "medium",
+          },
+        ]),
+        hypothesisBatch([
+          {
+            id: "hyp-second-checkpoint",
+            title: "Challenge continuation persistence ownership",
+            kind: "collapse_boundary",
+            summary: "The ownership split may still be fake.",
+            rationale: "One layer may be able to own the continuation persistence invariant.",
+            evidence: [{ kind: "file", ref: "src/core/service.ts" }],
+            expectedDelta: {
+              boundariesReduced: 1,
+            },
+            risk: "medium",
+            needsHumanCheckpoint: true,
+            checkpointReason: "This may change which layer owns continuation persistence semantics.",
+            implementationScope: ["src/core/service.ts", "src/session/repository.ts"],
+            testImplications: ["confirm the ownership boundary before changing behavior"],
+          },
+        ]),
+        rankingBatch([
+          {
+            hypothesisId: "hyp-second-checkpoint",
+            score: 7,
+            reason: "Strong follow-up, but it needs a checkpoint.",
+            needsHumanCheckpoint: true,
+          },
+        ]),
+        {
+          summary: "Centralized continuation persistence ownership in the service layer.",
+          touchedFiles: ["src/core/service.ts"],
+          conceptualChanges: ["one layer now owns continuation persistence semantics"],
+          testChanges: ["kept the continuation persistence coverage narrow"],
+          validationNotes: ["selected unit slice should pass"],
+        },
+        {
+          journalSummary: "Recorded the continuation persistence ownership collapse.",
+          memorySummary: "The service layer now owns continuation persistence semantics.",
+          memoryUpdates: {
+            concepts: ["continuation persistence"],
+            invariants: ["service owns continuation persistence semantics"],
+            boundaries: ["session service"],
+            exceptions: [],
+            staleItems: [],
+          },
+          nextQuestions: [],
+          resolvedHypothesisIds: ["hyp-second-checkpoint"],
+          followupRecommendations: [],
+        },
+      ], [], {
+        autoApproveEnabled: true,
+      }),
+    );
+
+    const normalized = normalizeProcedureResult(resumeResult);
+    expect(normalized.pause).toBeUndefined();
+    expect(normalized.display).toContain("Reached simplify2 iteration budget (2) after applying Challenge continuation persistence ownership.");
   });
 
   test("stops after an automatic commit failure with a clear display", async () => {
@@ -1316,6 +1562,7 @@ function createMockContext(
   agentResults: unknown[],
   prompts: string[] = [],
   options: {
+    autoApproveEnabled?: boolean;
     procedureResults?: unknown[];
     procedureCalls?: Array<{ name: string; prompt: string }>;
   } = {},
@@ -1452,6 +1699,9 @@ function createMockContext(
       },
       async getDefaultAgentTokenUsage() {
         return undefined;
+      },
+      isAutoApproveEnabled() {
+        return options.autoApproveEnabled === true;
       },
     },
     assertNotCancelled() {},

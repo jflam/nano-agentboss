@@ -281,8 +281,8 @@ function createTranscriptEntryComponent(
 function buildActivityBarParts(theme: NanobossTuiTheme, state: UiState): string[] {
   const parts: string[] = [
     state.simplify2AutoApprove
-      ? theme.success("simplify2 auto-approve on")
-      : theme.dim("simplify2 auto-approve off"),
+      ? theme.success("auto-approve on")
+      : theme.dim("auto-approve off"),
   ];
   if (state.inputDisabled) {
     parts.push(theme.warning("● busy"));

@@ -297,7 +297,7 @@ describe("NanobossTuiController", () => {
       },
       {
         ensureMatchingHttpServer: async () => {},
-        createHttpSession: async (_baseUrl, _cwd, selection) => {
+        createHttpSession: async (_baseUrl, _cwd, _autoApprove, selection) => {
           createCalls.push(selection);
           const session = sessions.shift();
           if (!session) {
@@ -643,7 +643,7 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
-  test("auto-approves simplify2 pauses when the local mode is enabled", async () => {
+  test("does not auto-submit simplify2 pauses when auto-approve is enabled", async () => {
     const sendCalls: string[] = [];
     const streams: FakeStreamRecord[] = [];
     const controller = new NanobossTuiController(
@@ -654,7 +654,7 @@ describe("NanobossTuiController", () => {
       },
       {
         ensureMatchingHttpServer: async () => {},
-        createHttpSession: async () => createSession("session-1"),
+        createHttpSession: async () => createSession("session-1", { autoApprove: true }),
         sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
           sendCalls.push(toPromptText(prompt));
         },
@@ -691,11 +691,11 @@ describe("NanobossTuiController", () => {
       },
     }));
 
-    await waitFor(() => sendCalls.length === 2);
+    await Bun.sleep(10);
 
-    expect(sendCalls).toEqual(["/simplify2", "approve it"]);
+    expect(sendCalls).toEqual(["/simplify2"]);
     expect(controller.getState().simplify2AutoApprove).toBe(true);
-    expect(controller.getState().inputDisabled).toBe(true);
+    expect(controller.getState().inputDisabled).toBe(false);
 
     controller.requestExit();
     await runPromise;
@@ -713,7 +713,7 @@ describe("NanobossTuiController", () => {
       },
       {
         ensureMatchingHttpServer: async () => {},
-        resumeHttpSession: async () => createSession("session-1"),
+        resumeHttpSession: async () => createSession("session-1", { autoApprove: true }),
         sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
           sendCalls.push(toPromptText(prompt));
         },
@@ -764,7 +764,7 @@ describe("NanobossTuiController", () => {
       },
       {
         ensureMatchingHttpServer: async () => {},
-        createHttpSession: async () => createSession("session-1"),
+        createHttpSession: async () => createSession("session-1", { autoApprove: true }),
         sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
           sendCalls.push(toPromptText(prompt));
         },
@@ -811,8 +811,8 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
-  test("toggling auto-approve on submits the current simplify2 continuation", async () => {
-    const sendCalls: string[] = [];
+  test("toggling auto-approve updates the session flag", async () => {
+    const autoApproveCalls: boolean[] = [];
     const streams: FakeStreamRecord[] = [];
     const controller = new NanobossTuiController(
       {
@@ -822,8 +822,9 @@ describe("NanobossTuiController", () => {
       {
         ensureMatchingHttpServer: async () => {},
         createHttpSession: async () => createSession("session-1"),
-        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
-          sendCalls.push(toPromptText(prompt));
+        setSessionAutoApprove: async (_baseUrl, _sessionId, enabled) => {
+          autoApproveCalls.push(enabled);
+          return createSession("session-1", { autoApprove: enabled });
         },
         startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream(streams, sessionId, onEvent),
       },
@@ -832,29 +833,12 @@ describe("NanobossTuiController", () => {
     const runPromise = controller.run();
     await waitFor(() => controller.getState().sessionId === "session-1");
 
-    streams[0]?.emit(eventEnvelope("continuation_updated", {
-      continuation: {
-        procedure: "simplify2",
-        question: "Approve this simplify2 slice?",
-        ui: {
-          kind: "simplify2_checkpoint",
-          title: "Simplify2 checkpoint",
-          actions: [
-            { id: "approve", label: "Continue", reply: "approve it" },
-            { id: "other", label: "Something Else" },
-          ],
-        },
-      },
-    }));
-
-    await Bun.sleep(10);
-
     controller.toggleSimplify2AutoApprove();
-    await waitFor(() => sendCalls.length === 1);
+    await waitFor(() => autoApproveCalls.length === 1);
 
-    expect(sendCalls).toEqual(["approve it"]);
+    expect(autoApproveCalls).toEqual([true]);
     expect(controller.getState().simplify2AutoApprove).toBe(true);
-    expect(controller.getState().statusLine).toBe("[run] waiting for response");
+    expect(controller.getState().statusLine).toBe("[session] auto-approve on");
 
     controller.requestExit();
     await runPromise;
@@ -999,6 +983,7 @@ function createSession(
     commands: [{ name: "tokens", description: "show tokens" } satisfies FrontendCommand],
     buildLabel: "nanoboss-test",
     agentLabel: "copilot/default",
+    autoApprove: false,
     ...overrides,
   };
 }

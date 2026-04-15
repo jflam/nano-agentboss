@@ -150,7 +150,7 @@ describe("NanobossAppView", () => {
 
     const plain = stripAnsi(view.render(200).join("\n"));
 
-    expect(plain).toContain("simplify2 auto-approve on");
+    expect(plain).toContain("auto-approve on");
     expect(plain).toContain("ctrl+g auto-approve");
   });
 
@@ -216,6 +216,7 @@ describe("NanobossAppView", () => {
       cwd: "/repo",
       buildLabel: "nanoboss-test",
       agentLabel: "copilot/default",
+      autoApprove: false,
       commands: [{ name: "tokens", description: "show tokens" }],
     });
     view.setState(state);
@@ -1129,6 +1130,7 @@ function createTranscriptContractState(mode: "live" | "restored") {
     cwd: "/repo",
     buildLabel: "nanoboss-test",
     agentLabel: "copilot/default",
+    autoApprove: false,
     commands: [{ name: "tokens", description: "show tokens" }],
   });
 

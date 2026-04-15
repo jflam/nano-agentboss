@@ -69,6 +69,7 @@ export async function executeTopLevelProcedure(params: {
   agentSession?: AgentSession;
   getDefaultAgentConfig: () => DownstreamAgentConfig;
   setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+  isAutoApproveEnabled?: () => boolean;
   prepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
   onError?: (ctx: CommandContextImpl, errorText: string) => void | Promise<void>;
   dispatchCorrelationId?: string;
@@ -110,6 +111,7 @@ export async function executeTopLevelProcedure(params: {
     agentSession: params.agentSession,
     getDefaultAgentConfig: params.getDefaultAgentConfig,
     setDefaultAgentSelection: params.setDefaultAgentSelection,
+    isAutoApproveEnabled: params.isAutoApproveEnabled,
     prepareDefaultPrompt: params.prepareDefaultPrompt,
     assertCanStartBoundary: params.assertCanStartBoundary,
     timingTrace: params.timingTrace,

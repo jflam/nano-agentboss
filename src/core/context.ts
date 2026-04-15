@@ -53,6 +53,7 @@ interface CommandContextParams {
   rootGetDefaultAgentConfig?: () => DownstreamAgentConfig;
   rootSetDefaultAgentSelection?: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
   rootPrepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
+  isAutoApproveEnabled?: () => boolean;
   createAgentSession?: CreateAgentSession;
   assertCanStartBoundary?: () => void;
   timingTrace?: RunTimingTrace;
@@ -126,6 +127,7 @@ export class CommandContextImpl implements ProcedureApi {
         prepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
       },
       createAgentSession: this.createAgentSessionValue,
+      isAutoApproveEnabled: params.isAutoApproveEnabled,
     });
     this.session = contextSessionApi;
 
@@ -197,6 +199,7 @@ export class CommandContextImpl implements ProcedureApi {
       rootGetDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
       rootSetDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
       rootPrepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
+      isAutoApproveEnabled: this.session.isAutoApproveEnabled?.bind(this.session),
       createAgentSession: this.createAgentSessionValue,
       assertCanStartBoundary: this.assertCanStartBoundaryValue,
       timingTrace: this.timingTrace,

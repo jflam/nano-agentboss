@@ -8,6 +8,7 @@ import {
   createHttpSession,
   ensureMatchingHttpServer,
   resumeHttpSession,
+  setSessionAutoApprove,
   sendSessionPrompt,
   startSessionEventStream,
   isRenderedFrontendEvent,
@@ -16,7 +17,7 @@ import {
   type SessionStreamHandle,
 } from "@nanoboss/adapters-http";
 import { formatAgentBanner } from "../core/runtime-banner.ts";
-import type { ContinuationUi, DownstreamAgentSelection, PromptInput } from "../core/types.ts";
+import type { DownstreamAgentSelection, PromptInput } from "../core/types.ts";
 
 import {
   isExitRequest,
@@ -34,6 +35,7 @@ export interface SessionResponse {
   commands: FrontendCommand[];
   buildLabel: string;
   agentLabel: string;
+  autoApprove: boolean;
   defaultAgentSelection?: DownstreamAgentSelection;
 }
 
@@ -49,6 +51,7 @@ export interface NanobossTuiControllerDeps {
   ensureMatchingHttpServer?: typeof ensureMatchingHttpServer;
   createHttpSession?: typeof createHttpSession;
   resumeHttpSession?: typeof resumeHttpSession;
+  setSessionAutoApprove?: typeof setSessionAutoApprove;
   sendSessionPrompt?: typeof sendSessionPrompt;
   cancelSessionRun?: typeof cancelSessionRun;
   startSessionEventStream?: (params: {
@@ -77,7 +80,6 @@ export class NanobossTuiController {
   private stopped = false;
   private flushingPendingPrompt = false;
   private nextPendingPromptId = 1;
-  private lastAutoApprovedContinuationSignature?: string;
   private exitResolver?: () => void;
   private readonly exited: Promise<void>;
 
@@ -121,10 +123,12 @@ export class NanobossTuiController {
           this.params.serverUrl,
           this.params.sessionId,
           this.cwd,
+          this.params.simplify2AutoApprove,
         )
         : await (this.deps.createHttpSession ?? createHttpSession)(
           this.params.serverUrl,
           this.cwd,
+          this.params.simplify2AutoApprove,
         );
       await this.applySession(session);
       if (this.params.sessionId) {
@@ -246,11 +250,7 @@ export class NanobossTuiController {
   }
 
   toggleSimplify2AutoApprove(): void {
-    const enabled = !this.state.simplify2AutoApprove;
-    this.dispatch({ type: "local_simplify2_auto_approve", enabled });
-    if (enabled) {
-      void this.maybeAutoApproveCurrentContinuation();
-    }
+    void this.toggleSessionAutoApprove();
   }
 
   showStatus(text: string): void {
@@ -281,15 +281,6 @@ export class NanobossTuiController {
 
   private dispatch(action: UiAction): void {
     this.state = reduceUiState(this.state, action);
-    const continuation = this.state.pendingContinuation;
-    if (!continuation) {
-      this.lastAutoApprovedContinuationSignature = undefined;
-    } else if (
-      this.lastAutoApprovedContinuationSignature
-      && buildContinuationSignature(continuation) !== this.lastAutoApprovedContinuationSignature
-    ) {
-      this.lastAutoApprovedContinuationSignature = undefined;
-    }
     this.deps.onStateChange?.(this.state);
   }
 
@@ -305,6 +296,7 @@ export class NanobossTuiController {
       cwd: session.cwd,
       buildLabel: session.buildLabel,
       agentLabel: session.agentLabel,
+      autoApprove: session.autoApprove,
       commands: session.commands,
       defaultAgentSelection: session.defaultAgentSelection,
     });
@@ -317,7 +309,6 @@ export class NanobossTuiController {
           this.dispatch({ type: "frontend_event", event });
         }
         this.maybeSendLatchedStopRequest(event);
-        void this.maybeAutoApproveSimplify2Pause(event);
         void this.maybeFlushPendingPrompt(event);
       },
       onError: (error) => {
@@ -410,6 +401,7 @@ export class NanobossTuiController {
       const session = await (this.deps.createHttpSession ?? createHttpSession)(
         this.params.serverUrl,
         this.cwd,
+        this.state.simplify2AutoApprove,
         this.state.defaultAgentSelection,
       );
       await this.applySession(session);
@@ -486,48 +478,23 @@ export class NanobossTuiController {
     }
   }
 
-  private async maybeAutoApproveSimplify2Pause(event: FrontendEventEnvelope): Promise<void> {
-    if (
-      event.type !== "run_paused"
-      || event.data.procedure !== "simplify2"
-      || event.data.ui?.kind !== "simplify2_checkpoint"
-      || !this.state.simplify2AutoApprove
-    ) {
+  private async toggleSessionAutoApprove(): Promise<void> {
+    const sessionId = this.state.sessionId;
+    if (!sessionId) {
       return;
     }
 
-    await this.autoApproveSimplify2Continuation(buildContinuationSignature({
-      procedure: event.data.procedure,
-      question: event.data.question,
-      inputHint: event.data.inputHint,
-      suggestedReplies: event.data.suggestedReplies,
-      ui: event.data.ui,
-    }));
-  }
-
-  private async maybeAutoApproveCurrentContinuation(): Promise<void> {
-    const continuation = this.state.pendingContinuation;
-    if (
-      !continuation
-      || continuation.procedure !== "simplify2"
-      || continuation.ui?.kind !== "simplify2_checkpoint"
-      || this.state.inputDisabled
-    ) {
-      return;
-    }
-
-    await this.autoApproveSimplify2Continuation(buildContinuationSignature(continuation));
-  }
-
-  private async autoApproveSimplify2Continuation(signature: string): Promise<void> {
-    if (signature.length === 0 || this.lastAutoApprovedContinuationSignature === signature) {
-      return;
-    }
-
-    this.lastAutoApprovedContinuationSignature = signature;
-    const sent = await this.forwardPrompt(createTextPromptInput("approve it"));
-    if (!sent) {
-      this.lastAutoApprovedContinuationSignature = undefined;
+    const enabled = !this.state.simplify2AutoApprove;
+    try {
+      const session = await (this.deps.setSessionAutoApprove ?? setSessionAutoApprove)(
+        this.params.serverUrl,
+        sessionId,
+        enabled,
+      );
+      this.dispatch({ type: "session_auto_approve", enabled: session.autoApprove });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.dispatch({ type: "local_status", text: `[session] failed to update auto-approve: ${message}` });
     }
   }
 }
@@ -558,20 +525,4 @@ function selectNextPendingPrompt(prompts: UiPendingPrompt[]): UiPendingPrompt | 
 
 function formatPendingPromptClearStatus(count: number): string {
   return `[run] cleared ${count} pending prompt${count === 1 ? "" : "s"} after send failed`;
-}
-
-function buildContinuationSignature(continuation: {
-  procedure: string;
-  question: string;
-  inputHint?: string;
-  suggestedReplies?: string[];
-  ui?: ContinuationUi;
-}): string {
-  return JSON.stringify({
-    procedure: continuation.procedure,
-    question: continuation.question,
-    inputHint: continuation.inputHint,
-    suggestedReplies: continuation.suggestedReplies,
-    ui: continuation.ui,
-  });
 }

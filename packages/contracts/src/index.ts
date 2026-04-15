@@ -128,6 +128,7 @@ export interface SessionMetadata {
   updatedAt: string;
   initialPrompt?: string;
   lastPrompt?: string;
+  autoApprove?: boolean;
   defaultAgentSelection?: DownstreamAgentSelection;
   defaultAgentSessionId?: string;
   pendingContinuation?: PendingContinuation;

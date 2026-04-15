@@ -89,6 +89,7 @@ interface SessionState {
   cwd: string;
   store: SessionStore;
   events: SessionEventLog;
+  autoApprove: boolean;
   defaultAgentConfig: DownstreamAgentConfig;
   defaultAgentSession: AgentSession;
   syncedProcedureMemoryRunIds: Set<string>;
@@ -104,6 +105,7 @@ export interface RuntimeSessionDescriptor {
   commands: FrontendCommand[];
   buildLabel: string;
   agentLabel: string;
+  autoApprove: boolean;
   defaultAgentSelection?: DownstreamAgentSelection;
 }
 
@@ -207,7 +209,12 @@ export class NanobossService {
     return buildAvailableCommands(this.registry);
   }
 
-  createSession(params: { cwd: string; defaultAgentSelection?: DownstreamAgentSelection; sessionId?: string }): RuntimeSessionDescriptor {
+  createSession(params: {
+    cwd: string;
+    autoApprove?: boolean;
+    defaultAgentSelection?: DownstreamAgentSelection;
+    sessionId?: string;
+  }): RuntimeSessionDescriptor {
     const sessionId = params.sessionId ?? crypto.randomUUID();
     if (this.sessions.has(sessionId)) {
       throw new Error(`Session already exists: ${sessionId}`);
@@ -216,6 +223,7 @@ export class NanobossService {
     const state = this.createSessionState({
       sessionId,
       cwd: params.cwd,
+      autoApprove: params.autoApprove,
       defaultAgentSelection: params.defaultAgentSelection,
     });
 
@@ -231,7 +239,12 @@ export class NanobossService {
   }
 
   async createSessionReady(
-    params: { cwd: string; defaultAgentSelection?: DownstreamAgentSelection; sessionId?: string },
+    params: {
+      cwd: string;
+      autoApprove?: boolean;
+      defaultAgentSelection?: DownstreamAgentSelection;
+      sessionId?: string;
+    },
   ): Promise<RuntimeSessionDescriptor> {
     const session = this.createSession(params);
     return await this.awaitDefaultConversationWarm(session.sessionId);
@@ -240,10 +253,14 @@ export class NanobossService {
   resumeSession(params: {
     sessionId: string;
     cwd?: string;
+    autoApprove?: boolean;
     defaultAgentSelection?: DownstreamAgentSelection;
   }): RuntimeSessionDescriptor {
     const existing = this.sessions.get(params.sessionId);
     if (existing) {
+      if (params.autoApprove !== undefined) {
+        existing.autoApprove = params.autoApprove;
+      }
       this.persistSessionState(existing);
       return this.buildSessionDescriptor(params.sessionId, existing);
     }
@@ -259,6 +276,7 @@ export class NanobossService {
       cwd,
       defaultAgentSelection: params.defaultAgentSelection ?? stored?.defaultAgentSelection,
       defaultAgentSessionId: stored?.defaultAgentSessionId,
+      autoApprove: params.autoApprove ?? stored?.autoApprove,
       pendingContinuation: stored?.pendingContinuation,
     });
     this.restorePersistedSessionHistory(params.sessionId, state);
@@ -277,6 +295,7 @@ export class NanobossService {
   async resumeSessionReady(params: {
     sessionId: string;
     cwd?: string;
+    autoApprove?: boolean;
     defaultAgentSelection?: DownstreamAgentSelection;
   }): Promise<RuntimeSessionDescriptor> {
     const session = this.resumeSession(params);
@@ -306,6 +325,7 @@ export class NanobossService {
   private createSessionState(params: {
     sessionId: string;
     cwd: string;
+    autoApprove?: boolean;
     defaultAgentSelection?: DownstreamAgentSelection;
     defaultAgentSessionId?: string;
     pendingContinuation?: PendingContinuation;
@@ -328,6 +348,7 @@ export class NanobossService {
       cwd: params.cwd,
       store,
       events: new SessionEventLog(),
+      autoApprove: params.autoApprove === true,
       defaultAgentConfig,
       defaultAgentSession,
       syncedProcedureMemoryRunIds: new Set(),
@@ -343,8 +364,20 @@ export class NanobossService {
       commands: state.commands,
       buildLabel: getBuildLabel(),
       agentLabel: formatAgentBanner(state.defaultAgentConfig),
+      autoApprove: state.autoApprove,
       defaultAgentSelection: toDownstreamAgentSelection(state.defaultAgentConfig),
     };
+  }
+
+  setSessionAutoApprove(sessionId: string, enabled: boolean): RuntimeSessionDescriptor {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Unknown session: ${sessionId}`);
+    }
+
+    session.autoApprove = enabled;
+    this.persistSessionState(session);
+    return this.buildSessionDescriptor(sessionId, session);
   }
 
   private publishPendingContinuation(sessionId: string, session: SessionState): void {
@@ -406,6 +439,7 @@ export class NanobossService {
       updatedAt: new Date().toISOString(),
       initialPrompt: existing?.initialPrompt ?? options.prompt,
       lastPrompt: options.prompt ?? existing?.lastPrompt,
+      autoApprove: session.autoApprove,
       defaultAgentSelection: toDownstreamAgentSelection(session.defaultAgentConfig),
       defaultAgentSessionId,
       pendingContinuation: session.pendingContinuation,
@@ -1075,6 +1109,7 @@ export class NanobossService {
             session.defaultAgentSession.updateConfig(nextConfig);
             return nextConfig;
           },
+          isAutoApproveEnabled: () => session.autoApprove,
           prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId, timingTrace),
           onError: (ctx, errorText) => {
             ctx.ui.text(errorText);
@@ -1101,6 +1136,7 @@ export class NanobossService {
             session.defaultAgentSession.updateConfig(nextConfig);
             return nextConfig;
           },
+          isAutoApproveEnabled: () => session.autoApprove,
           prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId, timingTrace),
           onError: (ctx, errorText) => {
             ctx.ui.text(errorText);

@@ -571,6 +571,7 @@ const SUGGESTED_REPLIES = [
   "the boundary is real",
   "stop",
 ];
+const AUTO_APPROVE_REASON = "Auto-approved by session auto-approve mode.";
 const TOKEN_STOP_WORDS = new Set([
   "a",
   "an",
@@ -676,57 +677,14 @@ export default {
     return continueFromAnalysis(state, ctx);
   },
   async resume(prompt, rawState, ctx) {
-    let state = requireSimplify2State(rawState);
+    const state = requireSimplify2State(rawState);
     if (state.mode === "focus_picker") {
       return await resumeFocusPicker(prompt, state, ctx);
     }
 
     ctx.ui.text(`Interpreting simplify2 guidance for ${formatIterationProgress(state.iteration, state.maxIterations)}...\n`);
     const decision = await interpretHumanReply(prompt, state, ctx);
-
-    if (decision.kind !== "stop") {
-      const blocked = buildBlockedDirtyWorktreeResumeResult(state, ctx.cwd);
-      if (blocked) {
-        return blocked;
-      }
-    }
-
-    state = applyHumanDecision(state, decision);
-    state = appendJournalForHumanDecision(state, decision);
-
-    if (decision.kind === "stop") {
-      state.mode = "finished";
-      state.notebook.status = "closed";
-      return buildFinishedResult(state, decision.reason);
-    }
-
-    if (decision.kind === "approve_hypothesis") {
-      const hypothesis = findHypothesis(state, decision.hypothesisId);
-      ctx.ui.text(`Applying ${hypothesis.title}...\n`);
-      state = await applySimplificationSlice(state, hypothesis, ctx);
-      state = await validateAndReconcile(state, ctx);
-      const completion = maybeFinishAfterApply(state);
-      if (completion) {
-        return completion;
-      }
-      state = await commitAppliedSlice(state, hypothesis, ctx);
-      const postCommitCompletion = maybeFinishAfterCommit(state);
-      if (postCommitCompletion) {
-        return postCommitCompletion;
-      }
-      state = resetNotebookForFreshAnalysis(state);
-      state = await analyzeCurrentFocus(state, ctx);
-      return continueFromAnalysis(state, ctx);
-    }
-
-    if (decision.kind === "design_update" && decision.designUpdate) {
-      state = reviseArchitectureMemory(state, decision.designUpdate);
-    }
-
-    state = resetNotebookForFreshAnalysis(state);
-    state = await analyzeCurrentFocus(state, ctx);
-
-    return continueFromAnalysis(state, ctx);
+    return await continueAfterHumanDecision(state, decision, ctx);
   },
 } satisfies Procedure;
 
@@ -1274,10 +1232,18 @@ async function continueFromAnalysis(
 
     if (next.kind === "pause_for_human") {
       current.mode = "checkpoint";
-      current.notebook.status = "awaiting_human";
       current.notebook.currentCheckpoint = next.checkpoint;
-      current = appendCheckpointJournal(current);
-      return buildPausedResult(current, next.question);
+      if (!isAutoApproveEnabled(ctx)) {
+        current.notebook.status = "awaiting_human";
+        current = appendCheckpointJournal(current);
+        return buildPausedResult(current, next.question);
+      }
+
+      return await continueAfterHumanDecision(current, {
+        kind: "approve_hypothesis",
+        reason: AUTO_APPROVE_REASON,
+        hypothesisId: next.checkpoint.hypothesisId,
+      }, ctx);
     }
 
     ctx.ui.text(`Applying ${next.hypothesis.title}...\n`);
@@ -1298,6 +1264,57 @@ async function continueFromAnalysis(
     ctx.ui.text(`Continuing simplify2 analysis for ${formatIterationProgress(current.iteration, current.maxIterations)}...\n`);
     current = await analyzeCurrentFocus(current, ctx);
   }
+}
+
+async function continueAfterHumanDecision(
+  state: Simplify2State,
+  decision: SimplifyHumanDecision,
+  ctx: ProcedureApi,
+): Promise<ProcedureResult | string | void> {
+  let current = state;
+
+  if (decision.kind !== "stop") {
+    const blocked = buildBlockedDirtyWorktreeResumeResult(current, ctx.cwd);
+    if (blocked) {
+      return blocked;
+    }
+  }
+
+  current = applyHumanDecision(current, decision);
+  current = appendJournalForHumanDecision(current, decision);
+
+  if (decision.kind === "stop") {
+    current.mode = "finished";
+    current.notebook.status = "closed";
+    return buildFinishedResult(current, decision.reason);
+  }
+
+  if (decision.kind === "approve_hypothesis") {
+    const hypothesis = findHypothesis(current, decision.hypothesisId);
+    ctx.ui.text(`${decision.reason === AUTO_APPROVE_REASON ? "Auto-approving" : "Applying"} ${hypothesis.title}...\n`);
+    current = await applySimplificationSlice(current, hypothesis, ctx);
+    current = await validateAndReconcile(current, ctx);
+    const completion = maybeFinishAfterApply(current);
+    if (completion) {
+      return completion;
+    }
+    current = await commitAppliedSlice(current, hypothesis, ctx);
+    const postCommitCompletion = maybeFinishAfterCommit(current);
+    if (postCommitCompletion) {
+      return postCommitCompletion;
+    }
+    current = resetNotebookForFreshAnalysis(current);
+    current = await analyzeCurrentFocus(current, ctx);
+    return await continueFromAnalysis(current, ctx);
+  }
+
+  if (decision.kind === "design_update" && decision.designUpdate) {
+    current = reviseArchitectureMemory(current, decision.designUpdate);
+  }
+
+  current = resetNotebookForFreshAnalysis(current);
+  current = await analyzeCurrentFocus(current, ctx);
+  return await continueFromAnalysis(current, ctx);
 }
 
 async function applySimplificationSlice(
@@ -1458,6 +1475,10 @@ function maybeFinishAfterCommit(state: Simplify2State): ProcedureResult | undefi
   }
 
   return undefined;
+}
+
+function isAutoApproveEnabled(ctx: ProcedureApi): boolean {
+  return ctx.session.isAutoApproveEnabled?.() === true;
 }
 
 async function interpretHumanReply(

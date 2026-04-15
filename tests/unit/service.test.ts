@@ -208,6 +208,28 @@ function createPausedSimplify2LikeProcedure(): Procedure {
   };
 }
 
+function createAutoApproveProbeProcedure(): Procedure {
+  return {
+    name: "auto-approve-probe",
+    description: "reports the session auto-approve flag",
+    executionMode: "harness",
+    async execute(_prompt, ctx) {
+      return {
+        display: `execute auto=${ctx.session.isAutoApproveEnabled?.() === true}\n`,
+        pause: {
+          question: "Continue?",
+          state: { step: 1 },
+        },
+      };
+    },
+    async resume(_prompt, _state, ctx) {
+      return {
+        display: `resume auto=${ctx.session.isAutoApproveEnabled?.() === true}\n`,
+      };
+    },
+  };
+}
+
 describe("NanobossService", () => {
   test("extracts async procedure dispatch results from copilot-style tool payloads", () => {
     const parsed = extractProcedureDispatchResult([
@@ -1285,6 +1307,35 @@ describe("NanobossService", () => {
         { id: "other", label: "Something Else" },
       ],
     });
+  });
+
+  test("session auto-approve is visible to procedures in execute and resume", async () => {
+    const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-service-auto-approve-"))] });
+    registry.register(createAutoApproveProbeProcedure());
+
+    const service = new NanobossService(registry);
+    const session = service.createSession({ cwd: process.cwd(), autoApprove: true });
+
+    await service.promptSession(session.sessionId, "/auto-approve-probe");
+    let events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+    const paused = events.findLast((event) => event.type === "run_paused");
+    expect(paused?.type).toBe("run_paused");
+    if (paused?.type !== "run_paused") {
+      throw new Error("Expected run_paused event");
+    }
+    expect(paused.data.display).toContain("execute auto=true");
+
+    const updated = service.setSessionAutoApprove(session.sessionId, false);
+    expect(updated.autoApprove).toBe(false);
+
+    await service.promptSession(session.sessionId, "continue");
+    events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
+    const completed = events.findLast((event) => event.type === "run_completed" && event.data.procedure === "auto-approve-probe");
+    expect(completed?.type).toBe("run_completed");
+    if (completed?.type !== "run_completed") {
+      throw new Error("Expected resumed run_completed event");
+    }
+    expect(completed.data.display).toContain("resume auto=false");
   });
 
   test("explicit slash commands do not consume a pending continuation", async () => {

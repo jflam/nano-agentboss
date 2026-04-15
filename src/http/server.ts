@@ -127,9 +127,14 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
       }
 
       if (request.method === "POST" && path === "/v1/sessions") {
-        const body = await readJson<{ cwd?: string; defaultAgentSelection?: DownstreamAgentSelection }>(request);
+        const body = await readJson<{
+          cwd?: string;
+          autoApprove?: boolean;
+          defaultAgentSelection?: DownstreamAgentSelection;
+        }>(request);
         const session = await service.createSessionReady({
           cwd: body.cwd ?? process.cwd(),
+          autoApprove: body.autoApprove,
           defaultAgentSelection: body.defaultAgentSelection,
         });
         return json(session, 201);
@@ -139,6 +144,7 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
         const body = await readJson<{
           sessionId?: string;
           cwd?: string;
+          autoApprove?: boolean;
           defaultAgentSelection?: DownstreamAgentSelection;
         }>(request);
         const sessionId = body.sessionId?.trim();
@@ -150,6 +156,7 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
           const session = await service.resumeSessionReady({
             sessionId,
             cwd: body.cwd ?? process.cwd(),
+            autoApprove: body.autoApprove,
             defaultAgentSelection: body.defaultAgentSelection,
           });
           return json(session);
@@ -167,6 +174,22 @@ export async function runHttpServerCommand(argv: string[] = []): Promise<ReturnT
           return error(404, `Unknown session: ${sessionId}`);
         }
         return json(session);
+      }
+
+      const autoApproveMatch = path.match(/^\/v1\/sessions\/([^/]+)\/auto-approve$/);
+      if (request.method === "POST" && autoApproveMatch) {
+        const sessionId = decodeURIComponent(autoApproveMatch[1] ?? "");
+        const session = service.getSession(sessionId);
+        if (!session) {
+          return error(404, `Unknown session: ${sessionId}`);
+        }
+
+        const body = await readJson<{ enabled?: unknown }>(request);
+        if (typeof body.enabled !== "boolean") {
+          return error(400, "enabled is required");
+        }
+
+        return json(service.setSessionAutoApprove(sessionId, body.enabled));
       }
 
       const promptMatch = path.match(/^\/v1\/sessions\/([^/]+)\/prompts$/);

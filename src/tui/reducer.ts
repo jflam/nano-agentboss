@@ -27,6 +27,7 @@ export type UiAction =
       cwd: string;
       buildLabel: string;
       agentLabel: string;
+      autoApprove: boolean;
       commands: FrontendCommand[];
       defaultAgentSelection?: DownstreamAgentSelection;
     }
@@ -77,6 +78,10 @@ export type UiAction =
       enabled: boolean;
     }
   | {
+      type: "session_auto_approve";
+      enabled: boolean;
+    }
+  | {
       type: "toggle_tool_output";
     }
   | {
@@ -95,11 +100,12 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
           showToolCalls: state.showToolCalls,
           expandedToolOutput: state.expandedToolOutput,
           toolCardThemeMode: state.toolCardThemeMode,
-          simplify2AutoApprove: state.simplify2AutoApprove,
+          simplify2AutoApprove: action.autoApprove,
         }),
         sessionId: action.sessionId,
         buildLabel: action.buildLabel,
         agentLabel: action.agentLabel,
+        simplify2AutoApprove: action.autoApprove,
         defaultAgentSelection: action.defaultAgentSelection,
         availableCommands: mergeAvailableCommands(action.commands),
       };
@@ -215,6 +221,12 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         ...state,
         simplify2AutoApprove: action.enabled,
         statusLine: `[simplify2] auto-approve ${action.enabled ? "on" : "off"}`,
+      };
+    case "session_auto_approve":
+      return {
+        ...state,
+        simplify2AutoApprove: action.enabled,
+        statusLine: `[session] auto-approve ${action.enabled ? "on" : "off"}`,
       };
     case "toggle_tool_output":
       return {

@@ -111,6 +111,7 @@ export interface RunProcedureParams {
   agentSession?: ProcedureEngineAgentSession;
   getDefaultAgentConfig: () => DownstreamAgentConfig;
   setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+  isAutoApproveEnabled?: () => boolean;
   prepareDefaultPrompt?: (promptInput: PromptInput) => PreparedProcedurePrompt;
   onError?: (ctx: ProcedureApi, errorText: string) => void | Promise<void>;
   dispatchCorrelationId?: string;

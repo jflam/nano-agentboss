@@ -74,6 +74,7 @@ export interface SessionApi {
   setDefaultAgentSelection(selection: DownstreamAgentSelection): DownstreamAgentConfig;
   getDefaultAgentTokenSnapshot(): Promise<AgentTokenSnapshot | undefined>;
   getDefaultAgentTokenUsage(): Promise<AgentTokenUsage | undefined>;
+  isAutoApproveEnabled?(): boolean;
 }
 
 export interface StateApi {

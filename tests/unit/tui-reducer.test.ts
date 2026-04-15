@@ -14,6 +14,7 @@ describe("tui reducer", () => {
       cwd: "/repo",
       buildLabel: "nanoboss-test",
       agentLabel: "copilot/default",
+      autoApprove: false,
       commands: [{ name: "tokens", description: "show tokens" }],
     });
     state = reduceUiState(state, {
@@ -127,6 +128,7 @@ describe("tui reducer", () => {
       cwd: "/repo",
       buildLabel: "nanoboss-test",
       agentLabel: "copilot/default",
+      autoApprove: false,
       commands: [{ name: "tokens", description: "show tokens" }],
     });
 
@@ -374,6 +376,7 @@ describe("tui reducer", () => {
       cwd: "/repo",
       buildLabel: "nanoboss-test",
       agentLabel: "copilot/default",
+      autoApprove: false,
       commands: [],
     });
     state = reduceUiState(state, {
@@ -702,6 +705,7 @@ describe("tui reducer", () => {
       cwd: "/repo",
       buildLabel: "nanoboss-test",
       agentLabel: "copilot/default",
+      autoApprove: false,
       commands: [{ name: "tokens", description: "show tokens" }],
     });
     state = reduceUiState(state, {
@@ -1153,6 +1157,7 @@ describe("tui reducer", () => {
       cwd: "/repo",
       buildLabel: "nanoboss-test",
       agentLabel: "copilot/default",
+      autoApprove: false,
       commands: [{ name: "tokens", description: "show tokens" }],
     });
 
@@ -1235,6 +1240,18 @@ describe("tui reducer", () => {
 
     expect(state.simplify2AutoApprove).toBe(true);
     expect(state.statusLine).toBe("[simplify2] auto-approve on");
+  });
+
+  test("tracks session-backed auto-approve mode", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "session_auto_approve",
+      enabled: true,
+    });
+
+    expect(state.simplify2AutoApprove).toBe(true);
+    expect(state.statusLine).toBe("[session] auto-approve on");
   });
 });
 

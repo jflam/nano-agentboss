@@ -144,6 +144,7 @@ function parseSessionMetadata(raw: Record<string, unknown>): SessionMetadata | u
     updatedAt,
     initialPrompt: asNonEmptyString(raw.initialPrompt),
     lastPrompt: asNonEmptyString(raw.lastPrompt),
+    autoApprove: raw.autoApprove === true ? true : undefined,
     defaultAgentSelection: parseDownstreamAgentSelection(raw.defaultAgentSelection),
     defaultAgentSessionId: asNonEmptyString(raw.defaultAgentSessionId),
     pendingContinuation: parsePendingContinuation(raw.pendingContinuation),
