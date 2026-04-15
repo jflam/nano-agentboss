@@ -39,7 +39,7 @@ import type {
   Procedure,
   ProcedureMetadata,
   ProcedureRegistryLike,
-} from "../core/types.ts";
+} from "@nanoboss/contracts";
 
 interface ProcedureRegistryOptions {
   cwd?: string;

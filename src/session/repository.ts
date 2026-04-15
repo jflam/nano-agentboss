@@ -20,8 +20,8 @@ import type {
   Simplify2FocusPickerContinuationUi,
   Simplify2FocusPickerContinuationUiAction,
   Simplify2FocusPickerContinuationUiEntry,
-} from "../core/types.ts";
-import { createSessionRef } from "../core/types.ts";
+} from "@nanoboss/contracts";
+import { createSessionRef } from "@nanoboss/contracts";
 
 const SESSION_METADATA_FILE = "session.json";
 const CURRENT_SESSION_INDEX_FILE = "current-sessions.json";

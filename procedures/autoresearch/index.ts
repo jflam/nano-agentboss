@@ -1,4 +1,4 @@
-import type { Procedure } from "../../src/core/types.ts";
+import type { Procedure } from "@nanoboss/contracts";
 import { executeAutoresearchCommand } from "./runner.ts";
 
 export default {

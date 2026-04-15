@@ -1,10 +1,12 @@
 export type {
   AgentSession,
+  AgentSessionPromptOptions,
+  AgentSessionPromptResult,
   Continuation,
-  FrontendContinuation,
   ContinuationUi,
   PendingContinuation,
   Ref,
+  RefStat,
   RunKind,
   RunRecord,
   RunRef,
@@ -13,10 +15,11 @@ export type {
   SessionDescriptor,
   SessionMetadata,
   SessionRef,
-} from "./types.ts";
+} from "@nanoboss/contracts";
 
 export {
   createRef,
   createRunRef,
   createSessionRef,
-} from "./types.ts";
+  jsonType,
+} from "@nanoboss/contracts";

@@ -30,9 +30,10 @@ import { resolveSelfCommand } from "../core/self-command.ts";
 import type {
   DownstreamAgentSelection,
   ProcedureRegistryLike,
+  RunRecord,
   RunRef,
   RunResult,
-} from "../core/types.ts";
+} from "@nanoboss/contracts";
 import { requireValue } from "../util/argv.ts";
 
 const PROCEDURE_DISPATCH_JOBS_DIR = "procedure-dispatch-jobs";
@@ -694,7 +695,7 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function looksLikeProcedureFailureRecord(record: ReturnType<SessionStore["getRun"]>): boolean {
+function looksLikeProcedureFailureRecord(record: RunRecord): boolean {
   return (
     record.output.data === undefined &&
     record.output.display === undefined &&

@@ -16,7 +16,6 @@ import type {
   Continuation,
   DownstreamAgentSelection,
   KernelValue,
-  PersistedFrontendEvent,
   PromptImagePart,
   PromptImageSummary,
   PromptInput,
@@ -31,8 +30,10 @@ import type {
   RunRecord,
   RunRef,
   RunSummary,
-} from "../core/types.ts";
-import { createRef, createRunRef, publicKernelValueFromStored } from "../core/types.ts";
+} from "@nanoboss/contracts";
+import { createRef, createRunRef } from "@nanoboss/contracts";
+import type { PersistedFrontendEvent } from "../core/types.ts";
+import { publicKernelValueFromStored } from "../core/types.ts";
 
 interface RunDraft {
   run: RunRef;
@@ -116,6 +117,12 @@ export interface StoredRunResult<T extends KernelValue = KernelValue> {
   pauseRef?: Ref;
   summary?: string;
   rawRef?: Ref;
+}
+
+interface StoredRunRecord extends RunRecord {
+  output: Omit<RunRecord["output"], "replayEvents"> & {
+    replayEvents?: PersistedFrontendEvent[];
+  };
 }
 
 const STALE_ATTACHMENT_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -284,7 +291,7 @@ export class SessionStore {
       output?: Partial<CellRecord["output"]>;
       meta?: Partial<CellRecord["meta"]>;
     },
-  ): RunRecord {
+  ): StoredRunRecord {
     this.loadExistingCells();
     const cellRef = cellRefFromRunRef(runRef);
     const existing = this.readCell(cellRef);
@@ -316,7 +323,7 @@ export class SessionStore {
     return getValueAtPath(cell, valueRef.path);
   }
 
-  getRun(runRef: RunRef): RunRecord {
+  getRun(runRef: RunRef): StoredRunRecord {
     return toRunRecord(this.sessionId, this.readCell(cellRefFromRunRef(runRef)));
   }
 
@@ -797,7 +804,7 @@ function matchesCell(record: CellRecord, options: Pick<RunFilterOptions, "kind" 
   return true;
 }
 
-function toRunRecord(sessionId: string, record: CellRecord): RunRecord {
+function toRunRecord(sessionId: string, record: CellRecord): StoredRunRecord {
   return {
     run: {
       sessionId,

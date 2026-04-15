@@ -1,5 +1,5 @@
 import { expectData } from "../../src/core/run-result.ts";
-import type { Procedure } from "../../src/core/types.ts";
+import type { Procedure } from "@nanoboss/contracts";
 
 import type { PreCommitChecksResult } from "./test-cache-lib.ts";
 

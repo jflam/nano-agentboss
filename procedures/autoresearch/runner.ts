@@ -9,7 +9,7 @@ import {
   jsonType,
   type ProcedureApi,
   type ProcedureResult,
-} from "../../src/core/types.ts";
+} from "@nanoboss/contracts";
 import { summarizeText } from "../../src/util/text.ts";
 
 import { runBenchmark, runChecks } from "./benchmark.ts";

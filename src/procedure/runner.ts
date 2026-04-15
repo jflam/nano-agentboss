@@ -19,8 +19,8 @@ import {
 import { toDownstreamAgentSelection } from "../core/config.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "../core/timing-trace.ts";
 import { summarizeText } from "../util/text.ts";
+import type { AgentSession } from "../core/types.ts";
 import type {
-  AgentSession,
   AgentTokenUsage,
   Continuation,
   DownstreamAgentConfig,
@@ -32,7 +32,7 @@ import type {
   RunRecord,
   RunResult,
   RunRef,
-} from "../core/types.ts";
+} from "@nanoboss/contracts";
 
 export interface ProcedureRunnerEmitter extends SessionUpdateEmitter {
   readonly currentTokenUsage?: AgentTokenUsage;

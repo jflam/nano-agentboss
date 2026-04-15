@@ -3,6 +3,9 @@
   "module": "nanoboss.ts",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "nanoboss": "bun run nanoboss.ts",
     "build": "bun run build.ts",
@@ -19,6 +22,7 @@
     "prepare": "ts-patch install"
   },
   "dependencies": {
+    "@nanoboss/contracts": "workspace:*",
     "@agentclientprotocol/sdk": "^0.17.1",
     "@mariozechner/pi-tui": "0.65.2",
     "@ryoppippi/unplugin-typia": "^2.6.5",

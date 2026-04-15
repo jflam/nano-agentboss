@@ -7,7 +7,7 @@ import {
   type KernelValue,
   type Procedure,
   type ProcedureResult,
-} from "../src/core/types.ts";
+} from "@nanoboss/contracts";
 
 interface SimplifyOpportunity {
   stop: boolean;

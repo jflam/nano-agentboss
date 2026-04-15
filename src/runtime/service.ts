@@ -4,11 +4,11 @@ import type {
   DownstreamAgentSelection,
   KernelValue,
   ProcedureMetadata,
-  Ref,
   ProcedureRegistryLike,
+  Ref,
   RunRef,
   RunDescendantsOptions,
-} from "../core/types.ts";
+} from "@nanoboss/contracts";
 import { publicKernelValueFromStored } from "../core/types.ts";
 import {
   ProcedureDispatchJobManager,

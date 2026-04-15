@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import type { ProcedureApi, ProcedureRegistryLike } from "@nanoboss/contracts";
 import { createCreateProcedure } from "../../src/procedure/create.ts";
 import { normalizeProcedureResult } from "../../src/session/index.ts";
-import type { ProcedureApi, ProcedureRegistryLike } from "../../src/core/types.ts";
 
 describe("create procedure", () => {
   test("reports invalid generated procedure names without obscuring the cause", async () => {
@@ -50,7 +50,7 @@ describe("create procedure", () => {
         data: {
           name: "review",
           source: [
-            "import type { ProcedureApi } from \"../src/core/types.ts\";",
+            'import type { ProcedureApi } from "@nanoboss/contracts";',
             "",
             "export default {",
             "  name: \"review\",",
@@ -67,7 +67,7 @@ describe("create procedure", () => {
     expect(generatedPrompt).toContain("ctx: ProcedureApi");
     expect(generatedPrompt).toContain("The procedure API provides:");
     expect(generatedPrompt).toContain(".nanoboss/procedures/<name>.ts");
-    expect(generatedPrompt).toContain("../../src/core/types.ts");
+    expect(generatedPrompt).toContain('@nanoboss/contracts');
     expect(generatedPrompt).toContain("Return exactly one JSON object matching the requested schema.");
     expect(generatedPrompt).not.toContain("CommandContext");
     expect(generatedOptions).toEqual({ stream: false });
@@ -104,7 +104,7 @@ describe("create procedure", () => {
         data: {
           name: "review",
           source: [
-            "import type { ProcedureApi } from \"../src/core/types.ts\";",
+            'import type { ProcedureApi } from "@nanoboss/contracts";',
             "import { expectData } from \"../src/core/run-result.ts\";",
             "",
             "export default {",
@@ -119,7 +119,7 @@ describe("create procedure", () => {
       };
     })));
 
-    expect(persistedSource).toContain('import type { ProcedureApi } from "../../src/core/types.ts";');
+    expect(persistedSource).toContain('import type { ProcedureApi } from "@nanoboss/contracts";');
     expect(persistedSource).toContain('import { expectData } from "../../src/core/run-result.ts";');
     expect(persistedSource).toContain('name: "review"');
     expect(loadedPath).toBe(persistedPath);

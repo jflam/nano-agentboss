@@ -4,7 +4,7 @@ import {
   createRef,
   createRunRef,
   createSessionRef,
-} from "../../src/core/contracts.ts";
+} from "@nanoboss/contracts";
 
 describe("core contracts", () => {
   test("uses canonical run, ref, and session shapes directly", () => {

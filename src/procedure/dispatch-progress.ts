@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "nod
 import { dirname, join } from "node:path";
 
 import type { ProcedureUiEvent, SessionUpdateEmitter } from "../core/context.ts";
-import type { AgentTokenUsage } from "../core/types.ts";
+import type { AgentTokenUsage } from "@nanoboss/contracts";
 import { toProcedureUiSessionUpdate } from "../core/ui-cli.ts";
 
 const PROCEDURE_DISPATCH_PROGRESS_DIR = "procedure-dispatch-progress";

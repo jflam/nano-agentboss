@@ -1,4 +1,4 @@
-import type { Ref, RunRef } from "../core/types.ts";
+import type { Ref, RunRef } from "@nanoboss/contracts";
 
 interface CellRef {
   sessionId: string;

@@ -6,7 +6,7 @@ import type {
   Ref,
   RunRef,
   RunResult,
-} from "../core/types.ts";
+} from "@nanoboss/contracts";
 
 export interface RuntimeServiceParams {
   sessionId?: string;
