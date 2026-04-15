@@ -1,9 +1,1 @@
-import type { ClipboardImageProvider } from "./provider.ts";
-
-export function createUnsupportedClipboardImageProvider(): ClipboardImageProvider {
-  return {
-    async readImage() {
-      return undefined;
-    },
-  };
-}
+export * from "../../../packages/adapters-tui/src/clipboard/unsupported.ts";

@@ -1,0 +1,220 @@
+import type { SessionStore } from "@nanoboss/store";
+import type { CreateAgentSession } from "@nanoboss/agent-acp";
+import { RunCancelledError, defaultCancellationMessage } from "../../../../src/core/cancellation.ts";
+import { resolveDownstreamAgentConfig } from "../../../../src/core/config.ts";
+import { AgentInvocationApiImpl, AgentRunRecorder } from "./agent-api.ts";
+import { type PreparedDefaultPrompt, type SessionUpdateEmitter } from "./shared.ts";
+import { ProcedureInvocationApiImpl, type ChildContextBindingParams } from "./procedure-api.ts";
+import { ContextSessionApiImpl } from "./session-api.ts";
+import { CommandState } from "./state-api.ts";
+import { type UiApi } from "../../../../src/core/ui-api.ts";
+import { UiApiImpl } from "../../../app-runtime/src/runtime-events.ts";
+import type { RunLogger } from "../../../../src/core/logger.ts";
+import { normalizeProcedurePromptInput } from "../../../../src/core/prompt.ts";
+import type { RunTimingTrace } from "../../../../src/core/timing-trace.ts";
+import type {
+  DownstreamAgentConfig,
+  DownstreamAgentSelection,
+  PromptInput,
+  ProcedureApi,
+  ProcedurePromptInput,
+  ProcedureInvocationApi,
+  ProcedureRegistryLike,
+  SessionApi,
+  StateApi,
+} from "@nanoboss/procedure-sdk";
+import type {
+  AgentSession,
+  AgentInvocationApi,
+} from "../../../../src/core/types.ts";
+
+type ActiveRun = ReturnType<SessionStore["startRun"]>;
+
+export type { PreparedDefaultPrompt, ProcedureUiEvent, SessionUpdateEmitter } from "./shared.ts";
+
+interface CommandContextParams {
+  cwd: string;
+  sessionId?: string;
+  logger: RunLogger;
+  registry: ProcedureRegistryLike;
+  procedureName: string;
+  spanId: string;
+  emitter: SessionUpdateEmitter;
+  store: SessionStore;
+  run: ActiveRun;
+  promptInput?: string | PromptInput;
+  signal?: AbortSignal;
+  softStopSignal?: AbortSignal;
+  agentSession?: AgentSession;
+  getDefaultAgentConfig?: () => DownstreamAgentConfig;
+  setDefaultAgentSelection?: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+  prepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
+  rootAgentSession?: AgentSession;
+  rootGetDefaultAgentConfig?: () => DownstreamAgentConfig;
+  rootSetDefaultAgentSelection?: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+  rootPrepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
+  isAutoApproveEnabled?: () => boolean;
+  createAgentSession?: CreateAgentSession;
+  assertCanStartBoundary?: () => void;
+  timingTrace?: RunTimingTrace;
+}
+
+export class CommandContextImpl implements ProcedureApi {
+  readonly cwd: string;
+  readonly sessionId: string;
+  readonly promptInput: ProcedurePromptInput;
+  readonly agent: AgentInvocationApi;
+  readonly state: StateApi;
+  readonly ui: UiApi;
+  readonly procedures: ProcedureInvocationApi;
+  readonly session: SessionApi;
+
+  private readonly logger: RunLogger;
+  private readonly registry: ProcedureRegistryLike;
+  private readonly emitter: SessionUpdateEmitter;
+  private readonly signal?: AbortSignal;
+  private readonly softStopSignal?: AbortSignal;
+  private readonly store: SessionStore;
+  private readonly run: ActiveRun;
+  private readonly rootAgentSession?: AgentSession;
+  private readonly rootGetDefaultAgentConfigValue: () => DownstreamAgentConfig;
+  private readonly rootSetDefaultAgentSelectionValue: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+  private readonly rootPrepareDefaultPromptValue?: (promptInput: PromptInput) => PreparedDefaultPrompt;
+  private readonly createAgentSessionValue?: CreateAgentSession;
+  private readonly assertCanStartBoundaryValue?: () => void;
+  private readonly timingTrace?: RunTimingTrace;
+
+  constructor(params: CommandContextParams) {
+    this.cwd = params.cwd;
+    this.sessionId = params.sessionId ?? params.store.sessionId;
+    this.logger = params.logger;
+    this.registry = params.registry;
+    this.emitter = params.emitter;
+    this.signal = params.signal;
+    this.softStopSignal = params.softStopSignal;
+    this.store = params.store;
+    this.run = params.run;
+    this.promptInput = normalizeProcedurePromptInput(
+      params.promptInput ?? params.run.input,
+    );
+    const getDefaultAgentConfig = params.getDefaultAgentConfig
+      ?? (() => resolveDownstreamAgentConfig(this.cwd));
+    const setDefaultAgentSelection = params.setDefaultAgentSelection
+      ?? ((selection) => resolveDownstreamAgentConfig(this.cwd, selection));
+    const prepareDefaultPrompt = params.prepareDefaultPrompt;
+    const agentSession = params.agentSession;
+    this.rootAgentSession = params.rootAgentSession ?? agentSession;
+    this.rootGetDefaultAgentConfigValue = params.rootGetDefaultAgentConfig ?? getDefaultAgentConfig;
+    this.rootSetDefaultAgentSelectionValue = params.rootSetDefaultAgentSelection ?? setDefaultAgentSelection;
+    this.rootPrepareDefaultPromptValue = params.rootPrepareDefaultPrompt ?? prepareDefaultPrompt;
+    this.createAgentSessionValue = params.createAgentSession;
+    this.assertCanStartBoundaryValue = params.assertCanStartBoundary;
+    this.timingTrace = params.timingTrace;
+    this.state = new CommandState(this.store, this.cwd, this.run.run.runId);
+
+    const contextSessionApi = new ContextSessionApiImpl({
+      cwd: this.cwd,
+      current: {
+        agentSession,
+        getDefaultAgentConfig,
+        setDefaultAgentSelection,
+        prepareDefaultPrompt,
+      },
+      root: {
+        agentSession: this.rootAgentSession,
+        getDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
+        setDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
+        prepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
+      },
+      createAgentSession: this.createAgentSessionValue,
+      isAutoApproveEnabled: params.isAutoApproveEnabled,
+    });
+    this.session = contextSessionApi;
+
+    const recorder = new AgentRunRecorder({
+      logger: this.logger,
+      store: this.store,
+      emitter: this.emitter,
+      procedureName: params.procedureName,
+      spanId: params.spanId,
+      run: this.run,
+      softStopSignal: this.softStopSignal,
+      timingTrace: this.timingTrace,
+    });
+    this.agent = new AgentInvocationApiImpl({
+      cwd: this.cwd,
+      signal: this.signal,
+      softStopSignal: this.softStopSignal,
+      store: this.store,
+      emitter: this.emitter,
+      sessionManager: contextSessionApi,
+      assertCanStartBoundary: () => this.assertCanStartBoundary(),
+      recorder,
+      timingTrace: this.timingTrace,
+    });
+
+    this.procedures = new ProcedureInvocationApiImpl({
+      logger: this.logger,
+      registry: this.registry,
+      store: this.store,
+      sessionManager: contextSessionApi,
+      assertCanStartBoundary: () => this.assertCanStartBoundary(),
+      spanId: params.spanId,
+      run: this.run,
+      createChildContext: (binding) => this.createChildContext(binding),
+    });
+    this.ui = new UiApiImpl(
+      this.store,
+      this.run,
+      this.logger,
+      params.spanId,
+      params.procedureName,
+      this.emitter,
+    );
+  }
+
+  assertNotCancelled(): void {
+    this.assertCanStartBoundary();
+  }
+
+  private createChildContext(binding: ChildContextBindingParams): CommandContextImpl {
+    return new CommandContextImpl({
+      cwd: this.cwd,
+      sessionId: this.sessionId,
+      logger: this.logger,
+      registry: this.registry,
+      procedureName: binding.procedureName,
+      spanId: binding.spanId,
+      emitter: this.emitter,
+      store: this.store,
+      run: binding.run,
+      promptInput: binding.promptInput,
+      signal: this.signal,
+      softStopSignal: this.softStopSignal,
+      agentSession: binding.agentSession,
+      getDefaultAgentConfig: binding.getDefaultAgentConfig,
+      setDefaultAgentSelection: binding.setDefaultAgentSelection,
+      prepareDefaultPrompt: binding.prepareDefaultPrompt,
+      rootAgentSession: this.rootAgentSession,
+      rootGetDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
+      rootSetDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
+      rootPrepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
+      isAutoApproveEnabled: this.session.isAutoApproveEnabled?.bind(this.session),
+      createAgentSession: this.createAgentSessionValue,
+      assertCanStartBoundary: this.assertCanStartBoundaryValue,
+      timingTrace: this.timingTrace,
+    });
+  }
+
+  private assertCanStartBoundary(): void {
+    this.assertCanStartBoundaryValue?.();
+
+    if (this.softStopSignal?.aborted) {
+      throw new RunCancelledError(defaultCancellationMessage("soft_stop"), "soft_stop");
+    }
+
+    if (this.signal?.aborted) {
+      throw new RunCancelledError(defaultCancellationMessage("abort"), "abort");
+    }
+  }
+}

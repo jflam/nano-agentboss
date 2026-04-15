@@ -2,7 +2,7 @@ import {
   executeTopLevelProcedure as executeTopLevelProcedureInternal,
   TopLevelProcedureCancelledError,
   TopLevelProcedureExecutionError,
-} from "../../../src/procedure/runner.ts";
+} from "./top-level-runner.ts";
 import {
   buildRecoveredProcedureSyncPrompt,
   findRecoveredProcedureDispatchRun,
@@ -10,8 +10,7 @@ import {
   procedureDispatchResultFromRecoveredRun,
   syncRecoveredProcedureResultIntoDefaultConversation as syncRecoveredProcedureResultIntoDefaultConversationInternal,
   waitForRecoveredProcedureDispatchRun,
-} from "../../../src/procedure/dispatch-recovery.ts";
-import type { AgentSession as InternalAgentSession } from "../../../src/core/types.ts";
+} from "./dispatch/recovery.ts";
 import type {
   AgentTokenSnapshot,
   AgentTokenUsage,
@@ -39,14 +38,14 @@ export {
   ProcedureDispatchJobManager,
   requestProcedureDispatchCancellation,
   runProcedureDispatchWorkerCommand,
-} from "../../../src/procedure/dispatch-jobs.ts";
+} from "./dispatch/jobs.ts";
 
 export type {
   ProcedureDispatchJob,
   ProcedureDispatchJobStatus,
   ProcedureDispatchStartResult,
   ProcedureDispatchStatusResult,
-} from "../../../src/procedure/dispatch-jobs.ts";
+} from "./dispatch/jobs.ts";
 
 export {
   buildRecoveredProcedureSyncPrompt,
@@ -124,18 +123,22 @@ export interface ResumeProcedureParams extends RunProcedureParams {
 }
 
 export async function runProcedure(params: RunProcedureParams): Promise<RunResult> {
+  type ExecuteTopLevelProcedureParams = Parameters<typeof executeTopLevelProcedureInternal>[0];
+
   return await executeTopLevelProcedureInternal({
     ...params,
-    agentSession: params.agentSession as InternalAgentSession | undefined,
-    timingTrace: params.timingTrace as Parameters<typeof executeTopLevelProcedureInternal>[0]["timingTrace"],
+    agentSession: params.agentSession as ExecuteTopLevelProcedureParams["agentSession"],
+    timingTrace: params.timingTrace as ExecuteTopLevelProcedureParams["timingTrace"],
   });
 }
 
 export async function resumeProcedure(params: ResumeProcedureParams): Promise<RunResult> {
+  type ExecuteTopLevelProcedureParams = Parameters<typeof executeTopLevelProcedureInternal>[0];
+
   return await executeTopLevelProcedureInternal({
     ...params,
-    agentSession: params.agentSession as InternalAgentSession | undefined,
-    timingTrace: params.timingTrace as Parameters<typeof executeTopLevelProcedureInternal>[0]["timingTrace"],
+    agentSession: params.agentSession as ExecuteTopLevelProcedureParams["agentSession"],
+    timingTrace: params.timingTrace as ExecuteTopLevelProcedureParams["timingTrace"],
     resume: {
       prompt: params.prompt,
       state: params.state,
@@ -149,8 +152,10 @@ export async function syncRecoveredProcedureResultIntoDefaultConversation(params
   signal?: AbortSignal;
   defaultAgentConfig: DownstreamAgentConfig;
 }): Promise<AgentTokenUsage | undefined> {
+  type SyncRecoveredProcedureParams = Parameters<typeof syncRecoveredProcedureResultIntoDefaultConversationInternal>[0];
+
   return await syncRecoveredProcedureResultIntoDefaultConversationInternal({
     ...params,
-    agentSession: params.agentSession as InternalAgentSession,
+    agentSession: params.agentSession as SyncRecoveredProcedureParams["agentSession"],
   });
 }

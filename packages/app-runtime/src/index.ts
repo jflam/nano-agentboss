@@ -1,8 +1,8 @@
 export {
   extractProcedureDispatchResult,
   NanobossService,
-} from "../../../src/core/service.ts";
+} from "./service.ts";
 
 export type {
   RuntimeSessionDescriptor,
-} from "../../../src/core/service.ts";
+} from "./service.ts";

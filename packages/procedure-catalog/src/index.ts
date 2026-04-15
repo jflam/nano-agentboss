@@ -2,10 +2,10 @@ export {
   ProcedureRegistry,
   projectProcedureMetadata,
   toAvailableCommand,
-} from "../../../src/procedure/registry.ts";
+} from "./registry.ts";
 
 export {
   discoverDiskProcedures,
   loadProcedureFromPath,
   persistProcedureSource,
-} from "../../../src/procedure/disk-loader.ts";
+} from "./disk-loader.ts";

@@ -1,7 +1,7 @@
-export * from "../../../src/tui/run.ts";
+export * from "./run.ts";
 export {
   createNanobossTuiTheme,
   type NanobossTuiTheme,
   type ToolCardThemeMode,
-} from "../../../src/tui/theme.ts";
-export { promptForStoredSessionSelection } from "../../../src/tui/overlays/session-picker.ts";
+} from "./theme.ts";
+export { promptForStoredSessionSelection } from "./overlays/session-picker.ts";
