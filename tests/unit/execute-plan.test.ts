@@ -262,10 +262,148 @@ describe("/execute-plan", () => {
       },
     });
   });
+
+  test("uses the session auto-approve flag instead of prompt text to continue across steps", async () => {
+    const cwd = createGitRepo();
+    writeFileSync(join(cwd, "src", "app.ts"), "export const value = 1;\n", "utf8");
+    writeFileSync(join(cwd, "tests", "app.test.ts"), "export {};\n", "utf8");
+    writeFileSync(
+      join(cwd, "plans", "demo.md"),
+      [
+        "# Demo Plan",
+        "",
+        "1. Implement the feature",
+        "2. Verify the result",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    execGit(cwd, ["add", "."]);
+    execGit(cwd, ["commit", "-m", "Add plan scaffold"]);
+
+    const agentRuns = [
+      {
+        run: runRef("selector-1"),
+        data: {
+          status: "continue",
+          rationale: "Step 1 is next.",
+          completionSummary: null,
+          blockerQuestion: null,
+          stepId: "1.",
+          stepIndex: 1,
+          stepTitle: "Implement the feature",
+          stepGoal: "Add the planned behavior",
+          stepInstructions: ["Update src/app.ts"],
+          successSignals: ["Targeted tests pass"],
+          commitContext: "Implement the feature step",
+        },
+      },
+      {
+        run: runRef("worker-1"),
+        data: {
+          status: "completed",
+          summary: "Implemented the requested change.",
+          filesChanged: ["src/app.ts"],
+          verification: ["bun test tests/app.test.ts"],
+          blockers: [],
+          followupSuggestions: [],
+        },
+      },
+      {
+        run: runRef("selector-2"),
+        data: {
+          status: "continue",
+          rationale: "Step 2 is next.",
+          completionSummary: null,
+          blockerQuestion: null,
+          stepId: "2.",
+          stepIndex: 2,
+          stepTitle: "Verify the result",
+          stepGoal: "Confirm the updated behavior",
+          stepInstructions: ["Run focused verification"],
+          successSignals: ["Verification completed"],
+          commitContext: "Verify the result step",
+        },
+      },
+      {
+        run: runRef("worker-2"),
+        data: {
+          status: "completed",
+          summary: "Verified the updated behavior.",
+          filesChanged: [],
+          verification: ["bun test tests/app.test.ts"],
+          blockers: [],
+          followupSuggestions: [],
+        },
+      },
+      {
+        run: runRef("selector-complete"),
+        data: {
+          status: "complete",
+          rationale: "All plan steps are done.",
+          completionSummary: "Plan complete.",
+          blockerQuestion: null,
+          stepId: null,
+          stepIndex: null,
+          stepTitle: null,
+          stepGoal: null,
+          stepInstructions: [],
+          successSignals: [],
+          commitContext: null,
+        },
+      },
+    ];
+    const procedureCalls: Array<{ name: string; prompt: string }> = [];
+
+    const ctx = createProcedureApi({
+      cwd,
+      autoApproveEnabled: true,
+      onAgentRun: async () => {
+        const nextRun = agentRuns.shift();
+        if (!nextRun) {
+          throw new Error("Unexpected agent run");
+        }
+        return nextRun;
+      },
+      onProcedureRun: async (name, prompt) => {
+        procedureCalls.push({ name, prompt });
+        if (name === "nanoboss/pre-commit-checks") {
+          return {
+            run: runRef(`precommit-${procedureCalls.length}`),
+            data: {
+              passed: true,
+            },
+          };
+        }
+
+        if (name === "nanoboss/commit") {
+          return {
+            run: runRef(`commit-${procedureCalls.length}`),
+            summary: `commit ${prompt}`,
+          };
+        }
+
+        throw new Error(`Unexpected procedure: ${name}`);
+      },
+    });
+
+    const result = await executePlan.execute("plans/demo.md keep going automatically", ctx);
+
+    expect(result.pause).toBeUndefined();
+    expect(result.summary).toBe("execute-plan: complete plans/demo.md");
+    const data = result.data as { autoApprove: boolean; completedSteps: Array<{ stepId: string }> };
+    expect(data.autoApprove).toBe(true);
+    expect(data.completedSteps.map((step) => step.stepId)).toEqual(["1.", "2."]);
+    expect(procedureCalls).toEqual([
+      { name: "nanoboss/pre-commit-checks", prompt: "" },
+      { name: "nanoboss/pre-commit-checks", prompt: "" },
+    ]);
+  });
 });
 
 function createProcedureApi(options: {
   cwd: string;
+  autoApproveEnabled?: boolean;
   onAgentRun?: (
     prompt: string,
     descriptorOrOptions?: unknown,
@@ -364,6 +502,9 @@ function createProcedureApi(options: {
       },
       async getDefaultAgentTokenUsage() {
         return undefined;
+      },
+      isAutoApproveEnabled() {
+        return options.autoApproveEnabled === true;
       },
     },
     assertNotCancelled() {},

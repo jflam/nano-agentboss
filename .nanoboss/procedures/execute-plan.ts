@@ -140,7 +140,7 @@ export default {
       version: 1,
       planPath: parsed.planPath,
       extraInstructions: parsed.extraInstructions,
-      autoApprove: parsed.autoApprove,
+      autoApprove: isAutoApproveEnabled(ctx),
       continuationNotes: [],
       currentStepId: null,
       currentStepIndex: null,
@@ -151,7 +151,7 @@ export default {
     return await orchestratePlan(state, ctx);
   },
   async resume(prompt, rawState, ctx) {
-    const state = requireExecutePlanState(rawState);
+    const state = syncAutoApproveState(requireExecutePlanState(rawState), ctx);
     const reply = prompt.trim();
 
     if (isStopReply(reply)) {
@@ -197,12 +197,12 @@ async function orchestratePlan(
   initialState: ExecutePlanState,
   ctx: ProcedureApi,
 ): Promise<ProcedureResult> {
+  let state = syncAutoApproveState(initialState, ctx);
   const dirtyWorkspace = getDirtyWorkspaceEntries(ctx.cwd);
   if (dirtyWorkspace.length > 0) {
-    return buildDirtyWorkspacePause(initialState, dirtyWorkspace);
+    return buildDirtyWorkspacePause(state, dirtyWorkspace);
   }
 
-  let state = initialState;
   let stepsExecuted = 0;
   const maxStepsThisRun = state.autoApprove ? MAX_AUTO_APPROVE_STEPS_PER_RUN : 1;
 
@@ -428,13 +428,11 @@ async function parseExecutePlanPrompt(
   planPath?: string;
   absolutePlanPath?: string;
   extraInstructions: string;
-  autoApprove: boolean;
 }> {
   const trimmed = prompt.trim();
   if (!trimmed) {
     return {
       extraInstructions: "",
-      autoApprove: false,
     };
   }
 
@@ -451,7 +449,6 @@ async function parseExecutePlanPrompt(
       planPath: resolvedPath.displayPath,
       absolutePlanPath: resolvedPath.absolutePath,
       extraInstructions,
-      autoApprove: inferAutoApprove(extraInstructions),
     };
   }
 
@@ -459,7 +456,6 @@ async function parseExecutePlanPrompt(
   return {
     planPath: firstToken || undefined,
     extraInstructions: tokens.slice(1).join(" ").trim(),
-    autoApprove: inferAutoApprove(tokens.slice(1).join(" ").trim()),
   };
 }
 
@@ -898,14 +894,21 @@ function hasSelectedStep(decision: StepSelection): boolean {
   ) && decision.stepInstructions.length > 0;
 }
 
-function inferAutoApprove(extraInstructions: string): boolean {
-  const normalized = extraInstructions.toLowerCase();
-  return normalized.includes("auto-approve")
-    || normalized.includes("auto approve")
-    || normalized.includes("automatically continue")
-    || normalized.includes("continue automatically")
-    || normalized.includes("run all steps")
-    || normalized.includes("keep going automatically");
+function isAutoApproveEnabled(ctx: ProcedureApi): boolean {
+  return ctx.session.isAutoApproveEnabled?.() === true;
+}
+
+function syncAutoApproveState(
+  state: ExecutePlanState,
+  ctx: ProcedureApi,
+): ExecutePlanState {
+  const autoApprove = isAutoApproveEnabled(ctx);
+  return state.autoApprove === autoApprove
+    ? state
+    : {
+      ...state,
+      autoApprove,
+    };
 }
 
 function tokenizePrompt(input: string): string[] {
