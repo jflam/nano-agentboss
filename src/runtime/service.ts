@@ -11,11 +11,11 @@ import type {
   ProcedureMetadata,
   ProcedureRegistryLike,
 } from "@nanoboss/procedure-sdk";
+import { ProcedureRegistry, projectProcedureMetadata } from "@nanoboss/procedure-catalog";
 import { publicKernelValueFromStored } from "../core/types.ts";
 import {
   ProcedureDispatchJobManager,
 } from "../procedure/dispatch-jobs.ts";
-import { ProcedureRegistry, projectProcedureMetadata } from "../procedure/registry.ts";
 import {
   SessionStore,
   readCurrentWorkspaceSessionMetadata,

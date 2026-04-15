@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from "@nanoboss/procedure-catalog";
 import { CREATE_PROCEDURE_METADATA } from "../../src/procedure/create.ts";
-import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from "../../src/procedure/registry.ts";
 
 function describeProcedureMetadata(
   procedure: ReturnType<ProcedureRegistry["get"]>,

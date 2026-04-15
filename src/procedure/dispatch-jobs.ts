@@ -24,7 +24,7 @@ import {
   executeTopLevelProcedure,
 } from "./runner.ts";
 import { runResultFromRunRecord } from "../core/run-result.ts";
-import { ProcedureRegistry } from "./registry.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { SessionStore } from "@nanoboss/store";
 import { resolveSelfCommand } from "../core/self-command.ts";
 import type {

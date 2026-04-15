@@ -56,7 +56,7 @@ import {
   TopLevelProcedureCancelledError,
   TopLevelProcedureExecutionError,
 } from "../procedure/runner.ts";
-import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from "../procedure/registry.ts";
+import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from "@nanoboss/procedure-catalog";
 import { formatAgentBanner } from "./runtime-banner.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import { appendTimingTraceEvent, createRunTimingTrace, type RunTimingTrace } from "./timing-trace.ts";

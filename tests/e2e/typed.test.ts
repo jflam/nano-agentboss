@@ -7,7 +7,7 @@ import typia from "typia";
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { RunLogger } from "../../src/core/logger.ts";
 import { jsonType, type ProcedureApi } from "@nanoboss/procedure-sdk";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { SessionStore } from "@nanoboss/store";
 import { describeE2E } from "./helpers.ts";
 

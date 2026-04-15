@@ -12,7 +12,7 @@ import { createAgentSession } from "../../src/agent/acp-session.ts";
 import type { AgentSession } from "../../src/core/types.ts";
 import type { Procedure, PromptInput } from "@nanoboss/procedure-sdk";
 import { createTextPromptInput, promptInputDisplayText } from "../../src/core/prompt.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import type { FrontendEventEnvelope, ReplayableFrontendEvent } from "../../src/http/frontend-events.ts";
 import { SessionStore } from "@nanoboss/store";
 import { extractProcedureDispatchResult, NanobossService } from "../../src/core/service.ts";

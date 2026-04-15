@@ -85,9 +85,9 @@ export function chooseNextExperiment(): string {
 There are two ways procedure packages show up in nanoboss:
 
 1. **Disk-loaded procedures** live under a workspace or profile procedure root and are discovered automatically.
-2. **Built-in procedures** live in the repo and are imported explicitly from `src/procedure/registry.ts`.
+2. **Built-in procedures** live in the repo and are registered through `@nanoboss/procedure-catalog`.
 
-If you are adding a new built-in procedure package to nanoboss itself, create it under `procedures/` and update the builtin imports in `src/procedure/registry.ts`.
+If you are adding a new built-in procedure package to nanoboss itself, create it under `procedures/` and update the builtin imports in `packages/procedure-catalog`'s registry surface.
 
 ## Generated procedure layout
 

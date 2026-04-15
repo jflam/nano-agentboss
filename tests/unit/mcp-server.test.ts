@@ -8,7 +8,7 @@ import {
   listMcpTools,
 } from "../../src/mcp/server.ts";
 import { createRef } from "../../src/core/types.ts";
-import { ProcedureRegistry } from "../../src/procedure/registry.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { createNanobossRuntimeService } from "../../src/runtime/service.ts";
 import { SessionStore } from "@nanoboss/store";
 
