@@ -3,6 +3,11 @@ export {
   normalizeProcedureResult,
 } from "./session-store.ts";
 
+export {
+  publicContinuationFromStored,
+  publicKernelValueFromStored,
+} from "./stored-values.ts";
+
 export type {
   StoredRunResult,
 } from "./session-store.ts";
