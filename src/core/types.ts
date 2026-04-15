@@ -7,13 +7,15 @@ import type {
 import type {
   AgentInvocationApi,
   AgentTokenSnapshot,
-  ContinuationUi,
   DownstreamAgentConfig,
   DownstreamAgentProvider,
   KernelValue,
   PromptInput,
 } from "@nanoboss/procedure-sdk";
-import type { ReplayableFrontendEvent } from "../http/frontend-events.ts";
+import type {
+  PersistedRuntimeEvent,
+  RuntimeContinuation,
+} from "@nanoboss/app-runtime";
 import type { RunTimingTrace } from "./timing-trace.ts";
 
 export type {
@@ -87,15 +89,9 @@ export {
 } from "@nanoboss/contracts";
 export { jsonType } from "@nanoboss/procedure-sdk";
 
-export interface FrontendContinuation {
-  procedure: string;
-  question: string;
-  inputHint?: string;
-  suggestedReplies?: string[];
-  ui?: ContinuationUi;
-}
+export type FrontendContinuation = RuntimeContinuation;
 
-export type PersistedFrontendEvent = ReplayableFrontendEvent;
+export type PersistedFrontendEvent = PersistedRuntimeEvent;
 
 export function publicKernelValueFromStored(value: unknown): KernelValue | undefined {
   if (value === undefined || value === null) {

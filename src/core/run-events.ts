@@ -2,8 +2,8 @@ import type {
   AgentTokenUsage,
   RunRef,
 } from "@nanoboss/contracts";
+import type { RuntimeEvent } from "@nanoboss/app-runtime";
 import type { RunResult } from "@nanoboss/procedure-sdk";
-import type { FrontendEvent } from "../http/frontend-events.ts";
 
 export function buildRunCompletedEvent(params: {
   runId: string;
@@ -11,7 +11,7 @@ export function buildRunCompletedEvent(params: {
   result: Pick<RunResult, "run" | "summary" | "display">;
   completedAt?: string;
   tokenUsage?: AgentTokenUsage;
-}): Extract<FrontendEvent, { type: "run_completed" }> {
+}): Extract<RuntimeEvent, { type: "run_completed" }> {
   return {
     type: "run_completed",
     runId: params.runId,
@@ -30,7 +30,7 @@ export function buildRunCancelledEvent(params: {
   message: string;
   run?: RunRef;
   completedAt?: string;
-}): Extract<FrontendEvent, { type: "run_cancelled" }> {
+}): Extract<RuntimeEvent, { type: "run_cancelled" }> {
   return {
     type: "run_cancelled",
     runId: params.runId,
@@ -47,7 +47,7 @@ export function buildRunPausedEvent(params: {
   result: Pick<RunResult, "run" | "display" | "pause">;
   pausedAt?: string;
   tokenUsage?: AgentTokenUsage;
-}): Extract<FrontendEvent, { type: "run_paused" }> {
+}): Extract<RuntimeEvent, { type: "run_paused" }> {
   if (!params.result.pause) {
     throw new Error("Paused run event requires pause metadata.");
   }

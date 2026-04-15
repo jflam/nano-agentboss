@@ -1,13 +1,11 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import {
-  createAgentSession,
   normalizeAgentTokenUsage,
   setAgentRuntimeSessionRuntimeFactory,
 } from "@nanoboss/agent-acp";
 import { buildGlobalMcpStdioServer } from "@nanoboss/adapters-mcp";
 
 import { buildMcpProcedureDispatchPrompt } from "../../../src/core/agent-runtime-instructions.ts";
-import { getBuildLabel } from "../../../src/core/build-info.ts";
 import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "../../../src/core/cancellation.ts";
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "../../../src/core/config.ts";
 import { formatErrorMessage } from "../../../src/core/error-format.ts";
@@ -16,31 +14,17 @@ import {
   hasPromptInputContent,
   hasPromptInputImages,
   normalizePromptInput,
-  prependPromptInputText,
   promptInputAttachmentSummaries,
   promptInputDisplayText,
-  promptInputToPlainText,
 } from "../../../src/core/prompt.ts";
+import { materializeProcedureMemoryCard } from "../../../src/core/memory-cards.ts";
 import {
-  collectUnsyncedProcedureMemoryCards,
-  materializeProcedureMemoryCard,
-  renderProcedureMemoryCardsSection,
-} from "../../../src/core/memory-cards.ts";
-import {
-  isReplayableFrontendEvent,
-  mapProcedureUiEventToFrontendEvent,
-  mapSessionUpdateToFrontendEvents,
+  mapProcedureUiEventToRuntimeEvent,
+  mapSessionUpdateToRuntimeEvents,
   SessionEventLog,
-  toReplayableFrontendEvent,
-  toFrontendCommands,
-  type FrontendEvent,
-  type FrontendCommand,
-} from "../../adapters-http/src/event-mapping.ts";
-import {
-  SessionStore,
-  readStoredSessionMetadata,
-  writeStoredSessionMetadata,
-} from "@nanoboss/store";
+  toRuntimeCommands,
+} from "./runtime-events.ts";
+import { readStoredSessionMetadata } from "@nanoboss/store";
 import {
   ProcedureDispatchJobManager,
   type ProcedureUiEvent,
@@ -54,30 +38,48 @@ import {
   TopLevelProcedureExecutionError,
   waitForRecoveredProcedureDispatchRun,
 } from "@nanoboss/procedure-engine";
-import type { SessionMetadata } from "../../../src/core/contracts.ts";
 import {
   buildRunCancelledEvent,
   buildRunCompletedEvent,
   buildRunPausedEvent,
 } from "../../../src/core/run-events.ts";
-import { ProcedureRegistry, projectProcedureMetadata, toAvailableCommand } from "@nanoboss/procedure-catalog";
-import { formatAgentBanner } from "../../../src/core/runtime-banner.ts";
+import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { shouldLoadDiskCommands } from "../../../src/core/runtime-mode.ts";
 import { appendTimingTraceEvent, createRunTimingTrace, type RunTimingTrace } from "../../../src/core/timing-trace.ts";
+import {
+  createActiveRunState,
+  type ActiveRunState,
+  startRunHeartbeat,
+} from "./active-run.ts";
+import {
+  buildAvailableCommands,
+  buildPendingContinuation,
+  createDismissContinuationProcedure,
+  DISMISS_CONTINUATION_COMMAND_NAME,
+  resolveCommand,
+  toRuntimeContinuation,
+} from "./continuations.ts";
+import { prepareDefaultPrompt } from "./default-agent-policy.ts";
+import {
+  capturePersistedRuntimeEvents,
+  restorePersistedSessionHistory,
+} from "./replay.ts";
 import { isProcedureDispatchResult, isProcedureDispatchStatusResult } from "./runtime-api.ts";
 import type {
-  AgentSession,
   AgentTokenUsage,
-  FrontendContinuation,
-  PersistedFrontendEvent,
 } from "../../../src/core/types.ts";
+import {
+  buildSessionDescriptor,
+  createSessionState,
+  persistSessionState,
+  type RuntimeSessionDescriptor,
+  type SessionState,
+} from "./session-runtime.ts";
 import type {
   DownstreamAgentConfig,
   DownstreamAgentSelection,
   PendingContinuation,
   PromptInput,
-  Procedure,
-  ProcedureRegistryLike,
   RunRef,
   RunResult,
 } from "@nanoboss/procedure-sdk";
@@ -85,63 +87,6 @@ import type {
 setAgentRuntimeSessionRuntimeFactory(() => ({
   mcpServers: [buildGlobalMcpStdioServer()],
 }));
-
-interface ActiveRunState {
-  runId: string;
-  abortController: AbortController;
-  softStopController: AbortController;
-  softStopRequested: boolean;
-  dispatchCorrelationIds: Set<string>;
-}
-
-interface SessionState {
-  cwd: string;
-  store: SessionStore;
-  events: SessionEventLog;
-  autoApprove: boolean;
-  defaultAgentConfig: DownstreamAgentConfig;
-  defaultAgentSession: AgentSession;
-  syncedProcedureMemoryRunIds: Set<string>;
-  recentRecoverySyncAtMs?: number;
-  activeRun?: ActiveRunState;
-  commands: FrontendCommand[];
-  pendingContinuation?: PendingContinuation;
-}
-
-export interface RuntimeSessionDescriptor {
-  sessionId: string;
-  cwd: string;
-  commands: FrontendCommand[];
-  buildLabel: string;
-  agentLabel: string;
-  autoApprove: boolean;
-  defaultAgentSelection?: DownstreamAgentSelection;
-}
-
-const DISMISS_CONTINUATION_COMMAND_NAME = "dismiss";
-const DISMISS_CONTINUATION_COMMAND: acp.AvailableCommand = {
-  name: DISMISS_CONTINUATION_COMMAND_NAME,
-  description: "Clear the pending paused continuation",
-};
-
-const SESSION_TOOL_GUIDANCE = [
-  "Nanoboss session tool guidance:",
-  "- For prior stored procedure results, prefer the global `nanoboss` MCP tools over filesystem inspection.",
-  "- Use list_runs(...) to find prior chat-visible commands such as /default, /linter, or /second-opinion.",
-  "- Use get_run_descendants(...) to inspect nested procedure and agent calls under one run; set maxDepth=1 when you only want direct children.",
-  "- Use get_run_ancestors(...) to identify which top-level run owns a nested run; set limit=1 when you only want the direct parent.",
-  "- After you find a candidate run, use get_run(...) for exact metadata and read_ref(...) for exact stored values.",
-  "- If read_ref(...) returns nested refs such as critique or answer, call read_ref(...) on those refs too.",
-  "- Use list_runs({ scope: \"recent\" }) only for true global recency scans across the whole session; it is not the primary retrieval path.",
-  "- Do not treat not-found results from a bounded scan as proof of absence unless the search scope was exhaustive.",
-  "- Never inspect ~/.nanoboss/agent-logs directly; active transcript files can recurse into the current run.",
-  "- If filesystem fallback is unavoidable, scope it to a specific session path such as ~/.nanoboss/sessions/<sessionId> or current-sessions.json; never scan ~/.nanoboss broadly.",
-  "- Do not inspect ~/.nanoboss/sessions directly unless the nanoboss MCP tools fail.",
-].join("\n");
-
-function renderSessionToolGuidance(): string {
-  return SESSION_TOOL_GUIDANCE;
-}
 
 class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
   private streamedText = "";
@@ -162,7 +107,7 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
       this.streamedText += update.content.text;
     }
 
-    for (const event of mapSessionUpdateToFrontendEvents(this.runId, update)) {
+    for (const event of mapSessionUpdateToRuntimeEvents(this.runId, update)) {
       if (event.type === "token_usage") {
         this.latestTokenUsage = event.usage;
       }
@@ -174,7 +119,7 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
 
   emitUiEvent(event: ProcedureUiEvent): void {
     this.onActivity();
-    this.eventLog.publish(this.sessionId, mapProcedureUiEventToFrontendEvent(this.runId, event));
+    this.eventLog.publish(this.sessionId, mapProcedureUiEventToRuntimeEvent(this.runId, event));
   }
 
   get currentTokenUsage(): AgentTokenUsage | undefined {
@@ -229,22 +174,24 @@ export class NanobossService {
       throw new Error(`Session already exists: ${sessionId}`);
     }
 
-    const state = this.createSessionState({
+    const state = createSessionState({
       sessionId,
       cwd: params.cwd,
+      commands: mapAvailableCommands(this.registry),
+      resolveDefaultAgentConfig: this.resolveDefaultAgentConfig,
       autoApprove: params.autoApprove,
       defaultAgentSelection: params.defaultAgentSelection,
     });
 
     this.sessions.set(sessionId, state);
-    this.persistSessionState(state);
+    persistSessionState(state);
     state.events.publish(sessionId, {
       type: "commands_updated",
       commands: state.commands,
     });
     this.publishPendingContinuation(sessionId, state);
 
-    return this.buildSessionDescriptor(sessionId, state);
+    return buildSessionDescriptor(sessionId, state);
   }
 
   async createSessionReady(
@@ -270,8 +217,8 @@ export class NanobossService {
       if (params.autoApprove !== undefined) {
         existing.autoApprove = params.autoApprove;
       }
-      this.persistSessionState(existing);
-      return this.buildSessionDescriptor(params.sessionId, existing);
+      persistSessionState(existing);
+      return buildSessionDescriptor(params.sessionId, existing);
     }
 
     const stored = readStoredSessionMetadata(params.sessionId);
@@ -280,25 +227,31 @@ export class NanobossService {
       throw new Error(`Unknown session: ${params.sessionId}`);
     }
 
-    const state = this.createSessionState({
+    const state = createSessionState({
       sessionId: params.sessionId,
       cwd,
+      commands: mapAvailableCommands(this.registry),
+      resolveDefaultAgentConfig: this.resolveDefaultAgentConfig,
       defaultAgentSelection: params.defaultAgentSelection ?? stored?.defaultAgentSelection,
       defaultAgentSessionId: stored?.defaultAgentSessionId,
       autoApprove: params.autoApprove ?? stored?.autoApprove,
       pendingContinuation: stored?.pendingContinuation,
     });
-    this.restorePersistedSessionHistory(params.sessionId, state);
+    restorePersistedSessionHistory({
+      sessionId: params.sessionId,
+      store: state.store,
+      events: state.events,
+    });
 
     this.sessions.set(params.sessionId, state);
-    this.persistSessionState(state);
+    persistSessionState(state);
     state.events.publish(params.sessionId, {
       type: "commands_updated",
       commands: state.commands,
     });
     this.publishPendingContinuation(params.sessionId, state);
 
-    return this.buildSessionDescriptor(params.sessionId, state);
+    return buildSessionDescriptor(params.sessionId, state);
   }
 
   async resumeSessionReady(params: {
@@ -317,7 +270,7 @@ export class NanobossService {
       return undefined;
     }
 
-    return this.buildSessionDescriptor(sessionId, state);
+    return buildSessionDescriptor(sessionId, state);
   }
 
   private async awaitDefaultConversationWarm(sessionId: string): Promise<RuntimeSessionDescriptor> {
@@ -327,55 +280,8 @@ export class NanobossService {
     }
 
     await state.defaultAgentSession.warm?.();
-    this.persistSessionState(state);
-    return this.buildSessionDescriptor(sessionId, state);
-  }
-
-  private createSessionState(params: {
-    sessionId: string;
-    cwd: string;
-    autoApprove?: boolean;
-    defaultAgentSelection?: DownstreamAgentSelection;
-    defaultAgentSessionId?: string;
-    pendingContinuation?: PendingContinuation;
-  }): SessionState {
-    const commands = toFrontendCommands(buildAvailableCommands(this.registry));
-    const defaultAgentConfig = this.resolveDefaultAgentConfig(params.cwd, params.defaultAgentSelection);
-    const store = new SessionStore({
-      sessionId: params.sessionId,
-      cwd: params.cwd,
-    });
-    const defaultAgentSession = createAgentSession({
-      config: defaultAgentConfig,
-      persistedSessionId: params.defaultAgentSessionId,
-    });
-    if (shouldPrewarmDefaultAgentSession()) {
-      void defaultAgentSession.warm?.();
-    }
-
-    return {
-      cwd: params.cwd,
-      store,
-      events: new SessionEventLog(),
-      autoApprove: params.autoApprove === true,
-      defaultAgentConfig,
-      defaultAgentSession,
-      syncedProcedureMemoryRunIds: new Set(),
-      commands,
-      pendingContinuation: params.pendingContinuation,
-    };
-  }
-
-  private buildSessionDescriptor(sessionId: string, state: SessionState): RuntimeSessionDescriptor {
-    return {
-      sessionId,
-      cwd: state.cwd,
-      commands: state.commands,
-      buildLabel: getBuildLabel(),
-      agentLabel: formatAgentBanner(state.defaultAgentConfig),
-      autoApprove: state.autoApprove,
-      defaultAgentSelection: toDownstreamAgentSelection(state.defaultAgentConfig),
-    };
+    persistSessionState(state);
+    return buildSessionDescriptor(sessionId, state);
   }
 
   setSessionAutoApprove(sessionId: string, enabled: boolean): RuntimeSessionDescriptor {
@@ -385,14 +291,14 @@ export class NanobossService {
     }
 
     session.autoApprove = enabled;
-    this.persistSessionState(session);
-    return this.buildSessionDescriptor(sessionId, session);
+    persistSessionState(session);
+    return buildSessionDescriptor(sessionId, session);
   }
 
   private publishPendingContinuation(sessionId: string, session: SessionState): void {
     session.events.publish(sessionId, {
       type: "continuation_updated",
-      continuation: toFrontendContinuation(session.pendingContinuation),
+      continuation: toRuntimeContinuation(session.pendingContinuation),
     });
   }
 
@@ -403,56 +309,6 @@ export class NanobossService {
   ): void {
     session.pendingContinuation = continuation;
     this.publishPendingContinuation(sessionId, session);
-  }
-
-  private restorePersistedSessionHistory(sessionId: string, session: SessionState): void {
-    const runs = session.store.listRuns().reverse();
-    for (const summary of runs) {
-      const record = session.store.getRun(summary.run);
-      const replayEvents = record.output.replayEvents?.filter(isReplayableFrontendEvent);
-      const terminalEvent = getRestoredRunTerminalEvent(replayEvents);
-      const runId = replayEvents?.[0]?.runId ?? record.run.runId;
-
-      session.events.publish(sessionId, {
-        type: "run_restored",
-        runId,
-        procedure: record.procedure,
-        prompt: record.input,
-        completedAt: getRestoredRunEndedAt(terminalEvent) ?? record.meta.createdAt,
-        run: record.run,
-        status: getRestoredRunStatus(terminalEvent),
-        ...(replayEvents && replayEvents.length > 0
-          ? {}
-          : { text: record.output.display ?? record.output.summary }),
-      });
-
-      for (const replayEvent of replayEvents ?? []) {
-        session.events.publish(sessionId, replayEvent);
-      }
-    }
-  }
-
-  private persistSessionState(
-    session: SessionState,
-    options: { prompt?: string; preserveDefaultAcpSessionId?: boolean } = {},
-  ): SessionMetadata {
-    const existing = readStoredSessionMetadata(session.store.sessionId, session.store.rootDir);
-    const defaultAgentSessionId = session.defaultAgentSession.sessionId
-      ?? (options.preserveDefaultAcpSessionId === false ? undefined : existing?.defaultAgentSessionId);
-
-    return writeStoredSessionMetadata({
-      session: { sessionId: session.store.sessionId },
-      cwd: session.cwd,
-      rootDir: session.store.rootDir,
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      initialPrompt: existing?.initialPrompt ?? options.prompt,
-      lastPrompt: options.prompt ?? existing?.lastPrompt,
-      autoApprove: session.autoApprove,
-      defaultAgentSelection: toDownstreamAgentSelection(session.defaultAgentConfig),
-      defaultAgentSessionId,
-      pendingContinuation: session.pendingContinuation,
-    });
   }
 
   getSessionEvents(sessionId: string): SessionEventLog | undefined {
@@ -493,70 +349,8 @@ export class NanobossService {
     promptInput: PromptInput,
     runId: string,
     timingTrace?: RunTimingTrace,
-  ): { promptInput: PromptInput; markSubmitted: () => void } {
-    const prompt = promptInputDisplayText(promptInput);
-    appendTimingTraceEvent(timingTrace, "service", "prepare_default_prompt_started", {
-      runId,
-      promptLength: prompt.length,
-    });
-    const cards = collectUnsyncedProcedureMemoryCards(
-      session.store,
-      session.syncedProcedureMemoryRunIds,
-    );
-    const blocks: string[] = [];
-    const memoryUpdate = renderProcedureMemoryCardsSection(cards);
-    const includeRecoveryGuidance = shouldIncludeRecoveredProcedureGuidance(session);
-
-    if (cards.length > 0) {
-      session.events.publish(session.store.sessionId, {
-        type: "memory_cards",
-        runId,
-        cards,
-      });
-    }
-
-    if (memoryUpdate) {
-      blocks.push(memoryUpdate);
-    }
-
-    if (memoryUpdate || includeRecoveryGuidance) {
-      blocks.push(renderSessionToolGuidance());
-    }
-
-    if (blocks.length === 0) {
-      appendTimingTraceEvent(timingTrace, "service", "prepare_default_prompt_completed", {
-        runId,
-        cardCount: cards.length,
-        includedRecoveryGuidance: includeRecoveryGuidance,
-        wrappedPrompt: false,
-        promptLength: prompt.length,
-      });
-      return {
-        promptInput,
-        markSubmitted() {},
-      };
-    }
-
-    const preparedPrompt = prependPromptInputText(promptInput, [
-      ...blocks,
-      "User message:",
-    ]);
-    appendTimingTraceEvent(timingTrace, "service", "prepare_default_prompt_completed", {
-      runId,
-      cardCount: cards.length,
-      includedRecoveryGuidance: includeRecoveryGuidance,
-      wrappedPrompt: true,
-      promptLength: promptInputDisplayText(preparedPrompt).length,
-    });
-
-    return {
-      promptInput: preparedPrompt,
-      markSubmitted: () => {
-        for (const card of cards) {
-          session.syncedProcedureMemoryRunIds.add(card.run.runId);
-        }
-      },
-    };
+  ) {
+    return prepareDefaultPrompt(session, promptInput, runId, timingTrace);
   }
 
   private async dispatchProcedureIntoDefaultConversation(
@@ -788,7 +582,7 @@ export class NanobossService {
     const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
     session.defaultAgentConfig = nextConfig;
     session.defaultAgentSession.updateConfig(nextConfig);
-    this.persistSessionState(session, { preserveDefaultAcpSessionId: false });
+    persistSessionState(session, { preserveDefaultAcpSessionId: false });
   }
 
   private emitDisplayIfNeeded(
@@ -946,13 +740,7 @@ export class NanobossService {
       ? createDismissContinuationProcedure(session)
       : this.registry.get(commandName);
     const procedureName = procedure?.name ?? commandName;
-    const activeRun: ActiveRunState = {
-      runId: crypto.randomUUID(),
-      abortController: new AbortController(),
-      softStopController: new AbortController(),
-      softStopRequested: false,
-      dispatchCorrelationIds: new Set<string>(),
-    };
+    const activeRun = createActiveRunState();
     session.activeRun = activeRun;
     const runId = activeRun.runId;
     const directTimingTrace = procedure
@@ -975,32 +763,14 @@ export class NanobossService {
       }
     };
     let persistedTopLevelRun: RunRef | undefined;
-    const replayEvents: PersistedFrontendEvent[] = [];
-    const stopReplayCapture = session.events.subscribe((event) => {
-      const replayEvent = toReplayableFrontendEvent(event, runId);
-      if (replayEvent) {
-        replayEvents.push(replayEvent);
-      }
+    const replayCapture = capturePersistedRuntimeEvents(session.events, runId);
+    const heartbeat = startRunHeartbeat({
+      eventLog: session.events,
+      sessionId,
+      runId,
+      procedure: procedureName,
     });
-
-    let lastRunActivityAt = Date.now();
-    const markRunActivity = () => {
-      lastRunActivityAt = Date.now();
-    };
-    const heartbeatMs = getRunHeartbeatMs();
-    const heartbeatTimer = setInterval(() => {
-      if (Date.now() - lastRunActivityAt < heartbeatMs) {
-        return;
-      }
-
-      session.events.publish(sessionId, {
-        type: "run_heartbeat",
-        runId,
-        procedure: procedureName,
-        at: new Date().toISOString(),
-      });
-      markRunActivity();
-    }, heartbeatMs);
+    const { markRunActivity } = heartbeat;
 
     session.events.publish(sessionId, {
       type: "run_started",
@@ -1119,7 +889,7 @@ export class NanobossService {
             return nextConfig;
           },
           isAutoApproveEnabled: () => session.autoApprove,
-          prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId, timingTrace),
+          prepareDefaultPrompt: (prompt) => prepareDefaultPrompt(session, prompt, runId, timingTrace),
           onError: (ctx, errorText) => {
             ctx.ui.text(errorText);
           },
@@ -1146,7 +916,7 @@ export class NanobossService {
             return nextConfig;
           },
           isAutoApproveEnabled: () => session.autoApprove,
-          prepareDefaultPrompt: (prompt) => this.prepareDefaultPrompt(session, prompt, runId, timingTrace),
+          prepareDefaultPrompt: (prompt) => prepareDefaultPrompt(session, prompt, runId, timingTrace),
           onError: (ctx, errorText) => {
             ctx.ui.text(errorText);
           },
@@ -1249,9 +1019,9 @@ export class NanobossService {
         });
       }
     } finally {
-      clearInterval(heartbeatTimer);
+      heartbeat.stop();
       const availableCommands = buildAvailableCommands(this.registry);
-      const commands = toFrontendCommands(availableCommands);
+      const commands = mapAvailableCommands(availableCommands);
       session.commands = commands;
       session.events.publish(sessionId, {
         type: "commands_updated",
@@ -1262,15 +1032,15 @@ export class NanobossService {
         availableCommands,
       });
       await emitter.flush();
-      stopReplayCapture();
-      if (persistedTopLevelRun && replayEvents.length > 0) {
+      replayCapture.stop();
+      if (persistedTopLevelRun && replayCapture.replayEvents.length > 0) {
         session.store.patchRun(persistedTopLevelRun, {
           output: {
-            replayEvents,
+            replayEvents: replayCapture.replayEvents,
           },
         });
       }
-      this.persistSessionState(session, { prompt: displayPrompt });
+      persistSessionState(session, { prompt: displayPrompt });
       if (session.activeRun === activeRun) {
         session.activeRun = undefined;
       }
@@ -1278,56 +1048,6 @@ export class NanobossService {
 
     return { stopReason: "end_turn", runId };
   }
-}
-
-function shouldPrewarmDefaultAgentSession(): boolean {
-  return process.env.NANOBOSS_PREWARM_DEFAULT_SESSION !== "0";
-}
-
-type RestoredRunTerminalEvent = Extract<
-  PersistedFrontendEvent,
-  { type: "run_completed" | "run_paused" | "run_failed" | "run_cancelled" }
->;
-
-function getRestoredRunTerminalEvent(
-  replayEvents: PersistedFrontendEvent[] | undefined,
-): RestoredRunTerminalEvent | undefined {
-  return [...(replayEvents ?? [])].reverse().find(isRestoredRunTerminalEvent);
-}
-
-function isRestoredRunTerminalEvent(event: PersistedFrontendEvent): event is RestoredRunTerminalEvent {
-  return event.type === "run_completed"
-    || event.type === "run_paused"
-    || event.type === "run_failed"
-    || event.type === "run_cancelled";
-}
-
-function getRestoredRunEndedAt(event: RestoredRunTerminalEvent | undefined): string | undefined {
-  if (!event) {
-    return undefined;
-  }
-
-  return event.type === "run_paused" ? event.pausedAt : event.completedAt;
-}
-
-function getRestoredRunStatus(
-  event: RestoredRunTerminalEvent | undefined,
-): "complete" | "failed" | "cancelled" | "paused" {
-  switch (event?.type) {
-    case "run_failed":
-      return "failed";
-    case "run_cancelled":
-      return "cancelled";
-    case "run_paused":
-      return "paused";
-    default:
-      return "complete";
-  }
-}
-
-function getRunHeartbeatMs(): number {
-  const value = Number(process.env.NANOBOSS_RUN_HEARTBEAT_MS ?? "5000");
-  return Number.isFinite(value) && value > 0 ? value : 5000;
 }
 
 function publishStoredMemoryCard(
@@ -1352,17 +1072,13 @@ function publishStoredMemoryCard(
   });
 }
 
-function shouldIncludeRecoveredProcedureGuidance(session: SessionState): boolean {
-  if (!session.recentRecoverySyncAtMs) {
-    return false;
-  }
-
-  return Date.now() - session.recentRecoverySyncAtMs <= getRecoveredProcedureGuidanceWindowMs();
-}
-
-function getRecoveredProcedureGuidanceWindowMs(): number {
-  const value = Number(process.env.NANOBOSS_RECOVERED_PROCEDURE_GUIDANCE_WINDOW_MS ?? "300000");
-  return Number.isFinite(value) && value > 0 ? value : 300000;
+function mapAvailableCommands(
+  registryOrCommands: ProcedureRegistry | acp.AvailableCommand[],
+): SessionState["commands"] {
+  const availableCommands = Array.isArray(registryOrCommands)
+    ? registryOrCommands
+    : buildAvailableCommands(registryOrCommands);
+  return toRuntimeCommands(availableCommands);
 }
 
 export function extractProcedureDispatchResult(updates: acp.SessionUpdate[]): RunResult | undefined {
@@ -1692,129 +1408,4 @@ function parseProcedureDispatchFailureCandidate(value: unknown): string | undefi
   }
 
   return undefined;
-}
-
-function buildAvailableCommands(registry: ProcedureRegistryLike): acp.AvailableCommand[] {
-  const commands = projectProcedureMetadata(registry.listMetadata()).map(toAvailableCommand);
-  return commands.some((command) => command.name === DISMISS_CONTINUATION_COMMAND_NAME)
-    ? commands
-    : [...commands, DISMISS_CONTINUATION_COMMAND];
-}
-
-function toFrontendContinuation(
-  continuation?: PendingContinuation,
-): FrontendContinuation | undefined {
-  if (!continuation) {
-    return undefined;
-  }
-
-  return {
-    procedure: continuation.procedure,
-    question: continuation.question,
-    inputHint: continuation.inputHint,
-    suggestedReplies: continuation.suggestedReplies,
-    ui: continuation.ui,
-  };
-}
-
-function createDismissContinuationProcedure(session: SessionState): Procedure {
-  return {
-    name: DISMISS_CONTINUATION_COMMAND_NAME,
-    description: DISMISS_CONTINUATION_COMMAND.description,
-    executionMode: "harness",
-    async execute() {
-      const pending = session.pendingContinuation;
-      session.pendingContinuation = undefined;
-      return pending
-        ? {
-            display: `Cleared the pending continuation for /${pending.procedure}. Future plain-text replies will go to /default again.`,
-            summary: `Cleared /${pending.procedure} continuation`,
-          }
-        : {
-            display: "No pending continuation was active.",
-            summary: "No continuation to clear",
-          };
-    },
-  };
-}
-
-function buildPendingContinuation(
-  procedure: string,
-  result: RunResult,
-): PendingContinuation {
-  if (!result.pause) {
-    throw new Error("Cannot persist continuation without pause metadata.");
-  }
-
-  return {
-    procedure,
-    run: result.run,
-    question: result.pause.question,
-    state: result.pause.state,
-    inputHint: result.pause.inputHint,
-    suggestedReplies: result.pause.suggestedReplies,
-    ui: result.pause.ui,
-  };
-}
-
-function resolveCommand(
-  input: PromptInput,
-  pendingContinuation?: PendingContinuation,
-): {
-  commandName: string;
-  commandPrompt: string;
-  commandPromptInput: PromptInput;
-  continuation?: PendingContinuation;
-} {
-  const text = promptInputDisplayText(input).trim();
-  if (!text.startsWith("/")) {
-    return pendingContinuation
-      ? {
-          commandName: pendingContinuation.procedure,
-          commandPrompt: promptInputToPlainText(input),
-          commandPromptInput: input,
-          continuation: pendingContinuation,
-        }
-      : {
-          commandName: "default",
-          commandPrompt: promptInputToPlainText(input),
-          commandPromptInput: input,
-        };
-  }
-
-  const firstPart = input.parts[0];
-  if (!firstPart || firstPart.type !== "text") {
-    return {
-      commandName: "default",
-      commandPrompt: promptInputToPlainText(input),
-      commandPromptInput: input,
-    };
-  }
-
-  const match = firstPart.text.match(/^\s*\/(\S+)(?:\s+)?/);
-  if (!match) {
-    return {
-      commandName: "default",
-      commandPrompt: promptInputToPlainText(input),
-      commandPromptInput: input,
-    };
-  }
-
-  const commandName = match[1] || "default";
-  const consumed = match[0].length;
-  const remainingFirstText = firstPart.text.slice(consumed);
-  const commandPromptInput: PromptInput = {
-    parts: normalizePromptInput({
-      parts: [
-        { type: "text", text: remainingFirstText },
-        ...input.parts.slice(1),
-      ],
-    }).parts,
-  };
-
-  return {
-    commandName,
-    commandPrompt: promptInputToPlainText(commandPromptInput),
-    commandPromptInput,
-  };
 }

@@ -623,6 +623,23 @@ Acceptance criteria:
 - it orchestrates libraries instead of implementing their internals
 - transport-specific mapping is gone from app-runtime
 
+### Phase 7 slice commit note
+
+- Reduce `@nanoboss/app-runtime` now because store, procedure-catalog,
+  agent-acp, and procedure-engine already have package-owned implementations
+  and app-runtime can become a real orchestration library over those public
+  interfaces.
+- Move the live runtime split into `packages/app-runtime/src/service.ts`,
+  `runtime-events.ts`, `session-runtime.ts`, `active-run.ts`,
+  `default-agent-policy.ts`, `continuations.ts`, and `replay.ts`, while
+  leaving root `src/core/service.ts`, `src/runtime/service.ts`,
+  `src/runtime/api.ts`, and `src/core/ui-emitter.ts` as compatibility forwards
+  during staged migration.
+- End-state: `NanobossService` remains the composition root in
+  `packages/app-runtime/src/service.ts`, runtime-neutral events are owned by
+  `@nanoboss/app-runtime`, HTTP frontend naming/mapping lives in the adapter,
+  and the root app is reduced to wiring over public package APIs.
+
 ## Phase 8: thin the adapters
 
 Once app-runtime is real, reduce the adapters to mapping layers.

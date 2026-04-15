@@ -5,4 +5,6 @@ export {
 
 export type {
   RuntimeSessionDescriptor,
-} from "./service.ts";
+} from "./session-runtime.ts";
+
+export * from "./runtime-events.ts";
