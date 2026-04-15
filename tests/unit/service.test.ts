@@ -3,12 +3,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createAgentSession } from "@nanoboss/agent-acp";
 
 const MOCK_AGENT_PATH = join(process.cwd(), "tests/fixtures/mock-agent.ts");
 const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
 const BUILD_HOOK_TIMEOUT_MS = 30_000;
 
-import { createAgentSession } from "../../src/agent/acp-session.ts";
 import type { AgentSession } from "../../src/core/types.ts";
 import type { Procedure, PromptInput } from "@nanoboss/procedure-sdk";
 import { createTextPromptInput, promptInputDisplayText } from "../../src/core/prompt.ts";

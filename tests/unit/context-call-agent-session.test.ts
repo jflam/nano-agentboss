@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import typia from "typia";
 
-import { createAgentSession, type CreateAgentSessionParams } from "../../src/agent/acp-session.ts";
+import { createAgentSession, type CreateAgentSessionParams } from "@nanoboss/agent-acp";
 import { CommandContextImpl } from "../../src/core/context.ts";
 import { resolveDownstreamAgentConfig } from "../../src/core/config.ts";
 import { RunLogger } from "../../src/core/logger.ts";

@@ -1,4 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
+import { createAgentSession } from "@nanoboss/agent-acp";
 
 import { buildMcpProcedureDispatchPrompt } from "./agent-runtime-instructions.ts";
 import { getBuildLabel } from "./build-info.ts";
@@ -17,7 +18,6 @@ import {
   promptInputDisplayText,
   promptInputToPlainText,
 } from "./prompt.ts";
-import { createAgentSession } from "../agent/acp-session.ts";
 import { normalizeAgentTokenUsage } from "../agent/token-usage.ts";
 import {
   collectUnsyncedProcedureMemoryCards,

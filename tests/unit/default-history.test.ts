@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createAgentSession } from "../../src/agent/acp-session.ts";
+import { createAgentSession } from "@nanoboss/agent-acp";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { NanobossService } from "../../src/core/service.ts";
 import type { DownstreamAgentConfig } from "../../src/core/types.ts";
