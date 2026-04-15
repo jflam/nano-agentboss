@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
-import { reduceUiState } from "../../src/tui/reducer.ts";
-import { createInitialUiState } from "../../src/tui/state.ts";
+import { reduceUiState } from "../../packages/adapters-tui/src/reducer.ts";
+import { createInitialUiState } from "../../packages/adapters-tui/src/state.ts";
 
 describe("tui reducer", () => {
   test("tracks a streamed run lifecycle, interleaves tool cards in the transcript, and reenables input on completion", () => {

@@ -9,7 +9,7 @@ import {
 } from "@nanoboss/adapters-mcp";
 import { createRef } from "../../src/core/types.ts";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { createNanobossRuntimeService } from "../../src/runtime/service.ts";
+import { createNanobossRuntimeService } from "../../packages/app-runtime/src/runtime-service.ts";
 import { SessionStore } from "@nanoboss/store";
 
 const tempDirs: string[] = [];

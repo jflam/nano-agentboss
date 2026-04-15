@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseToolCardThemeCommand, shouldDisableEditorSubmit } from "../../src/tui/commands.ts";
+import { parseToolCardThemeCommand, shouldDisableEditorSubmit } from "../../packages/adapters-tui/src/commands.ts";
 
 describe("tui commands", () => {
   test("keeps submit enabled for exit commands while a run is active", () => {

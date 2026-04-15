@@ -12,7 +12,7 @@ import {
   buildPromptInputFromComposer,
   createComposerState,
   reconcileComposerState,
-} from "../../src/tui/composer.ts";
+} from "../../packages/adapters-tui/src/composer.ts";
 
 describe("prompt input helpers", () => {
   test("preserve text-image-text ordering through ACP block conversion", () => {

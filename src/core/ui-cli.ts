@@ -1,7 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
+import type { ProcedureUiEvent } from "@nanoboss/procedure-engine";
 
 import { createTaggedJsonLineStream, type TaggedJsonLineStream, type TaggedJsonLineStreamOptions } from "../procedure/tagged-json-line-stream.ts";
-import type { ProcedureUiEvent } from "./context-shared.ts";
 
 export const PROCEDURE_UI_MARKER_PREFIX = "[[nanoboss-ui]] ";
 
