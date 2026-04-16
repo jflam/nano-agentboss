@@ -1,10 +1,10 @@
 import type { DownstreamAgentSelection } from "@nanoboss/contracts";
-import { formatErrorMessage } from "@nanoboss/procedure-engine";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { parseRequiredDownstreamAgentSelection } from "./downstream-agent-selection.ts";
+import { parseRequiredDownstreamAgentSelection } from "./agent-selection.ts";
+import { formatErrorMessage } from "./error-format.ts";
+import { getNanobossHome } from "./paths.ts";
 
 export interface NanobossSettings {
   defaultAgentSelection?: DownstreamAgentSelection;
@@ -52,10 +52,6 @@ export function writePersistedDefaultAgentSelection(selection: DownstreamAgentSe
     } satisfies NanobossSettings, null, 2)}\n`,
     "utf8",
   );
-}
-
-function getNanobossHome(): string {
-  return join(process.env.HOME?.trim() || homedir(), ".nanoboss");
 }
 
 function asNonEmptyString(value: unknown): string | undefined {

@@ -12,7 +12,7 @@ import type {
   DownstreamAgentProvider,
   DownstreamAgentSelection,
 } from "@nanoboss/contracts";
-import { readPersistedDefaultAgentSelection } from "./settings.ts";
+import { readPersistedDefaultAgentSelection } from "@nanoboss/store";
 
 const DEFAULT_AGENT_COMMAND = "copilot";
 const DEFAULT_AGENT_ARGS = ["--acp", "--allow-all-tools"];

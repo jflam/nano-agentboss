@@ -8,9 +8,20 @@ export {
   publicKernelValueFromStored,
 } from "./stored-values.ts";
 
+export {
+  getNanobossSettingsPath,
+  readNanobossSettings,
+  readPersistedDefaultAgentSelection,
+  writePersistedDefaultAgentSelection,
+} from "./settings.ts";
+
+export { parseRequiredDownstreamAgentSelection } from "./agent-selection.ts";
+
 export type {
   StoredRunResult,
 } from "./session-store.ts";
+
+export type { NanobossSettings } from "./settings.ts";
 
 export {
   listStoredSessions,

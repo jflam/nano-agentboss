@@ -9,7 +9,7 @@ import type {
   Simplify2CheckpointContinuationUiAction,
   Simplify2FocusPickerContinuationUi,
 } from "@nanoboss/contracts";
-import { writePersistedDefaultAgentSelection } from "./settings.ts";
+import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
 import { createClipboardImageProvider, type ClipboardImageProvider } from "./clipboard/provider.ts";
 import {
   attachClipboardImage,

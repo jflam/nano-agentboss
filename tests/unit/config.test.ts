@@ -9,7 +9,7 @@ import {
   resolveDownstreamAgentConfig,
   toDownstreamAgentSelection,
 } from "../../src/core/config.ts";
-import { writePersistedDefaultAgentSelection } from "../../src/core/settings.ts";
+import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
 
 let tempHome: string | undefined;
 
