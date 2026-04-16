@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
+import { writeJsonFileAtomicSync } from "@nanoboss/app-support";
 import {
   cellRefFromRunRef,
   createCellRef,
@@ -9,7 +10,6 @@ import {
   valueRefFromRef,
 } from "./ref-store.ts";
 import { inferDataShape } from "./data-shape.ts";
-import { writeJsonFileAtomicSync } from "./json-file.ts";
 import { getSessionDir } from "./paths.ts";
 import { publicContinuationFromStored, publicKernelValueFromStored } from "./stored-values.ts";
 import { summarizeText } from "./text.ts";

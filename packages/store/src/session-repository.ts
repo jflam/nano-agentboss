@@ -6,7 +6,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import { resolveWorkspaceKey } from "@nanoboss/app-support";
+import { resolveWorkspaceKey, writeTextFileAtomicSync } from "@nanoboss/app-support";
 import type {
   ContinuationUi,
   KernelValue,
@@ -20,7 +20,6 @@ import type {
 import { createSessionRef } from "@nanoboss/contracts";
 import { parseDownstreamAgentSelection } from "./agent-selection.ts";
 import { formatErrorMessage } from "./error-format.ts";
-import { writeTextFileAtomicSync } from "./json-file.ts";
 import { getNanobossHome, getSessionDir } from "./paths.ts";
 
 const SESSION_METADATA_FILE = "session.json";

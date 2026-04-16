@@ -1,9 +1,8 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
+import { resolveRepoArtifactDir, writeTextFileAtomicSync } from "@nanoboss/app-support";
 import { summarizeText } from "@nanoboss/procedure-sdk";
-
-import { resolveRepoArtifactDir, writeTextFileAtomicSync } from "../lib/repo-artifacts.ts";
 
 import { ensureGitLocalExclude, resolveGitRepoRoot } from "./git.ts";
 import type {

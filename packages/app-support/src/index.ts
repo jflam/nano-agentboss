@@ -8,6 +8,19 @@ export {
   resolveWorkspaceProcedureRoots,
 } from "./procedure-paths.ts";
 export {
+  computeRepoFingerprint,
+  type RepoFingerprintOptions,
+  type RepoFingerprintResult,
+} from "./repo-fingerprint.ts";
+export {
+  ensureDirectories,
+  ensureFile,
+  resolveRepoArtifactDir,
+  writeJsonFileAtomic,
+  writeJsonFileAtomicSync,
+  writeTextFileAtomicSync,
+} from "./repo-artifacts.ts";
+export {
   computeProceduresFingerprint,
   getWorkspaceIdentity,
   resolveWorkspaceKey,

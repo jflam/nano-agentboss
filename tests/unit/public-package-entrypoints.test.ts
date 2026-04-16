@@ -21,9 +21,9 @@ const DELETED_ROOT_HELPER_PATHS = [
 const CANONICAL_IMPORT_EXPECTATIONS = [
   ["nanoboss.ts", 'import("@nanoboss/app-runtime")'],
   ["src/commands/http.ts", 'from "@nanoboss/adapters-http"'],
-  ["tests/unit/tagged-json-line-stream.test.ts", 'from "@nanoboss/procedure-sdk"'],
-  ["tests/unit/text.test.ts", 'from "@nanoboss/procedure-sdk"'],
-  ["tests/unit/tui-controller.test.ts", 'from "@nanoboss/adapters-tui"'],
+  ["packages/procedure-sdk/tests/tagged-json-line-stream.test.ts", 'from "@nanoboss/procedure-sdk"'],
+  ["packages/procedure-sdk/tests/text.test.ts", 'from "@nanoboss/procedure-sdk"'],
+  ["packages/adapters-tui/tests/tui-controller.test.ts", 'from "@nanoboss/adapters-tui"'],
   ["tests/unit/mcp-server.test.ts", 'from "@nanoboss/app-runtime"'],
 ] as const;
 
@@ -52,8 +52,8 @@ const PHASE_2_COLLAPSED_HELPER_FILES = new Map<string, readonly string[]>([
   ["model-catalog.ts", ["packages/agent-acp/src/model-catalog.ts"]],
   ["procedure-paths.ts", ["packages/app-support/src/procedure-paths.ts"]],
   ["prompt-input.ts", ["packages/procedure-sdk/src/prompt-input.ts"]],
-  ["repo-artifacts.ts", ["procedures/lib/repo-artifacts.ts"]],
-  ["repo-fingerprint.ts", ["procedures/lib/repo-fingerprint.ts"]],
+  ["repo-artifacts.ts", ["packages/app-support/src/repo-artifacts.ts"]],
+  ["repo-fingerprint.ts", ["packages/app-support/src/repo-fingerprint.ts"]],
   ["settings.ts", ["packages/store/src/settings.ts"]],
   ["stored-values.ts", ["packages/store/src/stored-values.ts"]],
   ["workspace-identity.ts", ["packages/app-support/src/workspace-identity.ts"]],
@@ -88,13 +88,18 @@ const PHASE_2_HELPER_FUNCTION_OWNERS = new Map<string, string>([
   ["promptInputToAcpBlocks", "packages/agent-acp/src/prompt.ts"],
   ["readNanobossSettings", "packages/store/src/settings.ts"],
   ["readPersistedDefaultAgentSelection", "packages/store/src/settings.ts"],
+  ["resolveRepoArtifactDir", "packages/app-support/src/repo-artifacts.ts"],
   ["resolveNanobossInstallDir", "packages/app-support/src/install-path.ts"],
   ["resolvePersistProcedureRoot", "packages/app-support/src/procedure-paths.ts"],
   ["resolveProfileProcedureRoot", "packages/app-support/src/procedure-paths.ts"],
   ["resolveRepoProcedureRoot", "packages/app-support/src/procedure-paths.ts"],
   ["resolveWorkspaceKey", "packages/app-support/src/workspace-identity.ts"],
   ["resolveWorkspaceProcedureRoots", "packages/app-support/src/procedure-paths.ts"],
+  ["computeRepoFingerprint", "packages/app-support/src/repo-fingerprint.ts"],
   ["summarizePromptInputForAcpLog", "packages/agent-acp/src/prompt.ts"],
+  ["writeJsonFileAtomic", "packages/app-support/src/repo-artifacts.ts"],
+  ["writeJsonFileAtomicSync", "packages/app-support/src/repo-artifacts.ts"],
+  ["writeTextFileAtomicSync", "packages/app-support/src/repo-artifacts.ts"],
   ["writePersistedDefaultAgentSelection", "packages/store/src/settings.ts"],
 ]);
 const bannedDeletedRootImportPattern = createDeletedRootImportPattern(
@@ -149,6 +154,19 @@ test("deleted root shims stay removed and root entrypoints use canonical package
   }
 });
 
+test("packages keep baseline manifest and tsconfig parity", () => {
+  for (const packageRoot of listPackageRoots()) {
+    expect(existsSync(join(packageRoot, "tsconfig.json"))).toBe(true);
+
+    const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
+      scripts?: { test?: unknown; typecheck?: unknown };
+    };
+
+    expect(typeof packageJson.scripts?.test).toBe("string");
+    expect(typeof packageJson.scripts?.typecheck).toBe("string");
+  }
+});
+
 function listTypeScriptFilesIn(root: string): string[] {
   if (!existsSync(root)) {
     return [];
@@ -180,6 +198,13 @@ function listRootAppTypeScriptFiles(): string[] {
       .filter((path) => existsSync(path)),
     ...listTypeScriptFilesIn(join(process.cwd(), "src")),
   ].sort((left, right) => relative(process.cwd(), left).localeCompare(relative(process.cwd(), right)));
+}
+
+function listPackageRoots(): string[] {
+  return readdirSync(join(process.cwd(), "packages"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(process.cwd(), "packages", entry.name))
+    .sort((left, right) => relative(process.cwd(), left).localeCompare(relative(process.cwd(), right)));
 }
 
 function createDeletedRootImportPattern(

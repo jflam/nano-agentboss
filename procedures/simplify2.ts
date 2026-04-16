@@ -6,6 +6,11 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import typia from "typia";
 
 import {
+  computeRepoFingerprint,
+  resolveRepoArtifactDir,
+  writeJsonFileAtomicSync,
+} from "@nanoboss/app-support";
+import {
   expectData,
   formatErrorMessage,
   jsonType,
@@ -20,8 +25,6 @@ import {
 } from "@nanoboss/procedure-sdk";
 
 import { ensureGitLocalExclude, getWorktreeStatus, resolveGitRepoRoot } from "./autoresearch/git.ts";
-import { computeRepoFingerprint } from "./lib/repo-fingerprint.ts";
-import { resolveRepoArtifactDir, writeJsonFileAtomicSync } from "./lib/repo-artifacts.ts";
 
 type SimplifyMode = "explore" | "checkpoint" | "apply" | "reconcile" | "finished";
 type ObservationKind =

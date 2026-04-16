@@ -28,8 +28,8 @@ const CANONICAL_IMPORTERS = [
   ["packages/adapters-tui/src/app.ts", 'from "@nanoboss/store"'],
   ["packages/procedure-engine/src/context/agent-api.ts", 'from "@nanoboss/store"'],
   ["packages/procedure-engine/src/context/state-api.ts", 'from "@nanoboss/store"'],
-  ["tests/unit/config.test.ts", 'from "@nanoboss/store"'],
-  ["tests/unit/settings.test.ts", 'from "@nanoboss/store"'],
+  ["packages/procedure-engine/tests/config.test.ts", 'from "@nanoboss/store"'],
+  ["packages/store/tests/settings.test.ts", 'from "@nanoboss/store"'],
 ] as const;
 
 const bannedRootImportPattern = /^\s*(?:import|export)\b[^;]*?\bfrom\s*["'][^"']*src\/core\/(?:settings|downstream-agent-selection)(?:\.ts)?["'];?/gm;
