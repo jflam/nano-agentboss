@@ -3,29 +3,30 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const CANONICAL_HELPERS = [
-  "procedures/lib/repo-artifacts.ts",
-  "procedures/lib/repo-fingerprint.ts",
+  "packages/app-support/src/repo-artifacts.ts",
+  "packages/app-support/src/repo-fingerprint.ts",
 ] as const;
 
 const BANNED_ROOT_HELPERS = [
   "src/util/repo-artifacts.ts",
   "src/core/repo-fingerprint.ts",
+  "procedures/lib/repo-artifacts.ts",
+  "procedures/lib/repo-fingerprint.ts",
 ] as const;
 
 const CANONICAL_IMPORTERS = [
-  ["procedures/autoresearch/state.ts", 'from "../lib/repo-artifacts.ts"'],
-  ["procedures/kb/lib/repository.ts", 'from "../../lib/repo-artifacts.ts"'],
-  ["procedures/nanoboss/compact-test-cache.ts", 'from "../lib/repo-fingerprint.ts"'],
-  ["procedures/simplify2.ts", 'from "./lib/repo-artifacts.ts"'],
-  ["procedures/simplify2.ts", 'from "./lib/repo-fingerprint.ts"'],
-  ["tests/unit/repo-artifacts.test.ts", 'from "../../procedures/lib/repo-artifacts.ts"'],
-  ["tests/unit/repo-fingerprint.test.ts", 'from "../../procedures/lib/repo-fingerprint.ts"'],
+  ["procedures/autoresearch/state.ts", 'from "@nanoboss/app-support"'],
+  ["procedures/kb/lib/repository.ts", 'from "@nanoboss/app-support"'],
+  ["procedures/nanoboss/compact-test-cache.ts", 'from "@nanoboss/app-support"'],
+  ["procedures/simplify2.ts", 'from "@nanoboss/app-support"'],
+  ["packages/app-support/tests/repo-artifacts.test.ts", 'from "@nanoboss/app-support"'],
+  ["packages/app-support/tests/repo-fingerprint.test.ts", 'from "@nanoboss/app-support"'],
 ] as const;
 
-const bannedImportPattern = /^\s*(?:import|export)\b[^;]*?\bfrom\s*["'][^"']*src\/(?:util\/repo-artifacts|core\/repo-fingerprint)(?:\.ts)?["'];?/gm;
-const bannedSideEffectImportPattern = /^\s*import\s*["'][^"']*src\/(?:util\/repo-artifacts|core\/repo-fingerprint)(?:\.ts)?["'];?/gm;
+const bannedImportPattern = /^\s*(?:import|export)\b[^;]*?\bfrom\s*["'][^"']*(?:src\/util\/repo-artifacts|src\/core\/repo-fingerprint|procedures\/lib\/repo-artifacts|procedures\/lib\/repo-fingerprint)(?:\.ts)?["'];?/gm;
+const bannedSideEffectImportPattern = /^\s*import\s*["'][^"']*(?:src\/util\/repo-artifacts|src\/core\/repo-fingerprint|procedures\/lib\/repo-artifacts|procedures\/lib\/repo-fingerprint)(?:\.ts)?["'];?/gm;
 
-test("keeps repo helper ownership converged on procedures/lib", () => {
+test("keeps repo helper ownership converged on @nanoboss/app-support", () => {
   for (const path of CANONICAL_HELPERS) {
     expect(existsSync(join(process.cwd(), path))).toBe(true);
   }

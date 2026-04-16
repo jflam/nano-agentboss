@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { computeRepoFingerprint } from "../../procedures/lib/repo-fingerprint.ts";
+import { computeRepoFingerprint } from "@nanoboss/app-support";
 
 describe("repo fingerprint", () => {
   test("returns the same fingerprint for unchanged contents", () => {
@@ -29,6 +29,20 @@ describe("repo fingerprint", () => {
     writeFileSync(join(cwd, ".nanoboss", "cache.json"), "{\"ok\":true}\n", "utf8");
     mkdirSync(join(cwd, "dist"), { recursive: true });
     writeFileSync(join(cwd, "dist", "bundle.js"), "console.log('ignored');\n", "utf8");
+
+    expect(computeRepoFingerprint({ cwd }).fingerprint).toBe(before);
+  });
+
+  test("ignores transient .tmp workspace directories", () => {
+    const cwd = createWorkspace();
+    const before = computeRepoFingerprint({ cwd }).fingerprint;
+
+    mkdirSync(join(cwd, ".tmp-memory-cards-demo", "cells"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".tmp-memory-cards-demo", "cells", "state.json"),
+      "{\"transient\":true}\n",
+      "utf8",
+    );
 
     expect(computeRepoFingerprint({ cwd }).fingerprint).toBe(before);
   });

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,6 +9,30 @@ import {
   projectProcedureMetadata,
   toAvailableCommand,
 } from "@nanoboss/procedure-catalog";
+
+const tempHomes: string[] = [];
+let originalHome: string | undefined;
+
+beforeEach(() => {
+  originalHome = process.env.HOME;
+  process.env.HOME = mkdtempSync(join(tmpdir(), "nab-procedure-catalog-home-"));
+  tempHomes.push(process.env.HOME);
+});
+
+afterEach(() => {
+  if (originalHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = originalHome;
+  }
+
+  while (tempHomes.length > 0) {
+    const home = tempHomes.pop();
+    if (home) {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+});
 
 function describeProcedureMetadata(
   procedure: ReturnType<ProcedureRegistry["get"]>,

@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
+import type { Dirent } from "node:fs";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
-import { detectRepoRoot } from "@nanoboss/app-support";
+import { detectRepoRoot } from "./procedure-paths.ts";
 
 const DEFAULT_EXCLUDED_NAMES = new Set([
   ".git",
@@ -11,6 +12,9 @@ const DEFAULT_EXCLUDED_NAMES = new Set([
   "dist",
   "node_modules",
 ]);
+const DEFAULT_EXCLUDED_NAME_PATTERNS = [
+  /^\.tmp(?:$|[-.])/i,
+];
 const DEFAULT_EXCLUDED_FILE_PATTERNS = [
   /~$/,
   /^\.#/,
@@ -37,17 +41,24 @@ export function computeRepoFingerprint(options: RepoFingerprintOptions): RepoFin
   const excludeSet = new Set(normalizePaths(options.exclude ?? []));
   const files = listRelevantFiles(repoRoot, repoRoot, includeSet, excludeSet);
   const hash = createHash("sha256");
+  let includedFileCount = 0;
 
   for (const file of files) {
+    const contents = readRepoFile(join(repoRoot, file));
+    if (!contents) {
+      continue;
+    }
+
     hash.update(`${file}\n`);
-    hash.update(readFileSync(join(repoRoot, file)));
+    hash.update(contents);
     hash.update("\n");
+    includedFileCount += 1;
   }
 
   return {
     repoRoot,
     fingerprint: hash.digest("hex").slice(0, 12),
-    fileCount: files.length,
+    fileCount: includedFileCount,
   };
 }
 
@@ -61,10 +72,12 @@ function listRelevantFiles(
     return [];
   }
 
-  const files: string[] = [];
-  const entries = readdirSync(currentDir, { withFileTypes: true })
-    .sort((left, right) => left.name.localeCompare(right.name));
+  const entries = readDirectoryEntries(currentDir);
+  if (!entries) {
+    return [];
+  }
 
+  const files: string[] = [];
   for (const entry of entries) {
     const absolutePath = join(currentDir, entry.name);
     const relativePath = normalizePath(relative(root, absolutePath));
@@ -85,6 +98,29 @@ function listRelevantFiles(
   return files;
 }
 
+function readDirectoryEntries(path: string): Dirent[] | undefined {
+  try {
+    return readdirSync(path, { encoding: "utf8", withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name));
+  } catch (error) {
+    if (isTransientMissingPathError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function readRepoFile(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if (isTransientMissingPathError(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 function shouldExclude(
   relativePath: string,
   entryName: string,
@@ -95,7 +131,11 @@ function shouldExclude(
     return true;
   }
 
-  if (DEFAULT_EXCLUDED_NAMES.has(entryName) || DEFAULT_EXCLUDED_FILE_PATTERNS.some((pattern) => pattern.test(entryName))) {
+  if (
+    DEFAULT_EXCLUDED_NAMES.has(entryName)
+    || DEFAULT_EXCLUDED_NAME_PATTERNS.some((pattern) => pattern.test(entryName))
+    || DEFAULT_EXCLUDED_FILE_PATTERNS.some((pattern) => pattern.test(entryName))
+  ) {
     return !matchesPrefix(includeSet, relativePath);
   }
 
@@ -121,4 +161,12 @@ function normalizePaths(values: string[]): string[] {
 
 function normalizePath(value: string): string {
   return value.trim().replace(/\\/gu, "/").replace(/^\.\//u, "").replace(/\/+$/u, "");
+}
+
+function isTransientMissingPathError(error: unknown): boolean {
+  if (!(error instanceof Error) || !("code" in error)) {
+    return false;
+  }
+
+  return error.code === "ENOENT" || error.code === "ENOTDIR";
 }

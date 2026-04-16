@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { computeRepoFingerprint } from "../lib/repo-fingerprint.ts";
+import { computeRepoFingerprint } from "@nanoboss/app-support";
 
 const TEST_CLEAN_CACHE_RELATIVE_PATH = ".nanoboss/test-clean.json";
 

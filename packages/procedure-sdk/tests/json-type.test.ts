@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import typia from "typia";
 
 import { jsonType } from "@nanoboss/procedure-sdk";
 
@@ -10,14 +9,26 @@ describe("jsonType", () => {
 
   test("builds a schema and validator from the type", () => {
     const descriptor = jsonType<Answer>(
-      typia.json.schema<Answer>(),
-      typia.createValidate<Answer>(),
+      {
+        type: "object",
+        properties: {
+          answer: { type: "number" },
+        },
+        required: ["answer"],
+      },
+      (input): input is Answer =>
+        typeof input === "object"
+        && input !== null
+        && "answer" in input
+        && typeof input.answer === "number",
     );
 
-    expect(descriptor.schema).toMatchObject({
-      schema: {
-        $ref: "#/components/schemas/Answer",
+    expect(descriptor.schema).toEqual({
+      type: "object",
+      properties: {
+        answer: { type: "number" },
       },
+      required: ["answer"],
     });
     expect(descriptor.validate({ answer: 42 })).toBe(true);
     expect(descriptor.validate({ answer: "nope" })).toBe(false);

@@ -6,6 +6,8 @@ const CANONICAL_HELPERS = [
   "packages/app-support/src/build-info.ts",
   "packages/app-support/src/install-path.ts",
   "packages/app-support/src/procedure-paths.ts",
+  "packages/app-support/src/repo-artifacts.ts",
+  "packages/app-support/src/repo-fingerprint.ts",
   "packages/app-support/src/workspace-identity.ts",
 ] as const;
 
@@ -20,6 +22,8 @@ const HELPER_FILE_NAMES = new Set([
   "build-info.ts",
   "install-path.ts",
   "procedure-paths.ts",
+  "repo-artifacts.ts",
+  "repo-fingerprint.ts",
   "workspace-identity.ts",
 ]);
 
@@ -35,8 +39,13 @@ const CANONICAL_IMPORTERS = [
   "packages/app-runtime/src/session-runtime.ts",
   "packages/procedure-catalog/src/registry.ts",
   "packages/store/src/session-repository.ts",
+  "packages/app-support/tests/repo-artifacts.test.ts",
+  "packages/app-support/tests/repo-fingerprint.test.ts",
   "procedures/create.ts",
-  "procedures/lib/repo-fingerprint.ts",
+  "procedures/autoresearch/state.ts",
+  "procedures/kb/lib/repository.ts",
+  "procedures/nanoboss/compact-test-cache.ts",
+  "procedures/simplify2.ts",
   "src/app-support/build-freshness.ts",
   "packages/app-runtime/tests/current-session.test.ts",
   "packages/adapters-http/tests/http-server-supervisor.test.ts",
@@ -44,10 +53,10 @@ const CANONICAL_IMPORTERS = [
   "tests/unit/resume.test.ts",
 ] as const;
 
-const bannedRootImportPattern = /^\s*(?:import|export)\b[^;]*?\bfrom\s*["'][^"']*src\/core\/(?:build-info|install-path|procedure-paths|workspace-identity)(?:\.ts)?["'];?/gm;
-const bannedRootSideEffectImportPattern = /^\s*import\s*["'][^"']*src\/core\/(?:build-info|install-path|procedure-paths|workspace-identity)(?:\.ts)?["'];?/gm;
-const bannedNonCanonicalHelperPathPattern = /^\s*(?:import|export)\b[^;]*?\bfrom\s*["'](?!@nanoboss\/app-support["'])[^"']*(?:build-info|install-path|procedure-paths|workspace-identity)(?:\.ts)?["'];?/gm;
-const bannedHelperFunctionPattern = /\bfunction\s+(?:getBuildCommit|getBuildLabel|resolveNanobossInstallDir|splitPath|detectRepoRoot|resolveRepoProcedureRoot|resolveProfileProcedureRoot|resolveWorkspaceProcedureRoots|resolvePersistProcedureRoot|getWorkspaceIdentity|resolveWorkspaceKey|computeProceduresFingerprint)\s*\(/g;
+const bannedRootImportPattern = /^\s*(?:import|export)\b[^;]*?\bfrom\s*["'][^"']*src\/core\/(?:build-info|install-path|procedure-paths|repo-artifacts|repo-fingerprint|workspace-identity)(?:\.ts)?["'];?/gm;
+const bannedRootSideEffectImportPattern = /^\s*import\s*["'][^"']*src\/core\/(?:build-info|install-path|procedure-paths|repo-artifacts|repo-fingerprint|workspace-identity)(?:\.ts)?["'];?/gm;
+const bannedNonCanonicalHelperPathPattern = /^\s*(?:import|export)\b[^;]*?\bfrom\s*["'](?!@nanoboss\/app-support["'])[^"']*(?:build-info|install-path|procedure-paths|repo-artifacts|repo-fingerprint|workspace-identity)(?:\.ts)?["'];?/gm;
+const bannedHelperFunctionPattern = /\bfunction\s+(?:getBuildCommit|getBuildLabel|resolveNanobossInstallDir|splitPath|detectRepoRoot|resolveRepoProcedureRoot|resolveProfileProcedureRoot|resolveWorkspaceProcedureRoots|resolvePersistProcedureRoot|resolveRepoArtifactDir|ensureDirectories|ensureFile|writeTextFileAtomicSync|writeJsonFileAtomicSync|writeJsonFileAtomic|computeRepoFingerprint|getWorkspaceIdentity|resolveWorkspaceKey|computeProceduresFingerprint)\s*\(/g;
 
 test("keeps support helper ownership converged on @nanoboss/app-support", () => {
   for (const path of CANONICAL_HELPERS) {
