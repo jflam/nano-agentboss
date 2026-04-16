@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+
+import { detectRepoRoot } from "@nanoboss/app-support";
 
 const DEFAULT_EXCLUDED_NAMES = new Set([
   ".git",
@@ -48,19 +49,6 @@ export function computeRepoFingerprint(options: RepoFingerprintOptions): RepoFin
     fingerprint: hash.digest("hex").slice(0, 12),
     fileCount: files.length,
   };
-}
-
-function detectRepoRoot(cwd: string): string | undefined {
-  try {
-    const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return root ? resolve(root) : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function listRelevantFiles(
