@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { summarizeText } from "../../src/util/text.ts";
+import { summarizeText } from "@nanoboss/procedure-sdk";
 
 describe("summarizeText", () => {
   test("compacts whitespace before truncating", () => {

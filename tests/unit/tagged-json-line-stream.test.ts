@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { createTaggedJsonLineStream } from "../../src/procedure/tagged-json-line-stream.ts";
+import { createTaggedJsonLineStream } from "@nanoboss/procedure-sdk";
 
 describe("createTaggedJsonLineStream", () => {
   test("renders text lines while extracting structured marker lines", () => {
