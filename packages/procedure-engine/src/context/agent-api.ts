@@ -7,7 +7,7 @@ import {
   summarizeAgentOutput,
   type CallAgentTransport,
 } from "@nanoboss/agent-acp";
-import type { SessionStore } from "@nanoboss/store";
+import { publicKernelValueFromStored, type SessionStore } from "@nanoboss/store";
 import type { ContextSessionApiImpl } from "./session-api.ts";
 import type { SessionUpdateEmitter } from "./shared.ts";
 import type {
@@ -22,14 +22,13 @@ import type {
   RunRef,
   TypeDescriptor,
 } from "@nanoboss/procedure-sdk";
+import { promptInputDisplayText } from "@nanoboss/procedure-sdk";
 
 import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "../agent-config.ts";
 import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "../cancellation.ts";
 import { formatErrorMessage } from "../error-format.ts";
 import type { RunLogger } from "../logger.ts";
-import { promptInputDisplayText } from "../prompt.ts";
 import { toPublicRunResult } from "../run-result.ts";
-import { publicKernelValueFromStored } from "../stored-kernel.ts";
 import { summarizeText } from "../text.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "../timing-trace.ts";
 

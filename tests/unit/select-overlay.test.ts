@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { createNanobossTuiTheme } from "../../src/tui/theme.ts";
-import { SelectOverlay } from "../../src/tui/overlays/select-overlay.ts";
+import { createNanobossTuiTheme } from "../../packages/adapters-tui/src/theme.ts";
+import { SelectOverlay } from "../../packages/adapters-tui/src/overlays/select-overlay.ts";
 
 const ANSI_COLOR_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 

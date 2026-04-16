@@ -4,7 +4,7 @@ import {
   normalizeProcedureName,
   resolveProcedureEntryRelativePath,
   resolveProcedureImportPrefix,
-} from "../../src/procedure/names.ts";
+} from "../../packages/procedure-catalog/src/names.ts";
 
 describe("procedure name helpers", () => {
   test("normalizes slash-delimited procedure names", () => {

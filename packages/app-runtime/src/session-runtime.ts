@@ -1,20 +1,18 @@
-import { createAgentSession } from "@nanoboss/agent-acp";
+import { createAgentSession, type AgentSession } from "@nanoboss/agent-acp";
+import { getBuildLabel } from "@nanoboss/app-support";
+import type {
+  DownstreamAgentConfig,
+  DownstreamAgentSelection,
+  PendingContinuation,
+  SessionMetadata,
+} from "@nanoboss/contracts";
+import { formatAgentBanner } from "@nanoboss/procedure-sdk";
 import {
   SessionStore,
   readStoredSessionMetadata,
   writeStoredSessionMetadata,
 } from "@nanoboss/store";
-
-import { getBuildLabel } from "../../../src/core/build-info.ts";
-import type { SessionMetadata } from "../../../src/core/contracts.ts";
-import { toDownstreamAgentSelection } from "../../../src/core/config.ts";
-import { formatAgentBanner } from "../../../src/core/runtime-banner.ts";
-import type {
-  AgentSession,
-  DownstreamAgentConfig,
-  DownstreamAgentSelection,
-  PendingContinuation,
-} from "../../../src/core/types.ts";
+import { toDownstreamAgentSelection } from "@nanoboss/procedure-engine";
 
 import { shouldPrewarmDefaultAgentSession } from "./default-agent-policy.ts";
 import { SessionEventLog, type RuntimeCommand } from "./runtime-events.ts";

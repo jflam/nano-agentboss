@@ -7,8 +7,10 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@nanoboss/app-support": "workspace:*",
     "@nanoboss/app-runtime": "workspace:*",
     "@nanoboss/contracts": "workspace:*",
-    "@nanoboss/procedure-sdk": "workspace:*"
+    "@nanoboss/procedure-sdk": "workspace:*",
+    "@nanoboss/store": "workspace:*"
   }
 }

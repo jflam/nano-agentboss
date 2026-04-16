@@ -1,13 +1,16 @@
-import { resolveDefaultDownstreamAgentConfig } from "@nanoboss/agent-acp";
+import {
+  buildReasoningModelSelection,
+  isReasoningEffort,
+  parseReasoningModelSelection,
+  resolveDefaultDownstreamAgentConfig,
+  type ReasoningEffort,
+} from "@nanoboss/agent-acp";
+import { readPersistedDefaultAgentSelection } from "@nanoboss/store";
 import type {
   DownstreamAgentConfig,
   DownstreamAgentProvider,
   DownstreamAgentSelection,
 } from "@nanoboss/procedure-sdk";
-
-const REASONING_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
-
-type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
 interface ParsedModelSelection {
   modelId: string;
@@ -19,6 +22,13 @@ export function resolveDownstreamAgentConfig(
   selection?: DownstreamAgentSelection,
 ): DownstreamAgentConfig {
   if (!selection) {
+    if (!hasExplicitEnvOverride()) {
+      const persistedSelection = readPersistedDefaultAgentSelection();
+      if (persistedSelection) {
+        return resolveDownstreamAgentConfig(cwd, persistedSelection);
+      }
+    }
+
     return resolveDefaultDownstreamAgentConfig(cwd ?? process.cwd());
   }
 
@@ -42,8 +52,13 @@ export function toDownstreamAgentSelection(
   }
 
   const model = config.model
-    ? config.provider === "copilot" && config.reasoningEffort && isReasoningEffort(config.reasoningEffort)
-      ? `${config.model}/${config.reasoningEffort}`
+    ? config.provider === "copilot"
+      ? buildReasoningModelSelection(
+          config.model,
+          config.reasoningEffort && isReasoningEffort(config.reasoningEffort)
+            ? config.reasoningEffort
+            : undefined,
+        )
       : config.model
     : undefined;
 
@@ -71,34 +86,6 @@ function parseAgentModelSelection(
     modelId: baseModel ?? raw,
     reasoningEffort,
   };
-}
-
-function parseReasoningModelSelection(selection: string | null | undefined): {
-  baseModel: string | null;
-  reasoningEffort?: ReasoningEffort;
-} {
-  if (!selection) {
-    return { baseModel: null };
-  }
-
-  const slashIndex = selection.lastIndexOf("/");
-  if (slashIndex <= 0) {
-    return { baseModel: selection };
-  }
-
-  const candidate = selection.slice(slashIndex + 1);
-  if (!isReasoningEffort(candidate)) {
-    return { baseModel: selection };
-  }
-
-  return {
-    baseModel: selection.slice(0, slashIndex),
-    reasoningEffort: candidate,
-  };
-}
-
-function isReasoningEffort(value: string): value is ReasoningEffort {
-  return REASONING_EFFORTS.includes(value as ReasoningEffort);
 }
 
 function baseAgentConfig(provider: DownstreamAgentProvider): DownstreamAgentConfig {
@@ -132,4 +119,12 @@ function baseAgentConfig(provider: DownstreamAgentProvider): DownstreamAgentConf
         args: ["--acp", "--allow-all-tools"],
       };
   }
+}
+
+function hasExplicitEnvOverride(): boolean {
+  return Boolean(
+    process.env.NANOBOSS_AGENT_CMD?.trim()
+      || process.env.NANOBOSS_AGENT_ARGS?.trim()
+      || process.env.NANOBOSS_AGENT_MODEL?.trim(),
+  );
 }

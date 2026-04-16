@@ -1,0 +1,332 @@
+import type { SessionStore } from "@nanoboss/store";
+import {
+  summarizeText,
+} from "@nanoboss/procedure-sdk";
+import {
+  createRef,
+  type JsonValue,
+  type Ref,
+  type RunRef,
+} from "@nanoboss/contracts";
+
+const DEFAULT_MAX_CARDS = 3;
+const RECENT_SCAN_LIMIT = 200;
+const MAX_SHAPE_DEPTH = 4;
+const MAX_SHAPE_OBJECT_KEYS = 12;
+const MAX_SHAPE_ARRAY_ITEMS = 3;
+const MAX_LITERAL_LENGTH = 24;
+
+export interface ProcedureMemoryCard {
+  run: RunRef;
+  procedure: string;
+  input: string;
+  summary?: string;
+  memory?: string;
+  dataRef?: Ref;
+  displayRef?: Ref;
+  dataShape?: JsonValue;
+  dataPreview?: string;
+  explicitDataSchema?: object;
+  createdAt: string;
+}
+
+export function collectUnsyncedProcedureMemoryCards(
+  store: SessionStore,
+  syncedRunIds: ReadonlySet<string>,
+  options: { maxCards?: number } = {},
+): ProcedureMemoryCard[] {
+  const maxCards = options.maxCards ?? DEFAULT_MAX_CARDS;
+  const summaries = store.listRuns({ limit: RECENT_SCAN_LIMIT });
+  const unsynced: ProcedureMemoryCard[] = [];
+
+  for (const summary of summaries) {
+    if (syncedRunIds.has(summary.run.runId)) {
+      continue;
+    }
+
+    const card = materializeProcedureMemoryCard(
+      store,
+      summary.run,
+      summary.dataShape,
+    );
+    if (!card) {
+      continue;
+    }
+
+    unsynced.push(card);
+
+    if (unsynced.length >= maxCards) {
+      break;
+    }
+  }
+
+  return unsynced.reverse();
+}
+
+export function materializeProcedureMemoryCard(
+  store: SessionStore,
+  run: RunRef,
+  dataShape?: JsonValue,
+): ProcedureMemoryCard | undefined {
+  const record = store.getRun(run);
+  if (record.procedure === "default") {
+    return undefined;
+  }
+
+  const memory = deriveProcedureMemory(record.output.memory, record.output.summary, record.output.display);
+  const dataRef = record.output.data !== undefined
+    ? createRef(run, "output.data")
+    : undefined;
+  const displayRef = record.output.display !== undefined
+    ? createRef(run, "output.display")
+    : undefined;
+
+  return {
+    run,
+    procedure: record.procedure,
+    input: record.input,
+    summary: record.output.summary,
+    memory,
+    dataRef,
+    displayRef,
+    dataShape: dataShape ?? (record.output.data !== undefined ? inferDataShape(record.output.data) : undefined),
+    dataPreview: buildDataPreview(record.output.data),
+    explicitDataSchema: record.output.explicitDataSchema,
+    createdAt: record.meta.createdAt,
+  };
+}
+
+export function renderProcedureMemoryCardsSection(cards: ProcedureMemoryCard[]): string | undefined {
+  if (cards.length === 0) {
+    return undefined;
+  }
+
+  const lines = [
+    "Nanoboss session memory update:",
+    "",
+  ];
+
+  for (const card of cards) {
+    lines.push(...renderProcedureMemoryCardLines(card), "");
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
+function renderProcedureMemoryCardLines(card: ProcedureMemoryCard): string[] {
+  const lines = [
+    `- procedure: /${card.procedure}`,
+    `- input: ${summarizeText(card.input, 140)}`,
+  ];
+
+  if (card.summary) {
+    lines.push(`- summary: ${summarizeText(card.summary, 220)}`);
+  }
+
+  if (card.memory) {
+    lines.push(`- memory: ${summarizeText(card.memory, 280)}`);
+  }
+
+  if (card.dataRef) {
+    lines.push(`- result_ref: ${formatRef(card.dataRef)}`);
+  }
+
+  if (card.displayRef) {
+    lines.push(`- display_ref: ${formatRef(card.displayRef)}`);
+  }
+
+  if (card.dataPreview) {
+    lines.push(`- data_preview: ${card.dataPreview}`);
+  }
+
+  const shape = stringifyCompactShape(card.dataShape, 220);
+  if (shape) {
+    lines.push(`- data_shape: ${shape}`);
+  }
+
+  if (card.explicitDataSchema) {
+    const schema = summarizeText(JSON.stringify(card.explicitDataSchema), 220);
+    lines.push(`- explicit_data_schema: ${schema}`);
+  }
+
+  return lines;
+}
+
+function hasTopLevelNonDefaultProcedureHistory(store: SessionStore): boolean {
+  return store.listRuns({ limit: RECENT_SCAN_LIMIT }).some((summary) => {
+    const record = store.getRun(summary.run);
+    return record.procedure !== "default";
+  });
+}
+
+function deriveProcedureMemory(
+  memory: string | undefined,
+  summary: string | undefined,
+  display: string | undefined,
+): string | undefined {
+  if (memory && memory.trim()) {
+    return memory.trim();
+  }
+
+  if (summary && summary.trim()) {
+    return summary.trim();
+  }
+
+  if (display && display.trim()) {
+    return summarizeText(display, 220);
+  }
+
+  return undefined;
+}
+
+function buildDataPreview(data: unknown): string | undefined {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(data)
+    .filter(([, value]) => value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string")
+    .slice(0, 6)
+    .map(([key, value]) => [key, typeof value === "string" ? summarizeText(value, 80) : value] as const);
+
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  return summarizeText(JSON.stringify(Object.fromEntries(entries)), 220);
+}
+
+function formatRef(ref: Ref): string {
+  return [
+    `session=${ref.run.sessionId}`,
+    `run=${ref.run.runId}`,
+    `path=${ref.path}`,
+  ].join(" ");
+}
+
+function inferDataShape(value: unknown, depth = 0): JsonValue {
+  if (isRunRef(value) || isCellRef(value)) {
+    return "RunRef";
+  }
+
+  if (isRef(value) || isValueRef(value)) {
+    return "Ref";
+  }
+
+  if (value === null) {
+    return "null";
+  }
+
+  if (typeof value === "boolean") {
+    return "boolean";
+  }
+
+  if (typeof value === "number") {
+    return "number";
+  }
+
+  if (typeof value === "string") {
+    return inferStringShape(value);
+  }
+
+  if (depth >= MAX_SHAPE_DEPTH) {
+    return Array.isArray(value) ? ["…"] : { "…": "…" };
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return [];
+    }
+
+    return value
+      .slice(0, MAX_SHAPE_ARRAY_ITEMS)
+      .map((item) => inferDataShape(item, depth + 1));
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value)
+      .slice(0, MAX_SHAPE_OBJECT_KEYS)
+      .map(([key, nestedValue]) => [key, inferDataShape(nestedValue, depth + 1)] as const);
+
+    const shape: Record<string, JsonValue> = Object.fromEntries(entries);
+    if (Object.keys(value).length > MAX_SHAPE_OBJECT_KEYS) {
+      shape["…"] = "…";
+    }
+    return shape;
+  }
+
+  return typeof value;
+}
+
+function stringifyCompactShape(value: JsonValue | undefined, maxLength = 240): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const serialized = JSON.stringify(value);
+  if (serialized.length <= maxLength) {
+    return serialized;
+  }
+
+  return `${serialized.slice(0, maxLength - 3)}...`;
+}
+
+function inferStringShape(value: string): string {
+  const trimmed = value.trim();
+  if (
+    trimmed.length > 0 &&
+    trimmed.length <= MAX_LITERAL_LENGTH &&
+    !/\s/.test(trimmed)
+  ) {
+    return trimmed;
+  }
+
+  return "string";
+}
+
+function isCellRef(value: unknown): value is { sessionId: string; cellId: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sessionId" in value &&
+    typeof (value as { sessionId: unknown }).sessionId === "string" &&
+    "cellId" in value &&
+    typeof (value as { cellId: unknown }).cellId === "string"
+  );
+}
+
+function isValueRef(value: unknown): value is { cell: { sessionId: string; cellId: string }; path: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "cell" in value &&
+    typeof (value as { cell: unknown }).cell === "object" &&
+    (value as { cell: unknown }).cell !== null &&
+    "path" in value &&
+    typeof (value as { path: unknown }).path === "string"
+  );
+}
+
+function isRunRef(value: unknown): value is RunRef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sessionId" in value &&
+    typeof (value as { sessionId: unknown }).sessionId === "string" &&
+    "runId" in value &&
+    typeof (value as { runId: unknown }).runId === "string"
+  );
+}
+
+function isRef(value: unknown): value is Ref {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "run" in value &&
+    typeof (value as { run: unknown }).run === "object" &&
+    (value as { run: unknown }).run !== null &&
+    isRunRef((value as { run: unknown }).run) &&
+    "path" in value &&
+    typeof (value as { path: unknown }).path === "string"
+  );
+}

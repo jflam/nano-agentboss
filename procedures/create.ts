@@ -1,8 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join, parse, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import typia from "typia";
 
+import { detectRepoRoot } from "@nanoboss/app-support";
 import { expectData, jsonType } from "@nanoboss/procedure-sdk";
 import type {
   Procedure,
@@ -140,23 +141,6 @@ function loadExamples(cwd: string): string {
     .filter(Boolean);
 
   return examples.join("\n\n");
-}
-
-function detectRepoRoot(cwd: string): string | undefined {
-  let current = resolve(cwd);
-
-  for (;;) {
-    if (existsSync(join(current, ".git"))) {
-      return current;
-    }
-
-    const parent = resolve(current, "..");
-    if (parent === current || current === parse(current).root) {
-      return undefined;
-    }
-
-    current = parent;
-  }
 }
 
 function sanitizeProcedureName(value: string): string {

@@ -4,10 +4,10 @@ import { join } from "node:path";
 
 import { afterEach, expect, test } from "bun:test";
 
+import { resolveWorkspaceKey } from "@nanoboss/app-support";
 import {
   readCurrentWorkspaceSessionMetadata,
   readStoredSessionMetadata,
-  resolveWorkspaceKey,
   writeStoredSessionMetadata,
 } from "@nanoboss/store";
 

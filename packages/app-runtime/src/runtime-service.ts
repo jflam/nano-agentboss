@@ -1,8 +1,6 @@
-import { inferDataShape } from "../../../src/core/data-shape.ts";
-import { shouldLoadDiskCommands } from "../../../src/core/runtime-mode.ts";
+import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import type {
   DownstreamAgentSelection,
-  KernelValue,
   Ref,
   RunRef,
   RunDescendantsOptions,
@@ -11,11 +9,11 @@ import type {
   ProcedureMetadata,
   ProcedureRegistryLike,
 } from "@nanoboss/procedure-sdk";
-import { ProcedureDispatchJobManager } from "@nanoboss/procedure-engine";
+import { inferDataShape, ProcedureDispatchJobManager } from "@nanoboss/procedure-engine";
 import { ProcedureRegistry, projectProcedureMetadata } from "@nanoboss/procedure-catalog";
-import { publicKernelValueFromStored } from "../../../src/core/types.ts";
 import {
   SessionStore,
+  publicKernelValueFromStored,
   readCurrentWorkspaceSessionMetadata,
   readStoredSessionMetadata,
 } from "@nanoboss/store";
@@ -55,7 +53,7 @@ export class NanobossRuntimeService {
   }
 
   readRef(ref: Ref): unknown {
-    return publicKernelValueFromStored(this.createStoreForRef(ref).readRef(ref) as KernelValue);
+    return publicKernelValueFromStored(this.createStoreForRef(ref).readRef(ref));
   }
 
   statRef(ref: Ref) {

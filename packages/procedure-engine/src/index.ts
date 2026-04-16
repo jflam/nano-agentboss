@@ -68,8 +68,41 @@ export type { PreparedDefaultPrompt, ProcedureUiEvent, SessionUpdateEmitter };
 
 export { CommandContextImpl } from "./context/context.ts";
 export { UiApiImpl } from "./context/ui-api.ts";
+export {
+  defaultCancellationMessage,
+  normalizeRunCancelledError,
+  RunCancelledError,
+  type RunCancellationReason,
+} from "./cancellation.ts";
+export {
+  formatErrorMessage,
+} from "./error-format.ts";
 export { RunLogger } from "./logger.ts";
-export { formatProcedureStatusText, toProcedureUiSessionUpdate } from "./ui-events.ts";
+export {
+  resolveDownstreamAgentConfig,
+  toDownstreamAgentSelection,
+} from "./agent-config.ts";
+export {
+  appendTimingTraceEvent,
+  createRunTimingTrace,
+  type RunTimingTrace,
+} from "./timing-trace.ts";
+export {
+  inferDataShape,
+  stringifyCompactShape,
+} from "./data-shape.ts";
+export {
+  resolveSelfCommand,
+  resolveSelfCommandWithRuntime,
+} from "./self-command.ts";
+export {
+  createProcedureUiMarkerStream,
+  formatProcedureStatusText,
+  parseProcedureUiMarker,
+  PROCEDURE_UI_MARKER_PREFIX,
+  renderProcedureUiMarker,
+  toProcedureUiSessionUpdate,
+} from "./ui-events.ts";
 
 export interface ProcedureEngineEmitter {
   emit(update: unknown): void;

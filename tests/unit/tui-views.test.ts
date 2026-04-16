@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { summarizeToolCallStart, summarizeToolCallUpdate } from "../../src/core/tool-call-preview.ts";
+import { summarizeToolCallStart, summarizeToolCallUpdate } from "@nanoboss/app-runtime";
 import { createNanobossTuiTheme } from "@nanoboss/adapters-tui";
 import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
-import { reduceUiState } from "../../src/tui/reducer.ts";
-import { createInitialUiState } from "../../src/tui/state.ts";
-import { NanobossAppView } from "../../src/tui/views.ts";
+import { reduceUiState } from "../../packages/adapters-tui/src/reducer.ts";
+import { createInitialUiState } from "../../packages/adapters-tui/src/state.ts";
+import { NanobossAppView } from "../../packages/adapters-tui/src/views.ts";
 
 function stripAnsi(text: string): string {
   const esc = String.fromCharCode(27);

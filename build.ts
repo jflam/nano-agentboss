@@ -1,4 +1,6 @@
 import UnpluginTypia from "@ryoppippi/unplugin-typia/bun";
+import { resolveNanobossInstallDir } from "@nanoboss/app-support";
+import { getProcedureRuntimeDir } from "@nanoboss/procedure-catalog";
 import { execFileSync } from "node:child_process";
 import {
   accessSync,
@@ -19,14 +21,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { getProcedureRuntimeDir } from "./src/core/config.ts";
 import {
   attributeSourceMapBytes,
   formatByteSize,
   summarizeBundledSources,
   type SizeGroup,
-} from "./src/core/build-size-report.ts";
-import { resolveNanobossInstallDir } from "./src/core/install-path.ts";
+} from "./src/dev/build-size-report.ts";
 
 const outfile = "./dist/nanoboss";
 const buildCommit = resolveBuildCommit();

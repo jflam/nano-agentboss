@@ -3,9 +3,25 @@ export {
   normalizeProcedureResult,
 } from "./session-store.ts";
 
+export {
+  publicContinuationFromStored,
+  publicKernelValueFromStored,
+} from "./stored-values.ts";
+
+export {
+  getNanobossSettingsPath,
+  readNanobossSettings,
+  readPersistedDefaultAgentSelection,
+  writePersistedDefaultAgentSelection,
+} from "./settings.ts";
+
+export { parseRequiredDownstreamAgentSelection } from "./agent-selection.ts";
+
 export type {
   StoredRunResult,
 } from "./session-store.ts";
+
+export type { NanobossSettings } from "./settings.ts";
 
 export {
   listStoredSessions,
@@ -14,7 +30,6 @@ export {
   writeStoredSessionMetadata,
 } from "./session-repository.ts";
 
-export { resolveWorkspaceKey } from "./paths.ts";
 export { getNanobossHome, getSessionDir } from "./paths.ts";
 
 export {

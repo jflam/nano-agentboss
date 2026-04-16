@@ -1,4 +1,4 @@
-import { DEFAULT_HTTP_SERVER_PORT, DEFAULT_HTTP_SERVER_URL } from "./src/core/defaults.ts";
+import { DEFAULT_HTTP_SERVER_PORT, DEFAULT_HTTP_SERVER_URL } from "./src/commands/http-options.ts";
 
 export type NanobossSubcommand = "cli" | "resume" | "http" | "acp-server" | "procedure-dispatch-worker" | "doctor" | "mcp" | "help";
 
@@ -46,7 +46,7 @@ export async function runNanoboss(argv: string[]): Promise<void> {
       await import("./resume.ts").then(({ runResumeCommand }) => runResumeCommand(parsed.args));
       return;
     case "http":
-      await import("@nanoboss/adapters-http").then(({ runHttpServerCommand }) => runHttpServerCommand(parsed.args));
+      await import("./src/commands/http.ts").then(({ runHttpCommand }) => runHttpCommand(parsed.args));
       return;
     case "acp-server":
       await import("@nanoboss/adapters-acp-server").then(({ runAcpServerCommand }) => runAcpServerCommand());
@@ -58,7 +58,7 @@ export async function runNanoboss(argv: string[]): Promise<void> {
       await import("@nanoboss/procedure-engine").then(({ runProcedureDispatchWorkerCommand }) => runProcedureDispatchWorkerCommand(parsed.args));
       return;
     case "doctor":
-      await import("./src/core/doctor.ts").then(({ runDoctorCommand }) => runDoctorCommand(parsed.args));
+      await import("./src/commands/doctor.ts").then(({ runDoctorCommand }) => runDoctorCommand(parsed.args));
       return;
     case "help":
       printHelp();
@@ -75,7 +75,7 @@ async function runMcpSubcommand(argv: string[]): Promise<void> {
       MCP_SERVER_NAME,
       runMcpServer,
     } = await import("@nanoboss/adapters-mcp");
-    const { createCurrentSessionBackedNanobossRuntimeService } = await import("./src/runtime/service.ts");
+    const { createCurrentSessionBackedNanobossRuntimeService } = await import("@nanoboss/app-runtime");
     const runtime = createCurrentSessionBackedNanobossRuntimeService();
     await runMcpServer(runtime, {
       serverName: MCP_SERVER_NAME,

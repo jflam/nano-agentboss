@@ -4,16 +4,18 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 import typia from "typia";
 
-import { expectData } from "../../src/core/run-result.ts";
+import type {
+  DownstreamAgentSelection,
+  KernelValue,
+  RunRef,
+} from "@nanoboss/contracts";
 import {
+  expectData,
   jsonType,
-  type DownstreamAgentSelection,
-  type KernelValue,
   type Procedure,
   type ProcedureApi,
   type ProcedureResult,
-  type RunRef,
-} from "../../src/core/types.ts";
+} from "@nanoboss/procedure-sdk";
 
 interface StepSelection {
   status: "continue" | "complete" | "blocked";
@@ -113,7 +115,7 @@ const ExecutePlanStateType = jsonType<ExecutePlanState>(
   typia.createValidate<ExecutePlanState>(),
 );
 
-const MAX_AUTO_APPROVE_STEPS_PER_RUN = 8;
+const MAX_AUTO_APPROVE_STEPS_PER_RUN = 80;
 const MAX_PRE_COMMIT_REPAIR_ATTEMPTS = 3;
 const MAX_NOTE_COUNT = 12;
 
