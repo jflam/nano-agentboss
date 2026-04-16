@@ -8,7 +8,7 @@ import type {
   RunRef,
 } from "@nanoboss/contracts";
 
-import type { ProcedureMemoryCard } from "../../../src/core/memory-cards.ts";
+import type { ProcedureMemoryCard } from "./memory-cards.ts";
 import {
   summarizeToolCallStart,
   summarizeToolCallUpdate,

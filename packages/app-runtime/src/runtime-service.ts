@@ -1,5 +1,5 @@
 import { inferDataShape } from "../../../src/core/data-shape.ts";
-import { shouldLoadDiskCommands } from "../../../src/core/runtime-mode.ts";
+import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import type {
   DownstreamAgentSelection,
   Ref,

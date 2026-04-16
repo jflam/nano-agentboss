@@ -1,14 +1,16 @@
 import type { PreparedDefaultPrompt } from "@nanoboss/procedure-engine";
-import type { PromptInput } from "@nanoboss/procedure-sdk";
+import {
+  promptInputDisplayText,
+  type PromptInput,
+} from "@nanoboss/procedure-sdk";
 
 import {
   prependPromptInputText,
-  promptInputDisplayText,
-} from "../../../src/core/prompt.ts";
+} from "./runtime-prompt.ts";
 import {
   collectUnsyncedProcedureMemoryCards,
   renderProcedureMemoryCardsSection,
-} from "../../../src/core/memory-cards.ts";
+} from "./memory-cards.ts";
 import {
   appendTimingTraceEvent,
   type RunTimingTrace,

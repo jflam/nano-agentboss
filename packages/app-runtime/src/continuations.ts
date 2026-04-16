@@ -7,12 +7,12 @@ import type {
   PromptInput,
   RunResult,
 } from "@nanoboss/procedure-sdk";
-
 import {
   normalizePromptInput,
   promptInputDisplayText,
-  promptInputToPlainText,
-} from "../../../src/core/prompt.ts";
+} from "@nanoboss/procedure-sdk";
+
+import { promptInputToPlainText } from "./runtime-prompt.ts";
 
 import type { RuntimeContinuation } from "./runtime-events.ts";
 

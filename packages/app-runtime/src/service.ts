@@ -2,11 +2,6 @@ import type * as acp from "@agentclientprotocol/sdk";
 import {
   normalizeAgentTokenUsage,
 } from "@nanoboss/agent-acp";
-
-import { buildMcpProcedureDispatchPrompt } from "../../../src/core/agent-runtime-instructions.ts";
-import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "../../../src/core/cancellation.ts";
-import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "../../../src/core/config.ts";
-import { formatErrorMessage } from "../../../src/core/error-format.ts";
 import {
   createTextPromptInput,
   hasPromptInputContent,
@@ -14,8 +9,13 @@ import {
   normalizePromptInput,
   promptInputAttachmentSummaries,
   promptInputDisplayText,
-} from "../../../src/core/prompt.ts";
-import { materializeProcedureMemoryCard } from "../../../src/core/memory-cards.ts";
+} from "@nanoboss/procedure-sdk";
+
+import { buildMcpProcedureDispatchPrompt } from "./agent-runtime-instructions.ts";
+import { RunCancelledError, defaultCancellationMessage, normalizeRunCancelledError } from "../../../src/core/cancellation.ts";
+import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "../../../src/core/config.ts";
+import { formatErrorMessage } from "../../../src/core/error-format.ts";
+import { materializeProcedureMemoryCard } from "./memory-cards.ts";
 import {
   mapProcedureUiEventToRuntimeEvent,
   mapSessionUpdateToRuntimeEvents,
@@ -40,9 +40,9 @@ import {
   buildRunCancelledEvent,
   buildRunCompletedEvent,
   buildRunPausedEvent,
-} from "../../../src/core/run-events.ts";
+} from "./run-events.ts";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { shouldLoadDiskCommands } from "../../../src/core/runtime-mode.ts";
+import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import { appendTimingTraceEvent, createRunTimingTrace, type RunTimingTrace } from "../../../src/core/timing-trace.ts";
 import {
   createActiveRunState,
