@@ -40,7 +40,7 @@ const CANONICAL_IMPORTERS = [
   "src/app-support/build-freshness.ts",
   "tests/unit/current-session.test.ts",
   "tests/unit/http-server-supervisor.test.ts",
-  "tests/unit/install-path.test.ts",
+  "packages/app-support/tests/install-path.test.ts",
   "tests/unit/resume.test.ts",
 ] as const;
 
