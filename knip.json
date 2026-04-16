@@ -25,10 +25,6 @@
     "packages/adapters-tui/src/controller.ts": [
       "types"
     ],
-    "packages/adapters-tui/src/model-catalog.ts": [
-      "exports",
-      "types"
-    ],
     "packages/app-runtime/src/runtime-service.ts": [
       "exports"
     ],
