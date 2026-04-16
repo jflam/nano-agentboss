@@ -1,1 +1,1 @@
-export * from "../../packages/adapters-mcp/src/jsonrpc.ts";
+export * from "@nanoboss/adapters-mcp";

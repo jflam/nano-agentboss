@@ -1,4 +1,5 @@
 export * from "./run.ts";
+export * from "./controller.ts";
 export type { FrontendConnectionMode } from "./connection-mode.ts";
 export {
   createNanobossTuiTheme,

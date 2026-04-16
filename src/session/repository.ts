@@ -1,1 +1,1 @@
-export * from "../../packages/store/src/session-repository.ts";
+export * from "@nanoboss/store";

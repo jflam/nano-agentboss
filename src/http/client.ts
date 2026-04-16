@@ -1,1 +1,1 @@
-export * from "../../packages/adapters-http/src/client.ts";
+export * from "@nanoboss/adapters-http";

@@ -17,6 +17,11 @@ export {
   summarizeToolCallUpdate,
   type ToolPreviewBlock,
 } from "./tool-call-preview.ts";
+export {
+  createCurrentSessionBackedNanobossRuntimeService,
+  createNanobossRuntimeService,
+  NanobossRuntimeService,
+} from "./runtime-service.ts";
 
 export type {
   RuntimeSessionDescriptor,
