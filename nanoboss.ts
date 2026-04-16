@@ -58,7 +58,7 @@ export async function runNanoboss(argv: string[]): Promise<void> {
       await import("@nanoboss/procedure-engine").then(({ runProcedureDispatchWorkerCommand }) => runProcedureDispatchWorkerCommand(parsed.args));
       return;
     case "doctor":
-      await import("./src/core/doctor.ts").then(({ runDoctorCommand }) => runDoctorCommand(parsed.args));
+      await import("./src/commands/doctor.ts").then(({ runDoctorCommand }) => runDoctorCommand(parsed.args));
       return;
     case "help":
       printHelp();
