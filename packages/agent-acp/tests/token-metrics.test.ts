@@ -42,7 +42,6 @@ test("collectTokenSnapshot uses ACP usage_update for codex", async () => {
   });
 });
 
-
 test("collectTokenSnapshot falls back to ACP usage_update for generic agents", async () => {
   const snapshot = await collectTokenSnapshot({
     childPid: 123,

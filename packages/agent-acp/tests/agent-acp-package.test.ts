@@ -1,10 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { createAgentSession } from "@nanoboss/agent-acp";
 import type { DownstreamAgentConfig } from "@nanoboss/procedure-sdk";
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const MOCK_AGENT_PATH = fileURLToPath(new URL("../../../tests/fixtures/mock-agent.ts", import.meta.url));
+const originalHome = process.env.HOME;
+const testHome = mkdtempSync(join(tmpdir(), "nanoboss-agent-acp-home-"));
+
+process.env.HOME = testHome;
+process.on("exit", () => {
+  try {
+    rmSync(testHome, { recursive: true, force: true });
+  } catch {
+    // Ignore cleanup failures during test shutdown.
+  }
+
+  if (originalHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = originalHome;
+  }
+});
 
 function createMockConfig(
   cwd: string,
@@ -16,7 +37,7 @@ function createMockConfig(
 ): DownstreamAgentConfig {
   return {
     command: "bun",
-    args: ["run", "tests/fixtures/mock-agent.ts"],
+    args: ["run", MOCK_AGENT_PATH],
     cwd,
     env: {
       MOCK_AGENT_SUPPORT_LOAD_SESSION: options.supportLoadSession ? "1" : "0",
@@ -32,7 +53,7 @@ describe("agent-acp package", () => {
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-agent-acp-reuse-"));
       const session = createAgentSession({
-        config: createMockConfig(process.cwd(), {
+        config: createMockConfig(REPO_ROOT, {
           supportLoadSession: true,
           sessionStoreDir,
         }),
@@ -65,7 +86,7 @@ describe("agent-acp package", () => {
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-agent-acp-tokens-"));
       const session = createAgentSession({
-        config: createMockConfig(process.cwd(), {
+        config: createMockConfig(REPO_ROOT, {
           supportLoadSession: true,
           sessionStoreDir,
           provider: "codex",

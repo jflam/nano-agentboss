@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   buildReasoningModelSelection,
@@ -11,6 +12,8 @@ import {
   listSelectableModelOptions,
   parseReasoningModelSelection,
 } from "@nanoboss/agent-acp";
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
 test("lists the known downstream agents", () => {
   expect(listKnownProviders()).toEqual(["claude", "gemini", "codex", "copilot"]);
@@ -85,7 +88,7 @@ test("keeps the model catalog owned by the public agent-acp package", () => {
     "packages/adapters-tui/src/model-catalog.ts",
     "procedures/lib/model-catalog.ts",
   ]) {
-    expect(existsSync(join(process.cwd(), path))).toBe(false);
+    expect(existsSync(join(REPO_ROOT, path))).toBe(false);
   }
 
   for (const path of [
@@ -95,7 +98,7 @@ test("keeps the model catalog owned by the public agent-acp package", () => {
     "packages/procedure-engine/src/agent-config.ts",
     "procedures/model.ts",
   ]) {
-    const source = readFileSync(join(process.cwd(), path), "utf8");
+    const source = readFileSync(join(REPO_ROOT, path), "utf8");
     expect(source).toContain('from "@nanoboss/agent-acp"');
     expect(source).not.toMatch(/from ["'][^"']*model-catalog(?:\.ts)?["']/);
   }
