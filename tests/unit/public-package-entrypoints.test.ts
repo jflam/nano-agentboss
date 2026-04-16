@@ -154,10 +154,11 @@ test("packages keep baseline manifest and tsconfig parity", () => {
     expect(existsSync(join(packageRoot, "tsconfig.json"))).toBe(true);
 
     const packageJson = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
-      scripts?: { test?: unknown };
+      scripts?: { test?: unknown; typecheck?: unknown };
     };
 
     expect(typeof packageJson.scripts?.test).toBe("string");
+    expect(typeof packageJson.scripts?.typecheck).toBe("string");
   }
 });
 
