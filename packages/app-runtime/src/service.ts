@@ -10,9 +10,9 @@ import {
   promptInputAttachmentSummaries,
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
+import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "@nanoboss/procedure-engine";
 
 import { buildMcpProcedureDispatchPrompt } from "./agent-runtime-instructions.ts";
-import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "../../../src/core/config.ts";
 import { materializeProcedureMemoryCard } from "./memory-cards.ts";
 import {
   mapProcedureUiEventToRuntimeEvent,

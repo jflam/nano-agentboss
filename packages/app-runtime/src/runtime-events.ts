@@ -13,8 +13,8 @@ import {
   summarizeToolCallStart,
   summarizeToolCallUpdate,
   type ToolPreviewBlock,
-} from "../../../src/core/tool-call-preview.ts";
-import { normalizeToolName } from "../../../src/core/tool-payload-normalizer.ts";
+} from "./tool-call-preview.ts";
+import { normalizeToolName } from "./tool-payload-normalizer.ts";
 
 export { UiApiImpl };
 

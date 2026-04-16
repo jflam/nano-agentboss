@@ -79,10 +79,17 @@ export {
 } from "./error-format.ts";
 export { RunLogger } from "./logger.ts";
 export {
+  resolveDownstreamAgentConfig,
+  toDownstreamAgentSelection,
+} from "./agent-config.ts";
+export {
   appendTimingTraceEvent,
   createRunTimingTrace,
   type RunTimingTrace,
 } from "./timing-trace.ts";
+export {
+  inferDataShape,
+} from "./data-shape.ts";
 export { formatProcedureStatusText, toProcedureUiSessionUpdate } from "./ui-events.ts";
 
 export interface ProcedureEngineEmitter {

@@ -11,11 +11,10 @@ import {
   readStoredSessionMetadata,
   writeStoredSessionMetadata,
 } from "@nanoboss/store";
-
-import { getBuildLabel } from "../../../src/core/build-info.ts";
-import { toDownstreamAgentSelection } from "../../../src/core/config.ts";
+import { toDownstreamAgentSelection } from "@nanoboss/procedure-engine";
 
 import { shouldPrewarmDefaultAgentSession } from "./default-agent-policy.ts";
+import { getBuildLabel } from "./build-info.ts";
 import { SessionEventLog, type RuntimeCommand } from "./runtime-events.ts";
 import type { ActiveRunState } from "./active-run.ts";
 

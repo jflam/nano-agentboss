@@ -14,7 +14,7 @@ import {
 import {
   appendTimingTraceEvent,
   type RunTimingTrace,
-} from "../../../src/core/timing-trace.ts";
+} from "@nanoboss/procedure-engine";
 
 import type { SessionState } from "./session-runtime.ts";
 

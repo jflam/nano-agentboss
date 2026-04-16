@@ -1,4 +1,3 @@
-import { inferDataShape } from "../../../src/core/data-shape.ts";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import type {
   DownstreamAgentSelection,
@@ -10,7 +9,7 @@ import type {
   ProcedureMetadata,
   ProcedureRegistryLike,
 } from "@nanoboss/procedure-sdk";
-import { ProcedureDispatchJobManager } from "@nanoboss/procedure-engine";
+import { inferDataShape, ProcedureDispatchJobManager } from "@nanoboss/procedure-engine";
 import { ProcedureRegistry, projectProcedureMetadata } from "@nanoboss/procedure-catalog";
 import {
   SessionStore,

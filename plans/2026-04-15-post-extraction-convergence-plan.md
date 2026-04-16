@@ -296,6 +296,14 @@ Acceptance criteria:
 - `@nanoboss/app-runtime` builds using package dependencies only
 - runtime behavior stays unchanged except for import ownership
 
+Verified 2026-04-15:
+
+- `packages/app-runtime/src` has no remaining `../../../src/core/*` imports
+- `bun x tsc -p packages/app-runtime/tsconfig.json --noEmit --pretty false` passes
+- the remaining Phase 1 runtime dependencies now resolve through package exports or
+  package-local helpers, so `@nanoboss/app-runtime` can be treated as a real leaf
+  package for later phases
+
 ### Phase 2: collapse duplicated helpers to one owner
 
 Once `app-runtime` is clean, remove the remaining duplication clusters.
