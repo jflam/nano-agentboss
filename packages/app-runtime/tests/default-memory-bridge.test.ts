@@ -3,21 +3,29 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const MOCK_AGENT_PATH = join(process.cwd(), "tests/fixtures/mock-agent.ts");
-const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
-const BUILD_HOOK_TIMEOUT_MS = 30_000;
-
+import type { DownstreamAgentConfig } from "@nanoboss/contracts";
 import { NanobossService } from "@nanoboss/app-runtime";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import type { DownstreamAgentConfig } from "@nanoboss/contracts";
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const MOCK_AGENT_PATH = fileURLToPath(new URL("../../../tests/fixtures/mock-agent.ts", import.meta.url));
+const SELF_COMMAND_PATH = join(REPO_ROOT, "dist", "nanoboss");
+const BUILD_HOOK_TIMEOUT_MS = 30_000;
 
 const tempDirs: string[] = [];
+let originalHome = process.env.HOME;
 let originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
 
 beforeAll(() => {
+  const testHome = mkdtempSync(join(tmpdir(), "nab-memory-home-"));
+  tempDirs.push(testHome);
+  originalHome = process.env.HOME;
+  process.env.HOME = testHome;
+
   const build = spawnSync("bun", ["run", "build"], {
-    cwd: process.cwd(),
+    cwd: REPO_ROOT,
     env: process.env,
     encoding: "utf8",
     stdio: "pipe",
@@ -32,6 +40,12 @@ beforeAll(() => {
 }, BUILD_HOOK_TIMEOUT_MS);
 
 afterAll(() => {
+  if (originalHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = originalHome;
+  }
+
   if (originalSelfCommand === undefined) {
     delete process.env.NANOBOSS_SELF_COMMAND;
   } else {

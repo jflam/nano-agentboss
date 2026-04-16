@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import typia from "typia";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   MAX_PARSE_RETRIES,
@@ -15,9 +17,41 @@ interface MathResult {
   result: number;
 }
 
+const originalHome = process.env.HOME;
+const testHome = mkdtempSync(join(tmpdir(), "nanoboss-call-agent-parse-home-"));
+
+process.env.HOME = testHome;
+process.on("exit", () => {
+  try {
+    rmSync(testHome, { recursive: true, force: true });
+  } catch {
+    // Ignore cleanup failures during test shutdown.
+  }
+
+  if (originalHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = originalHome;
+  }
+});
+
 const MathResultType = jsonType<MathResult>(
-  typia.json.schema<MathResult>(),
-  typia.createValidate<MathResult>(),
+  {
+    type: "object",
+    properties: {
+      result: { type: "number" },
+    },
+    required: ["result"],
+    additionalProperties: false,
+  },
+  (input: unknown): input is MathResult => {
+    return (
+      typeof input === "object" &&
+      input !== null &&
+      typeof (input as { result?: unknown }).result === "number" &&
+      Object.keys(input as Record<string, unknown>).length === 1
+    );
+  },
 );
 
 describe("callAgent response parsing", () => {
@@ -31,26 +65,26 @@ describe("callAgent response parsing", () => {
   });
 
   test("parses valid JSON matching schema", () => {
-    expect(parseAgentResponse('{"result":4}', MathResultType)).toEqual({ result: 4 });
+    expect(parseAgentResponse("{\"result\":4}", MathResultType)).toEqual({ result: 4 });
   });
 
   test("extracts typed JSON from mixed prose and trailing text", () => {
     expect(
       parseAgentResponse(
-        'Running lint now, then I will report back.{"result":4}\nDone validating.',
+        "Running lint now, then I will report back.{\"result\":4}\nDone validating.",
         MathResultType,
       ),
     ).toEqual({ result: 4 });
   });
 
   test("rejects JSON that fails schema validation", () => {
-    expect(() => parseAgentResponse('{"result":"nope"}', MathResultType)).toThrow(
+    expect(() => parseAgentResponse("{\"result\":\"nope\"}", MathResultType)).toThrow(
       "JSON parsed but failed schema validation",
     );
   });
 
   test("retries on invalid JSON with error feedback", async () => {
-    const transport = createTransport(["no json", '{"result":4}']);
+    const transport = createTransport(["no json", "{\"result\":4}"]);
     const result = await callAgent("compute", MathResultType, {}, transport);
 
     expect(result.data).toEqual({ result: 4 });
@@ -60,7 +94,7 @@ describe("callAgent response parsing", () => {
 
   test("accepts mixed prose and final JSON without retrying", async () => {
     const transport = createTransport([
-      'Running the required lint command now.{"result":4}',
+      "Running the required lint command now.{\"result\":4}",
     ]);
     const result = await callAgent("compute", MathResultType, {}, transport);
 
@@ -79,7 +113,7 @@ describe("callAgent response parsing", () => {
     );
 
     expect(prompt).toContain("<ref name=\"answer\">");
-    expect(prompt).toContain('"text": "hello"');
+    expect(prompt).toContain("\"text\": \"hello\"");
   });
 
   test("throws after retries are exhausted", async () => {
@@ -94,7 +128,7 @@ describe("callAgent response parsing", () => {
 
   test("strips markdown code fences from response before parsing", () => {
     expect(sanitizeJsonResponse("```json\n{\"result\":4}\n```"))
-      .toBe('{"result":4}');
+      .toBe("{\"result\":4}");
   });
 });
 
