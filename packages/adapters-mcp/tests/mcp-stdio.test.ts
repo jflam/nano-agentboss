@@ -4,10 +4,15 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { resolveSelfCommand } from "@nanoboss/procedure-engine";
 import { SessionStore, writeStoredSessionMetadata } from "@nanoboss/store";
 
 const tempDirs: string[] = [];
+const MCP_SERVER_BOOTSTRAP = [
+  'import { MCP_INSTRUCTIONS, MCP_SERVER_NAME, runMcpServer } from "@nanoboss/adapters-mcp";',
+  'import { createCurrentSessionBackedNanobossRuntimeService } from "@nanoboss/app-runtime";',
+  "const runtime = createCurrentSessionBackedNanobossRuntimeService(process.cwd());",
+  "await runMcpServer(runtime, { serverName: MCP_SERVER_NAME, instructions: MCP_INSTRUCTIONS });",
+].join("\n");
 
 afterEach(() => {
   while (tempDirs.length > 0) {
@@ -51,8 +56,7 @@ describe("global nanoboss MCP stdio transport", () => {
       updatedAt: "2026-04-03T00:00:00.000Z",
     });
 
-    const command = resolveSelfCommand("mcp");
-    const child = spawn(command.command, command.args, {
+    const child = spawn(process.execPath, ["--eval", MCP_SERVER_BOOTSTRAP], {
       cwd: process.cwd(),
       env: {
         ...process.env,

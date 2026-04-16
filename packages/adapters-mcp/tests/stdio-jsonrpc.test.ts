@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   serializeStdioJsonRpcMessage,
   tryReadStdioJsonRpcMessage,
-} from "../../packages/adapters-mcp/src/stdio-jsonrpc.ts";
+} from "@nanoboss/adapters-mcp";
 
 describe("stdio JSON-RPC framing", () => {
   test("reads newline-delimited JSON-RPC messages", () => {
