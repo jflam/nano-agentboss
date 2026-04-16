@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import ts from "typescript";
 
 const DELETED_ROOT_SHIM_PATHS = [
   "src/agent/token-metrics.ts",
@@ -44,6 +45,58 @@ const PACKAGE_EXPORT_EXPECTATIONS = [
 
 const bannedPackageInternalImportPattern = /^\s*(?:import|export)\b[^;]*?["'][^"']*packages\/[^"']*\/src\/[^"']*["'];?/gm;
 const bannedPackageInternalDynamicImportPattern = /import\(\s*["'][^"']*packages\/[^"']*\/src\/[^"']*["']\s*\)/g;
+const PHASE_2_COLLAPSED_HELPER_FILES = new Map<string, readonly string[]>([
+  ["agent-selection.ts", ["packages/store/src/agent-selection.ts"]],
+  ["build-info.ts", ["packages/app-support/src/build-info.ts"]],
+  ["install-path.ts", ["packages/app-support/src/install-path.ts"]],
+  ["model-catalog.ts", ["packages/agent-acp/src/model-catalog.ts"]],
+  ["procedure-paths.ts", ["packages/app-support/src/procedure-paths.ts"]],
+  ["prompt-input.ts", ["packages/procedure-sdk/src/prompt-input.ts"]],
+  ["repo-artifacts.ts", ["procedures/lib/repo-artifacts.ts"]],
+  ["repo-fingerprint.ts", ["procedures/lib/repo-fingerprint.ts"]],
+  ["settings.ts", ["packages/store/src/settings.ts"]],
+  ["stored-values.ts", ["packages/store/src/stored-values.ts"]],
+  ["workspace-identity.ts", ["packages/app-support/src/workspace-identity.ts"]],
+]);
+const PHASE_2_HELPER_FUNCTION_OWNERS = new Map<string, string>([
+  ["buildReasoningModelSelection", "packages/agent-acp/src/model-catalog.ts"],
+  ["buildImageTokenLabel", "packages/procedure-sdk/src/prompt-input.ts"],
+  ["computeProceduresFingerprint", "packages/app-support/src/workspace-identity.ts"],
+  ["createTextPromptInput", "packages/procedure-sdk/src/prompt-input.ts"],
+  ["detectRepoRoot", "packages/app-support/src/procedure-paths.ts"],
+  ["findSelectableModelOption", "packages/agent-acp/src/model-catalog.ts"],
+  ["getAgentCatalog", "packages/agent-acp/src/model-catalog.ts"],
+  ["getBuildCommit", "packages/app-support/src/build-info.ts"],
+  ["getBuildLabel", "packages/app-support/src/build-info.ts"],
+  ["getWorkspaceIdentity", "packages/app-support/src/workspace-identity.ts"],
+  ["hasPromptInputContent", "packages/procedure-sdk/src/prompt-input.ts"],
+  ["hasPromptInputImages", "packages/procedure-sdk/src/prompt-input.ts"],
+  ["isKnownAgentProvider", "packages/agent-acp/src/model-catalog.ts"],
+  ["isKnownModelSelection", "packages/agent-acp/src/model-catalog.ts"],
+  ["listKnownProviders", "packages/agent-acp/src/model-catalog.ts"],
+  ["listSelectableModelOptions", "packages/agent-acp/src/model-catalog.ts"],
+  ["normalizePromptInput", "packages/procedure-sdk/src/prompt-input.ts"],
+  ["parseReasoningModelSelection", "packages/agent-acp/src/model-catalog.ts"],
+  ["parseRequiredDownstreamAgentSelection", "packages/store/src/agent-selection.ts"],
+  ["parsePromptInputPayload", "packages/procedure-sdk/src/prompt-input.ts"],
+  ["prependPromptInputText", "packages/app-runtime/src/runtime-prompt.ts"],
+  ["publicContinuationFromStored", "packages/store/src/stored-values.ts"],
+  ["publicKernelValueFromStored", "packages/store/src/stored-values.ts"],
+  ["promptInputAttachmentSummaries", "packages/procedure-sdk/src/prompt-input.ts"],
+  ["promptInputDisplayText", "packages/procedure-sdk/src/prompt-input.ts"],
+  ["promptInputFromAcpBlocks", "packages/agent-acp/src/prompt.ts"],
+  ["promptInputToAcpBlocks", "packages/agent-acp/src/prompt.ts"],
+  ["readNanobossSettings", "packages/store/src/settings.ts"],
+  ["readPersistedDefaultAgentSelection", "packages/store/src/settings.ts"],
+  ["resolveNanobossInstallDir", "packages/app-support/src/install-path.ts"],
+  ["resolvePersistProcedureRoot", "packages/app-support/src/procedure-paths.ts"],
+  ["resolveProfileProcedureRoot", "packages/app-support/src/procedure-paths.ts"],
+  ["resolveRepoProcedureRoot", "packages/app-support/src/procedure-paths.ts"],
+  ["resolveWorkspaceKey", "packages/app-support/src/workspace-identity.ts"],
+  ["resolveWorkspaceProcedureRoots", "packages/app-support/src/procedure-paths.ts"],
+  ["summarizePromptInputForAcpLog", "packages/agent-acp/src/prompt.ts"],
+  ["writePersistedDefaultAgentSelection", "packages/store/src/settings.ts"],
+]);
 const bannedDeletedRootImportPattern = createDeletedRootImportPattern(
   [...DELETED_ROOT_SHIM_PATHS, ...DELETED_ROOT_HELPER_PATHS],
   "^(?:\\s*(?:import|export)\\b[^;]*?from\\s*[\"'][^\"']*|\\s*import\\s*[\"'][^\"']*)",
@@ -72,20 +125,27 @@ test("deleted root shims stay removed and root entrypoints use canonical package
     expect(source).toContain(snippet);
   }
 
-  const rootTypeScriptFiles = [
-    join(process.cwd(), "nanoboss.ts"),
-    ...listTypeScriptFilesIn(join(process.cwd(), "src")),
-  ];
-  for (const path of rootTypeScriptFiles) {
+  for (const path of listRootAppTypeScriptFiles()) {
     const source = readFileSync(path, "utf8");
     expect(source).not.toMatch(bannedPackageInternalImportPattern);
     expect(source).not.toMatch(bannedPackageInternalDynamicImportPattern);
   }
 
+  expect(findPackageReverseImportViolations()).toEqual([]);
+  expect(findRootPackageInternalImportViolations()).toEqual([]);
+
   for (const path of listRepositoryTypeScriptFiles()) {
     const source = readFileSync(path, "utf8");
     expect(source).not.toMatch(bannedDeletedRootImportPattern);
     expect(source).not.toMatch(bannedDeletedRootDynamicImportPattern);
+  }
+
+  for (const [fileName, expectedOwners] of PHASE_2_COLLAPSED_HELPER_FILES) {
+    expect(listRepositoryFilesNamed(fileName)).toEqual([...expectedOwners]);
+  }
+
+  for (const [functionName, expectedOwner] of PHASE_2_HELPER_FUNCTION_OWNERS) {
+    expect(findFunctionDeclarationPaths(functionName)).toEqual([expectedOwner]);
   }
 });
 
@@ -113,6 +173,15 @@ function listTypeScriptFilesIn(root: string): string[] {
   return files.sort((left, right) => relative(process.cwd(), left).localeCompare(relative(process.cwd(), right)));
 }
 
+function listRootAppTypeScriptFiles(): string[] {
+  return [
+    ...["build.ts", "cli.ts", "nanoboss.ts", "preload.ts", "resume.ts"]
+      .map((path) => join(process.cwd(), path))
+      .filter((path) => existsSync(path)),
+    ...listTypeScriptFilesIn(join(process.cwd(), "src")),
+  ].sort((left, right) => relative(process.cwd(), left).localeCompare(relative(process.cwd(), right)));
+}
+
 function createDeletedRootImportPattern(
   paths: readonly string[],
   prefix: string,
@@ -127,13 +196,89 @@ function createDeletedRootImportPattern(
 
 function listRepositoryTypeScriptFiles(): string[] {
   return [
-    ...listTypeScriptFilesIn(join(process.cwd(), "src")),
+    ...listRootAppTypeScriptFiles(),
     ...listTypeScriptFilesIn(join(process.cwd(), "packages")),
     ...listTypeScriptFilesIn(join(process.cwd(), "procedures")),
     ...listTypeScriptFilesIn(join(process.cwd(), "scripts")),
     ...listTypeScriptFilesIn(join(process.cwd(), "tests")),
-    ...["build.ts", "cli.ts", "nanoboss.ts", "preload.ts", "resume.ts"]
-      .map((path) => join(process.cwd(), path))
-      .filter((path) => existsSync(path)),
   ].sort((left, right) => relative(process.cwd(), left).localeCompare(relative(process.cwd(), right)));
+}
+
+function findPackageReverseImportViolations(): string[] {
+  return findImportViolations(
+    listTypeScriptFilesIn(join(process.cwd(), "packages")),
+    (specifier, resolvedTarget) => resolvedTarget?.startsWith("src/") === true || specifier.startsWith("src/"),
+  );
+}
+
+function findRootPackageInternalImportViolations(): string[] {
+  return findImportViolations(
+    listRootAppTypeScriptFiles(),
+    (specifier, resolvedTarget) =>
+      isPackageInternalPath(specifier) || (resolvedTarget !== null && isPackageInternalPath(resolvedTarget)),
+  );
+}
+
+function findImportViolations(
+  files: readonly string[],
+  isViolation: (specifier: string, resolvedTarget: string | null) => boolean,
+): string[] {
+  const violations: string[] = [];
+  for (const path of files) {
+    const source = readFileSync(path, "utf8");
+    for (const specifier of listImportSpecifiers(source)) {
+      const resolvedTarget = resolveRepositoryImport(path, specifier);
+      if (!isViolation(specifier, resolvedTarget)) {
+        continue;
+      }
+      violations.push(`${relative(process.cwd(), path)} -> ${specifier}`);
+    }
+  }
+  return violations.sort();
+}
+
+function listImportSpecifiers(source: string): string[] {
+  return ts.preProcessFile(source, true, true).importedFiles.map((entry) => entry.fileName);
+}
+
+function resolveRepositoryImport(importerPath: string, specifier: string): string | null {
+  if (specifier.startsWith("src/") || specifier.startsWith("packages/")) {
+    return normalizeRepositoryPath(join(process.cwd(), specifier));
+  }
+
+  if (!specifier.startsWith(".") && !specifier.startsWith("/")) {
+    return null;
+  }
+
+  return normalizeRepositoryPath(resolve(dirname(importerPath), specifier));
+}
+
+function normalizeRepositoryPath(path: string): string | null {
+  const relativePath = relative(process.cwd(), path).replaceAll("\\", "/");
+  if (relativePath.startsWith("../")) {
+    return null;
+  }
+  return relativePath;
+}
+
+function isPackageInternalPath(path: string): boolean {
+  return /^packages\/[^/]+\/src\//.test(path);
+}
+
+function listRepositoryFilesNamed(fileName: string): string[] {
+  return listRepositoryTypeScriptFiles()
+    .map((path) => relative(process.cwd(), path))
+    .filter((path) => basename(path) === fileName)
+    .sort();
+}
+
+function findFunctionDeclarationPaths(functionName: string): string[] {
+  const declarationPattern = new RegExp(
+    String.raw`\b(?:export\s+)?(?:async\s+)?function\s+${functionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\s*\(`,
+  );
+
+  return listRepositoryTypeScriptFiles()
+    .filter((path) => declarationPattern.test(readFileSync(path, "utf8")))
+    .map((path) => relative(process.cwd(), path))
+    .sort();
 }
