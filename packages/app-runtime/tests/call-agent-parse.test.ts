@@ -6,7 +6,7 @@ import { join } from "node:path";
 import {
   MAX_PARSE_RETRIES,
   buildPrompt,
-  callAgent,
+  invokeAgent,
   parseAgentResponse,
   sanitizeJsonResponse,
   type CallAgentTransport,
@@ -54,14 +54,13 @@ const MathResultType = jsonType<MathResult>(
   },
 );
 
-describe("callAgent response parsing", () => {
+describe("invokeAgent response parsing", () => {
   test("returns raw string when no descriptor provided", async () => {
     const transport = createTransport(["plain text"]);
-    const result = await callAgent("hello", undefined, {}, transport);
+    const result = await invokeAgent("hello", undefined, {}, transport);
 
     expect(result.data).toBe("plain text");
     expect(result.raw).toBe("plain text");
-    expect(result.dataRef).toBeDefined();
   });
 
   test("parses valid JSON matching schema", () => {
@@ -85,7 +84,7 @@ describe("callAgent response parsing", () => {
 
   test("retries on invalid JSON with error feedback", async () => {
     const transport = createTransport(["no json", "{\"result\":4}"]);
-    const result = await callAgent("compute", MathResultType, {}, transport);
+    const result = await invokeAgent("compute", MathResultType, {}, transport);
 
     expect(result.data).toEqual({ result: 4 });
     expect(transport.invocations).toHaveLength(2);
@@ -96,7 +95,7 @@ describe("callAgent response parsing", () => {
     const transport = createTransport([
       "Running the required lint command now.{\"result\":4}",
     ]);
-    const result = await callAgent("compute", MathResultType, {}, transport);
+    const result = await invokeAgent("compute", MathResultType, {}, transport);
 
     expect(result.data).toEqual({ result: 4 });
     expect(transport.invocations).toHaveLength(1);
@@ -121,8 +120,8 @@ describe("callAgent response parsing", () => {
       Array.from({ length: MAX_PARSE_RETRIES + 1 }, () => "still bad"),
     );
 
-    await expect(callAgent("compute", MathResultType, {}, transport)).rejects.toThrow(
-      `callAgent failed after ${MAX_PARSE_RETRIES + 1} attempts`,
+    await expect(invokeAgent("compute", MathResultType, {}, transport)).rejects.toThrow(
+      `invokeAgent failed after ${MAX_PARSE_RETRIES + 1} attempts`,
     );
   });
 

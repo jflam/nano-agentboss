@@ -2,10 +2,9 @@ import type * as acp from "@agentclientprotocol/sdk";
 import {
   createTextPromptInput,
   hasPromptInputImages,
-  promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
 
-import { collectTextSessionUpdates, parseAssistantNoticeText, summarizeAgentOutput } from "./updates.ts";
+import { parseAssistantNoticeText } from "./updates.ts";
 import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
 import { resolveDefaultDownstreamAgentConfig } from "./config.ts";
 import { waitForSettledUpdateQueue } from "./prompt-settle.ts";
@@ -13,21 +12,17 @@ import {
   promptInputToAcpBlocks,
   summarizePromptInputForAcpLog,
 } from "./prompt.ts";
-import { toPublicRunResult } from "./run-result.ts";
 import {
   applyAcpSessionConfig,
   closeAcpConnection,
   openAcpConnection,
 } from "./runtime.ts";
 import { buildAgentRuntimeSessionRuntime } from "./runtime-capability.ts";
-import { SessionStore } from "@nanoboss/store";
 import { collectTokenSnapshot, enrichToolCallUpdateWithTokenUsage } from "./token-metrics.ts";
 import type {
-  AgentRunResult,
   AgentTokenSnapshot,
   CallAgentOptions,
   CallAgentTransport,
-  KernelValue,
   TypeDescriptor,
 } from "./types.ts";
 import { parseProcedureUiMarker } from "./ui-marker.ts";
@@ -42,45 +37,6 @@ interface InvokedAgentResult<T> {
   raw: string;
   updates: acp.SessionUpdate[];
   tokenSnapshot?: AgentTokenSnapshot;
-}
-
-export async function callAgent<T = string>(
-  prompt: string,
-  descriptor?: TypeDescriptor<T>,
-  options: CallAgentOptions = {},
-  transport: CallAgentTransport = defaultTransport,
-): Promise<AgentRunResult<T & KernelValue>> {
-  const result = await invokeAgent(prompt, descriptor, options, transport);
-  const displayPrompt = options.promptInput ? promptInputDisplayText(options.promptInput) : prompt;
-  const cwd = options.config?.cwd ?? process.cwd();
-  const store = new SessionStore({
-    sessionId: crypto.randomUUID(),
-    cwd,
-  });
-  const run = store.startRun({
-    procedure: "callAgent",
-    input: displayPrompt,
-    kind: "agent",
-    promptImages: options.promptInput ? store.persistPromptImages(options.promptInput) : undefined,
-  });
-  const finalized = store.completeRun(run, {
-    data: result.data as T & KernelValue,
-    display: result.raw,
-    summary: summarizeAgentOutput(result.data, result.raw),
-  }, {
-    stream: collectTextSessionUpdates(result.updates),
-    raw: result.raw,
-  });
-  const publicResult = toPublicRunResult(finalized);
-
-  return {
-    ...publicResult,
-    agentSessionId: result.agentSessionId,
-    durationMs: result.durationMs,
-    raw: result.raw,
-    logFile: result.logFile,
-    tokenSnapshot: result.tokenSnapshot,
-  };
 }
 
 export async function invokeAgent<T = string>(
@@ -141,7 +97,7 @@ export async function invokeAgent<T = string>(
   }
 
   throw new Error(
-    `callAgent failed after ${MAX_PARSE_RETRIES + 1} attempts: ${lastError}`,
+    `invokeAgent failed after ${MAX_PARSE_RETRIES + 1} attempts: ${lastError}`,
   );
 }
 

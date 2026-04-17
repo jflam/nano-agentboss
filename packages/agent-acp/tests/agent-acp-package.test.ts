@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { callAgent, createAgentSession, invokeAgent } from "@nanoboss/agent-acp";
+import { createAgentSession, invokeAgent } from "@nanoboss/agent-acp";
 import type { DownstreamAgentConfig } from "@nanoboss/procedure-sdk";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -125,7 +125,7 @@ describe("agent-acp package", () => {
   );
 
   test(
-    "fresh callAgent returns an ACP session id that can be reused without depending on token metrics",
+    "fresh invokeAgent returns an ACP session id that can be reused without depending on token metrics",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-agent-acp-fresh-"));
       const config = createMockConfig(REPO_ROOT, {
@@ -133,10 +133,10 @@ describe("agent-acp package", () => {
         sessionStoreDir,
       });
 
-      const first = await callAgent("what is 2+2", undefined, {
+      const first = await invokeAgent("what is 2+2", undefined, {
         config,
       });
-      const second = await callAgent("add 3 to result", undefined, {
+      const second = await invokeAgent("add 3 to result", undefined, {
         config,
         persistedSessionId: first.agentSessionId,
       });
@@ -181,7 +181,7 @@ describe("agent-acp package", () => {
       });
 
       try {
-        await session.warm();
+        await session.warm?.();
 
         const firstPrompt = session.prompt("simulate-long-run what is 2+2");
         await expect(session.prompt("what is 2+2")).rejects.toThrow(

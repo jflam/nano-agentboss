@@ -3,7 +3,7 @@
 `@nanoboss/agent-acp` is nanoboss's downstream-agent integration package. It owns the ACP-facing mechanics for talking to Claude, Codex, Copilot, Gemini, or another ACP-capable child process over stdio, and it presents those mechanics as two client-facing execution models:
 
 - a persistent `AgentSession` for the session's reusable default conversation
-- fresh one-off calls through `invokeAgent(...)` and `callAgent(...)`
+- fresh one-off calls through `invokeAgent(...)`
 
 This package is the authority for:
 
@@ -41,10 +41,9 @@ This is the path used by the runtime's default downstream conversation.
 
 ### 2. Fresh isolated calls
 
-Use `invokeAgent(...)` or `callAgent(...)` when the caller wants a fresh subprocess/session per call.
+Use `invokeAgent(...)` when the caller wants a fresh subprocess/session per call.
 
 - `invokeAgent(...)` is the transport-level API.
-- `callAgent(...)` is a convenience wrapper that also manufactures a `RunResult`-shaped response by writing a one-off run into a temporary `SessionStore`.
 
 Unless `persistedSessionId` is provided, these calls do not reuse prior downstream context.
 
@@ -58,7 +57,6 @@ The surface breaks down into a few groups.
 
 - `createAgentSession(...)`
 - `invokeAgent(...)`
-- `callAgent(...)`
 - `buildPrompt(...)`
 - `parseAgentResponse(...)`
 - `sanitizeJsonResponse(...)`
@@ -75,8 +73,6 @@ Use `invokeAgent(...)` when the caller wants raw transport results:
 - `logFile`
 - `tokenSnapshot`
 - `agentSessionId`
-
-Use `callAgent(...)` only when the caller explicitly wants a `RunResult`-shaped object with refs and store-backed output in addition to the transport result.
 
 ### 2. Prompt and update helpers
 
@@ -128,8 +124,6 @@ The important types are:
   A reusable downstream conversation handle.
 - `CallAgentOptions`
   Options shared by fresh one-off invocations.
-- `AgentRunResult`
-  The run-shaped convenience return from `callAgent(...)`.
 - `AgentTokenSnapshot` and `AgentTokenUsage`
   Opportunistic token/accounting metadata, not a guaranteed transport field.
 
@@ -139,7 +133,7 @@ Important invariants:
 - `AgentSession.prompt(...)` is single-flight.
   Overlapping prompts on the same session are rejected instead of trying to multiplex two turns through one collector.
 - A material `updateConfig(...)` change resets conversation continuity.
-- Fresh `invokeAgent(...)` and `callAgent(...)` create a new child/session unless `persistedSessionId` is supplied.
+- Fresh `invokeAgent(...)` calls create a new child/session unless `persistedSessionId` is supplied.
 - `agentSessionId` is the ACP session id for the downstream agent, not the nanoboss session id.
 - Typed calls retry parsing up to `MAX_PARSE_RETRIES + 1` total attempts by sending a corrective follow-up prompt.
 - Token metrics are best-effort. Clients must not depend on them being present.
@@ -182,8 +176,8 @@ Use this model when a caller wants downstream conversational continuity.
 ### Fresh isolated call
 
 ```ts
-const first = await callAgent("what is 2+2", undefined, { config });
-const second = await callAgent("add 3 to result", undefined, {
+const first = await invokeAgent("what is 2+2", undefined, { config });
+const second = await invokeAgent("add 3 to result", undefined, {
   config,
   persistedSessionId: first.agentSessionId,
 });
@@ -193,8 +187,8 @@ Use this model when a caller wants isolated child sessions by default, but may c
 
 Boundary note:
 
-- if a caller wants pure transport behavior, prefer `invokeAgent(...)`
-- if a caller wants `RunResult` refs and store-backed output, use `callAgent(...)`
+- if a caller wants fresh transport behavior, use `invokeAgent(...)`
+- if a caller wants persistent downstream continuity, use `createAgentSession(...)`
 
 ### Image prompts
 
@@ -232,8 +226,6 @@ Clients should code to that split:
 - `@nanoboss/procedure-engine` owns session policy, procedure-facing APIs, and how downstream agent calls are surfaced to runtime/frontend clients.
 - `@nanoboss/store` owns durable nanoboss session state and refs.
 - `@nanoboss/agent-acp` owns the downstream ACP conversation mechanics that those packages build on.
-
-The main place this package intentionally blurs the boundary is `callAgent(...)`, which writes a one-off `SessionStore` run so it can return a `RunResult`-shaped object. Clients should treat that as a convenience API, not the primary ownership model for persistence.
 
 ## Executable examples
 

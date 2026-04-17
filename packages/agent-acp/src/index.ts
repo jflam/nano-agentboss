@@ -7,7 +7,6 @@ export {
 } from "./prompt.ts";
 export {
   buildPrompt,
-  callAgent,
   invokeAgent,
   MAX_PARSE_RETRIES,
   parseAgentResponse,
