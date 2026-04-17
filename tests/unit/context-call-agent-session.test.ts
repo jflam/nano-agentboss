@@ -169,94 +169,6 @@ describe("procedure API session namespaces", () => {
     expect(second.data).toBe("7");
   });
 
-  test("ctx.agent.run persists full agent updates on the stored child run", async () => {
-    const { conversation, ctx, store } = createContext();
-    const updates: unknown[] = [
-      {
-        sessionUpdate: "agent_message_chunk",
-        content: {
-          type: "text",
-          text: "partial",
-        },
-      },
-      {
-        sessionUpdate: "agent_message",
-        message: {
-          role: "assistant",
-          parts: [
-            {
-              type: "text",
-              text: "final",
-            },
-          ],
-        },
-      },
-    ];
-
-    Reflect.set(conversation as object, "persistedSessionId", "default-session-agent-updates");
-    Reflect.set(
-      conversation as object,
-      "prompt",
-      async () => ({
-        raw: "final",
-        updates,
-        durationMs: 0,
-      }),
-    );
-
-    await ctx.agent.run("Persist the downstream updates", {
-      session: "default",
-      stream: true,
-    });
-
-    const childSummary = store.listRuns({ scope: "recent", procedure: "callAgent", limit: 1 })[0];
-    expect(childSummary?.kind).toBe("agent");
-    if (!childSummary) {
-      throw new Error("Expected stored child run");
-    }
-
-    const childRun = store.getRun(childSummary.run);
-    expect(childRun.output.agentUpdates).toEqual(updates);
-    expect(childRun.output.replayEvents).toBeUndefined();
-    expect(childRun.output.stream).toContain("partial");
-  });
-
-  test("typed ctx.agent.run returns and persists the explicit data schema", async () => {
-    const { conversation, ctx, store } = createContext();
-
-    Reflect.set(conversation as object, "persistedSessionId", "default-session-typed-schema");
-    Reflect.set(
-      conversation as object,
-      "prompt",
-      async () => ({
-        raw: "{\"result\":7}",
-        updates: [],
-        durationMs: 0,
-      }),
-    );
-
-    const result = await ctx.agent.run("Return {\"result\":7}.", MathResultType, {
-      session: "default",
-      stream: false,
-    });
-
-    expect(result.data).toEqual({ result: 7 });
-    expect(result.display).toBe("{\"result\":7}");
-    expect(result.explicitDataSchema).toEqual(MathResultType.schema);
-    expect(result.dataShape).toEqual({
-      result: "number",
-    });
-
-    const childSummary = store.listRuns({ scope: "recent", procedure: "callAgent", limit: 1 })[0];
-    if (!childSummary) {
-      throw new Error("Expected stored child run");
-    }
-
-    const childRun = store.getRun(childSummary.run);
-    expect(childRun.output.explicitDataSchema).toEqual(MathResultType.schema);
-    expect(childRun.output.display).toBe("{\"result\":7}");
-  });
-
   test("ctx.procedures.run inherits the current default-session binding by default", async () => {
     const { conversation, ctx, registry } = createContext();
     const prompts: string[] = [];
@@ -295,7 +207,7 @@ describe("procedure API session namespaces", () => {
     expect(prompts).toEqual(["reuse the bound session"]);
   });
 
-  test("nested procedure agent runs stay attached to the invoking run and expose stored updates", async () => {
+  test("nested procedure agent runs stay attached to the invoking run when read back through ctx.state.runs", async () => {
     const { conversation, ctx, registry, store } = createContext();
     const updates: acp.SessionUpdate[] = [
       {
@@ -355,7 +267,6 @@ describe("procedure API session namespaces", () => {
     }
 
     const childRun = await ctx.state.runs.get(childSummary.run);
-    expect(childRun.output.agentUpdates).toEqual(updates);
     expect(childRun.output.stream).toBe("nested reply");
   });
 

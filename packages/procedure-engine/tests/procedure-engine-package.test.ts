@@ -17,14 +17,37 @@ import type {
   ProcedureApi,
   ProcedureRegistryLike,
 } from "@nanoboss/procedure-sdk";
+import { jsonType } from "@nanoboss/procedure-sdk";
 import { SessionStore } from "@nanoboss/store";
 
 const DEFAULT_AGENT_CONFIG: DownstreamAgentConfig = {
   command: "mock-agent",
   args: [],
 };
+interface TypedAgentResult {
+  result: number;
+}
+
 const tempDirs: string[] = [];
 let originalHome: string | undefined;
+const TypedAgentResultType = jsonType<TypedAgentResult>(
+  {
+    type: "object",
+    properties: {
+      result: { type: "number" },
+    },
+    required: ["result"],
+    additionalProperties: false,
+  },
+  (input): input is TypedAgentResult => {
+    return (
+      typeof input === "object" &&
+      input !== null &&
+      typeof (input as { result?: unknown }).result === "number" &&
+      Object.keys(input as Record<string, unknown>).length === 1
+    );
+  },
+);
 
 beforeEach(() => {
   originalHome = process.env.HOME;
@@ -228,8 +251,8 @@ function buildRunParams(
   };
 }
 
-describe("procedure-engine package", () => {
-  test("runs top-level procedures and records child procedure runs via the package boundary", async () => {
+describe("procedure-engine runtime with procedure-sdk procedures", () => {
+  test("runs top-level procedures and records child procedure runs", async () => {
     const store = createStore("nab-procedure-engine-child");
     const child: Procedure = {
       name: "child",
@@ -271,7 +294,7 @@ describe("procedure-engine package", () => {
     expect(childRun.output.data).toEqual({ value: "child-result" });
   });
 
-  test("nested procedure results retain display and explicit schema across the sdk boundary", async () => {
+  test("preserves display and explicit schemas from procedure-sdk child results", async () => {
     const store = createStore("nab-procedure-engine-child-result-shape");
     const childSchema = {
       type: "object",
@@ -322,7 +345,7 @@ describe("procedure-engine package", () => {
     });
   });
 
-  test("supports pause and resume through the package boundary", async () => {
+  test("supports pause and resume for procedure-sdk procedures", async () => {
     const store = createStore("nab-procedure-engine-resume");
     const pauseable: Procedure = {
       name: "pauseable",
@@ -361,7 +384,7 @@ describe("procedure-engine package", () => {
     expect(resumed.summary).toBe("step 1");
   });
 
-  test("finds and rehydrates recovered dispatch runs through the package boundary", async () => {
+  test("finds and rehydrates recovered dispatch runs for procedure-sdk procedures", async () => {
     const store = createStore("nab-procedure-engine-recovery");
     const recoverable: Procedure = {
       name: "recoverable",
@@ -396,7 +419,7 @@ describe("procedure-engine package", () => {
     expect(procedureDispatchResultFromRecoveredRun(waited).summary).toBe("recovered summary");
   });
 
-  test("enforces cancellation boundaries through the package boundary", async () => {
+  test("enforces cancellation boundaries for procedure-sdk procedures", async () => {
     const store = createStore("nab-procedure-engine-cancel");
     const cancellable: Procedure = {
       name: "cancellable",
@@ -418,7 +441,68 @@ describe("procedure-engine package", () => {
     })).rejects.toBeInstanceOf(TopLevelProcedureCancelledError);
   });
 
-  test("uses a fake default agent session through the package boundary", async () => {
+  test("shapes typed callAgent child results for procedure-sdk consumers", async () => {
+    const store = createStore("nab-procedure-engine-typed-agent");
+    const fakeAgentSession = {
+      sessionId: "fake-typed-session",
+      async getCurrentTokenSnapshot() {
+        return undefined;
+      },
+      async prompt() {
+        return {
+          raw: "{\"result\":7}",
+          durationMs: 0,
+          updates: [],
+        };
+      },
+      updateConfig() {},
+      close() {},
+    };
+    const usesTypedAgent: Procedure = {
+      name: "typed-agent",
+      description: "Returns a typed downstream agent result",
+      async execute(_prompt, ctx) {
+        const result = await ctx.agent.run("Return {\"result\":7}.", TypedAgentResultType, {
+          session: "default",
+          stream: false,
+        });
+        return {
+          data: {
+            value: result.data,
+            display: result.display,
+            explicitDataSchema: result.explicitDataSchema,
+            dataShape: result.dataShape,
+          },
+          summary: "typed agent complete",
+        };
+      },
+    };
+    const registry = createRegistry([usesTypedAgent]);
+
+    const result = await runProcedure({
+      ...buildRunParams(store, registry, usesTypedAgent, "go"),
+      agentSession: fakeAgentSession,
+      prepareDefaultPrompt: (promptInput) => ({ promptInput }),
+    });
+
+    expect(store.getRun(result.run).output.data).toEqual({
+      value: { result: 7 },
+      display: "{\"result\":7}",
+      explicitDataSchema: TypedAgentResultType.schema,
+      dataShape: {
+        result: "number",
+      },
+    });
+
+    const descendants = store.getRunDescendants(result.run, { maxDepth: 1 });
+    expect(descendants).toHaveLength(1);
+    const childRun = descendants[0] ? store.getRun(descendants[0].run) : undefined;
+    expect(childRun?.procedure).toBe("callAgent");
+    expect(childRun?.output.explicitDataSchema).toEqual(TypedAgentResultType.schema);
+    expect(childRun?.output.display).toBe("{\"result\":7}");
+  });
+
+  test("uses the injected default agent session for procedure-sdk procedures", async () => {
     const { store, getRun } = createFakeStore();
     const prompts: string[] = [];
     const fakeAgentSession = {

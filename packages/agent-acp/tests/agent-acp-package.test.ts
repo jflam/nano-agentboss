@@ -57,7 +57,7 @@ function createMockConfig(
 
 describe("agent-acp package", () => {
   test(
-    "creates sessions, reuses a live session, and reloads after close through the package boundary",
+    "creates sessions, reuses a live session, and reloads after close",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-agent-acp-reuse-"));
       const session = createAgentSession({
@@ -90,7 +90,7 @@ describe("agent-acp package", () => {
   );
 
   test(
-    "collects token snapshots and preserves the last snapshot after close through the package boundary",
+    "collects token snapshots and preserves the last snapshot after close",
     async () => {
       const sessionStoreDir = mkdtempSync(join(tmpdir(), "nab-agent-acp-tokens-"));
       const session = createAgentSession({
