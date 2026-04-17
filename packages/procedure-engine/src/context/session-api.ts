@@ -83,7 +83,10 @@ export class ContextSessionApiImpl implements SessionApi {
         });
 
         preparedPrompt.markSubmitted?.();
-        return result;
+        return {
+          ...result,
+          agentSessionId: agentSession.sessionId,
+        };
       },
     };
   }

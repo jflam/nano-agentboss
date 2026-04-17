@@ -336,12 +336,18 @@ export class AgentInvocationApiImpl implements AgentInvocationApi {
               sessionId: this.params.sessionManager.getDefaultAgentSessionId(),
               ...tokenUsageExtra,
             }
-          : tokenUsageExtra,
+          : {
+              sessionId: result.agentSessionId,
+              ...tokenUsageExtra,
+            },
         agent: options?.agent,
       });
 
       return {
         ...recorded,
+        agentSessionId: useDefaultSession
+          ? this.params.sessionManager.getDefaultAgentSessionId()
+          : result.agentSessionId,
         ...(tokenUsageExtra?.tokenUsage ? { tokenUsage: tokenUsageExtra.tokenUsage } : {}),
         defaultAgentSelection: toDownstreamAgentSelection(agentConfig),
       };

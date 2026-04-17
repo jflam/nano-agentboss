@@ -134,6 +134,7 @@ export interface RunResult<T extends KernelValue = KernelValue> {
   summary?: string;
   dataShape?: unknown;
   explicitDataSchema?: object;
+  agentSessionId?: string;
   tokenUsage?: AgentTokenUsage;
   defaultAgentSelection?: DownstreamAgentSelection;
   rawRef?: Ref;

@@ -7,6 +7,7 @@ import {
 
 import { parseAssistantNoticeText } from "./updates.ts";
 import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
+import { waitForSettledUpdateQueue } from "./prompt-settle.ts";
 import {
   promptInputToAcpBlocks,
   summarizePromptInputForAcpLog,
@@ -330,6 +331,10 @@ class PersistentAcpSession {
       throw new Error("Default ACP session is not available");
     }
 
+    if (this.activeCollector) {
+      throw new Error("Default ACP session already has an active prompt.");
+    }
+
     if (options.softStopSignal?.aborted) {
       throw new RunCancelledError(defaultCancellationMessage("soft_stop"), "soft_stop");
     }
@@ -396,7 +401,7 @@ class PersistentAcpSession {
         throw error;
       }
 
-      await this.waitForCollectorToSettle(collector);
+      await waitForSettledUpdateQueue(() => collector.lastTask);
       this.tokenSnapshot = await collectTokenSnapshot({
         childPid: this.state.child.pid,
         config: this.config,
@@ -474,23 +479,6 @@ class PersistentAcpSession {
     this.updateQueue = task.catch(() => {});
     await task;
   }
-
-  private async waitForCollectorToSettle(collector: PromptCollector): Promise<void> {
-    const settleMs = getPromptSettleMs();
-    for (;;) {
-      const currentTask = collector.lastTask;
-      await currentTask;
-      await Bun.sleep(settleMs);
-      if (collector.lastTask === currentTask) {
-        return;
-      }
-    }
-  }
-}
-
-function getPromptSettleMs(): number {
-  const value = Number(process.env.NANOBOSS_ACP_PROMPT_SETTLE_MS ?? "50");
-  return Number.isFinite(value) && value >= 0 ? value : 50;
 }
 
 async function applyConfiguredSessionOptions(

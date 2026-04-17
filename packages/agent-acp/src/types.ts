@@ -52,6 +52,7 @@ export interface CallAgentOptions {
 
 export interface CallAgentTransport {
   invoke(prompt: string, options: CallAgentOptions): Promise<{
+    agentSessionId?: string;
     raw: string;
     logFile?: string;
     updates: acp.SessionUpdate[];

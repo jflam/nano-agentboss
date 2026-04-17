@@ -1,0 +1,248 @@
+# `@nanoboss/agent-acp`
+
+`@nanoboss/agent-acp` is nanoboss's downstream-agent integration package. It owns the ACP-facing mechanics for talking to Claude, Codex, Copilot, Gemini, or another ACP-capable child process over stdio, and it presents those mechanics as two client-facing execution models:
+
+- a persistent `AgentSession` for the session's reusable default conversation
+- fresh one-off calls through `invokeAgent(...)` and `callAgent(...)`
+
+This package is the authority for:
+
+- spawning and initializing downstream ACP child processes
+- creating or loading ACP sessions
+- applying downstream session config such as model and reasoning effort
+- converting nanoboss `PromptInput` values to and from ACP content blocks
+- collecting streamed ACP updates and deriving plain-text output
+- guarding nanoboss's own runtime files from recursive downstream access
+- opportunistically collecting provider-specific token metrics
+- exposing the shared downstream model catalog used elsewhere in the product
+
+This package is not responsible for:
+
+- deciding which downstream agent a nanoboss session should use by policy
+- persisting nanoboss session metadata or run graphs as a system of record
+- procedure execution, procedure discovery, or top-level command routing
+- frontend event formatting for TUI, HTTP, or ACP server clients
+- interpreting procedure-level business logic
+
+## Mental model
+
+There are two distinct ways to use this package.
+
+### 1. Persistent default conversation
+
+Use `createAgentSession(...)` when the caller wants one logical downstream conversation that can survive multiple prompts.
+
+- The package keeps at most one live ACP child/session behind that `AgentSession`.
+- If the child dies or the client closes it, the package tries `session/load` with the persisted ACP session id.
+- If native load is unavailable or fails, it falls back to a fresh ACP session.
+- `updateConfig(...)` is a continuity boundary. A materially different config closes the old session and clears the persisted ACP session id.
+
+This is the path used by the runtime's default downstream conversation.
+
+### 2. Fresh isolated calls
+
+Use `invokeAgent(...)` or `callAgent(...)` when the caller wants a fresh subprocess/session per call.
+
+- `invokeAgent(...)` is the transport-level API.
+- `callAgent(...)` is a convenience wrapper that also manufactures a `RunResult`-shaped response by writing a one-off run into a temporary `SessionStore`.
+
+Unless `persistedSessionId` is provided, these calls do not reuse prior downstream context.
+
+## Public surface
+
+The public entrypoint is [packages/agent-acp/src/index.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/agent-acp/src/index.ts).
+
+The surface breaks down into a few groups.
+
+### 1. Session and invocation APIs
+
+- `createAgentSession(...)`
+- `invokeAgent(...)`
+- `callAgent(...)`
+- `buildPrompt(...)`
+- `parseAgentResponse(...)`
+- `sanitizeJsonResponse(...)`
+- `MAX_PARSE_RETRIES`
+
+These are the core client APIs.
+
+Use `createAgentSession(...)` for a reusable downstream conversation.
+
+Use `invokeAgent(...)` when the caller wants raw transport results:
+
+- `raw`
+- `updates`
+- `logFile`
+- `tokenSnapshot`
+- `agentSessionId`
+
+Use `callAgent(...)` only when the caller explicitly wants a `RunResult`-shaped object with refs and store-backed output in addition to the transport result.
+
+### 2. Prompt and update helpers
+
+- `promptInputToAcpBlocks(...)`
+- `promptInputFromAcpBlocks(...)`
+- `summarizePromptInputForAcpLog(...)`
+- `collectTextSessionUpdates(...)`
+- `parseAssistantNoticeText(...)`
+- `summarizeAgentOutput(...)`
+
+These define how nanoboss prompt inputs and streamed updates map to ACP wire data and to user-visible text.
+
+### 3. Runtime/config helpers
+
+- `resolveDefaultDownstreamAgentConfig(...)`
+- `getNanobossHome()`
+- `getAgentTranscriptDir()`
+- `buildAgentRuntimeSessionRuntime(...)`
+- `setAgentRuntimeSessionRuntimeFactory(...)`
+- `describeBlockedNanobossAccess(...)`
+
+Important boundary:
+
+- `resolveDefaultDownstreamAgentConfig(...)` is only the env/default-command resolver owned by this package.
+- Higher-level session-aware selection policy, including persisted default-agent selection, lives in `procedure-engine` and `store`, not here.
+
+### 4. Token and model helpers
+
+- token usage helpers from `token-usage.ts` and `token-metrics.ts`
+- model catalog helpers from `model-catalog.ts`
+
+These are shared support utilities for downstream-agent UX, but they are secondary to the session/invocation APIs.
+
+## Interface contract
+
+The public types are assembled from:
+
+- `@nanoboss/contracts`
+- `@nanoboss/procedure-sdk`
+- [packages/agent-acp/src/types.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/agent-acp/src/types.ts)
+
+The important types are:
+
+- `DownstreamAgentConfig`
+  The concrete spawn/configuration contract for a downstream ACP child.
+- `PromptInput`
+  The structured prompt payload that may contain text and images.
+- `AgentSession`
+  A reusable downstream conversation handle.
+- `CallAgentOptions`
+  Options shared by fresh one-off invocations.
+- `AgentRunResult`
+  The run-shaped convenience return from `callAgent(...)`.
+- `AgentTokenSnapshot` and `AgentTokenUsage`
+  Opportunistic token/accounting metadata, not a guaranteed transport field.
+
+Important invariants:
+
+- One `AgentSession` represents one logical downstream conversation.
+- `AgentSession.prompt(...)` is single-flight.
+  Overlapping prompts on the same session are rejected instead of trying to multiplex two turns through one collector.
+- A material `updateConfig(...)` change resets conversation continuity.
+- Fresh `invokeAgent(...)` and `callAgent(...)` create a new child/session unless `persistedSessionId` is supplied.
+- `agentSessionId` is the ACP session id for the downstream agent, not the nanoboss session id.
+- Typed calls retry parsing up to `MAX_PARSE_RETRIES + 1` total attempts by sending a corrective follow-up prompt.
+- Token metrics are best-effort. Clients must not depend on them being present.
+
+## Runtime and on-disk model
+
+At runtime, the package talks to downstream agents as child processes over ACP ndjson on stdio.
+
+For each child process, the package writes a transcript log under:
+
+```text
+~/.nanoboss/agent-logs/<uuid>.jsonl
+```
+
+That transcript is package-owned diagnostic output for the downstream ACP exchange. It is not the durable nanoboss session store.
+
+For token metrics, the package may also read provider-owned local files:
+
+- `~/.claude/debug/<acp-session-id>.txt`
+- `~/.copilot/logs/process-*.log`
+- `~/.copilot/session-state/<acp-session-id>/events.jsonl`
+
+Those files are inputs to best-effort token accounting only. They are not part of the package's durable public contract.
+
+## How callers should use it
+
+### Reusable default conversation
+
+```ts
+const session = createAgentSession({ config });
+await session.warm?.();
+
+const first = await session.prompt("what is 2+2");
+const second = await session.prompt("add 3 to result");
+const acpSessionId = session.sessionId;
+```
+
+Use this model when a caller wants downstream conversational continuity.
+
+### Fresh isolated call
+
+```ts
+const first = await callAgent("what is 2+2", undefined, { config });
+const second = await callAgent("add 3 to result", undefined, {
+  config,
+  persistedSessionId: first.agentSessionId,
+});
+```
+
+Use this model when a caller wants isolated child sessions by default, but may choose to resume a specific downstream ACP session explicitly.
+
+Boundary note:
+
+- if a caller wants pure transport behavior, prefer `invokeAgent(...)`
+- if a caller wants `RunResult` refs and store-backed output, use `callAgent(...)`
+
+### Image prompts
+
+Current first-cut support is intentionally narrower than plain text:
+
+- default-session reuse supports image prompts only when the downstream agent advertises ACP image support
+- fresh typed calls and fresh calls with named refs reject image prompts
+- fresh one-off transport without default-session reuse also rejects images
+
+Clients should treat image support as mode-dependent, not package-wide.
+
+## Failure model
+
+The package is intentionally fail-fast for transport and contract issues.
+
+- spawn or ACP initialize failure throws
+- unsupported image prompt usage throws
+- `persistedSessionId` on a fresh call throws if the downstream agent does not support `session/load`
+- invalid typed output throws after parse retries are exhausted
+- blocked downstream access to `~/.nanoboss/agent-logs` or broad `~/.nanoboss` shell scans is denied during permission handling
+- `AgentSession.prompt(...)` throws if the session is unavailable or another prompt is already in flight
+
+Default-session continuity is best-effort rather than strict:
+
+- if reloading a persisted ACP session fails, `createAgentSession(...)` falls back to a fresh session
+- token metrics may be absent even when the downstream call itself succeeded
+
+Clients should code to that split:
+
+- transport errors and contract misuse are hard failures
+- continuity reload and token accounting are opportunistic
+
+## Ownership boundaries with neighboring packages
+
+- `@nanoboss/procedure-engine` owns session policy, procedure-facing APIs, and how downstream agent calls are surfaced to runtime/frontend clients.
+- `@nanoboss/store` owns durable nanoboss session state and refs.
+- `@nanoboss/agent-acp` owns the downstream ACP conversation mechanics that those packages build on.
+
+The main place this package intentionally blurs the boundary is `callAgent(...)`, which writes a one-off `SessionStore` run so it can return a `RunResult`-shaped object. Clients should treat that as a convenience API, not the primary ownership model for persistence.
+
+## Executable examples
+
+The strongest package-level usage examples are in [packages/agent-acp/tests/agent-acp-package.test.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/agent-acp/tests/agent-acp-package.test.ts).
+
+Those tests demonstrate:
+
+- reusable default-session continuity
+- token snapshot preservation across session close/reload
+- fresh isolated calls with explicit ACP session reuse through `agentSessionId`
+- late ACP update settling before a fresh transport closes
+- the single-flight invariant on `AgentSession.prompt(...)`

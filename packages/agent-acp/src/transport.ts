@@ -8,6 +8,7 @@ import {
 import { collectTextSessionUpdates, parseAssistantNoticeText, summarizeAgentOutput } from "./updates.ts";
 import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
 import { resolveDefaultDownstreamAgentConfig } from "./config.ts";
+import { waitForSettledUpdateQueue } from "./prompt-settle.ts";
 import {
   promptInputToAcpBlocks,
   summarizePromptInputForAcpLog,
@@ -34,6 +35,7 @@ import { parseProcedureUiMarker } from "./ui-marker.ts";
 export const MAX_PARSE_RETRIES = 2;
 
 interface InvokedAgentResult<T> {
+  agentSessionId?: string;
   data: T;
   logFile?: string;
   durationMs: number;
@@ -73,6 +75,7 @@ export async function callAgent<T = string>(
 
   return {
     ...publicResult,
+    agentSessionId: result.agentSessionId,
     durationMs: result.durationMs,
     raw: result.raw,
     logFile: result.logFile,
@@ -111,6 +114,7 @@ export async function invokeAgent<T = string>(
 
     if (!descriptor) {
       return {
+        agentSessionId: response.agentSessionId,
         data: response.raw as T,
         logFile: response.logFile,
         durationMs: Date.now() - startedAt,
@@ -123,6 +127,7 @@ export async function invokeAgent<T = string>(
     try {
       const parsed = parseAgentResponse(response.raw, descriptor);
       return {
+        agentSessionId: response.agentSessionId,
         data: parsed,
         logFile: response.logFile,
         durationMs: Date.now() - startedAt,
@@ -344,7 +349,13 @@ const defaultTransport: CallAgentTransport = {
 async function runAcpPrompt(
   prompt: string,
   options: CallAgentOptions,
-): Promise<{ raw: string; logFile?: string; updates: acp.SessionUpdate[]; tokenSnapshot?: AgentTokenSnapshot }> {
+): Promise<{
+  agentSessionId?: string;
+  raw: string;
+  logFile?: string;
+  updates: acp.SessionUpdate[];
+  tokenSnapshot?: AgentTokenSnapshot;
+}> {
   if (options.promptInput && hasPromptInputImages(options.promptInput)) {
     throw new Error("Image prompts are only supported when reusing the default ACP conversation.");
   }
@@ -363,32 +374,40 @@ async function runAcpPrompt(
   let lastTokenSnapshot: AgentTokenSnapshot | undefined;
   let raw = "";
   let sessionId: acp.SessionId | undefined;
+  let lastUpdateTask: Promise<void> = Promise.resolve();
+  let updateQueue: Promise<void> = Promise.resolve();
 
   state.setSessionUpdateHandler(async (params) => {
-    const { update, tokenSnapshot } = await enrichToolCallUpdateWithTokenUsage({
-      childPid: state.child.pid,
-      config,
-      sessionId: params.sessionId,
-      update: params.update,
-      updates,
-    });
-    lastTokenSnapshot = tokenSnapshot ?? lastTokenSnapshot;
-    updates.push(update);
-    state.writeEvent({
-      event: "session_update",
-      update,
-    });
+    const task = updateQueue.then(async () => {
+      const { update, tokenSnapshot } = await enrichToolCallUpdateWithTokenUsage({
+        childPid: state.child.pid,
+        config,
+        sessionId: params.sessionId,
+        update: params.update,
+        updates,
+      });
+      lastTokenSnapshot = tokenSnapshot ?? lastTokenSnapshot;
+      updates.push(update);
+      state.writeEvent({
+        event: "session_update",
+        update,
+      });
 
-    if (
-      update.sessionUpdate === "agent_message_chunk" &&
-      update.content.type === "text"
-    ) {
-      if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarker(update.content.text)) {
-        raw += update.content.text;
+      if (
+        update.sessionUpdate === "agent_message_chunk" &&
+        update.content.type === "text"
+      ) {
+        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarker(update.content.text)) {
+          raw += update.content.text;
+        }
       }
-    }
 
-    await options.onUpdate?.(update);
+      await options.onUpdate?.(update);
+    });
+
+    lastUpdateTask = task;
+    updateQueue = task.catch(() => {});
+    await task;
   });
 
   const softStopListener = () => {
@@ -455,19 +474,21 @@ async function runAcpPrompt(
       }
       throw error;
     }
+    await waitForSettledUpdateQueue(() => lastUpdateTask);
 
-      return {
-        raw,
-        logFile: state.transcriptPath,
-        updates,
-        tokenSnapshot: await collectTokenSnapshot({
+    return {
+      agentSessionId: sessionId,
+      raw,
+      logFile: state.transcriptPath,
+      updates: [...updates],
+      tokenSnapshot: await collectTokenSnapshot({
         childPid: state.child.pid,
         config,
-          promptResponse,
-          sessionId,
-          updates,
-        }) ?? lastTokenSnapshot,
-      };
+        promptResponse,
+        sessionId,
+        updates,
+      }) ?? lastTokenSnapshot,
+    };
   } finally {
     options.softStopSignal?.removeEventListener("abort", softStopListener);
     options.signal?.removeEventListener("abort", abortListener);

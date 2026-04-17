@@ -158,7 +158,7 @@ describe("procedure API session namespaces", () => {
     const first = await ctx.agent.run("What is 2+2?", {
       stream: false,
     });
-    const persistedSessionId = first.tokenUsage?.sessionId;
+    const persistedSessionId = first.agentSessionId;
     const second = await ctx.agent.run("add 3 to result", {
       stream: false,
       persistedSessionId,
