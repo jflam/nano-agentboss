@@ -11,7 +11,7 @@ import {
 
 describe("result and failure helpers", () => {
   test("expectData and expectDataRef preserve valid falsy payloads and fail when absent", () => {
-    const result: RunResult<0> = {
+    const result = {
       run: {
         sessionId: "session-1",
         runId: "run-1",
@@ -24,7 +24,7 @@ describe("result and failure helpers", () => {
         },
         path: "output.data",
       },
-    };
+    } satisfies RunResult<0>;
 
     expect(expectData(result)).toBe(0);
     expect(expectDataRef(result)).toEqual(result.dataRef);
