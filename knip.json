@@ -42,6 +42,7 @@
   "ignore": [
     "dist/**",
     "coverage/**",
-    "tests/**"
+    "tests/**",
+    "packages/procedure-sdk/test-fixtures/consumer/index.ts"
   ]
 }
