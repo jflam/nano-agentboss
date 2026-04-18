@@ -18,9 +18,9 @@ import type {
   StateApi,
   UiApi,
 } from "@nanoboss/procedure-sdk";
+import { RunCancelledError, defaultCancellationMessage } from "@nanoboss/procedure-sdk";
 
 import { resolveDownstreamAgentConfig } from "../agent-config.ts";
-import { RunCancelledError, defaultCancellationMessage } from "../cancellation.ts";
 import type { RunLogger } from "../logger.ts";
 import { normalizeProcedurePromptInput } from "../prompt.ts";
 import type { RunTimingTrace } from "../timing-trace.ts";

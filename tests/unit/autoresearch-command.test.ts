@@ -8,8 +8,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildProcedureDispatchJobPath,
   isProcedureDispatchCancellationRequested,
-  RunCancelledError,
 } from "@nanoboss/procedure-engine";
+import { RunCancelledError } from "@nanoboss/procedure-sdk";
 import { getSessionDir } from "@nanoboss/store";
 import {
   executeAutoresearchClearCommand,

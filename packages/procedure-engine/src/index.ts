@@ -68,15 +68,6 @@ export type { PreparedDefaultPrompt, ProcedureUiEvent, SessionUpdateEmitter };
 
 export { CommandContextImpl } from "./context/context.ts";
 export { UiApiImpl } from "./context/ui-api.ts";
-export {
-  defaultCancellationMessage,
-  normalizeRunCancelledError,
-  RunCancelledError,
-  type RunCancellationReason,
-} from "./cancellation.ts";
-export {
-  formatErrorMessage,
-} from "./error-format.ts";
 export { RunLogger } from "./logger.ts";
 export {
   resolveDownstreamAgentConfig,

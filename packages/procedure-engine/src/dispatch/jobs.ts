@@ -31,10 +31,10 @@ import type {
   ProcedureRegistryLike,
   RunResult,
 } from "@nanoboss/procedure-sdk";
+import { defaultCancellationMessage } from "@nanoboss/procedure-sdk";
 
 import { resolveDownstreamAgentConfig } from "../agent-config.ts";
 import { requireValue } from "../argv.ts";
-import { defaultCancellationMessage } from "../cancellation.ts";
 import { runResultFromRunRecord } from "../run-result.ts";
 import { resolveSelfCommand } from "../self-command.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "../timing-trace.ts";

@@ -18,11 +18,25 @@ const BANNED_CORE_BARRIER_FILES = [
   "src/core/contracts.ts",
 ] as const;
 
+const BANNED_ENGINE_HELPER_BARRIER_FILES = [
+  "packages/procedure-engine/src/cancellation.ts",
+  "packages/procedure-engine/src/error-format.ts",
+  "packages/procedure-engine/src/text.ts",
+] as const;
+
+const BANNED_ENGINE_HELPER_EXPORTS = [
+  "RunCancelledError",
+  "defaultCancellationMessage",
+  "normalizeRunCancelledError",
+  "formatErrorMessage",
+  "summarizeText",
+  "RunCancellationReason",
+] as const;
+
 const CANONICAL_IMPORTERS = [
   "packages/app-runtime/src/default-agent-policy.ts",
   "packages/app-runtime/src/runtime-service.ts",
   "packages/app-runtime/src/service.ts",
-  "packages/procedure-engine/tests/error-format.test.ts",
   "packages/procedure-engine/tests/logger.test.ts",
   "packages/procedure-engine/tests/self-command.test.ts",
 ] as const;
@@ -45,8 +59,17 @@ const bannedSideEffectImportPattern = new RegExp(
   "gm",
 );
 
+const bannedProcedureEngineHelperImportPattern = new RegExp(
+  String.raw`^\s*import\s*{[^}]*\b(?:${BANNED_ENGINE_HELPER_EXPORTS.join("|")})\b[^}]*}\s*from\s*["']@nanoboss\/procedure-engine["'];?`,
+  "gm",
+);
+
 test("keeps procedure-engine execution helpers converged on the package owner", () => {
   for (const path of BANNED_CORE_BARRIER_FILES) {
+    expect(existsSync(join(process.cwd(), path))).toBe(false);
+  }
+
+  for (const path of BANNED_ENGINE_HELPER_BARRIER_FILES) {
     expect(existsSync(join(process.cwd(), path))).toBe(false);
   }
 
@@ -59,6 +82,7 @@ test("keeps procedure-engine execution helpers converged on the package owner", 
     const source = readFileSync(path, "utf8");
     expect(source).not.toMatch(bannedImportPattern);
     expect(source).not.toMatch(bannedSideEffectImportPattern);
+    expect(source).not.toMatch(bannedProcedureEngineHelperImportPattern);
   }
 });
 

@@ -3,12 +3,15 @@ import type { SessionStore } from "@nanoboss/store";
 import type { AgentSession } from "@nanoboss/contracts";
 import { createRef } from "@nanoboss/contracts";
 import type { AgentTokenUsage, DownstreamAgentConfig, Ref, RunRecord, RunResult } from "@nanoboss/procedure-sdk";
-import { createTextPromptInput } from "@nanoboss/procedure-sdk";
+import {
+  RunCancelledError,
+  createTextPromptInput,
+  defaultCancellationMessage,
+  summarizeText,
+} from "@nanoboss/procedure-sdk";
 
-import { RunCancelledError, defaultCancellationMessage } from "../cancellation.ts";
 import { inferDataShape } from "../data-shape.ts";
 import { runResultFromRunRecord } from "../run-result.ts";
-import { summarizeText } from "../text.ts";
 
 export function isProcedureDispatchTimeout(message: string | undefined): boolean {
   return Boolean(message && /request timed out/i.test(message));

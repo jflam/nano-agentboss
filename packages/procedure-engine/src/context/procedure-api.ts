@@ -9,9 +9,12 @@ import type {
   ProcedureRegistryLike,
   RunResult,
 } from "@nanoboss/procedure-sdk";
-import { createTextPromptInput, promptInputDisplayText } from "@nanoboss/procedure-sdk";
+import {
+  createTextPromptInput,
+  formatErrorMessage,
+  promptInputDisplayText,
+} from "@nanoboss/procedure-sdk";
 
-import { formatErrorMessage } from "../error-format.ts";
 import type { RunLogger } from "../logger.ts";
 import { toPublicRunResult } from "../run-result.ts";
 

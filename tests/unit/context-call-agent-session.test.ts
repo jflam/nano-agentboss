@@ -351,7 +351,7 @@ describe("procedure API session namespaces", () => {
           },
           updateConfig() {},
           close() {
-            closeCounts[sessionIndex] += 1;
+            closeCounts[sessionIndex] = (closeCounts[sessionIndex] ?? 0) + 1;
           },
         };
       },
@@ -392,7 +392,7 @@ describe("procedure API session namespaces", () => {
           },
           updateConfig() {},
           close() {
-            closeCounts[sessionIndex] += 1;
+            closeCounts[sessionIndex] = (closeCounts[sessionIndex] ?? 0) + 1;
           },
         };
       },
