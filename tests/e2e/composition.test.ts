@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import typia from "typia";
 
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { CommandContextImpl, RunLogger, type RuntimeBindings } from "@nanoboss/procedure-engine";
+import type { RuntimeBindings } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine/testing";
 import { SessionStore } from "@nanoboss/store";
 import { jsonType, type Procedure } from "@nanoboss/procedure-sdk";
 import { describeE2E } from "./helpers.ts";

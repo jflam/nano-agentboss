@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine/testing";
 import { SessionStore } from "@nanoboss/store";
 import type { DownstreamAgentConfig, DownstreamAgentSelection, ProcedureApi } from "@nanoboss/procedure-sdk";
 

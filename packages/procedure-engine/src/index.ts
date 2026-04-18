@@ -71,9 +71,7 @@ export type {
   SessionUpdateEmitter,
 };
 
-export { CommandContextImpl } from "./context/context.ts";
 export { UiApiImpl } from "./context/ui-api.ts";
-export { RunLogger } from "./logger.ts";
 export {
   resolveDownstreamAgentConfig,
   toDownstreamAgentSelection,

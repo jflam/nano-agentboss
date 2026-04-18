@@ -11,11 +11,10 @@ import {
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
 import {
-  CommandContextImpl,
-  RunLogger,
   resolveDownstreamAgentConfig,
   type RuntimeBindings,
 } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine/testing";
 import { jsonType, type DownstreamAgentConfig, type ProcedureApi, type PromptInput } from "@nanoboss/procedure-sdk";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { SessionStore } from "@nanoboss/store";

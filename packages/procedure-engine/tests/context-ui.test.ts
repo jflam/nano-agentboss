@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { CommandContextImpl, type ProcedureUiEvent, RunLogger } from "@nanoboss/procedure-engine";
+import type { ProcedureUiEvent } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine/testing";
 import { SessionStore } from "@nanoboss/store";
 
 const tempDirs: string[] = [];

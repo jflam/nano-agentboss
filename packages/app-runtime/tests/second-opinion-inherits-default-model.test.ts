@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import type { DownstreamAgentConfig } from "@nanoboss/contracts";
 import { loadProcedureFromPath, ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine/testing";
 import { SessionStore } from "@nanoboss/store";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));

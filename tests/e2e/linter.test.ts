@@ -5,11 +5,10 @@ import { afterEach, expect, test } from "bun:test";
 
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import {
-  CommandContextImpl,
-  RunLogger,
   type RuntimeBindings,
   type SessionUpdateEmitter,
 } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine/testing";
 import { SessionStore } from "@nanoboss/store";
 import { describeE2E } from "./helpers.ts";
 

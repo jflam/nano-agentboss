@@ -34,11 +34,11 @@ const BANNED_ENGINE_HELPER_EXPORTS = [
 ] as const;
 
 const CANONICAL_IMPORTERS = [
-  "packages/app-runtime/src/default-agent-policy.ts",
-  "packages/app-runtime/src/runtime-service.ts",
-  "packages/app-runtime/src/service.ts",
-  "packages/procedure-engine/tests/logger.test.ts",
-  "packages/procedure-engine/tests/self-command.test.ts",
+  ["packages/app-runtime/src/default-agent-policy.ts", 'from "@nanoboss/procedure-engine"'],
+  ["packages/app-runtime/src/runtime-service.ts", 'from "@nanoboss/procedure-engine"'],
+  ["packages/app-runtime/src/service.ts", 'from "@nanoboss/procedure-engine"'],
+  ["packages/procedure-engine/tests/logger.test.ts", 'from "@nanoboss/procedure-engine/testing"'],
+  ["packages/procedure-engine/tests/self-command.test.ts", 'from "@nanoboss/procedure-engine"'],
 ] as const;
 
 const ROOT_TS_FILES = [
@@ -73,9 +73,9 @@ test("keeps procedure-engine execution helpers converged on the package owner", 
     expect(existsSync(join(process.cwd(), path))).toBe(false);
   }
 
-  for (const path of CANONICAL_IMPORTERS) {
+  for (const [path, expectedImport] of CANONICAL_IMPORTERS) {
     const source = readFileSync(join(process.cwd(), path), "utf8");
-    expect(source).toContain('from "@nanoboss/procedure-engine"');
+    expect(source).toContain(expectedImport);
   }
 
   for (const path of listRepositoryTypeScriptFiles()) {
