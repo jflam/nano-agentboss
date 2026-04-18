@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgentSession, type AgentSession } from "@nanoboss/agent-acp";
 import { extractProcedureDispatchResult, NanobossService } from "@nanoboss/app-runtime";
 
 const MOCK_AGENT_PATH = join(process.cwd(), "tests/fixtures/mock-agent.ts");
+const DISCOVERY_MOCK_AGENT_PATH = join(process.cwd(), "tests/fixtures/catalog-discovery-mock-agent.ts");
 const SELF_COMMAND_PATH = join(process.cwd(), "dist", "nanoboss");
 const BUILD_HOOK_TIMEOUT_MS = 30_000;
 
@@ -82,6 +83,44 @@ async function withMockAgentEnv(
         process.env[key] = value;
       }
     }
+  }
+}
+
+async function withMockCopilotCatalogEnv(run: () => Promise<void>): Promise<void> {
+  const binDir = mkdtempSync(join(tmpdir(), "nab-copilot-bin-"));
+  const copilotPath = join(binDir, "copilot");
+  const originalPath = process.env.PATH;
+  const originalProvider = process.env.DISCOVERY_AGENT_PROVIDER;
+
+  writeFileSync(
+    copilotPath,
+    [
+      "#!/bin/sh",
+      `exec "${process.execPath}" run "${DISCOVERY_MOCK_AGENT_PATH}" "$@"`,
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  chmodSync(copilotPath, 0o755);
+  process.env.PATH = `${binDir}:${originalPath ?? ""}`;
+  process.env.DISCOVERY_AGENT_PROVIDER = "copilot";
+
+  try {
+    await run();
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+
+    if (originalProvider === undefined) {
+      delete process.env.DISCOVERY_AGENT_PROVIDER;
+    } else {
+      process.env.DISCOVERY_AGENT_PROVIDER = originalProvider;
+    }
+
+    rmSync(binDir, { recursive: true, force: true });
   }
 }
 
@@ -943,7 +982,22 @@ describe("NanobossService", () => {
   }, 30_000);
 
   test("/model updates the session default agent banner", async () => {
-    await withMockAgentEnv(async () => {
+    await withMockCopilotCatalogEnv(async () => {
+      await withMockAgentEnv(async () => {
+        const { cwd, registry } = await createRegistryWithWorkspace();
+
+        const service = new NanobossService(registry);
+        const session = service.createSession({ cwd });
+
+        await service.promptSession(session.sessionId, "/model copilot gpt-5.4/xhigh");
+
+        expect(service.getSession(session.sessionId)?.agentLabel).toBe("copilot/gpt-5.4/x-high");
+      });
+    });
+  }, 30_000);
+
+  test("/model runs locally without internal dispatch tools", async () => {
+    await withMockCopilotCatalogEnv(async () => {
       const { cwd, registry } = await createRegistryWithWorkspace();
 
       const service = new NanobossService(registry);
@@ -952,23 +1006,12 @@ describe("NanobossService", () => {
       await service.promptSession(session.sessionId, "/model copilot gpt-5.4/xhigh");
 
       expect(service.getSession(session.sessionId)?.agentLabel).toBe("copilot/gpt-5.4/x-high");
+      const toolTitles = (service.getSessionEvents(session.sessionId)?.after(-1) ?? [])
+        .filter((event) => event.type === "tool_started")
+        .map((event) => event.data.title);
+      expect(toolTitles).not.toContain("procedure_dispatch_start");
+      expect(toolTitles).not.toContain("procedure_dispatch_wait");
     });
-  }, 30_000);
-
-  test("/model runs locally without internal dispatch tools", async () => {
-    const { cwd, registry } = await createRegistryWithWorkspace();
-
-    const service = new NanobossService(registry);
-    const session = service.createSession({ cwd });
-
-    await service.promptSession(session.sessionId, "/model copilot gpt-5.4/xhigh");
-
-    expect(service.getSession(session.sessionId)?.agentLabel).toBe("copilot/gpt-5.4/x-high");
-    const toolTitles = (service.getSessionEvents(session.sessionId)?.after(-1) ?? [])
-      .filter((event) => event.type === "tool_started")
-      .map((event) => event.data.title);
-    expect(toolTitles).not.toContain("procedure_dispatch_start");
-    expect(toolTitles).not.toContain("procedure_dispatch_wait");
   });
 
   test("leading whitespace before a slash command still dispatches the command", async () => {

@@ -521,6 +521,47 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
+  test("inline /model reports provider refresh failures instead of silently using static catalog data", async () => {
+    const sendCalls: string[] = [];
+    const statusLines: string[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
+          sendCalls.push(toPromptText(prompt));
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
+        discoverAgentCatalog: async () => {
+          throw new Error("probe offline");
+        },
+        onStateChange: (state) => {
+          if (state.statusLine) {
+            statusLines.push(state.statusLine);
+          }
+        },
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    await controller.handleSubmit("/model copilot gpt-5.4/xhigh");
+
+    expect(controller.getState().defaultAgentSelection).toBeUndefined();
+    expect(statusLines).toContain(
+      "[model] Failed to refresh models from copilot harness: probe offline",
+    );
+    expect(sendCalls).toEqual(["/model copilot gpt-5.4/xhigh"]);
+
+    controller.requestExit();
+    await runPromise;
+  });
+
   test("prompt submission disables input until completion or failure", async () => {
     const streams: FakeStreamRecord[] = [];
     const controller = new NanobossTuiController(

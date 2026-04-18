@@ -1,7 +1,7 @@
 import {
   discoverAgentCatalog,
+  formatAgentCatalogRefreshError,
   findSelectableModelOptionInCatalog,
-  getAgentCatalog,
   getProviderLabel,
   getAgentTokenUsagePercent,
   isKnownAgentProvider,
@@ -11,122 +11,140 @@ import {
 } from "@nanoboss/agent-acp";
 import { formatAgentBanner, type AgentTokenUsage, type Procedure } from "@nanoboss/procedure-sdk";
 
-export default {
-  name: "model",
-  description: "Set or inspect the default agent/model for this session",
-  inputHint: "[agent] [model]",
-  executionMode: "harness",
-  async execute(prompt, ctx) {
-    const trimmed = prompt.trim();
-    const current = ctx.session.getDefaultAgentConfig();
-    const currentBanner = formatAgentBanner(current);
+interface ModelProcedureDeps {
+  discoverAgentCatalog?: typeof discoverAgentCatalog;
+}
 
-    if (!trimmed) {
-      const usage = await ctx.session.getDefaultAgentTokenUsage();
-      const contextLine = formatObservedContext(usage);
+export function createModelProcedure(deps: ModelProcedureDeps = {}): Procedure {
+  return {
+    name: "model",
+    description: "Set or inspect the default agent/model for this session",
+    inputHint: "[agent] [model]",
+    executionMode: "harness",
+    async execute(prompt, ctx) {
+      const trimmed = prompt.trim();
+      const current = ctx.session.getDefaultAgentConfig();
+      const currentBanner = formatAgentBanner(current);
 
-      return {
-        display: [
-          `Current default agent: ${currentBanner}`,
-          contextLine,
-          contextLine ? `Context source: ${usage?.source}` : undefined,
-          contextLine ? "" : undefined,
-          "Use `/model <agent>` to list models.",
-          "Use `/model <agent> <model>` to switch.",
-          "In the TTY CLI, plain `/model` opens an interactive picker and can save the choice for future runs.",
-          "",
-          "Available agents:",
-          ...listKnownProviders().map((provider) => `- ${provider} (${getProviderLabel(provider)})`),
-          "",
-        ].filter(Boolean).join("\n"),
-        summary: contextLine ? `model: ${currentBanner} ${contextLine}` : `model: ${currentBanner}`,
-      };
-    }
+      if (!trimmed) {
+        const usage = await ctx.session.getDefaultAgentTokenUsage();
+        const contextLine = formatObservedContext(usage);
 
-    const [rawProvider, ...rest] = trimmed.split(/\s+/);
-    if (!rawProvider || !isKnownAgentProvider(rawProvider)) {
-      return {
-        display: [
-          `Unknown agent: ${rawProvider ?? trimmed}`,
-          "",
-          "Known agents:",
-          ...listKnownProviders().map((provider) => `- ${provider}`),
-          "",
-        ].join("\n"),
-        summary: "model: unknown agent",
-      };
-    }
+        return {
+          display: [
+            `Current default agent: ${currentBanner}`,
+            contextLine,
+            contextLine ? `Context source: ${usage?.source}` : undefined,
+            contextLine ? "" : undefined,
+            "Use `/model <agent>` to list models.",
+            "Use `/model <agent> <model>` to switch.",
+            "In the TTY CLI, plain `/model` opens an interactive picker and can save the choice for future runs.",
+            "",
+            "Available agents:",
+            ...listKnownProviders().map((provider) => `- ${provider} (${getProviderLabel(provider)})`),
+            "",
+          ].filter(Boolean).join("\n"),
+          summary: contextLine ? `model: ${currentBanner} ${contextLine}` : `model: ${currentBanner}`,
+        };
+      }
 
-    if (rest.length === 0) {
-      const catalog = await discoverCatalog(rawProvider, ctx.cwd);
-      const models = listSelectableModelOptionsFromCatalog(catalog);
-      return {
-        display: [
-          `Models for ${catalog.label}:`,
-          ...(models.length > 0
-            ? []
-            : ["- No models advertised by the harness."]),
-          ...models.map((model) => {
-            const suffix = model.description ? ` — ${model.description}` : "";
-            return `- ${model.value}${suffix}`;
-          }),
-          "",
-          `Use \`/model ${rawProvider} <model>\` to switch.`,
-          "",
-        ].join("\n"),
-        summary: `model: list ${rawProvider}`,
-      };
-    }
+      const [rawProvider, ...rest] = trimmed.split(/\s+/);
+      if (!rawProvider || !isKnownAgentProvider(rawProvider)) {
+        return {
+          display: [
+            `Unknown agent: ${rawProvider ?? trimmed}`,
+            "",
+            "Known agents:",
+            ...listKnownProviders().map((provider) => `- ${provider}`),
+            "",
+          ].join("\n"),
+          summary: "model: unknown agent",
+        };
+      }
 
-    const modelSelection = rest.join(" ").trim();
-    const catalog = await discoverCatalog(rawProvider, ctx.cwd);
-    if (!isKnownModelSelectionInCatalog(catalog, modelSelection)) {
-      return {
-        display: [
-          `Unknown ${rawProvider} model: ${modelSelection}`,
-          "",
-          `Use \`/model ${rawProvider}\` to see the available models.`,
-          "",
-        ].join("\n"),
-        summary: `model: invalid ${rawProvider}`,
-      };
-    }
+      let catalog: Awaited<ReturnType<typeof discoverAgentCatalog>>;
+      try {
+        catalog = await discoverCatalog(rawProvider, ctx.cwd, deps);
+      } catch (error) {
+        return {
+          display: [
+            formatAgentCatalogRefreshError(rawProvider, error),
+            "",
+            `Use \`/model ${rawProvider}\` to retry model discovery.`,
+            "",
+          ].join("\n"),
+          summary: `model: refresh ${rawProvider} failed`,
+        };
+      }
 
-    const nextConfig = ctx.session.setDefaultAgentSelection({
-      provider: rawProvider,
-      model: modelSelection,
-    });
-    const option = findSelectableModelOptionInCatalog(catalog, modelSelection);
-    const nextBanner = formatAgentBanner(nextConfig);
+      if (rest.length === 0) {
+        const models = listSelectableModelOptionsFromCatalog(catalog);
+        return {
+          display: [
+            `Models for ${catalog.label}:`,
+            ...(models.length > 0
+              ? []
+              : ["- No models advertised by the harness."]),
+            ...models.map((model) => {
+              const suffix = model.description ? ` — ${model.description}` : "";
+              return `- ${model.value}${suffix}`;
+            }),
+            "",
+            `Use \`/model ${rawProvider} <model>\` to switch.`,
+            "",
+          ].join("\n"),
+          summary: `model: list ${rawProvider}`,
+        };
+      }
 
-    return {
-      data: {
+      const modelSelection = rest.join(" ").trim();
+      if (!isKnownModelSelectionInCatalog(catalog, modelSelection)) {
+        return {
+          display: [
+            `Unknown ${rawProvider} model: ${modelSelection}`,
+            "",
+            `Use \`/model ${rawProvider}\` to see the available models.`,
+            "",
+          ].join("\n"),
+          summary: `model: invalid ${rawProvider}`,
+        };
+      }
+
+      const nextConfig = ctx.session.setDefaultAgentSelection({
         provider: rawProvider,
         model: modelSelection,
-      },
-      display: [
-        `Default agent set to ${nextBanner}.`,
-        option ? `Model: ${option.label}` : undefined,
-        option?.description ? `Details: ${option.description}` : undefined,
-        "Future /default turns will start a fresh conversation with this selection.",
-        "",
-      ].filter(Boolean).join("\n"),
-      summary: `model: ${nextBanner}`,
-    };
-  },
-} satisfies Procedure;
+      });
+      const option = findSelectableModelOptionInCatalog(catalog, modelSelection);
+      const nextBanner = formatAgentBanner(nextConfig);
+
+      return {
+        data: {
+          provider: rawProvider,
+          model: modelSelection,
+        },
+        display: [
+          `Default agent set to ${nextBanner}.`,
+          option ? `Model: ${option.label}` : undefined,
+          option?.description ? `Details: ${option.description}` : undefined,
+          "Future /default turns will start a fresh conversation with this selection.",
+          "",
+        ].filter(Boolean).join("\n"),
+        summary: `model: ${nextBanner}`,
+      };
+    },
+  } satisfies Procedure;
+}
+
+export default createModelProcedure();
 
 async function discoverCatalog(
   provider: Parameters<typeof discoverAgentCatalog>[0],
   cwd: string,
+  deps: ModelProcedureDeps,
 ): Promise<Awaited<ReturnType<typeof discoverAgentCatalog>>> {
-  try {
-    return await discoverAgentCatalog(provider, {
-      config: { cwd },
-    });
-  } catch {
-    return getAgentCatalog(provider);
-  }
+  return await (deps.discoverAgentCatalog ?? discoverAgentCatalog)(provider, {
+    config: { cwd },
+  });
 }
 
 function formatObservedContext(usage: AgentTokenUsage | undefined): string | undefined {

@@ -461,6 +461,62 @@ describe("NanobossTuiApp", () => {
     });
   });
 
+  test("reports provider refresh failures from the inline model picker", async () => {
+    const editor = new FakeEditor();
+    const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    const app = new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        discoverAgentCatalog: async () => {
+          throw new Error("probe offline");
+        },
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener() {},
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async queuePrompt() {},
+          async cancelActiveRun() {},
+          toggleToolOutput() {},
+          toggleSimplify2AutoApprove() {},
+          showStatus() {},
+          requestExit() {},
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => createViewStub(),
+      },
+    );
+
+    const appLike = app as unknown as {
+      promptForInlineModelSelection: (
+        currentSelection?: { provider: string; model?: string },
+      ) => Promise<{ provider: string; model?: string } | undefined>;
+      promptWithInlineSelect: (options: unknown) => Promise<string | undefined>;
+    };
+    appLike.promptWithInlineSelect = async () => "copilot";
+
+    await expect(appLike.promptForInlineModelSelection()).rejects.toThrow(
+      "Failed to refresh models from copilot harness: probe offline",
+    );
+  });
+
   test("pressing ctrl+v inserts an image token and submits structured prompt input", async () => {
     const editor = new FakeEditor();
     const submissions: PromptInput[] = [];

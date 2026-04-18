@@ -23,6 +23,16 @@ export interface DiscoverAgentCatalogOptions {
 
 const AGENT_CATALOG_DISCOVERY_CACHE_TTL_MS = 5_000;
 
+export function formatAgentCatalogRefreshError(
+  provider: DownstreamAgentProvider,
+  error: unknown,
+): string {
+  const message = formatCatalogDiscoveryErrorMessage(error);
+  return message
+    ? `Failed to refresh models from ${provider} harness: ${message}`
+    : `Failed to refresh models from ${provider} harness.`;
+}
+
 interface CachedAgentCatalogValue {
   kind: "value";
   catalog: AgentCatalogEntry;
@@ -498,4 +508,28 @@ function normalizeOptionalLabel(
 function normalizeOptionalText(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function formatCatalogDiscoveryErrorMessage(error: unknown): string {
+  if (error instanceof AggregateError) {
+    const message = error.errors
+      .map((entry) => formatCatalogDiscoveryErrorMessage(entry))
+      .filter(Boolean)
+      .join("; ");
+    return message || error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
 }

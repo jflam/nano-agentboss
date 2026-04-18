@@ -15,6 +15,7 @@ import type { DownstreamAgentSelection, PromptInput } from "@nanoboss/contracts"
 import { getBuildLabel } from "@nanoboss/app-support";
 import {
   discoverAgentCatalog,
+  formatAgentCatalogRefreshError,
   isKnownModelSelectionInCatalog,
 } from "@nanoboss/agent-acp";
 import {
@@ -460,10 +461,9 @@ export class NanobossTuiController {
         ? selection
         : undefined;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       this.dispatch({
         type: "local_status",
-        text: `[model] failed to refresh models from ${selection.provider} harness: ${message}`,
+        text: `[model] ${formatAgentCatalogRefreshError(selection.provider, error)}`,
       });
       return undefined;
     }

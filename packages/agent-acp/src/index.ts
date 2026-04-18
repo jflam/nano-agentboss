@@ -23,7 +23,10 @@ export {
   setAgentRuntimeSessionRuntimeFactory,
 } from "./runtime-capability.ts";
 export { describeBlockedNanobossAccess } from "./runtime.ts";
-export { discoverAgentCatalog } from "./catalog-discovery.ts";
+export {
+  discoverAgentCatalog,
+  formatAgentCatalogRefreshError,
+} from "./catalog-discovery.ts";
 export {
   collectTextSessionUpdates,
   parseAssistantNoticeText,

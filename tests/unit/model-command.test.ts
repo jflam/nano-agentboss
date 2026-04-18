@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import modelProcedure from "../../procedures/model.ts";
+import modelProcedure, { createModelProcedure } from "../../procedures/model.ts";
 import type { DownstreamAgentConfig, ProcedureApi } from "@nanoboss/procedure-sdk";
 
 describe("/model command", () => {
@@ -13,6 +13,29 @@ describe("/model command", () => {
       "Last observed context: 12,824 / 258,400 tokens (5.0%)",
     );
     expect((result as { display: string }).display).toContain("Context source: acp_usage_update");
+  });
+
+  test("surfaces provider refresh failures instead of falling back to the static model catalog", async () => {
+    const procedure = createModelProcedure({
+      discoverAgentCatalog: async () => {
+        throw new Error("probe offline");
+      },
+    });
+
+    for (const prompt of ["copilot", "copilot gpt-5.4/xhigh"]) {
+      const result = await procedure.execute(prompt, createMockContext());
+
+      expect(result).toBeDefined();
+      expect(typeof result).toBe("object");
+      expect((result as { display: string }).display).toContain(
+        "Failed to refresh models from copilot harness: probe offline",
+      );
+      expect((result as { display: string }).display).toContain(
+        "Use `/model copilot` to retry model discovery.",
+      );
+      expect((result as { summary: string }).summary).toBe("model: refresh copilot failed");
+      expect((result as { display: string }).display).not.toContain("gpt-5.4");
+    }
   });
 });
 

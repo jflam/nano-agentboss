@@ -30,6 +30,7 @@ import { shouldDisableEditorSubmit } from "./commands.ts";
 
 import {
   discoverAgentCatalog,
+  formatAgentCatalogRefreshError,
   getProviderLabel,
   listKnownProviders,
   listSelectableModelOptionsFromCatalog,
@@ -451,8 +452,7 @@ export class NanobossTuiApp {
         config: { cwd: this.cwd },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to refresh models from ${provider} harness: ${message}`);
+      throw new Error(formatAgentCatalogRefreshError(provider, error));
     }
 
     const items = listSelectableModelOptionsFromCatalog(catalog).map((option) => ({
