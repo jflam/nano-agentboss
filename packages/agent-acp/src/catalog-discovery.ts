@@ -4,8 +4,13 @@ import type { DownstreamAgentProvider } from "@nanoboss/contracts";
 import { resolveSelectedDownstreamAgentConfig } from "./config.ts";
 import {
   getProviderLabel,
+  getAgentCatalog,
   type AgentCatalogEntry,
   type CatalogModelEntry,
+  isReasoningEffort,
+  REASONING_EFFORTS,
+  type ReasoningEffort,
+  parseReasoningModelSelection,
 } from "./model-catalog.ts";
 import { buildAgentRuntimeSessionRuntime } from "./runtime-capability.ts";
 import { closeAcpConnection, openAcpConnection } from "./runtime.ts";
@@ -31,7 +36,7 @@ export async function discoverAgentCatalog(
       ...buildAgentRuntimeSessionRuntime(),
     });
     sessionId = session.sessionId;
-    catalog = normalizeDiscoveredAgentCatalog(provider, session);
+    catalog = await normalizeDiscoveredAgentCatalog(provider, state.connection, session);
   } catch (error) {
     discoveryError = error;
   }
@@ -94,44 +99,105 @@ async function closeDiscoveryProbe(
   }
 }
 
-function normalizeDiscoveredAgentCatalog(
+async function normalizeDiscoveredAgentCatalog(
   provider: DownstreamAgentProvider,
-  session: Pick<acp.NewSessionResponse, "configOptions" | "models">,
-): AgentCatalogEntry {
+  connection: acp.ClientSideConnection,
+  session: Pick<acp.NewSessionResponse, "configOptions" | "models" | "sessionId">,
+): Promise<AgentCatalogEntry> {
+  switch (provider) {
+    case "copilot":
+      return normalizeCopilotDiscoveredCatalog(provider, connection, session);
+    case "codex":
+      return normalizeCodexDiscoveredCatalog(provider, session);
+    case "claude":
+    case "gemini":
+      return normalizePassThroughDiscoveredCatalog(provider, session);
+  }
+}
+
+async function normalizeCopilotDiscoveredCatalog(
+  provider: DownstreamAgentProvider,
+  connection: acp.ClientSideConnection,
+  session: Pick<acp.NewSessionResponse, "configOptions" | "models" | "sessionId">,
+): Promise<AgentCatalogEntry> {
   const modelEntries = new Map<string, CatalogModelEntry>();
   const modelConfig = findModelConfigOption(session.configOptions ?? []);
-  const configModels = flattenModelConfigOptions(modelConfig);
+  const configModels = getConfigModelCandidates(modelConfig);
 
-  for (const model of session.models?.availableModels ?? []) {
-    mergeCatalogModel(modelEntries, {
-      id: model.modelId,
-      name: normalizeOptionalLabel(model.name, model.modelId),
-      description: normalizeOptionalText(model.description),
-    });
+  for (const model of getAvailableModelCandidates(session)) {
+    mergeCatalogModel(modelEntries, model);
   }
 
   for (const model of configModels) {
-    mergeCatalogModel(modelEntries, {
-      id: model.value,
-      name: normalizeOptionalLabel(model.name, model.value),
-      description: normalizeOptionalText(model.description),
+    mergeCatalogModel(modelEntries, model);
+  }
+
+  if (modelConfig) {
+    for (const model of modelEntries.values()) {
+      const response = await connection.setSessionConfigOption({
+        sessionId: session.sessionId,
+        configId: modelConfig.id,
+        value: model.id,
+      });
+      mergeCatalogModel(modelEntries, {
+        id: model.id,
+        ...extractReasoningMetadata(response.configOptions),
+      });
+    }
+  }
+
+  return finalizeDiscoveredAgentCatalog(provider, [...modelEntries.values()]);
+}
+
+function normalizeCodexDiscoveredCatalog(
+  provider: DownstreamAgentProvider,
+  session: Pick<acp.NewSessionResponse, "configOptions" | "models" | "sessionId">,
+): AgentCatalogEntry {
+  const collapsedEntries = new Map<string, CatalogModelEntry>();
+  const modelConfig = findModelConfigOption(session.configOptions ?? []);
+
+  for (const model of [
+    ...getAvailableModelCandidates(session),
+    ...getConfigModelCandidates(modelConfig),
+  ]) {
+    const { baseModel, reasoningEffort } = parseReasoningModelSelection(model.id);
+    const id = baseModel ?? model.id;
+    mergeCatalogModel(collapsedEntries, {
+      id,
+      name: reasoningEffort ? undefined : model.name,
+      description: reasoningEffort ? undefined : model.description,
+      supportedReasoningEfforts: reasoningEffort ? [reasoningEffort] : undefined,
     });
   }
 
-  const currentModelId = session.models?.currentModelId ?? modelConfig?.currentValue;
-  if (currentModelId) {
-    const currentConfigModel = configModels.find((model) => model.value === currentModelId);
-    mergeCatalogModel(modelEntries, {
-      id: currentModelId,
-      name: normalizeOptionalLabel(currentConfigModel?.name, currentModelId),
-      description: normalizeOptionalText(currentConfigModel?.description),
-    });
-  }
+  return finalizeDiscoveredAgentCatalog(provider, [...collapsedEntries.values()], {
+    allowStaticReasoningDefault: true,
+  });
+}
 
+function normalizePassThroughDiscoveredCatalog(
+  provider: DownstreamAgentProvider,
+  session: Pick<acp.NewSessionResponse, "configOptions" | "models" | "sessionId">,
+): AgentCatalogEntry {
+  const availableModels = getAvailableModelCandidates(session);
+  const models = availableModels.length > 0
+    ? availableModels
+    : getConfigModelCandidates(findModelConfigOption(session.configOptions ?? []));
+
+  return finalizeDiscoveredAgentCatalog(provider, models);
+}
+
+function finalizeDiscoveredAgentCatalog(
+  provider: DownstreamAgentProvider,
+  models: CatalogModelEntry[],
+  options: {
+    allowStaticReasoningDefault?: boolean;
+  } = {},
+): AgentCatalogEntry {
   return {
     provider,
     label: getProviderLabel(provider),
-    models: [...modelEntries.values()],
+    models: models.map((model) => finalizeCatalogModel(provider, model, options)),
   };
 }
 
@@ -151,6 +217,26 @@ function flattenModelConfigOptions(
   return modelConfig.options.flatMap((entry) => isSessionConfigSelectOption(entry) ? [entry] : entry.options);
 }
 
+function getAvailableModelCandidates(
+  session: Pick<acp.NewSessionResponse, "models">,
+): CatalogModelEntry[] {
+  return (session.models?.availableModels ?? []).map((model) => ({
+    id: model.modelId,
+    name: normalizeOptionalLabel(model.name, model.modelId),
+    description: normalizeOptionalText(model.description),
+  }));
+}
+
+function getConfigModelCandidates(
+  modelConfig: Extract<acp.SessionConfigOption, { type: "select" }> | undefined,
+): CatalogModelEntry[] {
+  return flattenModelConfigOptions(modelConfig).map((model) => ({
+    id: model.value,
+    name: normalizeOptionalLabel(model.name, model.value),
+    description: normalizeOptionalText(model.description),
+  }));
+}
+
 function isSessionConfigSelectOption(
   entry: acp.SessionConfigSelectOption | acp.SessionConfigSelectGroup,
 ): entry is acp.SessionConfigSelectOption {
@@ -161,6 +247,34 @@ function isModelConfigOption(
   option: acp.SessionConfigOption,
 ): option is Extract<acp.SessionConfigOption, { type: "select" }> {
   return option.type === "select" && (option.category === "model" || option.id === "model");
+}
+
+function isReasoningConfigOption(
+  option: acp.SessionConfigOption,
+): option is Extract<acp.SessionConfigOption, { type: "select" }> {
+  return option.type === "select"
+    && (option.category === "thought_level" || option.id === "reasoning_effort");
+}
+
+function extractReasoningMetadata(
+  configOptions: acp.SessionConfigOption[],
+): Pick<CatalogModelEntry, "defaultReasoningEffort" | "supportedReasoningEfforts"> {
+  const reasoningConfig = configOptions.find(isReasoningConfigOption);
+  if (!reasoningConfig) {
+    return {};
+  }
+
+  const supportedReasoningEfforts = normalizeReasoningEfforts(
+    flattenModelConfigOptions(reasoningConfig).map((option) => option.value),
+  );
+  const defaultReasoningEffort = isReasoningEffort(reasoningConfig.currentValue)
+    ? reasoningConfig.currentValue
+    : undefined;
+
+  return {
+    supportedReasoningEfforts,
+    defaultReasoningEffort,
+  };
 }
 
 function mergeCatalogModel(
@@ -175,6 +289,57 @@ function mergeCatalogModel(
 
   existing.name ??= candidate.name;
   existing.description ??= candidate.description;
+  existing.supportedReasoningEfforts = normalizeReasoningEfforts([
+    ...(existing.supportedReasoningEfforts ?? []),
+    ...(candidate.supportedReasoningEfforts ?? []),
+  ]);
+  existing.defaultReasoningEffort ??= candidate.defaultReasoningEffort;
+}
+
+function finalizeCatalogModel(
+  provider: DownstreamAgentProvider,
+  model: CatalogModelEntry,
+  options: {
+    allowStaticReasoningDefault?: boolean;
+  },
+): CatalogModelEntry {
+  const staticModel = getAgentCatalog(provider).models.find((entry) => entry.id === model.id);
+  const name = model.name ?? staticModel?.name;
+  const description = model.description ?? staticModel?.description;
+  const supportedReasoningEfforts = normalizeReasoningEfforts(model.supportedReasoningEfforts);
+  const staticDefaultReasoningEffort = options.allowStaticReasoningDefault
+    && staticModel?.defaultReasoningEffort
+    && supportedReasoningEfforts?.includes(staticModel.defaultReasoningEffort)
+    ? staticModel.defaultReasoningEffort
+    : undefined;
+
+  return {
+    id: model.id,
+    ...(name ? { name } : {}),
+    ...(description ? { description } : {}),
+    ...(supportedReasoningEfforts ? { supportedReasoningEfforts } : {}),
+    ...((model.defaultReasoningEffort ?? staticDefaultReasoningEffort)
+      ? { defaultReasoningEffort: model.defaultReasoningEffort ?? staticDefaultReasoningEffort }
+      : {}),
+  };
+}
+
+function normalizeReasoningEfforts(
+  efforts: Iterable<string> | undefined,
+): ReasoningEffort[] | undefined {
+  if (!efforts) {
+    return undefined;
+  }
+
+  const supportedEfforts = new Set<ReasoningEffort>();
+  for (const effort of efforts) {
+    if (isReasoningEffort(effort)) {
+      supportedEfforts.add(effort);
+    }
+  }
+
+  const ordered = REASONING_EFFORTS.filter((effort) => supportedEfforts.has(effort));
+  return ordered.length > 0 ? ordered : undefined;
 }
 
 function normalizeOptionalLabel(

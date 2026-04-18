@@ -22,6 +22,13 @@ const DISCOVERY_MOCK_AGENT_PATH = fileURLToPath(
 const originalHome = process.env.HOME;
 const testHome = mkdtempSync(join(tmpdir(), "nanoboss-model-catalog-home-"));
 
+interface DiscoveryLogEvent {
+  kind: string;
+  sessionId: string;
+  configId?: string;
+  value?: string;
+}
+
 process.env.HOME = testHome;
 process.on("exit", () => {
   try {
@@ -36,6 +43,38 @@ process.on("exit", () => {
     process.env.HOME = originalHome;
   }
 });
+
+async function discoverMockCatalog(provider: "copilot" | "codex" | "claude" | "gemini"): Promise<{
+  catalog: Awaited<ReturnType<typeof discoverAgentCatalog>>;
+  events: DiscoveryLogEvent[];
+}> {
+  const logDir = mkdtempSync(join(tmpdir(), `nanoboss-model-discovery-${provider}-`));
+  const logPath = join(logDir, "events.jsonl");
+
+  try {
+    const catalog = await discoverAgentCatalog(provider, {
+      config: {
+        command: "bun",
+        args: ["run", DISCOVERY_MOCK_AGENT_PATH],
+        cwd: REPO_ROOT,
+        env: {
+          DISCOVERY_AGENT_LOG: logPath,
+          DISCOVERY_AGENT_PROVIDER: provider,
+        },
+      },
+    });
+
+    const logText = readFileSync(logPath, "utf8").trim();
+    return {
+      catalog,
+      events: logText
+        ? logText.split("\n").map((line) => JSON.parse(line) as DiscoveryLogEvent)
+        : [],
+    };
+  } finally {
+    rmSync(logDir, { recursive: true, force: true });
+  }
+}
 
 test("lists the known downstream agents", () => {
   expect(listKnownProviders()).toEqual(["claude", "gemini", "codex", "copilot"]);
@@ -104,52 +143,119 @@ test("requires canonical gemini model ids", () => {
   expect(findSelectableModelOption("gemini", "flash")).toBeUndefined();
 });
 
-test("discovers a live provider catalog from ACP session metadata and closes the probe session", async () => {
-  const logDir = mkdtempSync(join(tmpdir(), "nanoboss-model-discovery-"));
-  const logPath = join(logDir, "events.jsonl");
-  try {
-    const catalog = await discoverAgentCatalog("copilot", {
-      config: {
-        command: "bun",
-        args: ["run", DISCOVERY_MOCK_AGENT_PATH],
-        cwd: REPO_ROOT,
-        env: {
-          DISCOVERY_AGENT_LOG: logPath,
-        },
+test("discovers and normalizes Copilot model-specific reasoning metadata", async () => {
+  const { catalog, events } = await discoverMockCatalog("copilot");
+
+  expect(catalog).toEqual({
+    provider: "copilot",
+    label: "Copilot",
+    models: [
+      {
+        id: "gpt-4.1",
+        name: "GPT-4.1",
+        description: "Fast chat model",
       },
-    });
+      {
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        description: "Primary frontier model",
+        supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+        defaultReasoningEffort: "medium",
+      },
+      {
+        id: "claude-opus-4.7",
+        name: "Claude Opus 4.7",
+        description: "Premium reasoning model",
+        supportedReasoningEfforts: ["low", "medium", "high"],
+        defaultReasoningEffort: "high",
+      },
+    ],
+  });
+  expect(events.map((event) => event.kind)).toEqual([
+    "new_session",
+    "set_config",
+    "set_config",
+    "set_config",
+    "close_session",
+  ]);
+  expect(events.filter((event) => event.kind === "set_config").map((event) => event.value)).toEqual([
+    "gpt-4.1",
+    "gpt-5.4",
+    "claude-opus-4.7",
+  ]);
+  expect(events[0]?.sessionId).toBe(events.at(-1)?.sessionId);
+});
 
-    expect(catalog).toEqual({
-      provider: "copilot",
-      label: "Copilot",
-      models: [
-        {
-          id: "gpt-5.4-mini",
-          name: "GPT-5.4 Mini",
-          description: "Fast frontier mini",
-        },
-        {
-          id: "claude-opus-4.7",
-          name: "Claude Opus 4.7",
-          description: "Premium reasoning model",
-        },
-        {
-          id: "gpt-5.4",
-          name: "GPT-5.4",
-          description: "Primary frontier model",
-        },
-      ],
-    });
+test("collapses Codex slash-form model selectors into base catalog entries", async () => {
+  const { catalog } = await discoverMockCatalog("codex");
 
-    const events = readFileSync(logPath, "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { kind: string; sessionId: string });
-    expect(events.map((event) => event.kind)).toEqual(["new_session", "close_session"]);
-    expect(events[0]?.sessionId).toBe(events[1]?.sessionId);
-  } finally {
-    rmSync(logDir, { recursive: true, force: true });
-  }
+  expect(catalog).toEqual({
+    provider: "codex",
+    label: "Codex",
+    models: [
+      {
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        description: "Latest frontier model",
+        supportedReasoningEfforts: ["medium", "high", "xhigh"],
+        defaultReasoningEffort: "medium",
+      },
+      {
+        id: "gpt-5.2-codex",
+        name: "GPT-5.2 Codex",
+        description: "Latest frontier agentic coding model. Balances speed and reasoning depth for everyday tasks",
+        supportedReasoningEfforts: ["low", "medium", "high"],
+        defaultReasoningEffort: "medium",
+      },
+    ],
+  });
+  expect(catalog.models.some((model) => model.id.includes("/"))).toBe(false);
+});
+
+test("passes Claude catalog models through without synthesizing hidden entries", async () => {
+  const { catalog } = await discoverMockCatalog("claude");
+
+  expect(catalog).toEqual({
+    provider: "claude",
+    label: "Claude",
+    models: [
+      {
+        id: "default",
+        name: "Default",
+        description: "Account-dependent default model",
+      },
+      {
+        id: "sonnet",
+        name: "Sonnet",
+        description: "Everyday Claude model",
+      },
+      {
+        id: "auto",
+        name: "Auto",
+        description: "Let Claude choose",
+      },
+    ],
+  });
+  expect(catalog.models.some((model) => model.id === "opusplan")).toBe(false);
+});
+
+test("passes Gemini catalog models through and preserves advertised auto selectors", async () => {
+  const { catalog } = await discoverMockCatalog("gemini");
+
+  expect(catalog).toEqual({
+    provider: "gemini",
+    label: "Gemini",
+    models: [
+      {
+        id: "auto",
+        name: "Auto",
+        description: "Let Gemini choose",
+      },
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+    ],
+  });
+  expect(catalog.models.some((model) => model.id === "gemini-3-pro-preview")).toBe(false);
 });
 
 test("keeps the model catalog owned by the public agent-acp package", () => {
