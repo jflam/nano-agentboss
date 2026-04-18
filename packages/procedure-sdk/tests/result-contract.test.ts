@@ -39,7 +39,7 @@ describe("result and failure helpers", () => {
 
   test("normalizeRunCancelledError bridges aborts and foreign cancellation errors into the sdk type", () => {
     const foreignCancellation = Object.assign(new Error("Stopped."), {
-      name: "TopLevelProcedureCancelledError",
+      name: "ProcedureCancelledError",
       reason: "soft_stop" as const,
     });
     const normalizedForeign = normalizeRunCancelledError(foreignCancellation);

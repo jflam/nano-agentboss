@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "bun:test";
 
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { CommandContextImpl, RunLogger, type SessionUpdateEmitter } from "@nanoboss/procedure-engine";
+import {
+  CommandContextImpl,
+  RunLogger,
+  type RuntimeBindings,
+  type SessionUpdateEmitter,
+} from "@nanoboss/procedure-engine";
 import { SessionStore } from "@nanoboss/store";
 import { describeE2E } from "./helpers.ts";
 
@@ -36,6 +41,16 @@ describeE2E("/linter fixture (real agent)", () => {
         sessionId: crypto.randomUUID(),
         cwd: fixtureDir,
       });
+      const bindings = {
+        getDefaultAgentConfig: () => ({
+          command: "mock-agent",
+          args: [],
+        }),
+        setDefaultAgentSelection: () => ({
+          command: "mock-agent",
+          args: [],
+        }),
+      } satisfies RuntimeBindings;
       const ctx = new CommandContextImpl({
         cwd: fixtureDir,
         logger,
@@ -49,6 +64,8 @@ describeE2E("/linter fixture (real agent)", () => {
           input: "",
           kind: "top_level",
         }),
+        current: bindings,
+        root: bindings,
       });
 
       const linter = registry.get("linter");

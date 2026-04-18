@@ -73,6 +73,10 @@ describe("/second-opinion", () => {
           cwd: process.cwd(),
           model: "gemini-2.5-flash",
         };
+        const bindings = {
+          getDefaultAgentConfig: () => defaultConfig,
+          setDefaultAgentSelection: () => defaultConfig,
+        };
 
         const ctx = new CommandContextImpl({
           cwd: process.cwd(),
@@ -90,8 +94,8 @@ describe("/second-opinion", () => {
             input: "Explain pagination bugs.",
             kind: "top_level",
           }),
-          getDefaultAgentConfig: () => defaultConfig,
-          setDefaultAgentSelection: () => defaultConfig,
+          current: bindings,
+          root: bindings,
         });
 
         const result = await procedure.execute("Explain pagination bugs.", ctx);

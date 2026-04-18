@@ -41,7 +41,7 @@ function isRunCancelledErrorLike(error: unknown): error is Error & {
 } {
   if (
     !(error instanceof Error) ||
-    (error.name !== "RunCancelledError" && error.name !== "TopLevelProcedureCancelledError")
+    (error.name !== "RunCancelledError" && error.name !== "ProcedureCancelledError")
   ) {
     return false;
   }

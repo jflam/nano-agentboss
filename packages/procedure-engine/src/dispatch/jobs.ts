@@ -16,10 +16,10 @@ import {
   buildProcedureDispatchProgressPath,
 } from "./progress.ts";
 import {
-  TopLevelProcedureCancelledError,
-  TopLevelProcedureExecutionError,
-  executeTopLevelProcedure,
-} from "../top-level-runner.ts";
+  ProcedureCancelledError,
+  ProcedureExecutionError,
+  executeProcedure,
+} from "../procedure-runner.ts";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { SessionStore } from "@nanoboss/store";
 import type {
@@ -35,6 +35,7 @@ import { defaultCancellationMessage } from "@nanoboss/procedure-sdk";
 
 import { resolveDownstreamAgentConfig } from "../agent-config.ts";
 import { requireValue } from "../argv.ts";
+import type { RuntimeBindings } from "../context/shared.ts";
 import { runResultFromRunRecord } from "../run-result.ts";
 import { resolveSelfCommand } from "../self-command.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "../timing-trace.ts";
@@ -254,6 +255,14 @@ export class ProcedureDispatchJobManager {
 
     const store = this.createStore();
     let defaultAgentConfig = resolveDownstreamAgentConfig(this.params.cwd, job.defaultAgentSelection);
+    const bindings = {
+      getDefaultAgentConfig: () => defaultAgentConfig,
+      setDefaultAgentSelection: (selection) => {
+        const nextConfig = resolveDownstreamAgentConfig(this.params.cwd, selection);
+        defaultAgentConfig = nextConfig;
+        return nextConfig;
+      },
+    } satisfies RuntimeBindings;
     const emitter = new ProcedureDispatchProgressEmitter(
       buildProcedureDispatchProgressPath(store.rootDir, job.dispatchCorrelationId),
       () => {
@@ -272,7 +281,7 @@ export class ProcedureDispatchJobManager {
       appendTimingTraceEvent(timingTrace, "dispatch_worker", "procedure_execution_started", {
         procedure: job.procedure,
       });
-      const result = await executeTopLevelProcedure({
+      const result = await executeProcedure({
         cwd: this.params.cwd,
         sessionId: this.params.sessionId,
         store,
@@ -281,12 +290,7 @@ export class ProcedureDispatchJobManager {
         prompt: job.prompt,
         emitter,
         softStopSignal: softStopController.signal,
-        getDefaultAgentConfig: () => defaultAgentConfig,
-        setDefaultAgentSelection: (selection) => {
-          const nextConfig = resolveDownstreamAgentConfig(this.params.cwd, selection);
-          defaultAgentConfig = nextConfig;
-          return nextConfig;
-        },
+        bindings,
         dispatchCorrelationId: job.dispatchCorrelationId,
         timingTrace,
       });
@@ -322,7 +326,7 @@ export class ProcedureDispatchJobManager {
       const completedAt = new Date().toISOString();
       const latest = this.readJob(dispatchId);
       const message = error instanceof Error ? error.message : String(error);
-      const run = error instanceof TopLevelProcedureExecutionError || error instanceof TopLevelProcedureCancelledError
+      const run = error instanceof ProcedureExecutionError || error instanceof ProcedureCancelledError
         ? error.run
         : latest.run;
       if (latest.status === "cancelled" || softStopController.signal.aborted) {

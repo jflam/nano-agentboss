@@ -1,7 +1,6 @@
 import {
   createAgentSession,
   normalizeAgentTokenUsage,
-  type AgentSession,
   type CallAgentTransport,
   type CreateAgentSession,
 } from "@nanoboss/agent-acp";
@@ -17,22 +16,16 @@ import { createTextPromptInput } from "@nanoboss/procedure-sdk";
 
 import { resolveDownstreamAgentConfig } from "../agent-config.ts";
 import type { RunTimingTrace } from "../timing-trace.ts";
-import type { PreparedDefaultPrompt } from "./shared.ts";
+import type { RuntimeBindings } from "./shared.ts";
 
-interface SessionBindingSource {
-  agentSession?: AgentSession;
-  getDefaultAgentConfig: () => DownstreamAgentConfig;
-  setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
-  prepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
+export interface ProcedureInvocationBinding extends RuntimeBindings {
   dispose?(): void;
 }
 
-export interface ProcedureInvocationBinding extends SessionBindingSource {}
-
 interface ContextSessionApiImplParams {
   cwd: string;
-  current: SessionBindingSource;
-  root: SessionBindingSource;
+  current: ProcedureInvocationBinding;
+  root: RuntimeBindings;
   createAgentSession?: CreateAgentSession;
   isAutoApproveEnabled?: () => boolean;
 }
@@ -131,7 +124,9 @@ export class ContextSessionApiImpl implements SessionApi {
   }
 }
 
-function toProcedureInvocationBinding(binding: SessionBindingSource): ProcedureInvocationBinding {
+function toProcedureInvocationBinding(
+  binding: RuntimeBindings & { dispose?: () => void },
+): ProcedureInvocationBinding {
   return {
     agentSession: binding.agentSession,
     getDefaultAgentConfig: binding.getDefaultAgentConfig,

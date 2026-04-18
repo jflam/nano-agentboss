@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import type { Ref } from "@nanoboss/contracts";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger, type RuntimeBindings } from "@nanoboss/procedure-engine";
 import { SessionStore } from "@nanoboss/store";
 import { describeE2E } from "./helpers.ts";
 
@@ -31,6 +31,16 @@ describeE2E("/second-opinion (real agents)", () => {
         sessionId: crypto.randomUUID(),
         cwd: process.cwd(),
       });
+      const bindings = {
+        getDefaultAgentConfig: () => ({
+          command: "mock-agent",
+          args: [],
+        }),
+        setDefaultAgentSelection: () => ({
+          command: "mock-agent",
+          args: [],
+        }),
+      } satisfies RuntimeBindings;
       const ctx = new CommandContextImpl({
         cwd: process.cwd(),
         logger,
@@ -54,6 +64,8 @@ describeE2E("/second-opinion (real agents)", () => {
           input: "What is 2 + 2? Reply with just the number.",
           kind: "top_level",
         }),
+        current: bindings,
+        root: bindings,
       });
 
       const result = await procedure.execute(

@@ -1,12 +1,10 @@
-import { CommandContextImpl, type PreparedDefaultPrompt, type SessionUpdateEmitter } from "./context/context.ts";
+import { CommandContextImpl } from "./context/context.ts";
 import {
   type SessionStore,
   normalizeProcedureResult,
 } from "@nanoboss/store";
-import type { AgentSession } from "@nanoboss/agent-acp";
 import type {
   AgentTokenUsage,
-  DownstreamAgentConfig,
   DownstreamAgentSelection,
   KernelValue,
   PromptInput,
@@ -28,33 +26,34 @@ import {
 } from "@nanoboss/procedure-sdk";
 
 import { toDownstreamAgentSelection } from "./agent-config.ts";
+import type { RuntimeBindings, SessionUpdateEmitter } from "./context/shared.ts";
 import { RunLogger } from "./logger.ts";
 import { runResultFromRunRecord } from "./run-result.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "./timing-trace.ts";
 
-interface ProcedureRunnerEmitter extends SessionUpdateEmitter {
+export interface ProcedureEngineEmitter extends SessionUpdateEmitter {
   readonly currentTokenUsage?: AgentTokenUsage;
 }
 
-export class TopLevelProcedureExecutionError extends Error {
+export class ProcedureExecutionError extends Error {
   constructor(message: string, readonly run: RunRef) {
     super(message);
-    this.name = "TopLevelProcedureExecutionError";
+    this.name = "ProcedureExecutionError";
   }
 }
 
-export class TopLevelProcedureCancelledError extends RunCancelledError {
+export class ProcedureCancelledError extends RunCancelledError {
   constructor(
     message: string,
     readonly run: RunRef,
     reason: RunCancellationReason = "soft_stop",
   ) {
     super(message, reason);
-    this.name = "TopLevelProcedureCancelledError";
+    this.name = "ProcedureCancelledError";
   }
 }
 
-export async function executeTopLevelProcedure(params: {
+export interface ExecuteProcedureParams {
   cwd: string;
   sessionId: string;
   store: SessionStore;
@@ -62,14 +61,11 @@ export async function executeTopLevelProcedure(params: {
   procedure: Procedure;
   prompt: string;
   promptInput?: PromptInput;
-  emitter: ProcedureRunnerEmitter;
+  emitter: ProcedureEngineEmitter;
   signal?: AbortSignal;
   softStopSignal?: AbortSignal;
-  agentSession?: AgentSession;
-  getDefaultAgentConfig: () => DownstreamAgentConfig;
-  setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
+  bindings: RuntimeBindings;
   isAutoApproveEnabled?: () => boolean;
-  prepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
   onError?: (ctx: CommandContextImpl, errorText: string) => void | Promise<void>;
   dispatchCorrelationId?: string;
   assertCanStartBoundary?: () => void;
@@ -78,7 +74,9 @@ export async function executeTopLevelProcedure(params: {
     prompt: string;
     state: KernelValue;
   };
-}): Promise<RunResult> {
+}
+
+export async function executeProcedure(params: ExecuteProcedureParams): Promise<RunResult> {
   const logger = new RunLogger();
   const rootSpanId = logger.newSpan();
   const promptInput = params.promptInput;
@@ -91,7 +89,7 @@ export async function executeTopLevelProcedure(params: {
     dispatchCorrelationId: params.dispatchCorrelationId,
     promptImages: promptInput ? params.store.persistPromptImages(promptInput) : undefined,
   });
-  const beforeSelection = toDownstreamAgentSelection(params.getDefaultAgentConfig());
+  const beforeSelection = toDownstreamAgentSelection(params.bindings.getDefaultAgentConfig());
   const startedAt = Date.now();
 
   const ctx = new CommandContextImpl({
@@ -107,11 +105,9 @@ export async function executeTopLevelProcedure(params: {
     promptInput,
     signal: params.signal,
     softStopSignal: params.softStopSignal,
-    agentSession: params.agentSession,
-    getDefaultAgentConfig: params.getDefaultAgentConfig,
-    setDefaultAgentSelection: params.setDefaultAgentSelection,
+    current: params.bindings,
+    root: params.bindings,
     isAutoApproveEnabled: params.isAutoApproveEnabled,
-    prepareDefaultPrompt: params.prepareDefaultPrompt,
     assertCanStartBoundary: params.assertCanStartBoundary,
     timingTrace: params.timingTrace,
   });
@@ -128,10 +124,10 @@ export async function executeTopLevelProcedure(params: {
 
   try {
     const rawResult = params.resume
-      ? await resumeTopLevelProcedure(params.procedure, params.resume.prompt, params.resume.state, ctx)
+      ? await resumeProcedureExecution(params.procedure, params.resume.prompt, params.resume.state, ctx)
       : await params.procedure.execute(plainTextPrompt, ctx);
     const result = normalizeProcedureResult(rawResult);
-    const afterSelection = toDownstreamAgentSelection(params.getDefaultAgentConfig());
+    const afterSelection = toDownstreamAgentSelection(params.bindings.getDefaultAgentConfig());
     const changedSelection = sameSelection(beforeSelection, afterSelection) ? undefined : afterSelection;
     const finalized = params.store.completeRun(rootRun, result, {
       meta: changedSelection ? { defaultAgentSelection: changedSelection } : undefined,
@@ -169,7 +165,7 @@ export async function executeTopLevelProcedure(params: {
         display: cancelled.message,
         summary: summarizeText(cancelled.message),
       });
-      throw new TopLevelProcedureCancelledError(
+      throw new ProcedureCancelledError(
         cancelled.message,
         finalized.run,
         cancelled.reason,
@@ -191,14 +187,14 @@ export async function executeTopLevelProcedure(params: {
     const finalized = params.store.completeRun(rootRun, {
       summary: summarizeText(errorText),
     });
-    throw new TopLevelProcedureExecutionError(message, finalized.run);
+    throw new ProcedureExecutionError(message, finalized.run);
   } finally {
     await params.emitter.flush();
     logger.close();
   }
 }
 
-async function resumeTopLevelProcedure(
+async function resumeProcedureExecution(
   procedure: Procedure,
   prompt: string,
   state: KernelValue,

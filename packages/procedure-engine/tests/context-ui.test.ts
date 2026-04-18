@@ -158,6 +158,16 @@ function createContext(options?: { emitUiEvent?: boolean }): {
   });
   const updates: unknown[] = [];
   const uiEvents: ProcedureUiEvent[] = [];
+  const bindings = {
+    getDefaultAgentConfig: () => ({
+      command: "mock-agent",
+      args: [],
+    }),
+    setDefaultAgentSelection: () => ({
+      command: "mock-agent",
+      args: [],
+    }),
+  };
   const ctx = new CommandContextImpl({
     cwd,
     logger,
@@ -179,6 +189,8 @@ function createContext(options?: { emitUiEvent?: boolean }): {
     },
     store,
     run,
+    current: bindings,
+    root: bindings,
   });
 
   return { ctx, run, updates, uiEvents, logger };

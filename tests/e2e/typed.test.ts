@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import typia from "typia";
 
-import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger, type RuntimeBindings } from "@nanoboss/procedure-engine";
 import { jsonType, type ProcedureApi } from "@nanoboss/procedure-sdk";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { SessionStore } from "@nanoboss/store";
@@ -107,6 +107,16 @@ function createContext(): CommandContextImpl {
     sessionId: crypto.randomUUID(),
     cwd,
   });
+  const bindings = {
+    getDefaultAgentConfig: () => ({
+      command: "mock-agent",
+      args: [],
+    }),
+    setDefaultAgentSelection: () => ({
+      command: "mock-agent",
+      args: [],
+    }),
+  } satisfies RuntimeBindings;
 
   return new CommandContextImpl({
     cwd,
@@ -124,5 +134,7 @@ function createContext(): CommandContextImpl {
       input: "typed-e2e",
       kind: "top_level",
     }),
+    current: bindings,
+    root: bindings,
   });
 }

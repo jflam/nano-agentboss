@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import typia from "typia";
 
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
-import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine";
+import { CommandContextImpl, RunLogger, type RuntimeBindings } from "@nanoboss/procedure-engine";
 import { SessionStore } from "@nanoboss/store";
 import { jsonType, type Procedure } from "@nanoboss/procedure-sdk";
 import { describeE2E } from "./helpers.ts";
@@ -81,6 +81,16 @@ describeE2E("ctx.procedures.run composition (real agent)", () => {
         sessionId: crypto.randomUUID(),
         cwd: process.cwd(),
       });
+      const bindings = {
+        getDefaultAgentConfig: () => ({
+          command: "mock-agent",
+          args: [],
+        }),
+        setDefaultAgentSelection: () => ({
+          command: "mock-agent",
+          args: [],
+        }),
+      } satisfies RuntimeBindings;
       const ctx = new CommandContextImpl({
         cwd: process.cwd(),
         logger,
@@ -97,6 +107,8 @@ describeE2E("ctx.procedures.run composition (real agent)", () => {
           input: "5",
           kind: "top_level",
         }),
+        current: bindings,
+        root: bindings,
       });
 
       const result = await registry.get("quadruple")?.execute("5", ctx);

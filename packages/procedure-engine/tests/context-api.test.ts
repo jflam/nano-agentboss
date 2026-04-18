@@ -104,6 +104,16 @@ function createContext(overrides: {
     cwd,
     rootDir: storeRootDir,
   });
+  const bindings = {
+    getDefaultAgentConfig: overrides.getDefaultAgentConfig ?? (() => ({
+      command: "mock-agent",
+      args: [],
+    })),
+    setDefaultAgentSelection: overrides.setDefaultAgentSelection ?? (() => ({
+      command: "mock-agent",
+      args: [],
+    })),
+  };
 
   return new CommandContextImpl({
     cwd,
@@ -121,7 +131,7 @@ function createContext(overrides: {
       input: "hello",
       kind: "top_level",
     }),
-    getDefaultAgentConfig: overrides.getDefaultAgentConfig,
-    setDefaultAgentSelection: overrides.setDefaultAgentSelection,
+    current: bindings,
+    root: bindings,
   });
 }

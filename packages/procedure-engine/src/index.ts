@@ -1,8 +1,8 @@
 import {
-  executeTopLevelProcedure as executeTopLevelProcedureInternal,
-  TopLevelProcedureCancelledError,
-  TopLevelProcedureExecutionError,
-} from "./top-level-runner.ts";
+  ProcedureCancelledError,
+  ProcedureExecutionError,
+  executeProcedure,
+} from "./procedure-runner.ts";
 import {
   buildRecoveredProcedureSyncPrompt,
   findRecoveredProcedureDispatchRun,
@@ -11,23 +11,18 @@ import {
   syncRecoveredProcedureResultIntoDefaultConversation as syncRecoveredProcedureResultIntoDefaultConversationInternal,
   waitForRecoveredProcedureDispatchRun,
 } from "./dispatch/recovery.ts";
-import type { PreparedDefaultPrompt, ProcedureUiEvent, SessionUpdateEmitter } from "./context/shared.ts";
 import type {
-  AgentTokenSnapshot,
-  AgentTokenUsage,
-  DownstreamAgentConfig,
-  DownstreamAgentSelection,
-  KernelValue,
-  PromptInput,
-  RunRecord,
-} from "@nanoboss/contracts";
+  PreparedDefaultPrompt,
+  ProcedureUiEvent,
+  RuntimeBindings,
+  SessionUpdateEmitter,
+} from "./context/shared.ts";
+import type { AgentTokenUsage, DownstreamAgentConfig, RunRecord } from "@nanoboss/contracts";
 import type {
-  Procedure,
-  ProcedureApi,
-  ProcedureRegistryLike,
-  RunResult,
-} from "@nanoboss/procedure-sdk";
-import type { SessionStore } from "@nanoboss/store";
+  AgentSession,
+  AgentSessionPromptOptions,
+  AgentSessionPromptResult,
+} from "@nanoboss/agent-acp";
 
 export {
   buildProcedureDispatchCancelPath,
@@ -56,15 +51,25 @@ export type {
 
 export {
   buildRecoveredProcedureSyncPrompt,
+  executeProcedure,
   findRecoveredProcedureDispatchRun,
   isProcedureDispatchTimeout,
   procedureDispatchResultFromRecoveredRun,
+  ProcedureCancelledError,
+  ProcedureExecutionError,
   waitForRecoveredProcedureDispatchRun,
-  TopLevelProcedureCancelledError,
-  TopLevelProcedureExecutionError,
 };
 
-export type { PreparedDefaultPrompt, ProcedureUiEvent, SessionUpdateEmitter };
+export type { ExecuteProcedureParams, ProcedureEngineEmitter } from "./procedure-runner.ts";
+export type {
+  AgentSession,
+  AgentSessionPromptOptions,
+  AgentSessionPromptResult,
+  PreparedDefaultPrompt,
+  ProcedureUiEvent,
+  RuntimeBindings,
+  SessionUpdateEmitter,
+};
 
 export { CommandContextImpl } from "./context/context.ts";
 export { UiApiImpl } from "./context/ui-api.ts";
@@ -95,105 +100,11 @@ export {
   toProcedureUiSessionUpdate,
 } from "./ui-events.ts";
 
-export interface ProcedureEngineEmitter {
-  emit(update: unknown): void;
-  emitUiEvent?(event: unknown): void;
-  flush(): Promise<void>;
-  readonly currentTokenUsage?: AgentTokenUsage;
-}
-
-export interface PreparedProcedurePrompt {
-  promptInput: PromptInput;
-  markSubmitted?: () => void;
-}
-
-export interface ProcedureEngineAgentSessionPromptOptions {
-  signal?: AbortSignal;
-  softStopSignal?: AbortSignal;
-  onUpdate?: (update: unknown) => Promise<void> | void;
-  timingTrace?: undefined;
-}
-
-export interface ProcedureEngineAgentSessionPromptResult {
-  raw: string;
-  durationMs: number;
-  updates: unknown[];
-  tokenSnapshot?: AgentTokenSnapshot;
-}
-
-export interface ProcedureEngineAgentSession {
-  sessionId?: string;
-  currentTokenSnapshot?: AgentTokenSnapshot;
-  getCurrentTokenSnapshot(): Promise<AgentTokenSnapshot | undefined>;
-  prompt(
-    prompt: string | PromptInput,
-    options?: ProcedureEngineAgentSessionPromptOptions,
-  ): Promise<ProcedureEngineAgentSessionPromptResult>;
-  updateConfig?(config: DownstreamAgentConfig): void;
-  warm?(timingTrace?: undefined): Promise<void>;
-  close(): void;
-}
-
-export interface RunProcedureParams {
-  cwd: string;
-  sessionId: string;
-  store: SessionStore;
-  registry: ProcedureRegistryLike;
-  procedure: Procedure;
-  prompt: string;
-  promptInput?: PromptInput;
-  emitter: ProcedureEngineEmitter;
-  signal?: AbortSignal;
-  softStopSignal?: AbortSignal;
-  agentSession?: ProcedureEngineAgentSession;
-  getDefaultAgentConfig: () => DownstreamAgentConfig;
-  setDefaultAgentSelection: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
-  isAutoApproveEnabled?: () => boolean;
-  prepareDefaultPrompt?: (promptInput: PromptInput) => PreparedProcedurePrompt;
-  onError?: (ctx: ProcedureApi, errorText: string) => void | Promise<void>;
-  dispatchCorrelationId?: string;
-  assertCanStartBoundary?: () => void;
-  timingTrace?: unknown;
-}
-
-export interface ResumeProcedureParams extends RunProcedureParams {
-  state: KernelValue;
-}
-
-export async function runProcedure(params: RunProcedureParams): Promise<RunResult> {
-  type ExecuteTopLevelProcedureParams = Parameters<typeof executeTopLevelProcedureInternal>[0];
-
-  return await executeTopLevelProcedureInternal({
-    ...params,
-    agentSession: params.agentSession as ExecuteTopLevelProcedureParams["agentSession"],
-    timingTrace: params.timingTrace as ExecuteTopLevelProcedureParams["timingTrace"],
-  });
-}
-
-export async function resumeProcedure(params: ResumeProcedureParams): Promise<RunResult> {
-  type ExecuteTopLevelProcedureParams = Parameters<typeof executeTopLevelProcedureInternal>[0];
-
-  return await executeTopLevelProcedureInternal({
-    ...params,
-    agentSession: params.agentSession as ExecuteTopLevelProcedureParams["agentSession"],
-    timingTrace: params.timingTrace as ExecuteTopLevelProcedureParams["timingTrace"],
-    resume: {
-      prompt: params.prompt,
-      state: params.state,
-    },
-  });
-}
-
 export async function syncRecoveredProcedureResultIntoDefaultConversation(params: {
-  agentSession: ProcedureEngineAgentSession;
+  agentSession: AgentSession;
   run: RunRecord;
   signal?: AbortSignal;
   defaultAgentConfig: DownstreamAgentConfig;
 }): Promise<AgentTokenUsage | undefined> {
-  type SyncRecoveredProcedureParams = Parameters<typeof syncRecoveredProcedureResultIntoDefaultConversationInternal>[0];
-
-  return await syncRecoveredProcedureResultIntoDefaultConversationInternal({
-    ...params,
-    agentSession: params.agentSession as SyncRecoveredProcedureParams["agentSession"],
-  });
+  return await syncRecoveredProcedureResultIntoDefaultConversationInternal(params);
 }

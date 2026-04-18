@@ -28,17 +28,17 @@ import { readStoredSessionMetadata } from "@nanoboss/store";
 import {
   appendTimingTraceEvent,
   createRunTimingTrace,
+  executeProcedure,
   ProcedureDispatchJobManager,
   type ProcedureUiEvent,
   type ProcedureDispatchStatusResult,
   procedureDispatchResultFromRecoveredRun,
+  type RuntimeBindings,
   type RunTimingTrace,
-  resumeProcedure,
-  runProcedure,
   type SessionUpdateEmitter,
   startProcedureDispatchProgressBridge,
-  TopLevelProcedureCancelledError,
-  TopLevelProcedureExecutionError,
+  ProcedureCancelledError,
+  ProcedureExecutionError,
   waitForRecoveredProcedureDispatchRun,
 } from "@nanoboss/procedure-engine";
 import {
@@ -860,12 +860,23 @@ export class NanobossService {
 
       try {
         const timingTrace = directTimingTrace;
+        const bindings = {
+          agentSession: session.defaultAgentSession,
+          getDefaultAgentConfig: () => session.defaultAgentConfig,
+          setDefaultAgentSelection: (selection) => {
+            const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
+            session.defaultAgentConfig = nextConfig;
+            session.defaultAgentSession.updateConfig(nextConfig);
+            return nextConfig;
+          },
+          prepareDefaultPrompt: (prompt) => prepareDefaultPrompt(session, prompt, runId, timingTrace),
+        } satisfies RuntimeBindings;
         appendTimingTraceEvent(timingTrace, "service", "prompt_started", {
           runId,
           procedure: procedure.name,
           mode: continuation ? "resume" : "direct",
         });
-        const result = await (continuation ? resumeProcedure({
+        const result = await executeProcedure({
           cwd: session.cwd,
           sessionId,
           store: session.store,
@@ -876,49 +887,20 @@ export class NanobossService {
           emitter,
           signal: activeRun.abortController.signal,
           softStopSignal: activeRun.softStopController.signal,
-          agentSession: session.defaultAgentSession,
-          getDefaultAgentConfig: () => session.defaultAgentConfig,
-          setDefaultAgentSelection: (selection) => {
-            const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
-            session.defaultAgentConfig = nextConfig;
-            session.defaultAgentSession.updateConfig(nextConfig);
-            return nextConfig;
-          },
+          bindings,
           isAutoApproveEnabled: () => session.autoApprove,
-          prepareDefaultPrompt: (prompt) => prepareDefaultPrompt(session, prompt, runId, timingTrace),
           onError: (ctx, errorText) => {
             ctx.ui.text(errorText);
           },
           assertCanStartBoundary,
           timingTrace,
-          state: continuation.state,
-        }) : runProcedure({
-          cwd: session.cwd,
-          sessionId,
-          store: session.store,
-          registry: this.registry,
-          procedure,
-          prompt: commandPrompt,
-          promptInput: commandPromptInput,
-          emitter,
-          signal: activeRun.abortController.signal,
-          softStopSignal: activeRun.softStopController.signal,
-          agentSession: session.defaultAgentSession,
-          getDefaultAgentConfig: () => session.defaultAgentConfig,
-          setDefaultAgentSelection: (selection) => {
-            const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
-            session.defaultAgentConfig = nextConfig;
-            session.defaultAgentSession.updateConfig(nextConfig);
-            return nextConfig;
-          },
-          isAutoApproveEnabled: () => session.autoApprove,
-          prepareDefaultPrompt: (prompt) => prepareDefaultPrompt(session, prompt, runId, timingTrace),
-          onError: (ctx, errorText) => {
-            ctx.ui.text(errorText);
-          },
-          assertCanStartBoundary,
-          timingTrace,
-        }));
+          resume: continuation
+            ? {
+                prompt: commandPrompt,
+                state: continuation.state,
+              }
+            : undefined,
+        });
 
         if (result.pause) {
           this.setPendingContinuation(
@@ -955,7 +937,7 @@ export class NanobossService {
         }
         persistedTopLevelRun = result.run;
       } catch (error) {
-        if (error instanceof TopLevelProcedureExecutionError) {
+        if (error instanceof ProcedureExecutionError) {
           this.publishRunFailed({
             session,
             sessionId,
@@ -965,7 +947,7 @@ export class NanobossService {
             run: error.run,
             markRunActivity,
           });
-        } else if (error instanceof TopLevelProcedureCancelledError) {
+        } else if (error instanceof ProcedureCancelledError) {
           this.publishRunCancelled({
             session,
             sessionId,
@@ -995,7 +977,7 @@ export class NanobossService {
         });
       }
 
-      if (cancelled && !(error instanceof TopLevelProcedureCancelledError)) {
+      if (cancelled && !(error instanceof ProcedureCancelledError)) {
         this.publishRunCancelled({
           session,
           sessionId,
@@ -1004,7 +986,7 @@ export class NanobossService {
           message,
           markRunActivity,
         });
-      } else if (!cancelled && !(error instanceof TopLevelProcedureExecutionError)) {
+      } else if (!cancelled && !(error instanceof ProcedureExecutionError)) {
         this.publishRunFailed({
           session,
           sessionId,

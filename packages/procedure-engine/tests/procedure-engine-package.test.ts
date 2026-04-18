@@ -5,11 +5,10 @@ import { join } from "node:path";
 
 import { createRef, type DownstreamAgentConfig, type RunRecord, type RunRef } from "@nanoboss/contracts";
 import {
+  executeProcedure,
   findRecoveredProcedureDispatchRun,
   procedureDispatchResultFromRecoveredRun,
-  resumeProcedure,
-  runProcedure,
-  TopLevelProcedureCancelledError,
+  ProcedureCancelledError,
   waitForRecoveredProcedureDispatchRun,
 } from "@nanoboss/procedure-engine";
 import type {
@@ -103,7 +102,7 @@ function createStore(name: string): SessionStore {
 }
 
 function createFakeStore(): {
-  store: Parameters<typeof runProcedure>[0]["store"];
+  store: Parameters<typeof executeProcedure>[0]["store"];
   getRun(run: RunRef): RunRecord;
 } {
   type RunDraft = {
@@ -219,7 +218,7 @@ function createFakeStore(): {
   };
 
   return {
-    store: store as unknown as Parameters<typeof runProcedure>[0]["store"],
+    store: store as unknown as Parameters<typeof executeProcedure>[0]["store"],
     getRun: (run) => store.getRun(run),
   };
 }
@@ -237,7 +236,7 @@ function buildRunParams(
   registry: ProcedureRegistryLike,
   procedure: Procedure,
   prompt: string,
-): Parameters<typeof runProcedure>[0] {
+): Parameters<typeof executeProcedure>[0] {
   return {
     cwd: store.cwd,
     sessionId: store.sessionId,
@@ -246,8 +245,10 @@ function buildRunParams(
     procedure,
     prompt,
     emitter: createEmitter(),
-    getDefaultAgentConfig: () => DEFAULT_AGENT_CONFIG,
-    setDefaultAgentSelection: () => DEFAULT_AGENT_CONFIG,
+    bindings: {
+      getDefaultAgentConfig: () => DEFAULT_AGENT_CONFIG,
+      setDefaultAgentSelection: () => DEFAULT_AGENT_CONFIG,
+    },
   };
 }
 
@@ -280,7 +281,7 @@ describe("procedure-engine runtime with procedure-sdk procedures", () => {
     };
     const registry = createRegistry([parent, child]);
 
-    const result = await runProcedure(buildRunParams(store, registry, parent, "run parent"));
+    const result = await executeProcedure(buildRunParams(store, registry, parent, "run parent"));
 
     expect(result.summary).toBe(`parent in ${store.sessionId}`);
     const descendants = store.getRunDescendants(result.run, { maxDepth: 1 });
@@ -333,7 +334,7 @@ describe("procedure-engine runtime with procedure-sdk procedures", () => {
     };
     const registry = createRegistry([parent, child]);
 
-    const result = await runProcedure(buildRunParams(store, registry, parent, "run parent"));
+    const result = await executeProcedure(buildRunParams(store, registry, parent, "run parent"));
 
     const parentRun = store.getRun(result.run);
     expect(parentRun.output.data).toEqual({
@@ -368,15 +369,18 @@ describe("procedure-engine runtime with procedure-sdk procedures", () => {
     };
     const registry = createRegistry([pauseable]);
 
-    const paused = await runProcedure(buildRunParams(store, registry, pauseable, "start"));
+    const paused = await executeProcedure(buildRunParams(store, registry, pauseable, "start"));
     expect(paused.pause?.question).toBe("Continue?");
     if (!paused.pause) {
       throw new Error("expected paused procedure state");
     }
 
-    const resumed = await resumeProcedure({
+    const resumed = await executeProcedure({
       ...buildRunParams(store, registry, pauseable, "ship it"),
-      state: paused.pause.state,
+      resume: {
+        prompt: "ship it",
+        state: paused.pause.state,
+      },
     });
 
     expect(resumed.pause).toBeUndefined();
@@ -397,7 +401,7 @@ describe("procedure-engine runtime with procedure-sdk procedures", () => {
       },
     };
     const registry = createRegistry([recoverable]);
-    const result = await runProcedure({
+    const result = await executeProcedure({
       ...buildRunParams(store, registry, recoverable, "recover me"),
       dispatchCorrelationId: "corr-recovery",
     });
@@ -435,10 +439,10 @@ describe("procedure-engine runtime with procedure-sdk procedures", () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(runProcedure({
+    await expect(executeProcedure({
       ...buildRunParams(store, registry, cancellable, "stop"),
       softStopSignal: controller.signal,
-    })).rejects.toBeInstanceOf(TopLevelProcedureCancelledError);
+    })).rejects.toBeInstanceOf(ProcedureCancelledError);
   });
 
   test("shapes typed callAgent child results for procedure-sdk consumers", async () => {
@@ -479,10 +483,14 @@ describe("procedure-engine runtime with procedure-sdk procedures", () => {
     };
     const registry = createRegistry([usesTypedAgent]);
 
-    const result = await runProcedure({
-      ...buildRunParams(store, registry, usesTypedAgent, "go"),
-      agentSession: fakeAgentSession,
-      prepareDefaultPrompt: (promptInput) => ({ promptInput }),
+    const typedAgentParams = buildRunParams(store, registry, usesTypedAgent, "go");
+    const result = await executeProcedure({
+      ...typedAgentParams,
+      bindings: {
+        ...typedAgentParams.bindings,
+        agentSession: fakeAgentSession,
+        prepareDefaultPrompt: (promptInput) => ({ promptInput }),
+      },
     });
 
     expect(store.getRun(result.run).output.data).toEqual({
@@ -543,10 +551,14 @@ describe("procedure-engine runtime with procedure-sdk procedures", () => {
     };
     const registry = createRegistry([usesDefaultSession]);
 
-    const result = await runProcedure({
-      ...buildRunParams(store, registry, usesDefaultSession, "go"),
-      agentSession: fakeAgentSession,
-      prepareDefaultPrompt: (promptInput) => ({ promptInput }),
+    const defaultSessionParams = buildRunParams(store, registry, usesDefaultSession, "go");
+    const result = await executeProcedure({
+      ...defaultSessionParams,
+      bindings: {
+        ...defaultSessionParams.bindings,
+        agentSession: fakeAgentSession,
+        prepareDefaultPrompt: (promptInput) => ({ promptInput }),
+      },
     });
 
     expect(prompts).toEqual(["reuse the default session"]);

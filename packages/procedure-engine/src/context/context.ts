@@ -1,14 +1,12 @@
 import type { SessionStore } from "@nanoboss/store";
-import type { AgentSession, CreateAgentSession } from "@nanoboss/agent-acp";
+import type { CreateAgentSession } from "@nanoboss/agent-acp";
 import { AgentInvocationApiImpl, AgentRunRecorder } from "./agent-api.ts";
-import { type PreparedDefaultPrompt, type SessionUpdateEmitter } from "./shared.ts";
+import { type RuntimeBindings, type SessionUpdateEmitter } from "./shared.ts";
 import { ProcedureInvocationApiImpl, type ChildContextBindingParams } from "./procedure-api.ts";
 import { ContextSessionApiImpl } from "./session-api.ts";
 import { CommandState } from "./state-api.ts";
 import type {
   AgentInvocationApi,
-  DownstreamAgentConfig,
-  DownstreamAgentSelection,
   PromptInput,
   ProcedureApi,
   ProcedurePromptInput,
@@ -20,7 +18,6 @@ import type {
 } from "@nanoboss/procedure-sdk";
 import { RunCancelledError, defaultCancellationMessage } from "@nanoboss/procedure-sdk";
 
-import { resolveDownstreamAgentConfig } from "../agent-config.ts";
 import type { RunLogger } from "../logger.ts";
 import { normalizeProcedurePromptInput } from "../prompt.ts";
 import type { RunTimingTrace } from "../timing-trace.ts";
@@ -28,7 +25,7 @@ import { UiApiImpl } from "./ui-api.ts";
 
 type ActiveRun = ReturnType<SessionStore["startRun"]>;
 
-export type { PreparedDefaultPrompt, ProcedureUiEvent, SessionUpdateEmitter } from "./shared.ts";
+export type { ProcedureUiEvent, SessionUpdateEmitter } from "./shared.ts";
 
 interface CommandContextParams {
   cwd: string;
@@ -43,14 +40,8 @@ interface CommandContextParams {
   promptInput?: string | PromptInput;
   signal?: AbortSignal;
   softStopSignal?: AbortSignal;
-  agentSession?: AgentSession;
-  getDefaultAgentConfig?: () => DownstreamAgentConfig;
-  setDefaultAgentSelection?: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
-  prepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
-  rootAgentSession?: AgentSession;
-  rootGetDefaultAgentConfig?: () => DownstreamAgentConfig;
-  rootSetDefaultAgentSelection?: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
-  rootPrepareDefaultPrompt?: (promptInput: PromptInput) => PreparedDefaultPrompt;
+  current: RuntimeBindings;
+  root: RuntimeBindings;
   isAutoApproveEnabled?: () => boolean;
   createAgentSession?: CreateAgentSession;
   assertCanStartBoundary?: () => void;
@@ -74,10 +65,7 @@ export class CommandContextImpl implements ProcedureApi {
   private readonly softStopSignal?: AbortSignal;
   private readonly store: SessionStore;
   private readonly run: ActiveRun;
-  private readonly rootAgentSession?: AgentSession;
-  private readonly rootGetDefaultAgentConfigValue: () => DownstreamAgentConfig;
-  private readonly rootSetDefaultAgentSelectionValue: (selection: DownstreamAgentSelection) => DownstreamAgentConfig;
-  private readonly rootPrepareDefaultPromptValue?: (promptInput: PromptInput) => PreparedDefaultPrompt;
+  private readonly rootBindings: RuntimeBindings;
   private readonly createAgentSessionValue?: CreateAgentSession;
   private readonly assertCanStartBoundaryValue?: () => void;
   private readonly timingTrace?: RunTimingTrace;
@@ -95,16 +83,7 @@ export class CommandContextImpl implements ProcedureApi {
     this.promptInput = normalizeProcedurePromptInput(
       params.promptInput ?? params.run.input,
     );
-    const getDefaultAgentConfig = params.getDefaultAgentConfig
-      ?? (() => resolveDownstreamAgentConfig(this.cwd));
-    const setDefaultAgentSelection = params.setDefaultAgentSelection
-      ?? ((selection) => resolveDownstreamAgentConfig(this.cwd, selection));
-    const prepareDefaultPrompt = params.prepareDefaultPrompt;
-    const agentSession = params.agentSession;
-    this.rootAgentSession = params.rootAgentSession ?? agentSession;
-    this.rootGetDefaultAgentConfigValue = params.rootGetDefaultAgentConfig ?? getDefaultAgentConfig;
-    this.rootSetDefaultAgentSelectionValue = params.rootSetDefaultAgentSelection ?? setDefaultAgentSelection;
-    this.rootPrepareDefaultPromptValue = params.rootPrepareDefaultPrompt ?? prepareDefaultPrompt;
+    this.rootBindings = params.root;
     this.createAgentSessionValue = params.createAgentSession;
     this.assertCanStartBoundaryValue = params.assertCanStartBoundary;
     this.timingTrace = params.timingTrace;
@@ -112,18 +91,8 @@ export class CommandContextImpl implements ProcedureApi {
 
     const contextSessionApi = new ContextSessionApiImpl({
       cwd: this.cwd,
-      current: {
-        agentSession,
-        getDefaultAgentConfig,
-        setDefaultAgentSelection,
-        prepareDefaultPrompt,
-      },
-      root: {
-        agentSession: this.rootAgentSession,
-        getDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
-        setDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
-        prepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
-      },
+      current: params.current,
+      root: this.rootBindings,
       createAgentSession: this.createAgentSessionValue,
       isAutoApproveEnabled: params.isAutoApproveEnabled,
     });
@@ -189,14 +158,8 @@ export class CommandContextImpl implements ProcedureApi {
       promptInput: binding.promptInput,
       signal: this.signal,
       softStopSignal: this.softStopSignal,
-      agentSession: binding.agentSession,
-      getDefaultAgentConfig: binding.getDefaultAgentConfig,
-      setDefaultAgentSelection: binding.setDefaultAgentSelection,
-      prepareDefaultPrompt: binding.prepareDefaultPrompt,
-      rootAgentSession: this.rootAgentSession,
-      rootGetDefaultAgentConfig: this.rootGetDefaultAgentConfigValue,
-      rootSetDefaultAgentSelection: this.rootSetDefaultAgentSelectionValue,
-      rootPrepareDefaultPrompt: this.rootPrepareDefaultPromptValue,
+      current: binding,
+      root: this.rootBindings,
       isAutoApproveEnabled: this.session.isAutoApproveEnabled?.bind(this.session),
       createAgentSession: this.createAgentSessionValue,
       assertCanStartBoundary: this.assertCanStartBoundaryValue,

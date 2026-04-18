@@ -10,8 +10,12 @@ import {
   normalizePromptInput,
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
-import { CommandContextImpl, RunLogger } from "@nanoboss/procedure-engine";
-import { resolveDownstreamAgentConfig } from "@nanoboss/procedure-engine";
+import {
+  CommandContextImpl,
+  RunLogger,
+  resolveDownstreamAgentConfig,
+  type RuntimeBindings,
+} from "@nanoboss/procedure-engine";
 import { jsonType, type DownstreamAgentConfig, type ProcedureApi, type PromptInput } from "@nanoboss/procedure-sdk";
 import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { SessionStore } from "@nanoboss/store";
@@ -556,6 +560,17 @@ function createContext(options: {
   const conversation = createSession({
     config,
   });
+  const bindings = {
+    agentSession: conversation,
+    getDefaultAgentConfig: () => config,
+    setDefaultAgentSelection: (selection) => {
+      const nextConfig = resolveDownstreamAgentConfig(cwd, selection);
+      config = nextConfig;
+      conversation.updateConfig(nextConfig);
+      return nextConfig;
+    },
+    prepareDefaultPrompt: options.prepareDefaultPrompt,
+  } satisfies RuntimeBindings;
 
   const ctx = new CommandContextImpl({
     cwd,
@@ -575,15 +590,8 @@ function createContext(options: {
       input: "test",
       kind: "top_level",
     }),
-    agentSession: conversation,
-    getDefaultAgentConfig: () => config,
-    setDefaultAgentSelection: (selection) => {
-      const nextConfig = resolveDownstreamAgentConfig(cwd, selection);
-      config = nextConfig;
-      conversation.updateConfig(nextConfig);
-      return nextConfig;
-    },
-    prepareDefaultPrompt: options.prepareDefaultPrompt,
+    current: bindings,
+    root: bindings,
     createAgentSession: createSession,
   });
 
