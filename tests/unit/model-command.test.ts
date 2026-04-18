@@ -37,6 +37,51 @@ describe("/model command", () => {
       expect((result as { display: string }).display).not.toContain("gpt-5.4");
     }
   });
+
+  test("lists discovered model options from the refreshed provider catalog", async () => {
+    const procedure = createModelProcedure({
+      discoverAgentCatalog: async () => ({
+        provider: "copilot",
+        label: "Copilot",
+        models: [
+          {
+            id: "gpt-4.1",
+            name: "GPT-4.1",
+            description: "Fast chat model",
+          },
+          {
+            id: "gpt-5.4",
+            name: "GPT-5.4",
+            description: "Primary frontier model",
+            supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+            defaultReasoningEffort: "medium",
+          },
+          {
+            id: "claude-opus-4.7",
+            name: "Claude Opus 4.7",
+            description: "Premium reasoning model",
+            supportedReasoningEfforts: ["low", "medium", "high"],
+            defaultReasoningEffort: "high",
+          },
+        ],
+      }),
+    });
+
+    const result = await procedure.execute("copilot", createMockContext());
+
+    expect(result).toBeDefined();
+    expect(typeof result).toBe("object");
+    expect((result as { display: string }).display).toContain(
+      "- gpt-4.1 — Fast chat model",
+    );
+    expect((result as { display: string }).display).toContain(
+      "- gpt-5.4/xhigh — Primary frontier model. Maximum reasoning depth",
+    );
+    expect((result as { display: string }).display).toContain(
+      "- claude-opus-4.7/high — Premium reasoning model. More thorough reasoning, slower responses",
+    );
+    expect((result as { display: string }).display).not.toContain("goldeneye");
+  });
 });
 
 function createMockContext(): ProcedureApi {

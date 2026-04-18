@@ -420,9 +420,33 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
-  test("inline /model updates local banner state, defaults persistence prompt to no, and forwards the command", async () => {
+  test("inline /model waits for async discovery validation before updating local banner state and forwarding the command", async () => {
     const sendCalls: string[] = [];
     const persisted: DownstreamAgentSelection[] = [];
+    const discoverCalls: Array<{
+      provider: string;
+      cwd: string | undefined;
+    }> = [];
+    let resolveCatalog: ((catalog: {
+      provider: "copilot";
+      label: "Copilot";
+      models: Array<{
+        id: string;
+        supportedReasoningEfforts?: Array<"low" | "medium" | "high" | "xhigh">;
+        defaultReasoningEffort?: "low" | "medium" | "high" | "xhigh";
+      }>;
+    }) => void) | undefined;
+    const catalogPromise = new Promise<{
+      provider: "copilot";
+      label: "Copilot";
+      models: Array<{
+        id: string;
+        supportedReasoningEfforts?: Array<"low" | "medium" | "high" | "xhigh">;
+        defaultReasoningEffort?: "low" | "medium" | "high" | "xhigh";
+      }>;
+    }>((resolve) => {
+      resolveCatalog = resolve;
+    });
     const controller = new NanobossTuiController(
       {
         serverUrl: "http://localhost:3000",
@@ -435,17 +459,13 @@ describe("NanobossTuiController", () => {
           sendCalls.push(toPromptText(prompt));
         },
         startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
-        discoverAgentCatalog: async () => ({
-          provider: "copilot",
-          label: "Copilot",
-          models: [
-            {
-              id: "gpt-5.4",
-              supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
-              defaultReasoningEffort: "medium",
-            },
-          ],
-        }),
+        discoverAgentCatalog: async (provider, options) => {
+          discoverCalls.push({
+            provider,
+            cwd: options?.config?.cwd,
+          });
+          return await catalogPromise;
+        },
         confirmPersistDefaultAgentSelection: async () => false,
         persistDefaultAgentSelection: async (selection) => {
           persisted.push(selection);
@@ -456,7 +476,25 @@ describe("NanobossTuiController", () => {
     const runPromise = controller.run();
     await waitFor(() => controller.getState().sessionId === "session-1");
 
-    await controller.handleSubmit("/model copilot gpt-5.4/xhigh");
+    const submitPromise = controller.handleSubmit("/model copilot gpt-5.4/xhigh");
+    await Bun.sleep(20);
+
+    expect(discoverCalls).toEqual([{ provider: "copilot", cwd: process.cwd() }]);
+    expect(controller.getState().defaultAgentSelection).toBeUndefined();
+    expect(sendCalls).toEqual([]);
+
+    resolveCatalog?.({
+      provider: "copilot",
+      label: "Copilot",
+      models: [
+        {
+          id: "gpt-5.4",
+          supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+          defaultReasoningEffort: "medium",
+        },
+      ],
+    });
+    await submitPromise;
 
     expect(controller.getState().agentLabel).toBe("copilot/gpt-5.4/x-high");
     expect(controller.getState().defaultAgentSelection).toEqual({

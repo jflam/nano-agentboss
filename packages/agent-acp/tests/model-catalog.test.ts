@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 import {
   buildReasoningModelSelection,
   discoverAgentCatalog,
-  findSelectableModelOption,
+  findSelectableModelOptionInCatalog,
   isKnownAgentProvider,
-  isKnownModelSelection,
+  isKnownModelSelectionInCatalog,
   listKnownProviders,
-  listSelectableModelOptions,
+  listSelectableModelOptionsFromCatalog,
   parseReasoningModelSelection,
 } from "@nanoboss/agent-acp";
 
@@ -119,46 +119,6 @@ test("lists the known downstream agents", () => {
   expect(isKnownAgentProvider("not-real")).toBe(false);
 });
 
-test("expands copilot reasoning variants into selectable options", () => {
-  const options = listSelectableModelOptions("copilot");
-
-  expect(options.some((option) => option.value === "gpt-5.4/low")).toBe(true);
-  expect(options.some((option) => option.value === "gpt-5.4/medium")).toBe(true);
-  expect(options.some((option) => option.value === "gpt-5.4/high")).toBe(true);
-  expect(options.some((option) => option.value === "gpt-5.4/xhigh")).toBe(true);
-  expect(options.find((option) => option.value === "gpt-5.4/medium")?.label).toContain("default");
-});
-
-test("accepts both explicit and implicit copilot reasoning selections", () => {
-  expect(isKnownModelSelection("copilot", "gpt-5.4")).toBe(true);
-  expect(isKnownModelSelection("copilot", "gpt-5.4/xhigh")).toBe(true);
-  expect(isKnownModelSelection("copilot", "gpt-5.4-mini/xhigh")).toBe(true);
-  expect(isKnownModelSelection("copilot", "claude-opus-4.6-1m/high")).toBe(true);
-  expect(isKnownModelSelection("copilot", "gpt-5.4/not-real")).toBe(false);
-  expect(isKnownModelSelection("copilot", "claude-opus-4.6-fast")).toBe(false);
-});
-
-test("matches the current Copilot ACP model ids", () => {
-  const options = listSelectableModelOptions("copilot");
-
-  expect(options.some((option) => option.value === "gpt-5.4-mini/xhigh")).toBe(true);
-  expect(options.some((option) => option.value === "claude-opus-4.6-1m/medium")).toBe(true);
-  expect(options.some((option) => option.value === "goldeneye/medium")).toBe(true);
-  expect(options.some((option) => option.value === "claude-opus-4.6-fast")).toBe(false);
-  expect(options.some((option) => option.value === "gpt-5.1-codex-max")).toBe(false);
-});
-
-test("keeps codex slash model ids intact", () => {
-  const options = listSelectableModelOptions("codex");
-
-  expect(options.some((option) => option.value === "gpt-5.4/high")).toBe(true);
-  expect(options.some((option) => option.value === "gpt-5.4/xhigh")).toBe(true);
-  expect(isKnownModelSelection("codex", "gpt-5.2-codex/xhigh")).toBe(true);
-  expect(isKnownModelSelection("codex", "gpt-5.4/high")).toBe(true);
-  expect(findSelectableModelOption("codex", "gpt-5.4/high")?.label).toContain("gpt-5.4");
-  expect(findSelectableModelOption("codex", "gpt-5.2-codex/xhigh")?.label).toContain("Extra High");
-});
-
 test("shared reasoning helpers parse and rebuild known effort suffixes", () => {
   expect(parseReasoningModelSelection("gpt-5.4/xhigh")).toEqual({
     baseModel: "gpt-5.4",
@@ -174,14 +134,9 @@ test("shared reasoning helpers parse and rebuild known effort suffixes", () => {
   });
 });
 
-test("requires canonical gemini model ids", () => {
-  expect(isKnownModelSelection("gemini", "gemini-2.5-pro")).toBe(true);
-  expect(isKnownModelSelection("gemini", "pro")).toBe(false);
-  expect(findSelectableModelOption("gemini", "flash")).toBeUndefined();
-});
-
 test("discovers and normalizes Copilot model-specific reasoning metadata", async () => {
   const { catalog, events } = await discoverMockCatalog("copilot");
+  const options = listSelectableModelOptionsFromCatalog(catalog);
 
   expect(catalog).toEqual({
     provider: "copilot",
@@ -208,6 +163,23 @@ test("discovers and normalizes Copilot model-specific reasoning metadata", async
       },
     ],
   });
+  expect(options.map((option) => option.value)).toEqual([
+    "gpt-4.1",
+    "gpt-5.4/low",
+    "gpt-5.4/medium",
+    "gpt-5.4/high",
+    "gpt-5.4/xhigh",
+    "claude-opus-4.7/low",
+    "claude-opus-4.7/medium",
+    "claude-opus-4.7/high",
+  ]);
+  expect(findSelectableModelOptionInCatalog(catalog, "gpt-5.4/medium")?.label).toContain("default");
+  expect(isKnownModelSelectionInCatalog(catalog, "gpt-5.4")).toBe(true);
+  expect(isKnownModelSelectionInCatalog(catalog, "gpt-5.4/xhigh")).toBe(true);
+  expect(isKnownModelSelectionInCatalog(catalog, "gpt-4.1")).toBe(true);
+  expect(isKnownModelSelectionInCatalog(catalog, "gpt-4.1/xhigh")).toBe(false);
+  expect(isKnownModelSelectionInCatalog(catalog, "claude-opus-4.7/high")).toBe(true);
+  expect(isKnownModelSelectionInCatalog(catalog, "goldeneye/medium")).toBe(false);
   expect(events.map((event) => event.kind)).toEqual([
     "new_session",
     "set_config",
@@ -225,6 +197,7 @@ test("discovers and normalizes Copilot model-specific reasoning metadata", async
 
 test("collapses Codex slash-form model selectors into base catalog entries", async () => {
   const { catalog } = await discoverMockCatalog("codex");
+  const options = listSelectableModelOptionsFromCatalog(catalog);
 
   expect(catalog).toEqual({
     provider: "codex",
@@ -247,6 +220,17 @@ test("collapses Codex slash-form model selectors into base catalog entries", asy
     ],
   });
   expect(catalog.models.some((model) => model.id.includes("/"))).toBe(false);
+  expect(options.map((option) => option.value)).toEqual([
+    "gpt-5.4/medium",
+    "gpt-5.4/high",
+    "gpt-5.4/xhigh",
+    "gpt-5.2-codex/low",
+    "gpt-5.2-codex/medium",
+    "gpt-5.2-codex/high",
+  ]);
+  expect(isKnownModelSelectionInCatalog(catalog, "gpt-5.4/high")).toBe(true);
+  expect(isKnownModelSelectionInCatalog(catalog, "gpt-5.2-codex/xhigh")).toBe(false);
+  expect(findSelectableModelOptionInCatalog(catalog, "gpt-5.2-codex/high")?.label).toContain("High");
 });
 
 test("passes Claude catalog models through without synthesizing hidden entries", async () => {
@@ -274,6 +258,8 @@ test("passes Claude catalog models through without synthesizing hidden entries",
     ],
   });
   expect(catalog.models.some((model) => model.id === "opusplan")).toBe(false);
+  expect(isKnownModelSelectionInCatalog(catalog, "sonnet")).toBe(true);
+  expect(isKnownModelSelectionInCatalog(catalog, "opusplan")).toBe(false);
 });
 
 test("passes Gemini catalog models through and preserves advertised auto selectors", async () => {
@@ -293,6 +279,9 @@ test("passes Gemini catalog models through and preserves advertised auto selecto
     ],
   });
   expect(catalog.models.some((model) => model.id === "gemini-3-pro-preview")).toBe(false);
+  expect(isKnownModelSelectionInCatalog(catalog, "gemini-2.5-pro")).toBe(true);
+  expect(isKnownModelSelectionInCatalog(catalog, "pro")).toBe(false);
+  expect(findSelectableModelOptionInCatalog(catalog, "flash")).toBeUndefined();
 });
 
 test("reuses cached discovery results for the same effective harness config", async () => {
@@ -328,6 +317,25 @@ test("force refresh bypasses the cached discovery entry", async () => {
 
     await discoverMockCatalog("copilot", { extraArgs, forceRefresh: true, logPath });
     expect(readEvents().length).toBeGreaterThan(eventCountAfterFirstDiscovery);
+  });
+});
+
+test("failed force refresh restores the prior cached catalog for the same provider key", async () => {
+  await withDiscoveryLog("force-refresh-failure", async (logPath, readEvents) => {
+    const extraArgs = ["--scope", randomUUID()];
+    const cached = await discoverMockCatalog("copilot", { extraArgs, forceRefresh: true, logPath });
+
+    await expect(discoverMockCatalog("copilot", {
+      extraArgs,
+      forceRefresh: true,
+      env: { DISCOVERY_AGENT_FAIL: "new-session" },
+      logPath,
+    })).rejects.toThrow();
+    const eventCountAfterFailure = readEvents().length;
+
+    const cachedAgain = await discoverMockCatalog("copilot", { extraArgs, logPath });
+    expect(cachedAgain.catalog).toEqual(cached.catalog);
+    expect(readEvents()).toHaveLength(eventCountAfterFailure);
   });
 });
 
