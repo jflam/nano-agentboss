@@ -1,4 +1,10 @@
-export { getAgentTranscriptDir, getNanobossHome, resolveDefaultDownstreamAgentConfig } from "./config.ts";
+export {
+  getAgentTranscriptDir,
+  getNanobossHome,
+  resolveDefaultDownstreamAgentConfig,
+  resolveSelectedDownstreamAgentConfig,
+  toDownstreamAgentSelection,
+} from "./config.ts";
 export { createAgentSession } from "./session.ts";
 export {
   promptInputFromAcpBlocks,
@@ -37,6 +43,7 @@ export {
 } from "./token-usage.ts";
 export {
   buildReasoningModelSelection,
+  buildAgentModelSelection,
   findSelectableModelOption,
   getAgentCatalog,
   getProviderLabel,
@@ -45,6 +52,7 @@ export {
   isReasoningEffort,
   listKnownProviders,
   listSelectableModelOptions,
+  parseAgentModelSelection,
   parseReasoningModelSelection,
   REASONING_EFFORT_DESCRIPTIONS,
   REASONING_EFFORT_LABELS,
@@ -73,6 +81,7 @@ export type {
 export type {
   AgentCatalogEntry,
   CatalogModelEntry,
+  ParsedModelSelection,
   ReasoningEffort,
   SelectableModelOption,
 } from "./model-catalog.ts";

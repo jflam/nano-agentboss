@@ -1,6 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import {
   normalizeAgentTokenUsage,
+  toDownstreamAgentSelection,
 } from "@nanoboss/agent-acp";
 import {
   createTextPromptInput,
@@ -14,7 +15,7 @@ import {
   promptInputAttachmentSummaries,
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
-import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "@nanoboss/procedure-engine";
+import { resolveDownstreamAgentConfig } from "@nanoboss/procedure-engine";
 
 import { buildMcpProcedureDispatchPrompt } from "./agent-runtime-instructions.ts";
 import { materializeProcedureMemoryCard } from "./memory-cards.ts";

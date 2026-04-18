@@ -16,6 +16,9 @@ import type {
   RunResult,
 } from "@nanoboss/procedure-sdk";
 import {
+  toDownstreamAgentSelection,
+} from "@nanoboss/agent-acp";
+import {
   RunCancelledError,
   formatErrorMessage,
   promptInputDisplayText,
@@ -24,8 +27,6 @@ import {
   toCancelledError,
   type RunCancellationReason,
 } from "@nanoboss/procedure-sdk";
-
-import { toDownstreamAgentSelection } from "./agent-config.ts";
 import type { RuntimeBindings, SessionUpdateEmitter } from "./context/shared.ts";
 import { RunLogger } from "./logger.ts";
 import { runResultFromRunRecord } from "./run-result.ts";

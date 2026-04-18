@@ -24,6 +24,11 @@ export interface SelectableModelOption {
   description?: string;
 }
 
+export interface ParsedModelSelection {
+  modelId: string;
+  reasoningEffort?: ReasoningEffort;
+}
+
 export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
   low: "Low",
   medium: "Medium",
@@ -316,6 +321,16 @@ export function buildReasoningModelSelection(
   return reasoningEffort ? `${modelId}/${reasoningEffort}` : modelId;
 }
 
+export function buildAgentModelSelection(
+  provider: DownstreamAgentProvider,
+  modelId: string,
+  reasoningEffort?: string,
+): string {
+  return provider === "copilot" && reasoningEffort && isReasoningEffort(reasoningEffort)
+    ? buildReasoningModelSelection(modelId, reasoningEffort)
+    : modelId;
+}
+
 export function parseReasoningModelSelection(selection: string | null | undefined): {
   baseModel: string | null;
   reasoningEffort?: ReasoningEffort;
@@ -342,6 +357,26 @@ export function parseReasoningModelSelection(selection: string | null | undefine
 
 export function isReasoningEffort(value: string): value is ReasoningEffort {
   return REASONING_EFFORTS.includes(value as ReasoningEffort);
+}
+
+export function parseAgentModelSelection(
+  provider: DownstreamAgentProvider,
+  selector: string,
+): ParsedModelSelection {
+  const raw = selector.trim();
+  if (!raw) {
+    return { modelId: raw };
+  }
+
+  if (provider !== "copilot") {
+    return { modelId: raw };
+  }
+
+  const { baseModel, reasoningEffort } = parseReasoningModelSelection(raw);
+  return {
+    modelId: baseModel ?? raw,
+    reasoningEffort,
+  };
 }
 
 function formatBaseModelLabel(model: CatalogModelEntry): string {

@@ -1,16 +1,18 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { DownstreamAgentConfig, DownstreamAgentProvider } from "@nanoboss/procedure-sdk";
-import { parseReasoningModelSelection, type ReasoningEffort } from "./model-catalog.ts";
+import type {
+  DownstreamAgentConfig,
+  DownstreamAgentProvider,
+  DownstreamAgentSelection,
+} from "@nanoboss/procedure-sdk";
+import {
+  buildAgentModelSelection,
+  parseAgentModelSelection,
+} from "./model-catalog.ts";
 
 const DEFAULT_AGENT_COMMAND = "copilot";
 const DEFAULT_AGENT_ARGS = ["--acp", "--allow-all-tools"];
-
-interface ParsedModelSelection {
-  modelId: string;
-  reasoningEffort?: ReasoningEffort;
-}
 
 export function getNanobossHome(): string {
   return join(process.env.HOME?.trim() || homedir(), ".nanoboss");
@@ -22,8 +24,9 @@ export function getAgentTranscriptDir(): string {
 
 export function resolveDefaultDownstreamAgentConfig(cwd = process.cwd()): DownstreamAgentConfig {
   const command = process.env.NANOBOSS_AGENT_CMD?.trim() || DEFAULT_AGENT_COMMAND;
-  const args = parseArgs(process.env.NANOBOSS_AGENT_ARGS) ?? DEFAULT_AGENT_ARGS;
   const provider = inferProviderFromCommand(command);
+  const baseConfig = provider ? baseAgentConfig(provider) : undefined;
+  const args = parseArgs(process.env.NANOBOSS_AGENT_ARGS) ?? baseConfig?.args ?? DEFAULT_AGENT_ARGS;
   const parsedModel = provider && process.env.NANOBOSS_AGENT_MODEL?.trim()
     ? parseAgentModelSelection(provider, process.env.NANOBOSS_AGENT_MODEL)
     : undefined;
@@ -33,29 +36,76 @@ export function resolveDefaultDownstreamAgentConfig(cwd = process.cwd()): Downst
     command,
     args,
     cwd,
+    env: baseConfig?.env,
     model: parsedModel?.modelId,
     reasoningEffort: parsedModel?.reasoningEffort,
   };
 }
 
-function parseAgentModelSelection(
-  provider: DownstreamAgentProvider,
-  selector: string,
-): ParsedModelSelection {
-  const raw = selector.trim();
-  if (!raw) {
-    return { modelId: raw };
-  }
+export function resolveSelectedDownstreamAgentConfig(
+  selection: DownstreamAgentSelection,
+  cwd = process.cwd(),
+): DownstreamAgentConfig {
+  const parsedModel = selection.model
+    ? parseAgentModelSelection(selection.provider, selection.model)
+    : undefined;
 
-  if (provider !== "copilot") {
-    return { modelId: raw };
-  }
-
-  const { baseModel, reasoningEffort } = parseReasoningModelSelection(raw);
   return {
-    modelId: baseModel ?? raw,
-    reasoningEffort,
+    ...baseAgentConfig(selection.provider),
+    cwd,
+    model: parsedModel?.modelId || undefined,
+    reasoningEffort: parsedModel?.reasoningEffort,
   };
+}
+
+export function toDownstreamAgentSelection(
+  config: DownstreamAgentConfig,
+): DownstreamAgentSelection | undefined {
+  if (!config.provider) {
+    return undefined;
+  }
+
+  const model = config.model
+    ? buildAgentModelSelection(config.provider, config.model, config.reasoningEffort)
+    : undefined;
+
+  return {
+    provider: config.provider,
+    model,
+  };
+}
+
+function baseAgentConfig(provider: DownstreamAgentProvider): DownstreamAgentConfig {
+  switch (provider) {
+    case "claude":
+      return {
+        provider,
+        command: "claude-code-acp",
+        args: [],
+        env: {
+          ANTHROPIC_API_KEY: "",
+          CLAUDE_API_KEY: "",
+        },
+      };
+    case "gemini":
+      return {
+        provider,
+        command: "gemini",
+        args: ["--acp"],
+      };
+    case "codex":
+      return {
+        provider,
+        command: "codex-acp",
+        args: [],
+      };
+    case "copilot":
+      return {
+        provider,
+        command: "copilot",
+        args: ["--acp", "--allow-all-tools"],
+      };
+  }
 }
 
 function inferProviderFromCommand(command: string): DownstreamAgentProvider | undefined {
@@ -72,6 +122,7 @@ function inferProviderFromCommand(command: string): DownstreamAgentProvider | un
       return undefined;
   }
 }
+
 function parseArgs(value: string | undefined): string[] | undefined {
   if (!value?.trim()) {
     return undefined;

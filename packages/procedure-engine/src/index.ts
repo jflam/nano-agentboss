@@ -72,10 +72,7 @@ export type {
 };
 
 export { UiApiImpl } from "./context/ui-api.ts";
-export {
-  resolveDownstreamAgentConfig,
-  toDownstreamAgentSelection,
-} from "./agent-config.ts";
+export { resolveDownstreamAgentConfig } from "./agent-config.ts";
 export {
   appendTimingTraceEvent,
   createRunTimingTrace,

@@ -5,6 +5,7 @@ import {
   invokeAgent,
   normalizeAgentTokenUsage,
   summarizeAgentOutput,
+  toDownstreamAgentSelection,
   type CallAgentTransport,
 } from "@nanoboss/agent-acp";
 import { publicKernelValueFromStored, type SessionStore } from "@nanoboss/store";
@@ -29,7 +30,7 @@ import {
   toCancelledError,
 } from "@nanoboss/procedure-sdk";
 
-import { resolveDownstreamAgentConfig, toDownstreamAgentSelection } from "../agent-config.ts";
+import { resolveDownstreamAgentConfig } from "../agent-config.ts";
 import type { RunLogger } from "../logger.ts";
 import { toPublicRunResult } from "../run-result.ts";
 import { appendTimingTraceEvent, type RunTimingTrace } from "../timing-trace.ts";
