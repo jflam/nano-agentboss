@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+
+import { getNanobossHome } from "./nanoboss-home.ts";
+import { resolveLocalNanobossRoot, uniquePaths } from "./path-utils.ts";
 
 export function detectRepoRoot(cwd: string): string | undefined {
   try {
@@ -30,7 +31,7 @@ export function resolveWorkspaceProcedureRoots(
   profileProcedureRoot = resolveProfileProcedureRoot(),
 ): string[] {
   return uniquePaths([
-    resolveLocalProcedureRoot(cwd),
+    resolveLocalNanobossRoot(cwd, "procedures"),
     profileProcedureRoot,
   ]);
 }
@@ -40,22 +41,4 @@ export function resolvePersistProcedureRoot(
   profileProcedureRoot = resolveProfileProcedureRoot(),
 ): string {
   return resolve(resolveRepoProcedureRoot(cwd) ?? profileProcedureRoot);
-}
-
-function resolveLocalProcedureRoot(cwd: string): string {
-  const resolvedCwd = resolve(cwd);
-  const cwdProcedureRoot = join(resolvedCwd, ".nanoboss", "procedures");
-  if (existsSync(cwdProcedureRoot)) {
-    return cwdProcedureRoot;
-  }
-
-  return join(detectRepoRoot(resolvedCwd) ?? resolvedCwd, ".nanoboss", "procedures");
-}
-
-function getNanobossHome(): string {
-  return join(process.env.HOME?.trim() || homedir(), ".nanoboss");
-}
-
-function uniquePaths(paths: string[]): string[] {
-  return [...new Set(paths.map((path) => resolve(path)))];
 }

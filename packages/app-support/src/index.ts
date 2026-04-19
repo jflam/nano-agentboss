@@ -19,6 +19,11 @@ export {
   resolveWorkspaceProcedureRoots,
 } from "./procedure-paths.ts";
 export {
+  resolveProfileExtensionRoot,
+  resolveRepoExtensionRoot,
+  resolveWorkspaceExtensionRoots,
+} from "./extension-paths.ts";
+export {
   computeRepoFingerprint,
   type RepoFingerprintOptions,
   type RepoFingerprintResult,
