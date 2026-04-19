@@ -19,6 +19,7 @@ import {
   type FrontendEventEnvelope,
   type ReplayableFrontendEvent,
 } from "@nanoboss/adapters-http";
+import type { JsonValue } from "@nanoboss/contracts";
 import { SessionStore } from "@nanoboss/store";
 
 interface InternalSessionState {
@@ -236,13 +237,16 @@ function createPausedSimplify2LikeProcedure(): Procedure {
           state: {
             step: 1,
           },
-          ui: {
-            kind: "simplify2_checkpoint",
-            title: "Simplify2 checkpoint",
-            actions: [
-              { id: "approve", label: "Continue", reply: "approve it" },
-              { id: "other", label: "Something Else" },
-            ],
+          form: {
+            formId: "nb/simplify2-checkpoint@1",
+            payload: {
+              kind: "simplify2_checkpoint",
+              title: "Simplify2 checkpoint",
+              actions: [
+                { id: "approve", label: "Continue", reply: "approve it" },
+                { id: "other", label: "Something Else" },
+              ],
+            } as unknown as JsonValue,
           },
         },
       };
@@ -1363,13 +1367,16 @@ describe("NanobossService", () => {
       throw new Error("Expected run_paused event");
     }
 
-    expect(paused.data.ui).toEqual({
-      kind: "simplify2_checkpoint",
-      title: "Simplify2 checkpoint",
-      actions: [
-        { id: "approve", label: "Continue", reply: "approve it" },
-        { id: "other", label: "Something Else" },
-      ],
+    expect(paused.data.form).toEqual({
+      formId: "nb/simplify2-checkpoint@1",
+      payload: {
+        kind: "simplify2_checkpoint",
+        title: "Simplify2 checkpoint",
+        actions: [
+          { id: "approve", label: "Continue", reply: "approve it" },
+          { id: "other", label: "Something Else" },
+        ],
+      },
     });
   });
 

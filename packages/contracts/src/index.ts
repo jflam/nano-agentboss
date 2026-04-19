@@ -69,44 +69,6 @@ export interface PromptImageSummary {
   attachmentPath?: string;
 }
 
-export interface Simplify2CheckpointContinuationUiAction {
-  id: "approve" | "stop" | "focus_tests" | "other";
-  label: string;
-  reply?: string;
-  description?: string;
-}
-
-export interface Simplify2CheckpointContinuationUi {
-  kind: "simplify2_checkpoint";
-  title: string;
-  actions: Simplify2CheckpointContinuationUiAction[];
-}
-
-export interface Simplify2FocusPickerContinuationUiEntry {
-  id: string;
-  title: string;
-  subtitle?: string;
-  status: "active" | "paused" | "finished" | "archived";
-  updatedAt: string;
-  lastSummary?: string;
-}
-
-export interface Simplify2FocusPickerContinuationUiAction {
-  id: "continue" | "archive" | "new" | "cancel";
-  label: string;
-}
-
-export interface Simplify2FocusPickerContinuationUi {
-  kind: "simplify2_focus_picker";
-  title: string;
-  entries: Simplify2FocusPickerContinuationUiEntry[];
-  actions: Simplify2FocusPickerContinuationUiAction[];
-}
-
-export type ContinuationUi =
-  | Simplify2CheckpointContinuationUi
-  | Simplify2FocusPickerContinuationUi;
-
 export interface ContinuationForm {
   formId: string;
   payload: JsonValue;
@@ -118,17 +80,11 @@ export interface Continuation<TState extends KernelValue = KernelValue> {
   inputHint?: string;
   suggestedReplies?: string[];
   /**
-   * Open form-registry continuation descriptor. Preferred over `ui`.
-   * Resolved by the TUI via the form-renderer registry
+   * Open form-registry continuation descriptor. Resolved by the TUI via
+   * the form-renderer registry
    * (see `packages/adapters-tui/src/core-form-renderers.ts`).
    */
   form?: ContinuationForm;
-  /**
-   * @deprecated Use `form` + the form-renderer registry instead. Retained
-   * for dual-write compatibility with simplify2 while procedures migrate;
-   * will be removed once all callers emit `form`.
-   */
-  ui?: ContinuationUi;
 }
 
 export interface PendingContinuation<TState extends KernelValue = KernelValue> extends Continuation<TState> {

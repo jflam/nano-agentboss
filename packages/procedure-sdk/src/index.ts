@@ -23,7 +23,6 @@ export type {
   AgentTokenUsage,
   Continuation,
   ContinuationForm,
-  ContinuationUi,
   DownstreamAgentConfig,
   DownstreamAgentProvider,
   DownstreamAgentSelection,
@@ -43,11 +42,6 @@ export type {
   RunRecord,
   RunRef,
   RunSummary,
-  Simplify2CheckpointContinuationUi,
-  Simplify2CheckpointContinuationUiAction,
-  Simplify2FocusPickerContinuationUi,
-  Simplify2FocusPickerContinuationUiAction,
-  Simplify2FocusPickerContinuationUiEntry,
 } from "@nanoboss/contracts";
 
 export interface ProcedurePromptInput {

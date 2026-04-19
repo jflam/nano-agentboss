@@ -57,42 +57,16 @@ export interface PromptImageSummary {
     attachmentId?: string;
     attachmentPath?: string;
 }
-export interface Simplify2CheckpointContinuationUiAction {
-    id: "approve" | "stop" | "focus_tests" | "other";
-    label: string;
-    reply?: string;
-    description?: string;
+export interface ContinuationForm {
+    formId: string;
+    payload: JsonValue;
 }
-export interface Simplify2CheckpointContinuationUi {
-    kind: "simplify2_checkpoint";
-    title: string;
-    actions: Simplify2CheckpointContinuationUiAction[];
-}
-export interface Simplify2FocusPickerContinuationUiEntry {
-    id: string;
-    title: string;
-    subtitle?: string;
-    status: "active" | "paused" | "finished" | "archived";
-    updatedAt: string;
-    lastSummary?: string;
-}
-export interface Simplify2FocusPickerContinuationUiAction {
-    id: "continue" | "archive" | "new" | "cancel";
-    label: string;
-}
-export interface Simplify2FocusPickerContinuationUi {
-    kind: "simplify2_focus_picker";
-    title: string;
-    entries: Simplify2FocusPickerContinuationUiEntry[];
-    actions: Simplify2FocusPickerContinuationUiAction[];
-}
-export type ContinuationUi = Simplify2CheckpointContinuationUi | Simplify2FocusPickerContinuationUi;
 export interface Continuation<TState extends KernelValue = KernelValue> {
     question: string;
     state: TState;
     inputHint?: string;
     suggestedReplies?: string[];
-    ui?: ContinuationUi;
+    form?: ContinuationForm;
 }
 export interface PendingContinuation<TState extends KernelValue = KernelValue> extends Continuation<TState> {
     procedure: string;

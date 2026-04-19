@@ -5,7 +5,6 @@ import { UiApiImpl, type ProcedureUiEvent } from "@nanoboss/procedure-engine";
 import type {
   AgentTokenUsage,
   ContinuationForm,
-  ContinuationUi,
   RunRef,
 } from "@nanoboss/contracts";
 
@@ -31,8 +30,6 @@ export interface RuntimeContinuation {
   inputHint?: string;
   suggestedReplies?: string[];
   form?: ContinuationForm;
-  /** @deprecated Prefer `form`; retained for dual-write with simplify2. */
-  ui?: ContinuationUi;
 }
 
 export type RuntimeEvent =
@@ -178,8 +175,6 @@ export type RuntimeEvent =
       inputHint?: string;
       suggestedReplies?: string[];
       form?: ContinuationForm;
-      /** @deprecated Prefer `form`; retained for dual-write with simplify2. */
-      ui?: ContinuationUi;
       tokenUsage?: AgentTokenUsage;
     }
   | {

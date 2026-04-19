@@ -817,13 +817,16 @@ describe("NanobossTuiController", () => {
       run: { sessionId: "session-1", runId: "cell-1" },
       question: "Approve this simplify2 slice?",
       display: "paused",
-      ui: {
-        kind: "simplify2_checkpoint",
-        title: "Simplify2 checkpoint",
-        actions: [
-          { id: "approve", label: "Continue", reply: "approve it" },
-          { id: "other", label: "Something Else" },
-        ],
+      form: {
+        formId: "nb/simplify2-checkpoint@1",
+        payload: {
+          kind: "simplify2_checkpoint",
+          title: "Simplify2 checkpoint",
+          actions: [
+            { id: "approve", label: "Continue", reply: "approve it" },
+            { id: "other", label: "Something Else" },
+          ],
+        },
       },
     }));
 
@@ -864,13 +867,16 @@ describe("NanobossTuiController", () => {
       continuation: {
         procedure: "simplify2",
         question: "Approve this simplify2 slice?",
-        ui: {
-          kind: "simplify2_checkpoint",
-          title: "Simplify2 checkpoint",
-          actions: [
-            { id: "approve", label: "Continue", reply: "approve it" },
-            { id: "other", label: "Something Else" },
-          ],
+        form: {
+          formId: "nb/simplify2-checkpoint@1",
+          payload: {
+            kind: "simplify2_checkpoint",
+            title: "Simplify2 checkpoint",
+            actions: [
+              { id: "approve", label: "Continue", reply: "approve it" },
+              { id: "other", label: "Something Else" },
+            ],
+          },
         },
       },
     }));
@@ -918,23 +924,26 @@ describe("NanobossTuiController", () => {
       run: { sessionId: "session-1", runId: "cell-1" },
       question: "Choose a focus",
       display: "paused",
-      ui: {
-        kind: "simplify2_focus_picker",
-        title: "Simplify2 focuses",
-        entries: [
-          {
-            id: "focus-1",
-            title: "Session metadata",
-            status: "active",
-            updatedAt: new Date(0).toISOString(),
-          },
-        ],
-        actions: [
-          { id: "continue", label: "Continue" },
-          { id: "archive", label: "Archive" },
-          { id: "new", label: "New Focus" },
-          { id: "cancel", label: "Cancel" },
-        ],
+      form: {
+        formId: "nb/simplify2-focus-picker@1",
+        payload: {
+          kind: "simplify2_focus_picker",
+          title: "Simplify2 focuses",
+          entries: [
+            {
+              id: "focus-1",
+              title: "Session metadata",
+              status: "active",
+              updatedAt: new Date(0).toISOString(),
+            },
+          ],
+          actions: [
+            { id: "continue", label: "Continue" },
+            { id: "archive", label: "Archive" },
+            { id: "new", label: "New Focus" },
+            { id: "cancel", label: "Cancel" },
+          ],
+        },
       },
     }));
 

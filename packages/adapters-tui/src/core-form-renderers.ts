@@ -1,13 +1,15 @@
 import typia from "typia";
 
 import { jsonType } from "@nanoboss/procedure-sdk";
-import type {
-  Simplify2CheckpointContinuationUi,
-  Simplify2FocusPickerContinuationUi,
-} from "@nanoboss/contracts";
 
-import { Simplify2ContinuationOverlay } from "./overlays/simplify2-continuation-overlay.ts";
-import { Simplify2FocusPickerOverlay } from "./overlays/simplify2-focus-picker-overlay.ts";
+import {
+  Simplify2ContinuationOverlay,
+  type Simplify2CheckpointAction,
+} from "./overlays/simplify2-continuation-overlay.ts";
+import {
+  Simplify2FocusPickerOverlay,
+  type Simplify2FocusPickerEntry,
+} from "./overlays/simplify2-focus-picker-overlay.ts";
 import type { Component, TUI } from "./pi-tui.ts";
 import { registerFormRenderer } from "./form-renderers.ts";
 
@@ -21,12 +23,16 @@ const NO_OP_TUI = {
 } as unknown as TUI;
 
 /**
- * Payload accepted by the nb/simplify2-checkpoint@1 form. Mirrors the
- * existing Simplify2CheckpointContinuationUi shape while the closed
- * ContinuationUi union is still in place. The plan migrates procedures
- * to emit { form: { formId, payload } } in a follow-up step.
+ * Payload accepted by the nb/simplify2-checkpoint@1 form. Declared
+ * locally now that the closed ContinuationUi union has been removed
+ * from contracts; the shape continues to match what simplify2 emits
+ * at its checkpoint pause site.
  */
-type Simplify2CheckpointV1Payload = Simplify2CheckpointContinuationUi;
+interface Simplify2CheckpointV1Payload {
+  kind: "simplify2_checkpoint";
+  title: string;
+  actions: Simplify2CheckpointAction[];
+}
 
 const Simplify2CheckpointV1PayloadType = jsonType<Simplify2CheckpointV1Payload>(
   typia.json.schema<Simplify2CheckpointV1Payload>(),
@@ -64,7 +70,17 @@ registerFormRenderer<Simplify2CheckpointV1Payload>({
   },
 });
 
-type Simplify2FocusPickerV1Payload = Simplify2FocusPickerContinuationUi;
+interface Simplify2FocusPickerV1Action {
+  id: "continue" | "archive" | "new" | "cancel";
+  label: string;
+}
+
+interface Simplify2FocusPickerV1Payload {
+  kind: "simplify2_focus_picker";
+  title: string;
+  entries: Simplify2FocusPickerEntry[];
+  actions: Simplify2FocusPickerV1Action[];
+}
 
 const Simplify2FocusPickerV1PayloadType = jsonType<Simplify2FocusPickerV1Payload>(
   typia.json.schema<Simplify2FocusPickerV1Payload>(),

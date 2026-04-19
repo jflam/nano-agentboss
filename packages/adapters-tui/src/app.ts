@@ -784,10 +784,9 @@ function getFormContinuation(
     return undefined;
   }
   // Procedures that need a continuation form emit `continuation.form`
-  // directly; the legacy `continuation.ui` shim has been retired now
-  // that simplify2 emits `form` natively. `ContinuationUi` itself
-  // remains in contracts temporarily for backwards compatibility of
-  // persisted sessions (removal is handled in a later step).
+  // directly via the form-renderer registry; the legacy
+  // `continuation.ui` shim and its closed `ContinuationUi` union have
+  // been removed from contracts.
   const form = (continuation as { form?: { formId?: unknown; payload?: unknown } }).form;
   if (!form || typeof form !== "object" || typeof form.formId !== "string") {
     return undefined;

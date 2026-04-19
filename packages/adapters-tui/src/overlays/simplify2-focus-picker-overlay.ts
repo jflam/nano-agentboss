@@ -7,8 +7,16 @@ import {
   type SelectItem,
   type TUI,
 } from "../pi-tui.ts";
-import type { Simplify2FocusPickerContinuationUiEntry } from "@nanoboss/contracts";
 import type { NanobossTuiTheme } from "../theme.ts";
+
+export interface Simplify2FocusPickerEntry {
+  id: string;
+  title: string;
+  subtitle?: string;
+  status: "active" | "paused" | "finished" | "archived";
+  updatedAt: string;
+  lastSummary?: string;
+}
 
 type Simplify2FocusPickerOverlayAction =
   | { kind: "continue"; focusId: string }
@@ -24,7 +32,7 @@ export class Simplify2FocusPickerOverlay implements Component {
     private readonly tui: TUI,
     private readonly theme: NanobossTuiTheme,
     title: string,
-    entries: Simplify2FocusPickerContinuationUiEntry[],
+    entries: Simplify2FocusPickerEntry[],
     private readonly done: (action: Simplify2FocusPickerOverlayAction) => void,
   ) {
     this.container.addChild(new Text(this.theme.accent(title)));

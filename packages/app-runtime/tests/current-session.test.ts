@@ -81,9 +81,9 @@ test("keeps derived current session cache entries isolated by workspace", () => 
   }
 });
 
-test("round-trips continuation UI metadata through stored session snapshots", () => {
+test("round-trips continuation form metadata through stored session snapshots", () => {
   const originalHome = process.env.HOME;
-  tempHome = mkdtempSync(join(tmpdir(), "nanoboss-current-session-continuation-ui-"));
+  tempHome = mkdtempSync(join(tmpdir(), "nanoboss-current-session-continuation-form-"));
   process.env.HOME = tempHome;
 
   try {
@@ -104,13 +104,16 @@ test("round-trips continuation UI metadata through stored session snapshots", ()
         state: {
           step: 1,
         },
-        ui: {
-          kind: "simplify2_checkpoint",
-          title: "Simplify2 checkpoint",
-          actions: [
-            { id: "approve", label: "Continue", reply: "approve it" },
-            { id: "other", label: "Something Else" },
-          ],
+        form: {
+          formId: "nb/simplify2-checkpoint@1",
+          payload: {
+            kind: "simplify2_checkpoint",
+            title: "Simplify2 checkpoint",
+            actions: [
+              { id: "approve", label: "Continue", reply: "approve it" },
+              { id: "other", label: "Something Else" },
+            ],
+          },
         },
       },
     });

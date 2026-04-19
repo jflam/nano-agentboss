@@ -63,7 +63,6 @@ export function buildRunPausedEvent(params: {
     inputHint: params.result.pause.inputHint,
     suggestedReplies: params.result.pause.suggestedReplies,
     form: params.result.pause.form,
-    ui: params.result.pause.ui,
     tokenUsage: params.tokenUsage,
   };
 }

@@ -26,10 +26,13 @@ describe("core contracts", () => {
       state: { step: 2 },
       inputHint: "reply",
       suggestedReplies: ["approve", "stop"],
-      ui: {
-        kind: "simplify2_checkpoint" as const,
-        title: "Checkpoint",
-        actions: [{ id: "approve" as const, label: "Approve", reply: "approve" }],
+      form: {
+        formId: "nb/simplify2-checkpoint@1",
+        payload: {
+          kind: "simplify2_checkpoint",
+          title: "Checkpoint",
+          actions: [{ id: "approve", label: "Approve", reply: "approve" }],
+        },
       },
     };
 
@@ -38,7 +41,7 @@ describe("core contracts", () => {
       state: { step: 2 },
       inputHint: "reply",
       suggestedReplies: ["approve", "stop"],
-      ui: continuation.ui,
+      form: continuation.form,
     });
 
     const pending = {
@@ -48,7 +51,7 @@ describe("core contracts", () => {
       state: { step: 2 },
       inputHint: "reply",
       suggestedReplies: ["approve", "stop"],
-      ui: continuation.ui,
+      form: continuation.form,
     };
 
     expect(pending).toEqual({
@@ -58,7 +61,7 @@ describe("core contracts", () => {
       state: { step: 2 },
       inputHint: "reply",
       suggestedReplies: ["approve", "stop"],
-      ui: continuation.ui,
+      form: continuation.form,
     });
   });
 

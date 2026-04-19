@@ -1,6 +1,12 @@
 import { Container, Spacer, Text, type Component, type TUI } from "../pi-tui.ts";
-import type { Simplify2CheckpointContinuationUiAction } from "@nanoboss/contracts";
 import type { NanobossTuiTheme } from "../theme.ts";
+
+export interface Simplify2CheckpointAction {
+  id: "approve" | "stop" | "focus_tests" | "other";
+  label: string;
+  reply?: string;
+  description?: string;
+}
 
 export class Simplify2ContinuationOverlay implements Component {
   private readonly container = new Container();
@@ -9,8 +15,8 @@ export class Simplify2ContinuationOverlay implements Component {
     private readonly tui: TUI,
     private readonly theme: NanobossTuiTheme,
     private readonly title: string,
-    private readonly actions: Simplify2CheckpointContinuationUiAction[],
-    private readonly done: (action: Simplify2CheckpointContinuationUiAction | undefined) => void,
+    private readonly actions: Simplify2CheckpointAction[],
+    private readonly done: (action: Simplify2CheckpointAction | undefined) => void,
   ) {
     this.container.addChild(new Text(this.theme.accent(this.title)));
     this.container.addChild(new Spacer(1));

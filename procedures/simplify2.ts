@@ -20,8 +20,6 @@ import {
   type Procedure,
   type ProcedureResult,
   type RunResult,
-  type Simplify2CheckpointContinuationUi,
-  type Simplify2FocusPickerContinuationUi,
 } from "@nanoboss/procedure-sdk";
 import type { JsonValue } from "@nanoboss/contracts";
 
@@ -612,7 +610,35 @@ const HIGH_SENSITIVITY_ANALYSIS_PATH_PATTERNS = [
   /^src\/core\//,
   /^src\/mcp\//,
 ];
-const SIMPLIFY2_FOCUS_PICKER_UI: Simplify2FocusPickerContinuationUi = {
+interface Simplify2FocusPickerFormPayload {
+  kind: "simplify2_focus_picker";
+  title: string;
+  entries: Array<{
+    id: string;
+    title: string;
+    subtitle?: string;
+    status: "active" | "paused" | "finished" | "archived";
+    updatedAt: string;
+    lastSummary?: string;
+  }>;
+  actions: Array<{
+    id: "continue" | "archive" | "new" | "cancel";
+    label: string;
+  }>;
+}
+
+interface Simplify2CheckpointFormPayload {
+  kind: "simplify2_checkpoint";
+  title: string;
+  actions: Array<{
+    id: "approve" | "stop" | "focus_tests" | "other";
+    label: string;
+    reply?: string;
+    description?: string;
+  }>;
+}
+
+const SIMPLIFY2_FOCUS_PICKER_UI: Simplify2FocusPickerFormPayload = {
   kind: "simplify2_focus_picker",
   title: "Simplify2 focuses",
   entries: [],
@@ -623,7 +649,7 @@ const SIMPLIFY2_FOCUS_PICKER_UI: Simplify2FocusPickerContinuationUi = {
     { id: "cancel", label: "Cancel" },
   ],
 };
-const SIMPLIFY2_CONTINUATION_UI: Simplify2CheckpointContinuationUi = {
+const SIMPLIFY2_CONTINUATION_UI: Simplify2CheckpointFormPayload = {
   kind: "simplify2_checkpoint",
   title: "Simplify2 checkpoint",
   actions: [
