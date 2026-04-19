@@ -38,6 +38,8 @@ export interface TurnDisplay {
  * - Consecutive `text_delta` events with no intervening tool event coalesce
  *   into a single text block.
  * - A `tool_started` event introduces a `tool_call` boundary block.
+ * - A `procedure_panel` event introduces a `procedure_panel` boundary block;
+ *   repeated `(rendererId, key)` pairs replace in place and preserve order.
  * - `tool_updated` events for an already-introduced tool are merged into the
  *   existing `tool_call` block (no duplicate block is emitted).
  * - Other event types are ignored for projection purposes; callers can still
@@ -50,6 +52,7 @@ export function buildTurnDisplay(
   const origin = options.origin ?? "replay";
   const blocks: TurnDisplayBlock[] = [];
   const seenToolCallIds = new Set<string>();
+  const keyedProcedurePanelIndexes = new Map<string, number>();
 
   for (const event of events) {
     if (event.type === "text_delta") {
@@ -73,6 +76,51 @@ export function buildTurnDisplay(
       }
       seenToolCallIds.add(toolCallId);
       blocks.push({ kind: "tool_call", toolCallId });
+      continue;
+    }
+
+    if (event.type === "procedure_panel") {
+      const rendererId = typeof event.rendererId === "string" ? event.rendererId : "";
+      const panelId = typeof event.panelId === "string" ? event.panelId : "";
+      const severity = event.severity;
+      const dismissible = event.dismissible;
+      if (
+        !rendererId
+        || !panelId
+        || (severity !== "info" && severity !== "warn" && severity !== "error")
+        || typeof dismissible !== "boolean"
+      ) {
+        continue;
+      }
+
+      const key = typeof event.key === "string" ? event.key : undefined;
+      if (key) {
+        const replacementKey = `${rendererId}\u0000${key}`;
+        const existingIndex = keyedProcedurePanelIndexes.get(replacementKey);
+        if (existingIndex !== undefined) {
+          blocks[existingIndex] = {
+            kind: "procedure_panel",
+            panelId,
+            rendererId,
+            payload: event.payload,
+            severity,
+            dismissible,
+            key,
+          };
+          continue;
+        }
+        keyedProcedurePanelIndexes.set(replacementKey, blocks.length);
+      }
+
+      blocks.push({
+        kind: "procedure_panel",
+        panelId,
+        rendererId,
+        payload: event.payload,
+        severity,
+        dismissible,
+        ...(key !== undefined ? { key } : {}),
+      });
       continue;
     }
 
