@@ -45,15 +45,15 @@ export class UiApiImpl implements UiApi {
   }
 
   info(text: string): void {
-    this.emitNotice("info", text);
+    this.emitNoticePanel("info", text);
   }
 
   warning(text: string): void {
-    this.emitNotice("warning", text);
+    this.emitNoticePanel("warning", text);
   }
 
   error(text: string): void {
-    this.emitNotice("error", text);
+    this.emitNoticePanel("error", text);
   }
 
   status(params: UiStatusParams): void {
@@ -145,13 +145,31 @@ export class UiApiImpl implements UiApi {
     this.text(`[${event.rendererId}]${event.key ? ` ${event.key}` : ""}\n`);
   }
 
-  private emitNotice(tone: NoticeTone, text: string): void {
-    this.log(`${NOTICE_LABELS[tone]}: ${text}`);
+  private emitNoticePanel(tone: NoticeTone, text: string): void {
+    const normalized = normalizeNoticeText(text);
+    this.log(`${NOTICE_LABELS[tone]}: ${normalized}`);
+
+    if (this.emitter.emitUiEvent) {
+      const severity = tone === "warning" ? "warn" : tone;
+      this.emitter.emitUiEvent({
+        type: "procedure_panel",
+        procedure: this.procedureName,
+        rendererId: "nb/notice@1",
+        severity,
+        dismissible: severity !== "error",
+        payload: {
+          message: normalized,
+          severity,
+        },
+      });
+      return;
+    }
+
     this.emitter.emit({
       sessionUpdate: "agent_message_chunk",
       content: {
         type: "text",
-        text: `${NOTICE_LABELS[tone]}: ${normalizeNoticeText(text)}`,
+        text: `${NOTICE_LABELS[tone]}: ${normalized}`,
       },
     } satisfies acp.SessionUpdate);
   }

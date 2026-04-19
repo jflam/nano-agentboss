@@ -1430,11 +1430,16 @@ describe("NanobossService", () => {
     const events = service.getSessionEvents(session.sessionId)?.after(-1) ?? [];
     const runCancelled = events.findLast((event) => event.type === "run_cancelled");
     expect(runCancelled?.type).toBe("run_cancelled");
-    const notice = events.findLast((event) => event.type === "assistant_notice");
-    expect(notice?.type).toBe("assistant_notice");
-    if (notice?.type === "assistant_notice") {
-      expect(notice.data.tone).toBe("error");
-      expect(notice.data.text).toContain("cleanup exploded");
+    const cancelErrorPanel = events.findLast((event) =>
+      event.type === "procedure_panel"
+        && event.data.rendererId === "nb/error@1"
+        && typeof (event.data.payload as { message?: unknown }).message === "string"
+        && (event.data.payload as { message: string }).message.includes("cleanup exploded")
+    );
+    expect(cancelErrorPanel?.type).toBe("procedure_panel");
+    if (cancelErrorPanel?.type === "procedure_panel") {
+      expect(cancelErrorPanel.data.severity).toBe("error");
+      expect((cancelErrorPanel.data.payload as { message: string }).message).toContain("cleanup exploded");
     }
   });
 

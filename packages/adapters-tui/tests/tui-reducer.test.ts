@@ -412,7 +412,7 @@ describe("tui reducer", () => {
     expect(state.turns.at(-1)?.meta?.completionNote).toBe("turn #1 completed in 1.5s | tools 0/0 succeeded");
   });
 
-  test("renders streamed assistant notices as standalone cards and keeps later text separate", () => {
+  test("renders streamed procedure notice panels inline with transcript ordering and keeps later text separate", () => {
     let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
 
     state = reduceUiState(state, {
@@ -434,10 +434,17 @@ describe("tui reducer", () => {
     });
     state = reduceUiState(state, {
       type: "frontend_event",
-      event: eventEnvelope("assistant_notice", {
+      event: eventEnvelope("procedure_panel", {
         runId: "run-1",
-        text: "Operation cancelled by user",
-        tone: "info",
+        procedure: "default",
+        panelId: "panel-1",
+        rendererId: "nb/notice@1",
+        payload: {
+          message: "Operation cancelled by user",
+          severity: "info",
+        },
+        severity: "info",
+        dismissible: true,
       }),
     });
     state = reduceUiState(state, {
@@ -459,24 +466,27 @@ describe("tui reducer", () => {
       {
         id: "assistant-2",
         role: "assistant",
-        markdown: "Operation cancelled by user",
-        status: "complete",
-        displayStyle: "card",
-        cardTone: "info",
-      },
-      {
-        id: "assistant-3",
-        role: "assistant",
         markdown: "Done.",
         status: "streaming",
       },
     ]);
+    expect(state.procedurePanels).toMatchObject([
+      {
+        panelId: "panel-1",
+        rendererId: "nb/notice@1",
+        payload: {
+          message: "Operation cancelled by user",
+          severity: "info",
+        },
+        severity: "info",
+      },
+    ]);
     expect(state.transcriptItems).toEqual([
       { type: "turn", id: "assistant-1" },
+      { type: "procedure_panel", id: "panel-1" },
       { type: "turn", id: "assistant-2" },
-      { type: "turn", id: "assistant-3" },
     ]);
-    expect(state.activeAssistantTurnId).toBe("assistant-3");
+    expect(state.activeAssistantTurnId).toBe("assistant-2");
   });
 
   test("renders procedure cards as markdown-oriented assistant cards", () => {

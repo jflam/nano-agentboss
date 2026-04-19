@@ -75,12 +75,6 @@ export type RuntimeEvent =
       stream: "agent";
     }
   | {
-      type: "assistant_notice";
-      runId: string;
-      text: string;
-      tone: "info" | "warning" | "error";
-    }
-  | {
       type: "procedure_status";
       runId: string;
       status: Extract<ProcedureUiEvent, { type: "status" }>;
@@ -237,7 +231,6 @@ export type RunFailedEventEnvelope = Extract<RuntimeEventEnvelope, { type: "run_
 
 const PERSISTED_RUNTIME_EVENT_TYPES = new Set<PersistedRuntimeEvent["type"]>([
   "text_delta",
-  "assistant_notice",
   "procedure_status",
   "procedure_card",
   "ui_panel",
@@ -419,6 +412,7 @@ export function toRuntimeCommands(commands: acp.AvailableCommand[]): RuntimeComm
 
 export function mapSessionUpdateToRuntimeEvents(
   runId: string,
+  procedure: string,
   update: acp.SessionUpdate,
 ): RuntimeEvent[] {
   switch (update.sessionUpdate) {
@@ -429,12 +423,20 @@ export function mapSessionUpdateToRuntimeEvents(
 
       const notice = parseAssistantNoticeText(update.content.text);
       if (notice) {
+        const severity = notice.tone === "warning" ? "warn" : notice.tone;
         return [
           {
-            type: "assistant_notice",
+            type: "procedure_panel",
             runId,
-            text: notice.text,
-            tone: notice.tone,
+            procedure,
+            panelId: `panel-${runId}-${randomPanelIdSuffix()}`,
+            rendererId: "nb/notice@1",
+            payload: {
+              message: notice.text,
+              severity,
+            },
+            severity,
+            dismissible: severity !== "error",
           },
         ];
       }

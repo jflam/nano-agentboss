@@ -890,7 +890,7 @@ describe("NanobossAppView", () => {
     expect(plain).not.toContain("_report_");
   });
 
-  test("renders info assistant notices as cards", () => {
+  test("renders info procedure panels as cards", () => {
     const view = new NanobossAppView(
       {
         render: () => [""],
@@ -900,17 +900,19 @@ describe("NanobossAppView", () => {
       {
         ...createInitialUiState({ cwd: "/repo" }),
         sessionId: "session-1",
-        turns: [
+        procedurePanels: [
           {
-            id: "assistant-1",
-            role: "assistant" as const,
-            markdown: "Operation cancelled by user",
-            status: "complete" as const,
-            displayStyle: "card" as const,
-            cardTone: "info" as const,
+            panelId: "panel-1",
+            rendererId: "nb/notice@1",
+            payload: {
+              message: "Operation cancelled by user",
+              severity: "info",
+            },
+            severity: "info" as const,
+            dismissible: true,
           },
         ],
-        transcriptItems: [{ type: "turn" as const, id: "assistant-1" }],
+        transcriptItems: [{ type: "procedure_panel" as const, id: "panel-1" }],
       },
     );
 

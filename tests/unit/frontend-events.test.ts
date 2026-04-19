@@ -44,7 +44,7 @@ describe("frontend-events", () => {
     ]);
 
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "agent_message_chunk",
         content: {
           type: "text",
@@ -61,7 +61,7 @@ describe("frontend-events", () => {
     ]);
 
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "agent_message_chunk",
         content: {
           type: "text",
@@ -70,15 +70,22 @@ describe("frontend-events", () => {
       }),
     ).toEqual([
       {
-        type: "assistant_notice",
+        type: "procedure_panel",
         runId: "run-1",
-        text: "Operation cancelled by user",
-        tone: "info",
+        procedure: "default",
+        panelId: expect.any(String),
+        rendererId: "nb/notice@1",
+        payload: {
+          message: "Operation cancelled by user",
+          severity: "info",
+        },
+        severity: "info",
+        dismissible: true,
       },
     ]);
 
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "usage_update",
         size: 258400,
         used: 12824,
@@ -97,7 +104,7 @@ describe("frontend-events", () => {
     ]);
 
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "tool_call",
         toolCallId: "tool-1",
         title: "Mock read README.md",
@@ -126,7 +133,7 @@ describe("frontend-events", () => {
     ]);
 
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "tool_call_update",
         toolCallId: "tool-1",
         status: "completed",
@@ -178,7 +185,7 @@ describe("frontend-events", () => {
   });
 
   test("normalizes namespaced bash tool titles to bash-like previews", () => {
-    const [started] = mapSessionUpdateToFrontendEvents("run-1", {
+    const [started] = mapSessionUpdateToFrontendEvents("run-1", "default", {
       sessionUpdate: "tool_call",
       toolCallId: "tool-bash",
       title: "functions.bash",
@@ -207,7 +214,7 @@ describe("frontend-events", () => {
   });
 
   test("tool previews are bounded and failed tool updates surface compact errors", () => {
-    const [started] = mapSessionUpdateToFrontendEvents("run-1", {
+    const [started] = mapSessionUpdateToFrontendEvents("run-1", "default", {
       sessionUpdate: "tool_call",
       toolCallId: "tool-bash",
       title: "bash",
@@ -217,7 +224,7 @@ describe("frontend-events", () => {
         command: `printf '${"x".repeat(400)}'`,
       },
     });
-    const [updated] = mapSessionUpdateToFrontendEvents("run-1", {
+    const [updated] = mapSessionUpdateToFrontendEvents("run-1", "default", {
       sessionUpdate: "tool_call_update",
       toolCallId: "tool-bash",
       title: "bash",
@@ -237,7 +244,7 @@ describe("frontend-events", () => {
 
   test("maps failed ACP tool updates with explicit cancelled output to cancelled frontend tool status", () => {
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "tool_call_update",
         toolCallId: "tool-1",
         status: "failed",
@@ -268,7 +275,7 @@ describe("frontend-events", () => {
 
   test("treats raw procedure ui marker text as plain text at the frontend event boundary", () => {
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "agent_message_chunk",
         content: {
           type: "text",
@@ -285,7 +292,7 @@ describe("frontend-events", () => {
     ]);
 
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "agent_message_chunk",
         content: {
           type: "text",
@@ -342,7 +349,7 @@ describe("frontend-events", () => {
   });
 
   test("normalizes provider-specific read payloads into consistent previews", () => {
-    const [started] = mapSessionUpdateToFrontendEvents("run-1", {
+    const [started] = mapSessionUpdateToFrontendEvents("run-1", "default", {
       sessionUpdate: "tool_call",
       toolCallId: "tool-read",
       title: "Read File",
@@ -354,7 +361,7 @@ describe("frontend-events", () => {
       },
     });
 
-    const [updated] = mapSessionUpdateToFrontendEvents("run-1", {
+    const [updated] = mapSessionUpdateToFrontendEvents("run-1", "default", {
       sessionUpdate: "tool_call_update",
       toolCallId: "tool-read",
       title: "Read File",
@@ -414,7 +421,7 @@ describe("frontend-events", () => {
 
   test("preserves producer-owned wrapper kind without title heuristics", () => {
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "tool_call",
         toolCallId: "tool-wrapper",
         title: "callAgent: summarize the diff",
@@ -443,7 +450,7 @@ describe("frontend-events", () => {
 
   test("maps producer-owned parentage and visibility metadata onto frontend tool events", () => {
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "tool_call",
         toolCallId: "tool-child",
         title: "procedure_dispatch_wait",
@@ -474,7 +481,7 @@ describe("frontend-events", () => {
     ]);
 
     expect(
-      mapSessionUpdateToFrontendEvents("run-1", {
+      mapSessionUpdateToFrontendEvents("run-1", "default", {
         sessionUpdate: "tool_call_update",
         toolCallId: "tool-child",
         title: "procedure_dispatch_wait",

@@ -365,11 +365,6 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
         ...state,
         pendingContinuation: event.data.continuation,
       };
-    case "assistant_notice":
-      if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
-        return state;
-      }
-      return appendAssistantNoticeCard(state, event.data.text, event.data.tone);
     case "procedure_status":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
@@ -671,38 +666,6 @@ function appendTextToTurnBlocks(
     return { ...turn, blocks: nextBlocks };
   }
   return { ...turn, blocks: [...blocks, { kind: "text", text, origin }] };
-}
-
-function appendAssistantNoticeCard(
-  state: UiState,
-  text: string,
-  tone: "info" | "warning" | "error",
-): UiState {
-  const turns = state.activeAssistantTurnId
-    ? state.turns.map((turn) => turn.id === state.activeAssistantTurnId && turn.status === "streaming"
-      ? { ...turn, status: "complete" as const }
-      : turn)
-    : state.turns;
-  const turn = createTurn({
-    id: nextTurnId("assistant", turns.length),
-    role: "assistant",
-    markdown: text,
-    status: tone === "error" ? "failed" : "complete",
-    runId: state.activeRunId,
-    displayStyle: "card",
-    cardTone: tone,
-    meta: buildAssistantTurnMeta({
-      procedure: state.activeProcedure,
-    }),
-  });
-
-  return {
-    ...state,
-    turns: [...turns, turn],
-    transcriptItems: appendTranscriptItem(state.transcriptItems, { type: "turn", id: turn.id }),
-    activeAssistantTurnId: undefined,
-    assistantParagraphBreakPending: false,
-  };
 }
 
 function markAssistantTextBoundary(state: UiState): UiState {

@@ -41,7 +41,7 @@ describe("CommandContextImpl UI", () => {
     expect(logText).toContain('"raw":"streamed text"');
   });
 
-  test("info, warning, error, status, and card use the expected UI emission channels", () => {
+  test("info, warning, error, status, and card use procedure_panel when structured UI events are available", () => {
     const { ctx, run, updates, uiEvents } = createContext();
 
     ctx.ui.info("Heads up");
@@ -61,30 +61,41 @@ describe("CommandContextImpl UI", () => {
     });
 
     expect(run.streamChunks).toEqual([]);
-    expect(updates).toEqual([
-      {
-        sessionUpdate: "agent_message_chunk",
-        content: {
-          type: "text",
-          text: "Info: Heads up",
-        },
-      },
-      {
-        sessionUpdate: "agent_message_chunk",
-        content: {
-          type: "text",
-          text: "Warning: Check this",
-        },
-      },
-      {
-        sessionUpdate: "agent_message_chunk",
-        content: {
-          type: "text",
-          text: "Error: Boom",
-        },
-      },
-    ]);
+    expect(updates).toEqual([]);
     expect(uiEvents).toEqual([
+      {
+        type: "procedure_panel",
+        procedure: "default",
+        rendererId: "nb/notice@1",
+        severity: "info",
+        dismissible: true,
+        payload: {
+          message: "Heads up",
+          severity: "info",
+        },
+      },
+      {
+        type: "procedure_panel",
+        procedure: "default",
+        rendererId: "nb/notice@1",
+        severity: "warn",
+        dismissible: true,
+        payload: {
+          message: "Check this",
+          severity: "warn",
+        },
+      },
+      {
+        type: "procedure_panel",
+        procedure: "default",
+        rendererId: "nb/notice@1",
+        severity: "error",
+        dismissible: false,
+        payload: {
+          message: "Boom",
+          severity: "error",
+        },
+      },
       {
         type: "status",
         procedure: "default",

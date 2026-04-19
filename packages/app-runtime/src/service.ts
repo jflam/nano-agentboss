@@ -93,6 +93,7 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
   constructor(
     private readonly sessionId: string,
     private readonly runId: string,
+    private readonly procedure: string,
     private readonly eventLog: SessionEventLog,
     private readonly onActivity: () => void,
     private readonly delegate?: SessionUpdateEmitter,
@@ -105,7 +106,7 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
       this.streamedText += update.content.text;
     }
 
-    for (const event of mapSessionUpdateToRuntimeEvents(this.runId, update)) {
+    for (const event of mapSessionUpdateToRuntimeEvents(this.runId, this.procedure, update)) {
       if (event.type === "token_usage") {
         this.latestTokenUsage = event.usage;
       }
@@ -368,10 +369,17 @@ export class NanobossService {
     if (!cancelResult.ok) {
       const message = formatErrorMessage(cancelResult.error);
       session.events.publish(sessionId, {
-        type: "assistant_notice",
+        type: "procedure_panel",
         runId: pending.run.runId,
-        text: `Error cancelling /${pending.procedure}: ${message}`,
-        tone: "error",
+        procedure: pending.procedure,
+        panelId: `panel-${pending.run.runId}-cancel-error`,
+        rendererId: "nb/error@1",
+        payload: {
+          procedure: pending.procedure,
+          message: `cancelling /${pending.procedure}: ${message}`,
+        },
+        severity: "error",
+        dismissible: false,
       });
     }
 
@@ -859,6 +867,7 @@ export class NanobossService {
     const emitter = new CompositeSessionUpdateEmitter(
       sessionId,
       runId,
+      procedureName,
       session.events,
       markRunActivity,
       delegate,

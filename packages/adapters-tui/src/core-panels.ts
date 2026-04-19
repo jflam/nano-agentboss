@@ -85,3 +85,25 @@ registerPanelRenderer<NbErrorV1Payload>({
     return new MessageCardComponent(theme, lines, "error");
   },
 });
+
+interface NbNoticeV1Payload {
+  message: string;
+  severity: "info" | "warn" | "error";
+}
+
+const NbNoticeV1PayloadType = jsonType<NbNoticeV1Payload>(
+  typia.json.schema<NbNoticeV1Payload>(),
+  typia.createValidate<NbNoticeV1Payload>(),
+);
+
+registerPanelRenderer<NbNoticeV1Payload>({
+  rendererId: "nb/notice@1",
+  schema: NbNoticeV1PayloadType,
+  render({ payload, theme }): Component {
+    const tone = payload.severity === "warn"
+      ? "warning"
+      : payload.severity;
+    const lines = payload.message.length === 0 ? ["…"] : payload.message.split("\n");
+    return new MessageCardComponent(theme, lines, tone);
+  },
+});
