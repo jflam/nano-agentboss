@@ -269,6 +269,27 @@ export class NanobossTuiController {
     void this.toggleSessionAutoApprove();
   }
 
+  toggleKeybindingOverlay(): void {
+    this.dispatch({ type: "keybindingOverlay/toggle" });
+  }
+
+  dismissKeybindingOverlay(): void {
+    this.dispatch({ type: "keybindingOverlay/dismiss" });
+  }
+
+  /**
+   * Handles the `esc` key. If the keybinding overlay is visible, dismiss it
+   * without touching run state. Otherwise fall through to the existing
+   * esc-stop behavior so active runs can still be cancelled.
+   */
+  async handleEscape(): Promise<void> {
+    if (this.state.keybindingOverlayVisible) {
+      this.dismissKeybindingOverlay();
+      return;
+    }
+    await this.cancelActiveRun();
+  }
+
   showStatus(text: string): void {
     this.dispatch({ type: "local_status", text });
   }

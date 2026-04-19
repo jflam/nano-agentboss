@@ -1107,6 +1107,66 @@ describe("NanobossTuiController", () => {
     controller.requestExit();
     await expect(runPromise).resolves.toBe("session-resume");
   });
+
+  test("toggleKeybindingOverlay flips overlay visibility and handleEscape dismisses it without cancelling the active run", async () => {
+    const cancelCalls: Array<{ sessionId: string; runId: string }> = [];
+    const streams: FakeStreamRecord[] = [];
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async () => {},
+        cancelSessionRun: async (_baseUrl, sessionId, runId) => {
+          cancelCalls.push({ sessionId, runId });
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream(streams, sessionId, onEvent),
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    expect(controller.getState().keybindingOverlayVisible).toBe(false);
+    controller.toggleKeybindingOverlay();
+    expect(controller.getState().keybindingOverlayVisible).toBe(true);
+    controller.toggleKeybindingOverlay();
+    expect(controller.getState().keybindingOverlayVisible).toBe(false);
+
+    // Start an active run and open the overlay; esc must dismiss the overlay
+    // without issuing a cancel request or latching a stop.
+    await controller.handleSubmit("hello");
+    streams[0]?.emit(eventEnvelope("run_started", {
+      runId: "run-1",
+      procedure: "default",
+      prompt: "hello",
+      startedAt: new Date(0).toISOString(),
+    }));
+    expect(controller.getState().inputDisabled).toBe(true);
+
+    controller.toggleKeybindingOverlay();
+    expect(controller.getState().keybindingOverlayVisible).toBe(true);
+
+    await controller.handleEscape();
+
+    expect(controller.getState().keybindingOverlayVisible).toBe(false);
+    expect(cancelCalls).toEqual([]);
+    expect(controller.getState().pendingStopRequest).toBe(false);
+    expect(controller.getState().stopRequestedRunId).toBeUndefined();
+
+    // Now with the overlay closed, esc should still stop the active run.
+    await controller.handleEscape();
+    expect(cancelCalls).toEqual([{ sessionId: "session-1", runId: "run-1" }]);
+    expect(controller.getState().statusLine).toBe(
+      "[run] ESC received - stopping at next tool boundary...",
+    );
+
+    controller.requestExit();
+    await expect(runPromise).resolves.toBe("session-1");
+  });
 });
 
 function createSession(

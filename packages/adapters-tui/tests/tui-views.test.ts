@@ -279,6 +279,59 @@ describe("NanobossAppView", () => {
     expect(plain).toContain("ctrl+k keys • enter send • /help • /dismiss");
   });
 
+  test("keybinding overlay is hidden by default", () => {
+    const state = {
+      ...createInitialUiState({ cwd: "/repo" }),
+      sessionId: "session-1",
+    };
+    const view = new NanobossAppView(
+      { render: () => [""], invalidate() {} } as never,
+      createNanobossTuiTheme(),
+      state,
+    );
+    const plain = stripAnsi(view.render(200).join("\n"));
+    expect(plain).not.toContain("shift+enter newline");
+    expect(plain).not.toContain("ctrl+o tools");
+    expect(plain).not.toContain("ctrl+g auto-approve");
+    expect(plain).not.toContain("keybindings");
+  });
+
+  test("keybinding overlay renders all categorized bindings including ctrl+k when visible", () => {
+    const state = {
+      ...createInitialUiState({ cwd: "/repo" }),
+      sessionId: "session-1",
+      keybindingOverlayVisible: true,
+    };
+    const view = new NanobossAppView(
+      { render: () => [""], invalidate() {} } as never,
+      createNanobossTuiTheme(),
+      state,
+    );
+    const plain = stripAnsi(view.render(200).join("\n"));
+    // send/compose
+    expect(plain).toContain("enter send");
+    expect(plain).toContain("shift+enter newline");
+    // tools
+    expect(plain).toContain("ctrl+o tools");
+    // run control
+    expect(plain).toContain("ctrl+g auto-approve");
+    expect(plain).toContain("ctrl+p pause");
+    expect(plain).toContain("ctrl+t tool cards");
+    expect(plain).toContain("esc stop");
+    expect(plain).toContain("tab queue");
+    // theme
+    expect(plain).toContain("/light");
+    expect(plain).toContain("/dark");
+    // commands
+    expect(plain).toContain("/new");
+    expect(plain).toContain("/model");
+    expect(plain).toContain("/help");
+    expect(plain).toContain("/quit");
+    expect(plain).toContain("/dismiss");
+    // self-reference
+    expect(plain).toContain("ctrl+k keys");
+  });
+
   test("renders the reducer-produced visible transcript contract and resets cleanly on session_ready", () => {
     let state = createTranscriptContractState("live");
 

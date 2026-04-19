@@ -87,6 +87,12 @@ export type UiAction =
       type: "toggle_tool_cards_hidden";
     }
   | {
+      type: "keybindingOverlay/toggle";
+    }
+  | {
+      type: "keybindingOverlay/dismiss";
+    }
+  | {
       type: "frontend_event";
       event: RenderedFrontendEventEnvelope;
     };
@@ -240,6 +246,19 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
       return {
         ...state,
         toolCardsHidden: !state.toolCardsHidden,
+      };
+    case "keybindingOverlay/toggle":
+      return {
+        ...state,
+        keybindingOverlayVisible: !state.keybindingOverlayVisible,
+      };
+    case "keybindingOverlay/dismiss":
+      if (!state.keybindingOverlayVisible) {
+        return state;
+      }
+      return {
+        ...state,
+        keybindingOverlayVisible: false,
       };
     case "frontend_event":
       return reduceFrontendEvent(state, action.event);

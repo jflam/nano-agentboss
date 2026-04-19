@@ -88,6 +88,7 @@ export interface UiState {
   simplify2AutoApprove: boolean;
   liveUpdatesPaused?: boolean;
   toolCardsHidden?: boolean;
+  keybindingOverlayVisible: boolean;
 }
 
 export function createInitialUiState(params: {
@@ -119,5 +120,6 @@ export function createInitialUiState(params: {
     toolCardThemeMode: params.toolCardThemeMode ?? "dark",
     simplify2AutoApprove: params.simplify2AutoApprove ?? false,
     toolCardsHidden: params.toolCardsHidden ?? false,
+    keybindingOverlayVisible: false,
   };
 }

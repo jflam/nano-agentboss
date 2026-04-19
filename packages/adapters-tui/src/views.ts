@@ -1,4 +1,4 @@
-import { Container, Markdown, Spacer, Text, TruncatedText, truncateToWidth, visibleWidth, type Component } from "./pi-tui.ts";
+import { Box, Container, Markdown, Spacer, Text, TruncatedText, truncateToWidth, visibleWidth, type Component } from "./pi-tui.ts";
 import type { UiState, UiToolCall, UiTranscriptItem, UiTurn } from "./state.ts";
 import type { NanobossTuiTheme } from "./theme.ts";
 
@@ -30,6 +30,7 @@ export class NanobossAppView implements Component {
     this.container.addChild(this.composerContainer);
     this.container.addChild(new Spacer(1));
     this.container.addChild(new ActivityBarComponent(this.theme, () => this.state, this.nowProvider));
+    this.container.addChild(new KeybindingOverlayComponent(this.theme, () => this.state));
     this.container.addChild(new ComputedTruncatedText(() => this.buildFooterLine()));
   }
 
@@ -140,6 +141,45 @@ class ActivityBarComponent implements Component {
       out.push(...new Text(lines[i]!, 0, 0).render(width));
     }
     return out;
+  }
+
+  invalidate(): void {}
+}
+
+// Keybinding overlay — non-modal: rendered as a bordered panel between the
+// activity bar and the footer when `keybindingOverlayVisible` is true. We
+// chose non-modal because the integration is trivial (just a conditional
+// component in the existing layout) — it does not need to intercept the
+// input listener. Dismissal is handled by the controller on ctrl+k (toggle)
+// and esc (explicit dismiss).
+class KeybindingOverlayComponent implements Component {
+  constructor(
+    private readonly theme: NanobossTuiTheme,
+    private readonly getState: () => UiState,
+  ) {}
+
+  render(width: number): string[] {
+    const state = this.getState();
+    if (!state.keybindingOverlayVisible) {
+      return [];
+    }
+
+    const theme = this.theme;
+    const lines: string[] = [
+      theme.accent("keybindings"),
+      `${theme.dim("send/compose:")} ${theme.text("enter send")}  ${theme.text("shift+enter newline")}`,
+      `${theme.dim("tools:")} ${theme.text("ctrl+o tools")}`,
+      `${theme.dim("run control:")} ${theme.text("ctrl+g auto-approve")}  ${theme.text("ctrl+p pause")}  ${theme.text("ctrl+t tool cards")}  ${theme.text("esc stop")}  ${theme.text("tab queue")}`,
+      `${theme.dim("theme:")} ${theme.text("/light")}  ${theme.text("/dark")}`,
+      `${theme.dim("commands:")} ${theme.text("/new")}  ${theme.text("/model")}  ${theme.text("/help")}  ${theme.text("/quit")}  ${theme.text("/dismiss")}`,
+      `${theme.dim("overlay:")} ${theme.text("ctrl+k keys")}`,
+    ];
+
+    const box = new Box(1, 0, theme.toolCardPendingBg);
+    for (const line of lines) {
+      box.addChild(new TruncatedText(line));
+    }
+    return box.render(width);
   }
 
   invalidate(): void {}

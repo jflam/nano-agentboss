@@ -107,6 +107,8 @@ interface ControllerLike {
   toggleToolOutput(): void;
   toggleToolCardsHidden(): void;
   toggleSimplify2AutoApprove(): void;
+  toggleKeybindingOverlay(): void;
+  dismissKeybindingOverlay(): void;
   showStatus(text: string): void;
   requestExit(): void;
   run(): Promise<string | undefined>;
@@ -279,8 +281,19 @@ export class NanobossTuiApp {
         return { consume: true };
       }
 
-      if (matchesKey(data, "escape") && this.state.inputDisabled) {
-        void this.controller.cancelActiveRun();
+      if (matchesKey(data, "escape")) {
+        if (this.state.keybindingOverlayVisible) {
+          this.controller.dismissKeybindingOverlay();
+          return { consume: true };
+        }
+        if (this.state.inputDisabled) {
+          void this.controller.cancelActiveRun();
+          return { consume: true };
+        }
+      }
+
+      if (matchesKey(data, "ctrl+k")) {
+        this.controller.toggleKeybindingOverlay();
         return { consume: true };
       }
 
