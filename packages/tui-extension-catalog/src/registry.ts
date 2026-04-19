@@ -14,6 +14,7 @@ import {
   type LoadableTuiExtensionRegistry,
   type RegisteredTuiExtension,
   type TuiExtensionActivationStatus,
+  type TuiExtensionContributionCounts,
   type TuiExtensionStatus,
 } from "./loadable-registry.ts";
 import {
@@ -49,6 +50,8 @@ interface InternalEntry extends RegisteredTuiExtension {
   error?: Error;
   /** Context handed to activate(); reused for deactivate(). */
   context?: TuiExtensionContext;
+  /** Contribution counts pushed via `setContributions()`. */
+  contributions?: TuiExtensionContributionCounts;
 }
 
 const SCOPE_RANK: Record<TuiExtensionScope, number> = {
@@ -124,7 +127,21 @@ export class TuiExtensionRegistry implements LoadableTuiExtensionRegistry {
       scope: entry.scope,
       status: entry.status,
       error: entry.error,
+      contributions: entry.contributions,
     }));
+  }
+
+  /**
+   * Side-channel used by the adapters-tui boot path to attach per-extension
+   * contribution counts captured during activation. A no-op for unknown
+   * names so tests that stub the registry are not brittle.
+   */
+  setContributions(name: string, counts: TuiExtensionContributionCounts): void {
+    const entry = this.entries.get(name);
+    if (!entry) {
+      return;
+    }
+    entry.contributions = { ...counts };
   }
 
   async activateAll(contextFactory: TuiExtensionContextFactory): Promise<void> {

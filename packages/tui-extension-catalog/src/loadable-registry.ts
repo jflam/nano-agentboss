@@ -34,11 +34,31 @@ export interface RegisteredTuiExtension {
  */
 export type TuiExtensionActivationStatus = "pending" | "active" | "failed";
 
+/**
+ * Count of contributions an extension registered via its
+ * `TuiExtensionContext` during activate(). Populated by the adapters-tui
+ * context factory (which owns the counting) and fed back to the registry
+ * via `setContributions` so the `/extensions` slash command can report
+ * them.
+ */
+export interface TuiExtensionContributionCounts {
+  bindings: number;
+  chromeContributions: number;
+  activityBarSegments: number;
+  panelRenderers: number;
+}
+
 export interface TuiExtensionStatus {
   metadata: TuiExtensionMetadata;
   scope: TuiExtensionScope;
   status: TuiExtensionActivationStatus;
   error?: Error;
+  /**
+   * Per-extension contribution counts captured during activate(). Undefined
+   * when the registry has not been told (e.g. pending extensions, or when
+   * the adapters-tui boot path is bypassed in a test).
+   */
+  contributions?: TuiExtensionContributionCounts;
 }
 
 export function assertTuiExtension(value: unknown): asserts value is TuiExtension {

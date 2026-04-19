@@ -24,6 +24,7 @@ import {
   type NanobossTuiControllerDeps,
 } from "./controller.ts";
 import { shouldDisableEditorSubmit } from "./commands.ts";
+import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
 
 import {
   discoverAgentCatalog,
@@ -66,6 +67,12 @@ export interface NanobossTuiAppParams {
   showToolCalls: boolean;
   sessionId?: string;
   simplify2AutoApprove?: boolean;
+  /**
+   * Snapshot function returning the currently-loaded TUI extensions. Wired
+   * by runTuiCli from the registry `bootExtensions` produced; forwarded
+   * into the controller so `/extensions` can render its output.
+   */
+  listExtensionEntries?: () => readonly TuiExtensionStatus[];
 }
 
 interface EditorLike {
@@ -218,6 +225,7 @@ export class NanobossTuiApp {
       persistDefaultAgentSelection: (selection) => {
         writePersistedDefaultAgentSelection(selection);
       },
+      listExtensionEntries: params.listExtensionEntries,
       onStateChange: (state) => {
         this.syncState(state);
       },

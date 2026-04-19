@@ -101,7 +101,7 @@ export async function runTuiCli(params: RunTuiCliParams, deps: RunTuiCliDeps = {
       pendingExtensionStatuses.push(`[extension:${level}] ${text}`);
     };
     const cwd = params.cwd ?? process.cwd();
-    await (deps.bootExtensions ?? bootExtensions)(cwd, {
+    const bootResult = await (deps.bootExtensions ?? bootExtensions)(cwd, {
       log: bufferingLog,
     });
 
@@ -111,11 +111,20 @@ export async function runTuiCli(params: RunTuiCliParams, deps: RunTuiCliDeps = {
       showToolCalls: params.showToolCalls,
       simplify2AutoApprove: params.simplify2AutoApprove,
       sessionId: params.sessionId,
+      listExtensionEntries: bootResult
+        ? () => bootResult.registry.listMetadata()
+        : undefined,
     });
 
     if (app.showStatus) {
       for (const text of pendingExtensionStatuses) {
         app.showStatus(text);
+      }
+      // When one or more extensions failed to activate, point the user at
+      // `/extensions` for per-extension detail. The aggregate line itself
+      // was already flushed above via the buffered log replay.
+      if (bootResult && bootResult.failedCount > 0) {
+        app.showStatus("[extensions] run /extensions for details");
       }
     }
 

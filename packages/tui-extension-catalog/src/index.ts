@@ -3,6 +3,7 @@ export {
   type LoadableTuiExtensionRegistry,
   type RegisteredTuiExtension,
   type TuiExtensionActivationStatus,
+  type TuiExtensionContributionCounts,
   type TuiExtensionStatus,
 } from "./loadable-registry.ts";
 

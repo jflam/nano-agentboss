@@ -29,7 +29,9 @@ import { formatAgentSelectionLabel } from "./agent-label.ts";
 import { getBuildFreshnessNotice } from "./build-freshness.ts";
 import { buildModelCommand } from "./model-command.ts";
 import {
+  formatExtensionsList,
   isExitRequest,
+  isExtensionsListRequest,
   isModelPickerRequest,
   isNewSessionRequest,
   parseModelSelectionCommand,
@@ -37,6 +39,8 @@ import {
 } from "./commands.ts";
 import { reduceUiState, type UiAction } from "./reducer.ts";
 import { createInitialUiState, type UiPendingPrompt, type UiState } from "./state.ts";
+
+import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
 
 export interface SessionResponse {
   sessionId: string;
@@ -78,6 +82,12 @@ export interface NanobossTuiControllerDeps {
     selection: DownstreamAgentSelection,
   ) => Promise<boolean>;
   persistDefaultAgentSelection?: (selection: DownstreamAgentSelection) => Promise<void> | void;
+  /**
+   * Snapshot of loaded TUI extensions, used to serve the `/extensions`
+   * slash command. Supplied at boot by runTuiCli from the
+   * `TuiExtensionRegistry` returned by `bootExtensions`.
+   */
+  listExtensionEntries?: () => readonly TuiExtensionStatus[];
   onStateChange?: (state: UiState) => void;
   onExit?: () => void;
   onClearInput?: () => void;
@@ -193,6 +203,12 @@ export class NanobossTuiController {
     if (isNewSessionRequest(trimmed)) {
       this.deps.onClearInput?.();
       await this.createNewSession();
+      return;
+    }
+
+    if (isExtensionsListRequest(trimmed)) {
+      this.deps.onClearInput?.();
+      this.emitExtensionsList();
       return;
     }
 
@@ -331,6 +347,18 @@ export class NanobossTuiController {
 
   showStatus(text: string): void {
     this.dispatch({ type: "local_status", text });
+  }
+
+  private emitExtensionsList(): void {
+    const provider = this.deps.listExtensionEntries;
+    if (!provider) {
+      this.dispatch({ type: "local_status", text: "[extensions] extension registry is not available" });
+      return;
+    }
+    const entries = provider();
+    for (const line of formatExtensionsList(entries)) {
+      this.dispatch({ type: "local_status", text: line });
+    }
   }
 
   requestExit(): void {

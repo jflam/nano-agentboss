@@ -4,6 +4,7 @@ import {
   isKnownAgentProvider,
 } from "@nanoboss/agent-acp";
 import type { DownstreamAgentSelection } from "@nanoboss/contracts";
+import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
 import type { ToolCardThemeMode } from "./theme.ts";
 
 export const LOCAL_TUI_COMMANDS = [
@@ -12,6 +13,7 @@ export const LOCAL_TUI_COMMANDS = [
   { name: "/quit", description: "Exit the interactive frontend" },
   { name: "/exit", description: "Exit the interactive frontend" },
   { name: "/model", description: "Pick or change the downstream model" },
+  { name: "/extensions", description: "List loaded TUI extensions" },
   { name: "/dark", description: "Use dark tool card backgrounds" },
   { name: "/light", description: "Use light tool card backgrounds" },
 ] as const;
@@ -38,6 +40,46 @@ export function isNewSessionRequest(trimmed: string): boolean {
 
 export function isModelPickerRequest(trimmed: string): boolean {
   return trimmed === "/model";
+}
+
+export function isExtensionsListRequest(trimmed: string): boolean {
+  return trimmed === "/extensions";
+}
+
+/**
+ * Format the output of the `/extensions` slash command as one readable line
+ * per extension. Lines route through the same status-line pathway as
+ * `/help`-style commands (i.e. via `controller.showStatus`).
+ *
+ * Layout:
+ *   [extensions] <name>@<version> [<scope>] <status> bindings=N chrome=N activityBar=N panels=N
+ * For failed extensions the error message is appended after `error=…`.
+ * When no extensions are loaded a single summary line is returned so users
+ * are not left wondering whether the command succeeded.
+ */
+export function formatExtensionsList(entries: readonly TuiExtensionStatus[]): string[] {
+  if (entries.length === 0) {
+    return ["[extensions] no extensions loaded"];
+  }
+
+  return entries.map((entry) => {
+    const parts: string[] = [];
+    const version = entry.metadata.version ? `@${entry.metadata.version}` : "";
+    parts.push(`[extensions] ${entry.metadata.name}${version} [${entry.scope}] ${entry.status}`);
+    const counts = entry.contributions;
+    if (counts) {
+      parts.push(
+        `bindings=${counts.bindings}`,
+        `chrome=${counts.chromeContributions}`,
+        `activityBar=${counts.activityBarSegments}`,
+        `panels=${counts.panelRenderers}`,
+      );
+    }
+    if (entry.status === "failed" && entry.error) {
+      parts.push(`error=${entry.error.message}`);
+    }
+    return parts.join(" ");
+  });
 }
 
 export function parseToolCardThemeCommand(trimmed: string): ToolCardThemeMode | undefined {

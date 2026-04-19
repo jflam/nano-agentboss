@@ -1183,6 +1183,7 @@ describe("tui reducer", () => {
       "/quit",
       "/exit",
       "/model",
+      "/extensions",
       "/dark",
       "/light",
     ]);
