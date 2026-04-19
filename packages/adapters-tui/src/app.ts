@@ -309,6 +309,15 @@ export class NanobossTuiApp {
     this.controller.requestExit();
   }
 
+  /**
+   * Surface a one-line status message through the controller's existing
+   * status-line pathway. Exposed so callers (e.g. runTuiCli) can flush
+   * extension-boot diagnostics collected before the controller existed.
+   */
+  showStatus(text: string): void {
+    this.controller.showStatus(text);
+  }
+
   requestSigintExit(): boolean {
     return this.handleCtrlC();
   }

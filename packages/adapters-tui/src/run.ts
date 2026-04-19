@@ -1,6 +1,7 @@
 import { NanobossTuiApp, type NanobossTuiAppParams } from "./app.ts";
 import { startPrivateHttpServer } from "@nanoboss/adapters-http";
 import type { FrontendConnectionMode } from "./connection-mode.ts";
+import { bootExtensions, type BootExtensionsResult, type TuiExtensionBootLog } from "./boot-extensions.ts";
 
 export function canUseNanobossTui(): boolean {
   return process.stdin.isTTY && process.stdout.isTTY;
@@ -25,6 +26,7 @@ interface TuiAppRunner {
   run(): Promise<string | undefined>;
   requestExit?(): void;
   requestSigintExit?(): boolean;
+  showStatus?(text: string): void;
 }
 
 type RestoreTerminalInput = () => void | Promise<void>;
@@ -33,6 +35,14 @@ type TuiExitSignal = "SIGINT" | "SIGTERM";
 export interface RunTuiCliDeps {
   startPrivateHttpServer?: typeof startPrivateHttpServer;
   createApp?: (params: NanobossTuiAppParams) => TuiAppRunner;
+  /**
+   * Override for the TUI-extension boot step. Tests pass a no-op here to
+   * avoid touching real disk roots / builtin extensions.
+   */
+  bootExtensions?: (
+    cwd: string,
+    options: { log: TuiExtensionBootLog },
+  ) => Promise<BootExtensionsResult | undefined> | BootExtensionsResult | undefined;
   suspendReservedControlCharacters?: () => RestoreTerminalInput | Promise<RestoreTerminalInput | undefined> | undefined;
   addSignalListener?: (signal: TuiExitSignal, listener: () => void) => () => void;
   setExitCode?: (code: number) => void;
@@ -82,6 +92,19 @@ export async function runTuiCli(params: RunTuiCliParams, deps: RunTuiCliDeps = {
       throw new Error("nanoboss CLI expected a server URL or private server mode");
     }
 
+    // Boot TUI extensions BEFORE constructing NanobossTuiApp so every
+    // registry mutation happens before NanobossAppView is built. Messages
+    // emitted by extension activation are buffered here and flushed through
+    // the app's status-line pathway once the controller exists.
+    const pendingExtensionStatuses: string[] = [];
+    const bufferingLog: TuiExtensionBootLog = (level, text) => {
+      pendingExtensionStatuses.push(`[extension:${level}] ${text}`);
+    };
+    const cwd = params.cwd ?? process.cwd();
+    await (deps.bootExtensions ?? bootExtensions)(cwd, {
+      log: bufferingLog,
+    });
+
     app = (deps.createApp ?? ((appParams) => new NanobossTuiApp(appParams)))({
       cwd: params.cwd,
       serverUrl,
@@ -89,6 +112,13 @@ export async function runTuiCli(params: RunTuiCliParams, deps: RunTuiCliDeps = {
       simplify2AutoApprove: params.simplify2AutoApprove,
       sessionId: params.sessionId,
     });
+
+    if (app.showStatus) {
+      for (const text of pendingExtensionStatuses) {
+        app.showStatus(text);
+      }
+    }
+
     if (exitSignal) {
       app.requestExit?.();
     }

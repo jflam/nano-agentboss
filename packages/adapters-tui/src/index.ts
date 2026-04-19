@@ -65,3 +65,12 @@ export {
   type NbCardV1Payload,
   type NbCardTone,
 } from "./core-panels.ts";
+export {
+  bootExtensions,
+  createTuiExtensionContextFactory,
+  type BootExtensionsOptions,
+  type BootExtensionsResult,
+  type TuiExtensionBootLog,
+  type TuiExtensionBootLogLevel,
+  type TuiExtensionContextFactoryDeps,
+} from "./boot-extensions.ts";

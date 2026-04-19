@@ -18,12 +18,23 @@ const PACKAGE_NAMES = [
   "store",
 ] as const;
 
+// Additional workspace packages that exist on disk but are intentionally
+// excluded from the per-package layering validation below (e.g. the TUI
+// extension SDK is cyclic with adapters-tui by design). They are still
+// recognised as known workspace packages so imports into them do not get
+// flagged as "unknown".
+const ADDITIONAL_WORKSPACE_PACKAGES = [
+  "tui-extension-catalog",
+  "tui-extension-sdk",
+] as const;
+
 type PackageName = (typeof PACKAGE_NAMES)[number];
+type WorkspacePackageName = PackageName | (typeof ADDITIONAL_WORKSPACE_PACKAGES)[number];
 
 const REPO_ROOT = process.cwd();
 const PACKAGE_SCOPE = "@nanoboss/";
 
-const ALLOWED_LAYERING: Record<PackageName, readonly PackageName[]> = {
+const ALLOWED_LAYERING: Record<PackageName, readonly WorkspacePackageName[]> = {
   "adapters-acp-server": [
     "agent-acp",
     "adapters-mcp",
@@ -42,6 +53,8 @@ const ALLOWED_LAYERING: Record<PackageName, readonly PackageName[]> = {
     "procedure-engine",
     "procedure-sdk",
     "store",
+    "tui-extension-catalog",
+    "tui-extension-sdk",
   ],
   "agent-acp": ["contracts", "procedure-sdk", "store"],
   "app-runtime": [
@@ -225,15 +238,22 @@ function parseWorkspaceDependencySpecifier(specifier: string): string | null {
   return dependency && dependency.length > 0 ? dependency : null;
 }
 
-function isWorkspacePackageName(value: string): value is PackageName {
-  return PACKAGE_NAMES.includes(value as PackageName);
+function isWorkspacePackageName(value: string): value is WorkspacePackageName {
+  return (
+    (PACKAGE_NAMES as readonly string[]).includes(value) ||
+    (ADDITIONAL_WORKSPACE_PACKAGES as readonly string[]).includes(value)
+  );
+}
+
+function isValidatedPackageName(value: string): value is PackageName {
+  return (PACKAGE_NAMES as readonly string[]).includes(value);
 }
 
 function formatWorkspaceDependency(packageName: string): string {
   return `${PACKAGE_SCOPE}${packageName}`;
 }
 
-function formatDependencyList(packageNames: readonly PackageName[]): string {
+function formatDependencyList(packageNames: readonly WorkspacePackageName[]): string {
   return packageNames.length === 0 ? "(none)" : packageNames.map(formatWorkspaceDependency).join(", ");
 }
 
@@ -267,7 +287,9 @@ function findAllowedLayeringCycles(): string[] {
     stack.push(packageName);
 
     for (const dependency of ALLOWED_LAYERING[packageName]) {
-      visit(dependency);
+      if (isValidatedPackageName(dependency)) {
+        visit(dependency);
+      }
     }
 
     stack.pop();

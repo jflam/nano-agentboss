@@ -84,6 +84,8 @@
         "@nanoboss/procedure-engine": "workspace:*",
         "@nanoboss/procedure-sdk": "workspace:*",
         "@nanoboss/store": "workspace:*",
+        "@nanoboss/tui-extension-catalog": "workspace:*",
+        "@nanoboss/tui-extension-sdk": "workspace:*",
       },
     },
     "packages/agent-acp": {
