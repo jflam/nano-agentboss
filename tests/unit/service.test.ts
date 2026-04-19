@@ -370,6 +370,23 @@ describe("NanobossService", () => {
       throw new Error("Missing run_failed event");
     }
     expect(failed.data.error).toContain("only supported for /default");
+
+    // run_failed must be preceded by (or accompanied by) an nb/error@1
+    // procedure_panel event so the failure survives any tool-card filter
+    // state on the client.
+    const procedurePanel = events.findLast(
+      (event) => event.type === "procedure_panel" && event.data.rendererId === "nb/error@1",
+    );
+    expect(procedurePanel?.type).toBe("procedure_panel");
+    if (procedurePanel?.type !== "procedure_panel") {
+      throw new Error("Missing nb/error@1 procedure_panel event");
+    }
+    expect(procedurePanel.data.severity).toBe("error");
+    expect(procedurePanel.data.dismissible).toBe(false);
+    expect(procedurePanel.data.payload).toMatchObject({
+      procedure: "model",
+      message: expect.stringContaining("only supported for /default") as unknown as string,
+    });
   });
 
   test("persists durable prompt image metadata for default-session image prompts", async () => {

@@ -95,16 +95,16 @@ describe("CommandContextImpl UI", () => {
         waiting: true,
       },
       {
-        type: "ui_panel",
+        type: "procedure_panel",
         procedure: "default",
         rendererId: "nb/card@1",
-        slot: "transcript",
+        severity: "info",
+        dismissible: true,
         payload: {
           kind: "report",
           title: "Research checkpoint",
           markdown: "- source A\n- source B",
         },
-        lifetime: "run",
       },
     ] satisfies ProcedureUiEvent[]);
   });

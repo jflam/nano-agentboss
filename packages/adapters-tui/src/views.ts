@@ -1,5 +1,5 @@
 import { Container, Markdown, Spacer, Text, TruncatedText, type Component } from "./pi-tui.ts";
-import type { UiState, UiToolCall, UiTranscriptItem, UiTurn } from "./state.ts";
+import type { UiProcedurePanel, UiState, UiToolCall, UiTranscriptItem, UiTurn } from "./state.ts";
 import type { NanobossTuiTheme } from "./theme.ts";
 import {
   getChromeContributions,
@@ -173,11 +173,12 @@ export class TranscriptComponent implements Component {
 
     const turnById = new Map(state.turns.map((turn): [string, UiTurn] => [turn.id, turn]));
     const toolById = new Map(state.toolCalls.map((toolCall): [string, UiToolCall] => [toolCall.id, toolCall]));
+    const panelById = new Map(state.procedurePanels.map((panel): [string, UiProcedurePanel] => [panel.panelId, panel]));
     for (const item of state.transcriptItems) {
       if (item.type === "tool_call" && state.toolCardsHidden) {
         continue;
       }
-      const component = createTranscriptEntryComponent(this.theme, item, turnById, toolById, state.expandedToolOutput);
+      const component = createTranscriptEntryComponent(this.theme, item, turnById, toolById, panelById, state, state.expandedToolOutput);
       if (component) {
         this.container.addChild(component);
       }
@@ -288,6 +289,8 @@ function createTranscriptEntryComponent(
   item: UiTranscriptItem,
   turnById: Map<string, UiTurn>,
   toolById: Map<string, UiToolCall>,
+  panelById: Map<string, UiProcedurePanel>,
+  state: UiState,
   expandedToolOutput: boolean,
 ): Component | undefined {
   if (item.type === "turn") {
@@ -295,8 +298,78 @@ function createTranscriptEntryComponent(
     return turn ? new TurnTranscriptComponent(theme, turn) : undefined;
   }
 
+  if (item.type === "procedure_panel") {
+    const panel = panelById.get(item.id);
+    return panel ? new ProcedurePanelTranscriptComponent(theme, panel, state) : undefined;
+  }
+
   const toolCall = toolById.get(item.id);
   return toolCall ? new ToolTranscriptEntryComponent(theme, toolCall, expandedToolOutput) : undefined;
+}
+
+class ProcedurePanelTranscriptComponent implements Component {
+  private readonly container = new Container();
+
+  constructor(
+    private readonly theme: NanobossTuiTheme,
+    private readonly panel: UiProcedurePanel,
+    private readonly state: UiState,
+  ) {
+    this.rebuild();
+  }
+
+  private rebuild(): void {
+    this.container.clear();
+    const rendererEntry = getPanelRenderer(this.panel.rendererId);
+    let body: Component | undefined;
+    if (rendererEntry && rendererEntry.schema.validate(this.panel.payload)) {
+      body = rendererEntry.render({
+        payload: this.panel.payload,
+        state: this.state,
+        theme: this.theme,
+      });
+    }
+    if (!body) {
+      const tone = procedurePanelTone(this.panel.severity);
+      const text = formatProcedurePanelFallback(this.panel);
+      body = new MessageCardComponent(this.theme, text.split("\n"), tone);
+    }
+    this.container.addChild(body);
+    this.container.addChild(new Spacer(1));
+  }
+
+  render(width: number): string[] {
+    return this.container.render(width);
+  }
+
+  invalidate(): void {
+    this.container.invalidate();
+  }
+}
+
+function procedurePanelTone(severity: UiProcedurePanel["severity"]): NonNullable<UiTurn["cardTone"]> {
+  switch (severity) {
+    case "error":
+      return "error";
+    case "warn":
+      return "warning";
+    default:
+      return "info";
+  }
+}
+
+function formatProcedurePanelFallback(panel: UiProcedurePanel): string {
+  const payload = panel.payload;
+  if (payload && typeof payload === "object") {
+    const message = (payload as { message?: unknown }).message;
+    const procedure = (payload as { procedure?: unknown }).procedure;
+    if (typeof message === "string") {
+      return typeof procedure === "string"
+        ? `/${procedure}: ${message}`
+        : message;
+    }
+  }
+  return `[panel ${panel.rendererId}]`;
 }
 
 function renderTurnLabel(theme: NanobossTuiTheme, turn: UiTurn): string {

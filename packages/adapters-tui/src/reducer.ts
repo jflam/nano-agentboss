@@ -18,6 +18,7 @@ import {
   createInitialUiState,
   type UiPanel,
   type UiPendingPrompt,
+  type UiProcedurePanel,
   type UiState,
   type UiToolCall,
   type UiTranscriptItem,
@@ -387,6 +388,11 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
         return state;
       }
       return applyUiPanel(state, event.data);
+    case "procedure_panel":
+      if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
+        return state;
+      }
+      return applyProcedurePanel(state, event.data);
     case "text_delta":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
@@ -911,6 +917,93 @@ function appendProcedureCard(
     transcriptItems: appendTranscriptItem(state.transcriptItems, { type: "turn", id: turn.id }),
     activeAssistantTurnId: undefined,
     assistantParagraphBreakPending: false,
+  };
+}
+
+function applyProcedurePanel(
+  state: UiState,
+  data: Extract<RenderedFrontendEventEnvelope, { type: "procedure_panel" }>["data"],
+): UiState {
+  const existingByKey = data.key
+    ? state.procedurePanels.find((p) => p.key === data.key && p.rendererId === data.rendererId)
+    : undefined;
+
+  if (existingByKey) {
+    // Replace in place, preserving ordering and transcript item.
+    const updated: UiProcedurePanel = {
+      ...existingByKey,
+      rendererId: data.rendererId,
+      payload: data.payload,
+      severity: data.severity,
+      dismissible: data.dismissible,
+      procedure: data.procedure,
+    };
+    return {
+      ...state,
+      procedurePanels: state.procedurePanels.map((p) =>
+        p.panelId === existingByKey.panelId ? updated : p,
+      ),
+    };
+  }
+
+  const entry: UiProcedurePanel = {
+    panelId: data.panelId,
+    rendererId: data.rendererId,
+    payload: data.payload,
+    severity: data.severity,
+    dismissible: data.dismissible,
+    ...(data.key !== undefined ? { key: data.key } : {}),
+    ...(data.runId ? { runId: data.runId } : {}),
+    ...(state.activeAssistantTurnId ? { turnId: state.activeAssistantTurnId } : {}),
+    procedure: data.procedure,
+  };
+
+  const nextState: UiState = {
+    ...state,
+    procedurePanels: [...state.procedurePanels, entry],
+    transcriptItems: appendTranscriptItem(state.transcriptItems, {
+      type: "procedure_panel",
+      id: entry.panelId,
+    }),
+  };
+
+  // Preserve ordering relative to text_delta and tool_call blocks using
+  // the same boundary rule as tool calls.
+  const withBlock = appendProcedurePanelBlockToActiveTurn(nextState, entry);
+  return markAssistantTextBoundary(withBlock);
+}
+
+function appendProcedurePanelBlockToActiveTurn(
+  state: UiState,
+  panel: UiProcedurePanel,
+): UiState {
+  const activeId = state.activeAssistantTurnId;
+  if (!activeId) {
+    return state;
+  }
+  return {
+    ...state,
+    turns: state.turns.map((turn) => {
+      if (turn.id !== activeId) {
+        return turn;
+      }
+      const blocks = turn.blocks ?? [];
+      return {
+        ...turn,
+        blocks: [
+          ...blocks,
+          {
+            kind: "procedure_panel" as const,
+            panelId: panel.panelId,
+            rendererId: panel.rendererId,
+            payload: panel.payload,
+            severity: panel.severity,
+            dismissible: panel.dismissible,
+            ...(panel.key !== undefined ? { key: panel.key } : {}),
+          },
+        ],
+      };
+    }),
   };
 }
 

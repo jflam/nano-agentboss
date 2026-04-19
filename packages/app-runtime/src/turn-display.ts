@@ -17,6 +17,15 @@ export type TurnDisplayBlock =
   | {
       kind: "tool_call";
       toolCallId: string;
+    }
+  | {
+      kind: "procedure_panel";
+      panelId: string;
+      rendererId: string;
+      payload: unknown;
+      severity: "info" | "warn" | "error";
+      dismissible: boolean;
+      key?: string;
     };
 
 export interface TurnDisplay {

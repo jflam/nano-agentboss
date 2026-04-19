@@ -739,6 +739,23 @@ export class NanobossService {
     markRunActivity: () => void;
     run?: RunRef;
   }): void {
+    // Always emit an error procedure_panel alongside run_failed so the
+    // message survives any tool-card filter state on the client.
+    params.session.events.publish(params.sessionId, {
+      type: "procedure_panel",
+      runId: params.runId,
+      procedure: params.procedure,
+      panelId: `panel-${params.runId}-failed`,
+      rendererId: "nb/error@1",
+      payload: {
+        procedure: params.procedure,
+        message: params.error,
+      },
+      severity: "error",
+      dismissible: false,
+      key: "run-failed",
+    });
+
     params.session.events.publish(params.sessionId, {
       type: "run_failed",
       runId: params.runId,

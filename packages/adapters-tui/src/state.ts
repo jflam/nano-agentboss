@@ -62,7 +62,25 @@ export interface UiToolCall {
 
 export type UiTranscriptItem =
   | { type: "turn"; id: string }
-  | { type: "tool_call"; id: string };
+  | { type: "tool_call"; id: string }
+  | { type: "procedure_panel"; id: string };
+
+/**
+ * A procedure panel entry rendered as a dedicated transcript block that is
+ * always visible regardless of the tool-card toggle. Keyed by (rendererId,
+ * key) for in-place replacement.
+ */
+export interface UiProcedurePanel {
+  panelId: string;
+  rendererId: string;
+  payload: unknown;
+  severity: "info" | "warn" | "error";
+  dismissible: boolean;
+  key?: string;
+  runId?: string;
+  turnId?: string;
+  procedure?: string;
+}
 
 /**
  * A panel entry produced by a ui_panel event for any slot other than the
@@ -118,6 +136,12 @@ export interface UiState {
    * Transcript-slot panels are materialized directly into turns.
    */
   panels: UiPanel[];
+  /**
+   * Procedure panels rendered as dedicated always-visible transcript
+   * blocks. Unlike `panels`, these are not gated by the tool-card
+   * toggle.
+   */
+  procedurePanels: UiProcedurePanel[];
 }
 
 export function createInitialUiState(params: {
@@ -151,5 +175,6 @@ export function createInitialUiState(params: {
     toolCardsHidden: params.toolCardsHidden ?? false,
     keybindingOverlayVisible: false,
     panels: [],
+    procedurePanels: [],
   };
 }

@@ -101,6 +101,17 @@ export type RuntimeEvent =
       lifetime: "turn" | "run" | "session";
     }
   | {
+      type: "procedure_panel";
+      runId: string;
+      procedure: string;
+      panelId: string;
+      rendererId: string;
+      payload: unknown;
+      severity: "info" | "warn" | "error";
+      dismissible: boolean;
+      key?: string;
+    }
+  | {
       type: "token_usage";
       runId: string;
       usage: AgentTokenUsage;
@@ -230,6 +241,7 @@ const PERSISTED_RUNTIME_EVENT_TYPES = new Set<PersistedRuntimeEvent["type"]>([
   "procedure_status",
   "procedure_card",
   "ui_panel",
+  "procedure_panel",
   "tool_started",
   "tool_updated",
   "token_usage",
@@ -536,7 +548,7 @@ export function mapSessionUpdateToRuntimeEvents(
 export function mapProcedureUiEventToRuntimeEvent(
   runId: string,
   event: ProcedureUiEvent,
-): Extract<RuntimeEvent, { type: "procedure_status" | "procedure_card" | "ui_panel" }> {
+): Extract<RuntimeEvent, { type: "procedure_status" | "procedure_card" | "ui_panel" | "procedure_panel" }> {
   switch (event.type) {
     case "status":
       return {
@@ -561,7 +573,25 @@ export function mapProcedureUiEventToRuntimeEvent(
         payload: event.payload,
         lifetime: event.lifetime,
       };
+    case "procedure_panel":
+      return {
+        type: "procedure_panel",
+        runId,
+        procedure: event.procedure,
+        panelId: (event as { panelId?: string }).panelId ?? `panel-${runId}-${randomPanelIdSuffix()}`,
+        rendererId: event.rendererId,
+        payload: event.payload,
+        severity: event.severity,
+        dismissible: event.dismissible,
+        ...(event.key !== undefined ? { key: event.key } : {}),
+      };
   }
+}
+
+let panelIdCounter = 0;
+function randomPanelIdSuffix(): string {
+  panelIdCounter += 1;
+  return `${Date.now().toString(36)}-${panelIdCounter}`;
 }
 
 function extractTokenUsage(rawOutput: unknown): AgentTokenUsage | undefined {

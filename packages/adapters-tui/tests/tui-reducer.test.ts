@@ -1408,6 +1408,142 @@ describe("tui reducer", () => {
 
     expect(state.pendingContinuation).toBeUndefined();
   });
+
+  test("procedure_panel event appends a block to the active turn and a procedure_panel transcript item", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "demo",
+        prompt: "hi",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("text_delta", {
+        runId: "run-1",
+        text: "hello",
+        stream: "agent",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("procedure_panel", {
+        runId: "run-1",
+        procedure: "demo",
+        panelId: "panel-1",
+        rendererId: "nb/card@1",
+        payload: { kind: "summary", title: "t", markdown: "m" },
+        severity: "info",
+        dismissible: true,
+      }),
+    });
+
+    expect(state.procedurePanels.map((p) => p.panelId)).toEqual(["panel-1"]);
+    expect(state.transcriptItems.some((i) => i.type === "procedure_panel" && i.id === "panel-1")).toBe(true);
+    const activeTurn = state.turns.find((t) => t.id === state.activeAssistantTurnId);
+    expect(activeTurn?.blocks?.some((b) => b.kind === "procedure_panel" && b.panelId === "panel-1")).toBe(true);
+  });
+
+  test("toolCardsHidden does not hide procedure_panel transcript items", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true, toolCardsHidden: true });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "demo",
+        prompt: "hi",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("procedure_panel", {
+        runId: "run-1",
+        procedure: "demo",
+        panelId: "panel-1",
+        rendererId: "nb/error@1",
+        payload: { procedure: "demo", message: "boom" },
+        severity: "error",
+        dismissible: false,
+      }),
+    });
+
+    // The transcript item is present regardless of the tool-card toggle.
+    expect(state.toolCardsHidden).toBe(true);
+    expect(state.transcriptItems.some((i) => i.type === "procedure_panel")).toBe(true);
+  });
+
+  test("procedure_panel with an existing key replaces in place and preserves ordering", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "demo",
+        prompt: "hi",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    const emitPanel = (panelId: string, payload: unknown, key?: string) => {
+      state = reduceUiState(state, {
+        type: "frontend_event",
+        event: eventEnvelope("procedure_panel", {
+          runId: "run-1",
+          procedure: "demo",
+          panelId,
+          rendererId: "nb/card@1",
+          payload,
+          severity: "info",
+          dismissible: true,
+          ...(key !== undefined ? { key } : {}),
+        }),
+      });
+    };
+    emitPanel("p-a", { kind: "summary", title: "A", markdown: "a" }, "keyA");
+    emitPanel("p-b", { kind: "summary", title: "B", markdown: "b" });
+    emitPanel("p-a2", { kind: "summary", title: "A2", markdown: "a2" }, "keyA");
+
+    // Still two panels (A replaced, B preserved) and ordering preserved.
+    expect(state.procedurePanels.map((p) => p.panelId)).toEqual(["p-a", "p-b"]);
+    expect((state.procedurePanels[0]!.payload as { title: string }).title).toBe("A2");
+    const transcriptPanelIds = state.transcriptItems
+      .filter((i) => i.type === "procedure_panel")
+      .map((i) => i.id);
+    expect(transcriptPanelIds).toEqual(["p-a", "p-b"]);
+  });
+
+  test("procedure_panel error severity defaults to non-dismissible when emitted with dismissible=false", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "demo",
+        prompt: "hi",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("procedure_panel", {
+        runId: "run-1",
+        procedure: "demo",
+        panelId: "panel-err",
+        rendererId: "nb/error@1",
+        payload: { procedure: "demo", message: "boom" },
+        severity: "error",
+        dismissible: false,
+      }),
+    });
+
+    expect(state.procedurePanels[0]).toMatchObject({
+      severity: "error",
+      dismissible: false,
+    });
+  });
 });
 
 function eventEnvelope<EventType extends RenderedFrontendEventEnvelope["type"]>(

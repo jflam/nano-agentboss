@@ -1,6 +1,12 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
-import type { UiApi, UiCardParams, UiPanelParams, UiStatusParams } from "@nanoboss/procedure-sdk";
+import type {
+  UiApi,
+  UiCardParams,
+  UiPanelParams,
+  UiProcedurePanelParams,
+  UiStatusParams,
+} from "@nanoboss/procedure-sdk";
 import type { SessionStore } from "@nanoboss/store";
 
 import type { RunLogger } from "../logger.ts";
@@ -76,7 +82,7 @@ export class UiApiImpl implements UiApi {
   card(params: UiCardParams): void {
     this.panel({
       rendererId: "nb/card@1",
-      slot: "transcript",
+      severity: "info",
       payload: {
         kind: params.kind,
         title: params.title,
@@ -85,7 +91,40 @@ export class UiApiImpl implements UiApi {
     });
   }
 
-  panel(params: UiPanelParams): void {
+  panel(params: UiProcedurePanelParams | UiPanelParams): void {
+    if (isLegacyPanelParams(params)) {
+      this.emitLegacyPanel(params);
+      return;
+    }
+    this.emitProcedurePanel(params);
+  }
+
+  private emitProcedurePanel(params: UiProcedurePanelParams): void {
+    const severity = params.severity ?? "info";
+    const dismissible = params.dismissible ?? (severity !== "error");
+    const event = {
+      type: "procedure_panel" as const,
+      procedure: this.procedureName,
+      rendererId: params.rendererId,
+      payload: params.payload,
+      severity,
+      dismissible,
+      ...(params.key !== undefined ? { key: params.key } : {}),
+    };
+
+    this.log(
+      `[panel] /${event.procedure} ${event.rendererId} severity=${event.severity}${event.key ? ` key=${event.key}` : ""}`,
+    );
+
+    if (this.emitter.emitUiEvent) {
+      this.emitter.emitUiEvent(event);
+      return;
+    }
+
+    this.text(`[${event.rendererId}]${event.key ? ` ${event.key}` : ""}\n`);
+  }
+
+  private emitLegacyPanel(params: UiPanelParams): void {
     const event = {
       type: "ui_panel" as const,
       procedure: this.procedureName,
@@ -130,4 +169,10 @@ export class UiApiImpl implements UiApi {
 
 function normalizeNoticeText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function isLegacyPanelParams(
+  params: UiProcedurePanelParams | UiPanelParams,
+): params is UiPanelParams {
+  return typeof (params as UiPanelParams).slot === "string";
 }

@@ -236,12 +236,31 @@ export interface UiCardParams {
 
 export type UiPanelLifetime = "turn" | "run" | "session";
 
+/**
+ * Legacy slot/lifetime panel params. Still accepted by ui.panel(...) for
+ * non-transcript slot panels driven through the step-3.a PanelRenderer
+ * registry.
+ */
 export interface UiPanelParams {
   rendererId: string;
   slot: string;
   key?: string;
   payload: unknown;
   lifetime?: UiPanelLifetime;
+}
+
+export type UiProcedurePanelSeverity = "info" | "warn" | "error";
+
+/**
+ * Procedure-panel params. Emits a procedure_panel event that appears as a
+ * dedicated transcript block and is never hidden by the tool-card toggle.
+ */
+export interface UiProcedurePanelParams {
+  rendererId: string;
+  payload: unknown;
+  severity?: UiProcedurePanelSeverity;
+  dismissible?: boolean;
+  key?: string;
 }
 
 export interface UiApi {
@@ -251,7 +270,7 @@ export interface UiApi {
   error(text: string): void;
   status(params: UiStatusParams): void;
   card(params: UiCardParams): void;
-  panel(params: UiPanelParams): void;
+  panel(params: UiProcedurePanelParams | UiPanelParams): void;
 }
 
 export interface BoundAgentInvocationApi {

@@ -30,6 +30,15 @@ export type ProcedureUiEvent =
       key?: string;
       payload: unknown;
       lifetime: UiPanelLifetime;
+    }
+  | {
+      type: "procedure_panel";
+      procedure: string;
+      rendererId: string;
+      payload: unknown;
+      severity: "info" | "warn" | "error";
+      dismissible: boolean;
+      key?: string;
     };
 
 export interface SessionUpdateEmitter {

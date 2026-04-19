@@ -58,3 +58,30 @@ registerPanelRenderer<NbCardV1Payload>({
     return new MessageCardComponent(theme, lines, nbCardV1Tone(payload.kind));
   },
 });
+
+/**
+ * Error panel payload rendered for run_failed procedure panels so resume
+ * errors remain visible regardless of the tool-card toggle.
+ */
+interface NbErrorV1Payload {
+  procedure: string;
+  message: string;
+}
+
+const NbErrorV1PayloadType = jsonType<NbErrorV1Payload>(
+  typia.json.schema<NbErrorV1Payload>(),
+  typia.createValidate<NbErrorV1Payload>(),
+);
+
+registerPanelRenderer<NbErrorV1Payload>({
+  rendererId: "nb/error@1",
+  schema: NbErrorV1PayloadType,
+  render({ payload, theme }): Component {
+    const lines = [
+      `/${payload.procedure}`,
+      "",
+      `Error: ${payload.message}`,
+    ];
+    return new MessageCardComponent(theme, lines, "error");
+  },
+});

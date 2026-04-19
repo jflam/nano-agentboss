@@ -106,6 +106,12 @@ function isProcedureUiEvent(value: unknown): value is ProcedureUiEvent {
         && optionalString(record.key)
         && (record.lifetime === "turn" || record.lifetime === "run" || record.lifetime === "session")
         && "payload" in record;
+    case "procedure_panel":
+      return typeof record.rendererId === "string"
+        && (record.severity === "info" || record.severity === "warn" || record.severity === "error")
+        && typeof record.dismissible === "boolean"
+        && optionalString(record.key)
+        && "payload" in record;
     default:
       return false;
   }
