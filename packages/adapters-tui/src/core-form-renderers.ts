@@ -98,18 +98,3 @@ registerFormRenderer<Simplify2FocusPickerV1Payload>({
     );
   },
 });
-
-/**
- * Maps a legacy Continuation.ui.kind to the registered formId. Used by
- * app.ts while Continuation.ui is still the on-the-wire contract; once
- * procedures emit Continuation.form directly this shim goes away.
- */
-export function resolveSimplify2FormIdFromLegacyUi(uiKind: string | undefined): string | undefined {
-  if (uiKind === "simplify2_checkpoint") {
-    return SIMPLIFY2_CHECKPOINT_FORM_ID;
-  }
-  if (uiKind === "simplify2_focus_picker") {
-    return SIMPLIFY2_FOCUS_PICKER_FORM_ID;
-  }
-  return undefined;
-}

@@ -90,14 +90,17 @@ describe("simplify2 procedure", () => {
     expect(pausedState.mode).toBe("checkpoint");
     expect(pausedState.notebook.currentCheckpoint?.hypothesisId).toMatch(/^hyp-[0-9a-f]{12}$/);
     expect(pausedState.notebook.currentCheckpoint?.hypothesisId).not.toBe("hyp-boundary-checkpoint");
-    expect(normalized.pause?.ui).toMatchObject({
-      kind: "simplify2_checkpoint",
-      actions: [
-        { id: "approve", reply: "approve it" },
-        { id: "stop", reply: "stop" },
-        { id: "focus_tests", reply: "focus on tests instead" },
-        { id: "other" },
-      ],
+    expect(normalized.pause?.form).toMatchObject({
+      formId: "nb/simplify2-checkpoint@1",
+      payload: {
+        kind: "simplify2_checkpoint",
+        actions: [
+          { id: "approve", reply: "approve it" },
+          { id: "stop", reply: "stop" },
+          { id: "focus_tests", reply: "focus on tests instead" },
+          { id: "other" },
+        ],
+      },
     });
 
     const focusDir = findOnlyFocusDir(cwd);
@@ -1446,14 +1449,17 @@ describe("simplify2 procedure", () => {
 
     const normalized = normalizeProcedureResult(result);
     expect(normalized.summary).toBe("simplify2: choose focus");
-    expect(normalized.pause?.ui).toMatchObject({
-      kind: "simplify2_focus_picker",
-      actions: [
-        { id: "continue" },
-        { id: "archive" },
-        { id: "new" },
-        { id: "cancel" },
-      ],
+    expect(normalized.pause?.form).toMatchObject({
+      formId: "nb/simplify2-focus-picker@1",
+      payload: {
+        kind: "simplify2_focus_picker",
+        actions: [
+          { id: "continue" },
+          { id: "archive" },
+          { id: "new" },
+          { id: "cancel" },
+        ],
+      },
     });
     expect(normalized.pause?.question).toContain("No saved simplify focuses");
   });

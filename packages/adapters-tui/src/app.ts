@@ -53,7 +53,6 @@ import "./core-bindings.ts";
 import "./core-form-renderers.ts";
 import { SelectOverlay, type SelectOverlayOptions } from "./overlays/select-overlay.ts";
 import { getFormRenderer, type FormRenderContext } from "./form-renderers.ts";
-import { resolveSimplify2FormIdFromLegacyUi } from "./core-form-renderers.ts";
 import type { UiState } from "./state.ts";
 import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
 import { NanobossAppView } from "./views.ts";
@@ -776,7 +775,6 @@ interface FrontendContinuationWithFormId {
   formPayload: unknown;
   inputHint?: string;
   suggestedReplies?: readonly string[];
-  rawUi?: unknown;
 }
 
 function getFormContinuation(
@@ -785,39 +783,22 @@ function getFormContinuation(
   if (!continuation) {
     return undefined;
   }
-  // Resolution order: prefer `continuation.form` (the step-5+ wire shape);
-  // fall back to the legacy `continuation.ui` shim for procedures that
-  // have not migrated yet (e.g. simplify2 in this step).
+  // Procedures that need a continuation form emit `continuation.form`
+  // directly; the legacy `continuation.ui` shim has been retired now
+  // that simplify2 emits `form` natively. `ContinuationUi` itself
+  // remains in contracts temporarily for backwards compatibility of
+  // persisted sessions (removal is handled in a later step).
   const form = (continuation as { form?: { formId?: unknown; payload?: unknown } }).form;
-  if (form && typeof form === "object" && typeof form.formId === "string") {
-    return {
-      procedure: continuation.procedure,
-      question: continuation.question,
-      formId: form.formId,
-      formPayload: form.payload,
-      inputHint: continuation.inputHint,
-      suggestedReplies: continuation.suggestedReplies,
-      rawUi: continuation.ui,
-    };
-  }
-  const legacyUi = continuation.ui;
-  const legacyKind = legacyUi && typeof legacyUi === "object"
-    ? (legacyUi as { kind?: unknown }).kind
-    : undefined;
-  const formId = typeof legacyKind === "string"
-    ? resolveSimplify2FormIdFromLegacyUi(legacyKind)
-    : undefined;
-  if (!formId || !legacyUi) {
+  if (!form || typeof form !== "object" || typeof form.formId !== "string") {
     return undefined;
   }
   return {
     procedure: continuation.procedure,
     question: continuation.question,
-    formId,
-    formPayload: legacyUi,
+    formId: form.formId,
+    formPayload: form.payload,
     inputHint: continuation.inputHint,
     suggestedReplies: continuation.suggestedReplies,
-    rawUi: legacyUi,
   };
 }
 
