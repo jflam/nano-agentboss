@@ -974,6 +974,104 @@ describe("NanobossTuiApp", () => {
     expect(editor.getText()).toBe("new ");
   });
 
+  test("prefers continuation.form over legacy ui and submits via form renderer", async () => {
+    const editor = new FakeEditor();
+    const submitted: string[] = [];
+    let currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    let capturedOnStateChange: ((state: UiState) => void) | undefined;
+    let shownComposer: { handleInput?: (data: string) => void } | undefined;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener() {},
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: (_params, deps) => {
+          capturedOnStateChange = deps.onStateChange;
+          return {
+            getState: () => currentState,
+            async handleSubmit(input) {
+              submitted.push(typeof input === "string"
+                ? input
+                : input.parts.map((part) => part.type === "text" ? part.text : part.token).join(""));
+            },
+            async queuePrompt() {},
+            async cancelActiveRun() {},
+            toggleToolOutput() {},
+            toggleToolCardsHidden() {},
+            toggleSimplify2AutoApprove() {},
+            showStatus() {},
+            toggleKeybindingOverlay() {},
+            dismissKeybindingOverlay() {},
+            requestExit() {},
+            async run() {
+              return undefined;
+            },
+            async stop() {},
+          };
+        },
+        createView: () => ({
+          setState() {},
+          showComposer(component: unknown) {
+            shownComposer = component as { handleInput?: (data: string) => void };
+          },
+          showEditor() {},
+        }),
+      },
+    );
+
+    // Both `form` and legacy `ui` are set; `form` must win. Use a
+    // distinguishable reply on the form payload so we know which branch
+    // the shim resolved.
+    currentState = {
+      ...currentState,
+      sessionId: "session-1",
+      pendingContinuation: {
+        procedure: "simplify2",
+        question: "Approve this simplify2 slice?",
+        form: {
+          formId: "nb/simplify2-checkpoint@1",
+          payload: {
+            kind: "simplify2_checkpoint",
+            title: "Simplify2 checkpoint (form)",
+            actions: [
+              { id: "approve", label: "Continue", reply: "approve via form" },
+              { id: "other", label: "Something Else" },
+            ],
+          },
+        },
+        ui: {
+          kind: "simplify2_checkpoint",
+          title: "Simplify2 checkpoint (legacy ui)",
+          actions: [
+            { id: "approve", label: "Continue", reply: "approve via legacy ui" },
+            { id: "other", label: "Something Else" },
+          ],
+        },
+      },
+    } as typeof currentState;
+    capturedOnStateChange?.(currentState);
+
+    shownComposer?.handleInput?.("1");
+    await Promise.resolve();
+
+    expect(submitted).toEqual(["approve via form"]);
+  });
+
   test("pressing ctrl+c once clears the editor without exiting", async () => {
     const editor = new FakeEditor();
     const exits: string[] = [];

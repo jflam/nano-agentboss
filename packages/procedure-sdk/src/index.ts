@@ -22,6 +22,7 @@ export type {
   AgentTokenSnapshot,
   AgentTokenUsage,
   Continuation,
+  ContinuationForm,
   ContinuationUi,
   DownstreamAgentConfig,
   DownstreamAgentProvider,

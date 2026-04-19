@@ -4,6 +4,7 @@ import { normalizeAgentTokenUsage, parseAssistantNoticeText } from "@nanoboss/ag
 import { UiApiImpl, type ProcedureUiEvent } from "@nanoboss/procedure-engine";
 import type {
   AgentTokenUsage,
+  ContinuationForm,
   ContinuationUi,
   RunRef,
 } from "@nanoboss/contracts";
@@ -29,6 +30,8 @@ export interface RuntimeContinuation {
   question: string;
   inputHint?: string;
   suggestedReplies?: string[];
+  form?: ContinuationForm;
+  /** @deprecated Prefer `form`; retained for dual-write with simplify2. */
   ui?: ContinuationUi;
 }
 
@@ -174,6 +177,8 @@ export type RuntimeEvent =
       display?: string;
       inputHint?: string;
       suggestedReplies?: string[];
+      form?: ContinuationForm;
+      /** @deprecated Prefer `form`; retained for dual-write with simplify2. */
       ui?: ContinuationUi;
       tokenUsage?: AgentTokenUsage;
     }

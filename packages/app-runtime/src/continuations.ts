@@ -41,6 +41,7 @@ export function toRuntimeContinuation(
     question: continuation.question,
     inputHint: continuation.inputHint,
     suggestedReplies: continuation.suggestedReplies,
+    form: continuation.form,
     ui: continuation.ui,
   };
 }
@@ -83,6 +84,7 @@ export function buildPendingContinuation(
     state: result.pause.state,
     inputHint: result.pause.inputHint,
     suggestedReplies: result.pause.suggestedReplies,
+    form: result.pause.form,
     ui: result.pause.ui,
   };
 }

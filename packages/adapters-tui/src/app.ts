@@ -785,10 +785,21 @@ function getFormContinuation(
   if (!continuation) {
     return undefined;
   }
-  // Step 4 is dual-write: Continuation.form is not yet on the wire, so
-  // resolve the formId from the legacy Continuation.ui.kind shim. When
-  // a future step flips procedures to emit `form` this branch can
-  // short-circuit on `continuation.form` first.
+  // Resolution order: prefer `continuation.form` (the step-5+ wire shape);
+  // fall back to the legacy `continuation.ui` shim for procedures that
+  // have not migrated yet (e.g. simplify2 in this step).
+  const form = (continuation as { form?: { formId?: unknown; payload?: unknown } }).form;
+  if (form && typeof form === "object" && typeof form.formId === "string") {
+    return {
+      procedure: continuation.procedure,
+      question: continuation.question,
+      formId: form.formId,
+      formPayload: form.payload,
+      inputHint: continuation.inputHint,
+      suggestedReplies: continuation.suggestedReplies,
+      rawUi: continuation.ui,
+    };
+  }
   const legacyUi = continuation.ui;
   const legacyKind = legacyUi && typeof legacyUi === "object"
     ? (legacyUi as { kind?: unknown }).kind

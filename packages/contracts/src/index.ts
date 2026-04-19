@@ -107,11 +107,27 @@ export type ContinuationUi =
   | Simplify2CheckpointContinuationUi
   | Simplify2FocusPickerContinuationUi;
 
+export interface ContinuationForm {
+  formId: string;
+  payload: JsonValue;
+}
+
 export interface Continuation<TState extends KernelValue = KernelValue> {
   question: string;
   state: TState;
   inputHint?: string;
   suggestedReplies?: string[];
+  /**
+   * Open form-registry continuation descriptor. Preferred over `ui`.
+   * Resolved by the TUI via the form-renderer registry
+   * (see `packages/adapters-tui/src/core-form-renderers.ts`).
+   */
+  form?: ContinuationForm;
+  /**
+   * @deprecated Use `form` + the form-renderer registry instead. Retained
+   * for dual-write compatibility with simplify2 while procedures migrate;
+   * will be removed once all callers emit `form`.
+   */
   ui?: ContinuationUi;
 }
 
