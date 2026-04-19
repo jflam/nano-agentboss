@@ -761,7 +761,6 @@ export class NanobossService {
       },
       severity: "error",
       dismissible: false,
-      key: "run-failed",
     });
 
     params.session.events.publish(params.sessionId, {

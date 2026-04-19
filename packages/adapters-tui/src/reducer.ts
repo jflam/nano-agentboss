@@ -888,7 +888,11 @@ function applyProcedurePanel(
   data: Extract<RenderedFrontendEventEnvelope, { type: "procedure_panel" }>["data"],
 ): UiState {
   const existingByKey = data.key
-    ? state.procedurePanels.find((p) => p.key === data.key && p.rendererId === data.rendererId)
+    ? state.procedurePanels.find((p) =>
+      p.key === data.key
+        && p.rendererId === data.rendererId
+        && p.runId === data.runId
+    )
     : undefined;
 
   if (existingByKey) {
@@ -903,6 +907,7 @@ function applyProcedurePanel(
     };
     return {
       ...state,
+      turns: replaceProcedurePanelBlockInTurns(state.turns, existingByKey.panelId, updated),
       procedurePanels: state.procedurePanels.map((p) =>
         p.panelId === existingByKey.panelId ? updated : p,
       ),
@@ -968,6 +973,34 @@ function appendProcedurePanelBlockToActiveTurn(
       };
     }),
   };
+}
+
+function replaceProcedurePanelBlockInTurns(
+  turns: UiTurn[],
+  panelId: string,
+  panel: UiProcedurePanel,
+): UiTurn[] {
+  return turns.map((turn) => {
+    if (!turn.blocks?.some((block) => block.kind === "procedure_panel" && block.panelId === panelId)) {
+      return turn;
+    }
+    return {
+      ...turn,
+      blocks: turn.blocks.map((block) =>
+        block.kind === "procedure_panel" && block.panelId === panelId
+          ? {
+              kind: "procedure_panel" as const,
+              panelId,
+              rendererId: panel.rendererId,
+              payload: panel.payload,
+              severity: panel.severity,
+              dismissible: panel.dismissible,
+              ...(panel.key !== undefined ? { key: panel.key } : {}),
+            }
+          : block
+      ),
+    };
+  });
 }
 
 function applyUiPanel(

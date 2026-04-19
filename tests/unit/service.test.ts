@@ -387,6 +387,7 @@ describe("NanobossService", () => {
     }
     expect(procedurePanel.data.severity).toBe("error");
     expect(procedurePanel.data.dismissible).toBe(false);
+    expect(procedurePanel.data.key).toBeUndefined();
     expect(procedurePanel.data.payload).toMatchObject({
       procedure: "model",
       message: expect.stringContaining("only supported for /default") as unknown as string,

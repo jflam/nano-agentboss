@@ -1497,6 +1497,14 @@ describe("tui reducer", () => {
         startedAt: new Date(0).toISOString(),
       }),
     });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("text_delta", {
+        runId: "run-1",
+        text: "hello",
+        stream: "agent",
+      }),
+    });
     const emitPanel = (panelId: string, payload: unknown, key?: string) => {
       state = reduceUiState(state, {
         type: "frontend_event",
@@ -1519,10 +1527,80 @@ describe("tui reducer", () => {
     // Still two panels (A replaced, B preserved) and ordering preserved.
     expect(state.procedurePanels.map((p) => p.panelId)).toEqual(["p-a", "p-b"]);
     expect((state.procedurePanels[0]!.payload as { title: string }).title).toBe("A2");
+    const activeTurn = state.turns.find((turn) => turn.id === "assistant-1");
+    const panelBlock = activeTurn?.blocks?.find((block) => block.kind === "procedure_panel" && block.panelId === "p-a");
+    expect(panelBlock?.kind).toBe("procedure_panel");
+    if (panelBlock?.kind === "procedure_panel") {
+      expect((panelBlock.payload as { title: string }).title).toBe("A2");
+    }
     const transcriptPanelIds = state.transcriptItems
       .filter((i) => i.type === "procedure_panel")
       .map((i) => i.id);
     expect(transcriptPanelIds).toEqual(["p-a", "p-b"]);
+  });
+
+  test("procedure_panel key replacement is scoped to the originating run", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "demo",
+        prompt: "first",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("procedure_panel", {
+        runId: "run-1",
+        procedure: "demo",
+        panelId: "panel-run-1",
+        rendererId: "nb/card@1",
+        payload: { kind: "summary", title: "Run 1", markdown: "first" },
+        severity: "info",
+        dismissible: true,
+        key: "same-key",
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_completed", {
+        runId: "run-1",
+        procedure: "demo",
+        completedAt: new Date(1_000).toISOString(),
+        run: { sessionId: "session-1", runId: "stored-run-1" },
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-2",
+        procedure: "demo",
+        prompt: "second",
+        startedAt: new Date(2_000).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("procedure_panel", {
+        runId: "run-2",
+        procedure: "demo",
+        panelId: "panel-run-2",
+        rendererId: "nb/card@1",
+        payload: { kind: "summary", title: "Run 2", markdown: "second" },
+        severity: "info",
+        dismissible: true,
+        key: "same-key",
+      }),
+    });
+
+    expect(state.procedurePanels.map((panel) => panel.panelId)).toEqual(["panel-run-1", "panel-run-2"]);
+    expect(state.transcriptItems.filter((item) => item.type === "procedure_panel").map((item) => item.id)).toEqual([
+      "panel-run-1",
+      "panel-run-2",
+    ]);
   });
 
   test("procedure_panel error severity defaults to non-dismissible when emitted with dismissible=false", () => {
