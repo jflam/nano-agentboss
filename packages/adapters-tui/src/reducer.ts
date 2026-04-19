@@ -84,6 +84,9 @@ export type UiAction =
       type: "toggle_tool_output";
     }
   | {
+      type: "toggle_tool_cards_hidden";
+    }
+  | {
       type: "frontend_event";
       event: RenderedFrontendEventEnvelope;
     };
@@ -100,6 +103,7 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
           expandedToolOutput: state.expandedToolOutput,
           toolCardThemeMode: state.toolCardThemeMode,
           simplify2AutoApprove: action.autoApprove,
+          toolCardsHidden: state.toolCardsHidden,
         }),
         sessionId: action.sessionId,
         buildLabel: action.buildLabel,
@@ -231,6 +235,11 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
       return {
         ...state,
         expandedToolOutput: !state.expandedToolOutput,
+      };
+    case "toggle_tool_cards_hidden":
+      return {
+        ...state,
+        toolCardsHidden: !state.toolCardsHidden,
       };
     case "frontend_event":
       return reduceFrontendEvent(state, action.event);

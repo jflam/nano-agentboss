@@ -432,6 +432,57 @@ describe("NanobossAppView", () => {
     expect(expanded).toContain("export const world = 2;");
   });
 
+  test("omits tool-card entries from the transcript when toolCardsHidden is true but keeps turns", () => {
+    const toolCall = {
+      id: "tool-read",
+      runId: "run-1",
+      title: "read",
+      kind: "read" as const,
+      status: "completed",
+      depth: 0,
+      isWrapper: false,
+      callPreview: { header: "read src/mcp/jsonrpc.ts:12" },
+    };
+    const turn = {
+      id: "user-1",
+      role: "user" as const,
+      markdown: "please read jsonrpc.ts",
+      status: "complete" as const,
+    };
+    const baseState = {
+      ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
+      sessionId: "session-1",
+      turns: [turn],
+      toolCalls: [toolCall],
+      transcriptItems: [
+        { type: "turn" as const, id: "user-1" },
+        { type: "tool_call" as const, id: "tool-read" },
+      ],
+    };
+
+    const visibleView = new NanobossAppView(
+      { render: () => [""], invalidate() {} } as never,
+      createNanobossTuiTheme(),
+      baseState,
+    );
+    const hiddenView = new NanobossAppView(
+      { render: () => [""], invalidate() {} } as never,
+      createNanobossTuiTheme(),
+      { ...baseState, toolCardsHidden: true },
+    );
+
+    const visible = stripAnsi(visibleView.render(160).join("\n"));
+    const hidden = stripAnsi(hiddenView.render(160).join("\n"));
+
+    expect(visible).toContain("read src/mcp/jsonrpc.ts:12");
+    expect(visible).toContain("please read jsonrpc.ts");
+    expect(visible).toContain("ctrl+t hide-tools");
+
+    expect(hidden).not.toContain("read src/mcp/jsonrpc.ts:12");
+    expect(hidden).toContain("please read jsonrpc.ts");
+    expect(hidden).toContain("ctrl+t show-tools");
+  });
+
   test("renders light tool cards with explicit readable header, body, and meta colors", () => {
     const theme = createNanobossTuiTheme();
     theme.setToolCardMode("light");

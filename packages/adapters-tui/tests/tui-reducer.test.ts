@@ -1229,6 +1229,57 @@ describe("tui reducer", () => {
     expect(state.expandedToolOutput).toBe(false);
   });
 
+  test("toggle_tool_cards_hidden flips the tool-cards-hidden flag without mutating transcript data", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    // Seed a tool call in state so we can confirm it's preserved across toggles.
+    state = {
+      ...state,
+      toolCalls: [
+        {
+          id: "tc-1",
+          runId: "run-1",
+          title: "example",
+          kind: "other",
+          status: "pending",
+          depth: 0,
+          isWrapper: false,
+        },
+      ],
+      transcriptItems: [{ type: "tool_call", id: "tc-1" }],
+    };
+
+    expect(state.toolCardsHidden).toBe(false);
+
+    state = reduceUiState(state, { type: "toggle_tool_cards_hidden" });
+    expect(state.toolCardsHidden).toBe(true);
+    // Data is preserved — hiding is view-only.
+    expect(state.toolCalls).toHaveLength(1);
+    expect(state.transcriptItems).toHaveLength(1);
+
+    state = reduceUiState(state, { type: "toggle_tool_cards_hidden" });
+    expect(state.toolCardsHidden).toBe(false);
+    expect(state.toolCalls).toHaveLength(1);
+    expect(state.transcriptItems).toHaveLength(1);
+  });
+
+  test("session_ready preserves toolCardsHidden across session restarts", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    state = reduceUiState(state, { type: "toggle_tool_cards_hidden" });
+    expect(state.toolCardsHidden).toBe(true);
+
+    state = reduceUiState(state, {
+      type: "session_ready",
+      sessionId: "session-2",
+      cwd: "/repo",
+      buildLabel: "nanoboss-test",
+      agentLabel: "copilot/default",
+      autoApprove: false,
+      commands: [],
+    });
+
+    expect(state.toolCardsHidden).toBe(true);
+  });
+
   test("tracks local simplify2 auto-approve mode", () => {
     let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
 

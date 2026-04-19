@@ -101,6 +101,7 @@ export class NanobossAppView implements Component {
       "ctrl+o tools",
       "ctrl+g auto-approve",
       "ctrl+p pause",
+      this.state.toolCardsHidden ? "ctrl+t show-tools" : "ctrl+t hide-tools",
       this.state.expandedToolOutput ? "expanded" : "collapsed",
       "/new",
       "/model",
@@ -160,6 +161,9 @@ class TranscriptComponent implements Component {
     const turnById = new Map(state.turns.map((turn): [string, UiTurn] => [turn.id, turn]));
     const toolById = new Map(state.toolCalls.map((toolCall): [string, UiToolCall] => [toolCall.id, toolCall]));
     for (const item of state.transcriptItems) {
+      if (item.type === "tool_call" && state.toolCardsHidden) {
+        continue;
+      }
       const component = createTranscriptEntryComponent(this.theme, item, turnById, toolById, state.expandedToolOutput);
       if (component) {
         this.container.addChild(component);

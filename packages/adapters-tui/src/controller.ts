@@ -261,6 +261,10 @@ export class NanobossTuiController {
     this.dispatch({ type: "toggle_tool_output" });
   }
 
+  toggleToolCardsHidden(): void {
+    this.dispatch({ type: "toggle_tool_cards_hidden" });
+  }
+
   toggleSimplify2AutoApprove(): void {
     void this.toggleSessionAutoApprove();
   }

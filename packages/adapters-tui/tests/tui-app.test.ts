@@ -153,6 +153,7 @@ describe("NanobossTuiApp", () => {
             async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
+            toggleToolCardsHidden() {},
             toggleSimplify2AutoApprove() {},
             showStatus() {},
             requestExit() {},
@@ -222,6 +223,7 @@ describe("NanobossTuiApp", () => {
             async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
+            toggleToolCardsHidden() {},
             toggleSimplify2AutoApprove() {},
             showStatus() {},
             requestExit() {},
@@ -307,6 +309,7 @@ describe("NanobossTuiApp", () => {
           toggleToolOutput() {
             toggles.push("toggle");
           },
+          toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {},
@@ -359,6 +362,7 @@ describe("NanobossTuiApp", () => {
           async queuePrompt() {},
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {
             toggles.push("toggle");
           },
@@ -419,6 +423,7 @@ describe("NanobossTuiApp", () => {
           async queuePrompt() {},
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {},
@@ -492,6 +497,7 @@ describe("NanobossTuiApp", () => {
           async queuePrompt() {},
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {},
@@ -566,6 +572,7 @@ describe("NanobossTuiApp", () => {
           async queuePrompt() {},
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus(text: string) {
             statuses.push(text);
@@ -653,6 +660,7 @@ describe("NanobossTuiApp", () => {
           async queuePrompt() {},
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {},
@@ -742,6 +750,7 @@ describe("NanobossTuiApp", () => {
           },
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {},
@@ -813,6 +822,7 @@ describe("NanobossTuiApp", () => {
             async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
+            toggleToolCardsHidden() {},
             toggleSimplify2AutoApprove() {},
             showStatus() {},
             requestExit() {},
@@ -889,6 +899,7 @@ describe("NanobossTuiApp", () => {
             async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
+            toggleToolCardsHidden() {},
             toggleSimplify2AutoApprove() {},
             showStatus() {},
             requestExit() {},
@@ -976,6 +987,7 @@ describe("NanobossTuiApp", () => {
           async queuePrompt() {},
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {
@@ -1034,6 +1046,7 @@ describe("NanobossTuiApp", () => {
           async queuePrompt() {},
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {
@@ -1092,6 +1105,7 @@ describe("NanobossTuiApp", () => {
           async queuePrompt() {},
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {
@@ -1152,6 +1166,7 @@ describe("NanobossTuiApp", () => {
           toggleToolOutput() {
             toggles.push("toggle");
           },
+          toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {},
@@ -1218,6 +1233,7 @@ describe("NanobossTuiApp", () => {
               cancellations.push("cancel");
             },
             toggleToolOutput() {},
+            toggleToolCardsHidden() {},
             toggleSimplify2AutoApprove() {},
             showStatus() {},
             requestExit() {},
@@ -1279,6 +1295,7 @@ describe("NanobossTuiApp", () => {
           },
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {},
@@ -1345,6 +1362,7 @@ describe("NanobossTuiApp", () => {
           },
           async cancelActiveRun() {},
           toggleToolOutput() {},
+            toggleToolCardsHidden() {},
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           requestExit() {},
@@ -1404,6 +1422,7 @@ describe("NanobossTuiApp", () => {
             async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
+            toggleToolCardsHidden() {},
             toggleSimplify2AutoApprove() {},
             showStatus() {},
             requestExit() {},
@@ -1485,6 +1504,7 @@ describe("NanobossTuiApp", () => {
             async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
+            toggleToolCardsHidden() {},
             toggleSimplify2AutoApprove() {},
             showStatus() {},
             requestExit() {},
@@ -1541,6 +1561,72 @@ describe("NanobossTuiApp", () => {
     expect(requestRenderCalls).toBe(rendersAfterResume + 1);
   });
 
+  test("ctrl+t invokes the controller's tool-cards-hidden toggle", async () => {
+    const editor = new FakeEditor();
+    const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    let inputListener: ((data: string) => unknown) | undefined;
+    const toggleCalls: string[] = [];
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener(listener) {
+            inputListener = listener;
+          },
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async queuePrompt() {},
+          async cancelActiveRun() {},
+          toggleToolOutput() {
+            toggleCalls.push("output");
+          },
+          toggleToolCardsHidden() {
+            toggleCalls.push("hidden");
+          },
+          toggleSimplify2AutoApprove() {},
+          showStatus() {},
+          requestExit() {},
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => ({
+          setState() {},
+          showComposer() {},
+          showEditor() {},
+        }),
+      },
+    );
+
+    // Ctrl+T (DC4, \u0014) — toggle tool-card hiding.
+    const result = inputListener?.("\u0014");
+    await Promise.resolve();
+    expect(result).toEqual({ consume: true });
+    expect(toggleCalls).toEqual(["hidden"]);
+
+    // Second press invokes the toggle again — state flip is reducer's job.
+    inputListener?.("\u0014");
+    await Promise.resolve();
+    expect(toggleCalls).toEqual(["hidden", "hidden"]);
+  });
+
   test("applies local tool card theme changes to the shared theme instance", () => {
     const editor = new FakeEditor();
     const theme = createNanobossTuiTheme();
@@ -1578,6 +1664,7 @@ describe("NanobossTuiApp", () => {
             async queuePrompt() {},
             async cancelActiveRun() {},
             toggleToolOutput() {},
+            toggleToolCardsHidden() {},
             toggleSimplify2AutoApprove() {},
             showStatus() {},
             requestExit() {},

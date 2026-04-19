@@ -85,6 +85,7 @@ export interface UiState {
   toolCardThemeMode: ToolCardThemeMode;
   simplify2AutoApprove: boolean;
   liveUpdatesPaused?: boolean;
+  toolCardsHidden?: boolean;
 }
 
 export function createInitialUiState(params: {
@@ -95,6 +96,7 @@ export function createInitialUiState(params: {
   expandedToolOutput?: boolean;
   toolCardThemeMode?: ToolCardThemeMode;
   simplify2AutoApprove?: boolean;
+  toolCardsHidden?: boolean;
 } = {}): UiState {
   return {
     cwd: params.cwd ?? process.cwd(),
@@ -114,5 +116,6 @@ export function createInitialUiState(params: {
     expandedToolOutput: params.expandedToolOutput ?? false,
     toolCardThemeMode: params.toolCardThemeMode ?? "dark",
     simplify2AutoApprove: params.simplify2AutoApprove ?? false,
+    toolCardsHidden: params.toolCardsHidden ?? false,
   };
 }

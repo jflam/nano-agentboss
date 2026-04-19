@@ -105,6 +105,7 @@ interface ControllerLike {
   queuePrompt(text: string | PromptInput): Promise<void>;
   cancelActiveRun(): Promise<void>;
   toggleToolOutput(): void;
+  toggleToolCardsHidden(): void;
   toggleSimplify2AutoApprove(): void;
   showStatus(text: string): void;
   requestExit(): void;
@@ -294,6 +295,11 @@ export class NanobossTuiApp {
 
       if (matchesKey(data, "ctrl+g")) {
         this.controller.toggleSimplify2AutoApprove();
+        return { consume: true };
+      }
+
+      if (matchesKey(data, "ctrl+t")) {
+        this.controller.toggleToolCardsHidden();
         return { consume: true };
       }
 
