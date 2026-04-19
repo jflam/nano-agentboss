@@ -209,4 +209,53 @@ describe("TuiExtensionRegistry", () => {
     expect(brokenLogs.length).toBeGreaterThan(0);
     expect(brokenLogs.some((log) => log.text.includes("boom"))).toBe(true);
   });
+
+  test("loadBuiltins() + activateAll registers the built-in nb-core-cards extension and listMetadata() surfaces it with scope 'builtin'", async () => {
+    // No disk roots: the only extension exercised here is the built-in.
+    const registry = new TuiExtensionRegistry({ extensionRoots: [] });
+    registry.loadBuiltins();
+
+    const metadata = registry.listMetadata();
+    const coreCards = metadata.find((entry) => entry.metadata.name === "nb-core-cards");
+    expect(coreCards).toBeDefined();
+    expect(coreCards?.scope).toBe("builtin");
+    expect(coreCards?.status).toBe("pending");
+    expect(coreCards?.metadata.provides?.panelRenderers).toContain("nb/card@1");
+
+    const captured: CapturedActivation[] = [];
+    let registeredRendererId: string | undefined;
+    const factory: TuiExtensionContextFactory = ({ metadata, scope }) => {
+      captured.push({ metadata, scope });
+      return {
+        extensionName: metadata.name,
+        scope,
+        theme: {} as TuiExtensionContext["theme"],
+        registerKeyBinding: () => {},
+        registerChromeContribution: () => {},
+        registerActivityBarSegment: () => {},
+        registerPanelRenderer: (renderer) => {
+          registeredRendererId = renderer.rendererId;
+        },
+        log: {
+          info: () => {},
+          warning: () => {},
+          error: () => {},
+        },
+      };
+    };
+
+    await registry.activateAll(factory);
+
+    const afterActivate = registry
+      .listMetadata()
+      .find((entry) => entry.metadata.name === "nb-core-cards");
+    if (afterActivate?.status === "failed") {
+      throw new Error(`nb-core-cards activation failed: ${afterActivate.error?.message}`);
+    }
+
+    expect(captured.some((entry) => entry.metadata.name === "nb-core-cards" && entry.scope === "builtin")).toBe(true);
+    expect(registeredRendererId).toBe("nb/card@1");
+
+    expect(afterActivate?.status).toBe("active");
+  });
 });

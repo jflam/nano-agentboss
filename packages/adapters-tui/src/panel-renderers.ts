@@ -35,6 +35,16 @@ export function registerPanelRenderer<T>(renderer: PanelRenderer<T>): void {
   registry.set(renderer.rendererId, renderer as PanelRenderer<unknown>);
 }
 
+/**
+ * Remove a previously-registered panel renderer. Exposed for the TUI
+ * extension boot layer so a higher-precedence extension (repo/profile) can
+ * shadow a renderer contributed by a lower-precedence extension (builtin).
+ * Returns true if a renderer was removed, false otherwise.
+ */
+export function unregisterPanelRenderer(rendererId: string): boolean {
+  return registry.delete(rendererId);
+}
+
 export function getPanelRenderer(rendererId: string): PanelRenderer<unknown> | undefined {
   return registry.get(rendererId);
 }

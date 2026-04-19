@@ -46,6 +46,7 @@
     "dist/**",
     "coverage/**",
     "tests/**",
+    "packages/*/tests/**",
     "packages/procedure-sdk/test-fixtures/consumer/index.ts"
   ]
 }

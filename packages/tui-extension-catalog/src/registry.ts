@@ -85,6 +85,21 @@ export class TuiExtensionRegistry implements LoadableTuiExtensionRegistry {
     });
   }
 
+  /**
+   * Register a pre-built TuiExtension at an arbitrary scope. Primarily
+   * intended for tests that need to simulate disk-loaded extensions without
+   * writing fixture files; callers outside the catalog normally use
+   * `registerBuiltinExtension` + `loadFromDisk` instead.
+   */
+  registerExtension(scope: TuiExtensionScope, extension: TuiExtension): void {
+    assertTuiExtension(extension);
+    this.registerEntry({
+      metadata: extension.metadata,
+      scope,
+      load: async () => extension,
+    });
+  }
+
   async loadFromDisk(): Promise<void> {
     for (const root of this.extensionRoots) {
       const scope: TuiExtensionScope = root === this.profileExtensionRoot ? "profile" : "repo";
@@ -113,7 +128,12 @@ export class TuiExtensionRegistry implements LoadableTuiExtensionRegistry {
   }
 
   async activateAll(contextFactory: TuiExtensionContextFactory): Promise<void> {
-    for (const entry of this.sortedEntries()) {
+    // Activate in scope order (builtin → profile → repo) and alphabetically
+    // within each tier. This ordering is what gives panel-renderer shadowing
+    // its "higher tier wins" semantics: a repo extension that registers
+    // `nb/card@1` runs after the builtin's registration and cleanly shadows
+    // it with a single warning diagnostic.
+    for (const entry of this.activationOrder()) {
       if (entry.status !== "pending") {
         continue;
       }
@@ -188,6 +208,14 @@ export class TuiExtensionRegistry implements LoadableTuiExtensionRegistry {
     return [...this.entries.values()].sort((left, right) =>
       left.metadata.name.localeCompare(right.metadata.name),
     );
+  }
+
+  private activationOrder(): InternalEntry[] {
+    return [...this.entries.values()].sort((left, right) => {
+      const scopeDelta = SCOPE_RANK[left.scope] - SCOPE_RANK[right.scope];
+      if (scopeDelta !== 0) return scopeDelta;
+      return left.metadata.name.localeCompare(right.metadata.name);
+    });
   }
 
   private async ensureLoaded(entry: InternalEntry): Promise<TuiExtension> {

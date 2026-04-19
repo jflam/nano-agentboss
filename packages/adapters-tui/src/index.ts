@@ -46,6 +46,7 @@ export {
 } from "./activity-bar.ts";
 export {
   registerPanelRenderer,
+  unregisterPanelRenderer,
   listPanelRenderers,
   getPanelRenderer,
   type PanelRenderer,
@@ -62,6 +63,8 @@ export {
 export {
   renderNbCardV1Markdown,
   nbCardV1Tone,
+  createNbCardV1Renderer,
+  NbCardV1PayloadType,
   type NbCardV1Payload,
   type NbCardTone,
 } from "./core-panels.ts";

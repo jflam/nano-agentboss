@@ -143,11 +143,12 @@ describe("bootExtensions", () => {
     expect(footerIds).not.toContain("badge");
   });
 
-  test("fixture extension's panel renderer is resolvable by its namespaced rendererId", async () => {
+  test("fixture extension's panel renderer is registered under its bare rendererId (renderers are not namespaced)", async () => {
     const registry = makeRegistry();
     let renderCalls = 0;
+    const rendererId = "bootext-panel-fixture/unique@1";
     const renderer: PanelRenderer<Record<string, unknown>> = {
-      rendererId: "card@1",
+      rendererId,
       schema: STUB_SCHEMA,
       render({ payload }) {
         renderCalls += 1;
@@ -168,20 +169,127 @@ describe("bootExtensions", () => {
     };
     registry.registerBuiltinExtension(extension);
 
+    const logs: { level: string; text: string }[] = [];
     await bootExtensions("/tmp/nonexistent", {
       registry,
-      log: () => {},
+      log: (level, text) => logs.push({ level, text }),
     });
 
-    // The bare rendererId must not resolve; only the namespaced one.
-    expect(getPanelRenderer("card@1")).toBeUndefined();
-    const resolved = getPanelRenderer("bootext-panel/card@1");
+    // Renderers are the public contract procedures target via ui.panel,
+    // so they are NOT namespaced by the extension name. The bare
+    // rendererId resolves directly, and no namespaced form exists.
+    const resolved = getPanelRenderer(rendererId);
     expect(resolved).toBeDefined();
+    expect(getPanelRenderer(`bootext-panel/${rendererId}`)).toBeUndefined();
 
     const state = createInitialUiState({ cwd: "/repo" });
     const theme = createNanobossTuiTheme();
     resolved?.render({ payload: { marker: "hi" }, state, theme });
     expect(renderCalls).toBe(1);
+
+    // A first registration under a fresh id does not produce a shadow
+    // warning.
+    expect(logs.filter((entry) => entry.level === "warning" && entry.text.includes("shadows"))).toHaveLength(0);
+  });
+
+  test("a higher-precedence extension registering the same rendererId shadows a lower one and emits a warning", async () => {
+    // Simulate a repo extension shadowing a builtin's registration of the
+    // same rendererId. The registry activates builtin → repo in scope
+    // order, so the repo extension's register call hits an already-present
+    // renderer and must emit a shadow warning while taking over.
+    const registry = makeRegistry();
+    const shadowedId = "shadow-test/renderer@1";
+
+    let builtinRenderCalls = 0;
+    let repoRenderCalls = 0;
+
+    const builtin: TuiExtension = {
+      metadata: {
+        name: "shadow-builtin",
+        version: "1.0.0",
+        description: "low-tier renderer provider",
+      },
+      activate(ctx) {
+        ctx.registerPanelRenderer({
+          rendererId: shadowedId,
+          schema: STUB_SCHEMA,
+          render(args) {
+            builtinRenderCalls += 1;
+            return args.payload as unknown as never;
+          },
+        });
+      },
+    };
+
+    const repoShadow: TuiExtension = {
+      metadata: {
+        name: "shadow-repo",
+        version: "1.0.0",
+        description: "high-tier shadow renderer",
+      },
+      activate(ctx) {
+        ctx.registerPanelRenderer({
+          rendererId: shadowedId,
+          schema: STUB_SCHEMA,
+          render(args) {
+            repoRenderCalls += 1;
+            return args.payload as unknown as never;
+          },
+        });
+      },
+    };
+
+    registry.registerBuiltinExtension(builtin);
+    registry.registerExtension("repo", repoShadow);
+
+    const logs: { level: string; text: string }[] = [];
+    await bootExtensions("/tmp/nonexistent", {
+      registry,
+      log: (level, text) => logs.push({ level, text }),
+    });
+
+    const resolved = getPanelRenderer(shadowedId);
+    expect(resolved).toBeDefined();
+
+    const state = createInitialUiState({ cwd: "/repo" });
+    const theme = createNanobossTuiTheme();
+    resolved?.render({ payload: {}, state, theme });
+    expect(repoRenderCalls).toBe(1);
+    expect(builtinRenderCalls).toBe(0);
+
+    const shadowWarnings = logs.filter(
+      (entry) =>
+        entry.level === "warning"
+        && entry.text.includes("[shadow-repo]")
+        && entry.text.includes(shadowedId)
+        && entry.text.includes("shadows"),
+    );
+    expect(shadowWarnings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("after bootExtensions runs, the built-in nb/card@1 renderer is resolvable and renders a sample card payload", async () => {
+    // The built-in nb-core-cards extension is loaded by
+    // registry.loadBuiltins(). We do NOT pass a pre-built registry, so
+    // loadBuiltins runs and activates the builtin, registering nb/card@1.
+    await bootExtensions("/tmp/nonexistent", {
+      extensionRoots: [],
+      skipDisk: true,
+      log: () => {},
+    });
+
+    const renderer = getPanelRenderer("nb/card@1");
+    expect(renderer).toBeDefined();
+
+    const theme = createNanobossTuiTheme();
+    const state = createInitialUiState({ cwd: "/repo" });
+    // Renderer must validate the schema and produce a component without
+    // throwing for a plausible card payload.
+    const component = renderer?.render({
+      payload: { kind: "summary", title: "hello", markdown: "body" },
+      state,
+      theme,
+    });
+    expect(component).toBeDefined();
   });
 
   test("a throwing activate is isolated, other extensions still activate, and an aggregate status line is emitted", async () => {

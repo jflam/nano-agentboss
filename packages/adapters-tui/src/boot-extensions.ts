@@ -21,6 +21,8 @@ import {
 } from "./chrome.ts";
 import {
   registerPanelRenderer as defaultRegisterPanelRenderer,
+  getPanelRenderer as defaultGetPanelRenderer,
+  unregisterPanelRenderer as defaultUnregisterPanelRenderer,
   type PanelRenderer,
 } from "./panel-renderers.ts";
 import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
@@ -47,6 +49,8 @@ export interface TuiExtensionContextFactoryDeps {
   registerChromeContribution?: (contribution: ChromeContribution) => void;
   registerActivityBarSegment?: (segment: ActivityBarSegment) => void;
   registerPanelRenderer?: <T>(renderer: PanelRenderer<T>) => void;
+  getPanelRenderer?: (rendererId: string) => PanelRenderer | undefined;
+  unregisterPanelRenderer?: (rendererId: string) => boolean;
 }
 
 /**
@@ -64,6 +68,8 @@ export function createTuiExtensionContextFactory(
   const registerChrome = deps.registerChromeContribution ?? defaultRegisterChromeContribution;
   const registerSegment = deps.registerActivityBarSegment ?? defaultRegisterActivityBarSegment;
   const registerRenderer = deps.registerPanelRenderer ?? defaultRegisterPanelRenderer;
+  const getRenderer = deps.getPanelRenderer ?? defaultGetPanelRenderer;
+  const unregisterRenderer = deps.unregisterPanelRenderer ?? defaultUnregisterPanelRenderer;
 
   return ({ metadata, scope }) => {
     const extensionName = metadata.name;
@@ -90,10 +96,26 @@ export function createTuiExtensionContextFactory(
         registerSegment({ ...segment, id: namespace(segment.id) });
       },
       registerPanelRenderer(renderer) {
-        registerRenderer({
-          ...renderer,
-          rendererId: namespace(renderer.rendererId),
-        });
+        // Panel rendererIds are NOT namespaced by extension name — unlike
+        // key bindings, chrome, or activity-bar segments. A rendererId is
+        // the public contract a procedure targets via ui.panel({ rendererId,
+        // ... }); the author of the rendererId (e.g. "acme/files@1") owns
+        // the namespacing convention. Namespacing here would make it
+        // impossible for a repo/profile extension to shadow a builtin (e.g.
+        // override "nb/card@1"), which is the precedence behavior the
+        // extension catalog guarantees.
+        //
+        // Shadowing: if a renderer is already registered for this id, log a
+        // warning via ctx.log.warning and replace it. Activation order is
+        // builtin → profile → repo, so the highest-precedence tier wins
+        // naturally.
+        if (getRenderer(renderer.rendererId)) {
+          logger.warning(
+            `panel renderer "${renderer.rendererId}" shadows a previously-registered renderer`,
+          );
+          unregisterRenderer(renderer.rendererId);
+        }
+        registerRenderer(renderer);
       },
     };
     return context;
