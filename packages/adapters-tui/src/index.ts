@@ -52,6 +52,14 @@ export {
   type PanelRenderContext,
 } from "./panel-renderers.ts";
 export {
+  registerFormRenderer,
+  listFormRenderers,
+  getFormRenderer,
+  type FormRenderer,
+  type FormRenderContext,
+  type EditorLike as FormRendererEditorLike,
+} from "./form-renderers.ts";
+export {
   renderNbCardV1Markdown,
   nbCardV1Tone,
   type NbCardV1Payload,

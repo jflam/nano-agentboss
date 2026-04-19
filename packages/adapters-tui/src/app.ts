@@ -5,9 +5,6 @@ import {
 import type {
   DownstreamAgentProvider,
   DownstreamAgentSelection,
-  Simplify2CheckpointContinuationUi,
-  Simplify2CheckpointContinuationUiAction,
-  Simplify2FocusPickerContinuationUi,
 } from "@nanoboss/contracts";
 import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
 import { createClipboardImageProvider, type ClipboardImageProvider } from "./clipboard/provider.ts";
@@ -49,12 +46,14 @@ import { dispatchKeyBinding, type BindingCtx, type KeyBindingAppHooks } from "./
 // registry so dispatchKeyBinding() resolves them without the caller having
 // to wire individual handlers.
 import "./core-bindings.ts";
+// Side-effect import: registers the core form renderers into the
+// module-level FormRenderer registry so getFormRenderer(...) resolves
+// nb/simplify2-checkpoint@1 and nb/simplify2-focus-picker@1 without
+// the caller having to wire individual handlers.
+import "./core-form-renderers.ts";
 import { SelectOverlay, type SelectOverlayOptions } from "./overlays/select-overlay.ts";
-import { Simplify2ContinuationOverlay } from "./overlays/simplify2-continuation-overlay.ts";
-import {
-  Simplify2FocusPickerOverlay,
-  type Simplify2FocusPickerOverlayAction,
-} from "./overlays/simplify2-focus-picker-overlay.ts";
+import { getFormRenderer, type FormRenderContext } from "./form-renderers.ts";
+import { resolveSimplify2FormIdFromLegacyUi } from "./core-form-renderers.ts";
 import type { UiState } from "./state.ts";
 import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
 import { NanobossAppView } from "./views.ts";
@@ -137,14 +136,6 @@ interface NanobossTuiAppDeps {
   clearInterval?: typeof globalThis.clearInterval;
   now?: () => number;
 }
-
-type FrontendSimplify2CheckpointContinuation = FrontendContinuation & {
-  ui: Simplify2CheckpointContinuationUi;
-};
-
-type FrontendSimplify2FocusPickerContinuation = FrontendContinuation & {
-  ui: Simplify2FocusPickerContinuationUi;
-};
 
 const TOOL_OUTPUT_TOGGLE_COOLDOWN_MS = 150;
 const CTRL_C_EXIT_WINDOW_MS = 500;
@@ -547,8 +538,8 @@ export class NanobossTuiApp {
   }
 
   private syncSimplify2ContinuationComposer(): void {
-    const continuation = getSimplify2Continuation(this.state.pendingContinuation);
-    const signature = continuation ? buildSimplify2ContinuationSignature(continuation) : undefined;
+    const continuation = getFormContinuation(this.state.pendingContinuation);
+    const signature = continuation ? buildContinuationFormSignature(continuation) : undefined;
     if (signature !== this.lastSeenSimplify2ContinuationSignature) {
       this.lastSeenSimplify2ContinuationSignature = signature;
       this.dismissedSimplify2ContinuationSignature = undefined;
@@ -564,11 +555,7 @@ export class NanobossTuiApp {
     );
 
     if (shouldShow && continuation && signature && this.inlineComposerMode !== "simplify2") {
-      if (isSimplify2CheckpointContinuation(continuation)) {
-        this.showSimplify2ContinuationOverlay(continuation, signature);
-      } else {
-        this.showSimplify2FocusPickerOverlay(continuation, signature);
-      }
+      this.mountContinuationForm(continuation, signature);
       return;
     }
 
@@ -577,90 +564,67 @@ export class NanobossTuiApp {
     }
   }
 
-  private showSimplify2ContinuationOverlay(
-    continuation: FrontendSimplify2CheckpointContinuation,
+  private mountContinuationForm(
+    continuation: FrontendContinuationWithFormId,
     signature: string,
   ): void {
+    const renderer = getFormRenderer(continuation.formId);
+    if (!renderer) {
+      // Unknown formId: fall back to dismissing locally so the user can
+      // still type a free-form reply. This mirrors the legacy "other"
+      // action path and avoids a hard crash on unregistered forms.
+      this.dismissedSimplify2ContinuationSignature = signature;
+      return;
+    }
+
+    if (!renderer.schema.validate(continuation.formPayload)) {
+      // Payload failed typia validation. Treat as unknown/dismissed
+      // rather than crashing the TUI; the underlying continuation is
+      // still pending and the user can type a reply in the default
+      // composer.
+      this.dismissedSimplify2ContinuationSignature = signature;
+      return;
+    }
+
     this.inlineComposerMode = "simplify2";
     this.openSimplify2ContinuationSignature = signature;
-    const component = new Simplify2ContinuationOverlay(
-      this.tui as TUI,
-      this.theme,
-      continuation.ui.title,
-      continuation.ui.actions,
-      (action) => {
-        this.handleSimplify2ContinuationAction(action);
+
+    const ctx: FormRenderContext<unknown> = {
+      payload: continuation.formPayload,
+      state: this.state,
+      theme: this.theme,
+      editor: {
+        setText: (text: string) => {
+          this.editor.setText(text);
+        },
+        getText: () => this.editor.getText(),
       },
-    );
+      submit: (reply: string) => {
+        this.handleFormSubmit(reply);
+      },
+      cancel: () => {
+        this.handleFormCancel();
+      },
+    };
+
+    const component = renderer.render(ctx);
     this.view.showComposer(component);
     this.tui.setFocus(component);
     this.requestRender(true);
   }
 
-  private showSimplify2FocusPickerOverlay(
-    continuation: FrontendSimplify2FocusPickerContinuation,
-    signature: string,
-  ): void {
-    this.inlineComposerMode = "simplify2";
-    this.openSimplify2ContinuationSignature = signature;
-    const component = new Simplify2FocusPickerOverlay(
-      this.tui as TUI,
-      this.theme,
-      continuation.ui.title,
-      continuation.ui.entries,
-      (action) => {
-        this.handleSimplify2FocusPickerAction(action);
-      },
-    );
-    this.view.showComposer(component);
-    this.tui.setFocus(component);
-    this.requestRender(true);
+  private handleFormSubmit(reply: string): void {
+    this.restoreEditorComposer();
+    void this.controller.handleSubmit(createTextPromptInput(reply));
   }
 
-  private handleSimplify2ContinuationAction(action: Simplify2CheckpointContinuationUiAction | undefined): void {
+  private handleFormCancel(): void {
     const signature = this.openSimplify2ContinuationSignature;
     this.restoreEditorComposer();
-    if (!action) {
-      // esc cancel: route through engine-authoritative continuation cancel.
-      void this.controller.handleContinuationCancel?.();
-      return;
+    if (signature) {
+      this.dismissedSimplify2ContinuationSignature = signature;
     }
-    if (action.id === "other") {
-      if (signature) {
-        this.dismissedSimplify2ContinuationSignature = signature;
-      }
-      return;
-    }
-
-    if (action.reply) {
-      void this.controller.handleSubmit(createTextPromptInput(action.reply));
-    }
-  }
-
-  private handleSimplify2FocusPickerAction(action: Simplify2FocusPickerOverlayAction): void {
-    const signature = this.openSimplify2ContinuationSignature;
-    this.restoreEditorComposer();
-    if (action.kind === "cancel") {
-      // Explicit cancel in the focus picker or esc: route through engine.
-      if (signature) {
-        this.dismissedSimplify2ContinuationSignature = signature;
-      }
-      void this.controller.handleContinuationCancel?.();
-      return;
-    }
-
-    if (action.kind === "new") {
-      this.editor.setText("new ");
-      if (signature) {
-        this.dismissedSimplify2ContinuationSignature = signature;
-      }
-      return;
-    }
-
-    const command = action.kind === "archive"
-      ? `archive ${action.focusId}`
-      : `continue ${action.focusId}`;
-    void this.controller.handleSubmit(createTextPromptInput(command));
+    void this.controller.handleContinuationCancel?.();
   }
 
   private createBindingAppHooks(): KeyBindingAppHooks {
@@ -805,39 +769,56 @@ function textIndexToCursor(text: string, index: number): { line: number; col: nu
   return { line, col };
 }
 
-function getSimplify2Continuation(
+interface FrontendContinuationWithFormId {
+  procedure: string;
+  question: string;
+  formId: string;
+  formPayload: unknown;
+  inputHint?: string;
+  suggestedReplies?: readonly string[];
+  rawUi?: unknown;
+}
+
+function getFormContinuation(
   continuation: FrontendContinuation | undefined,
-): FrontendSimplify2CheckpointContinuation | FrontendSimplify2FocusPickerContinuation | undefined {
-  if (
-    !continuation
-    || continuation.procedure !== "simplify2"
-    || (
-      continuation.ui?.kind !== "simplify2_checkpoint"
-      && continuation.ui?.kind !== "simplify2_focus_picker"
-    )
-  ) {
+): FrontendContinuationWithFormId | undefined {
+  if (!continuation) {
     return undefined;
   }
-
-  return continuation.ui.kind === "simplify2_checkpoint"
-    ? continuation as FrontendSimplify2CheckpointContinuation
-    : continuation as FrontendSimplify2FocusPickerContinuation;
+  // Step 4 is dual-write: Continuation.form is not yet on the wire, so
+  // resolve the formId from the legacy Continuation.ui.kind shim. When
+  // a future step flips procedures to emit `form` this branch can
+  // short-circuit on `continuation.form` first.
+  const legacyUi = continuation.ui;
+  const legacyKind = legacyUi && typeof legacyUi === "object"
+    ? (legacyUi as { kind?: unknown }).kind
+    : undefined;
+  const formId = typeof legacyKind === "string"
+    ? resolveSimplify2FormIdFromLegacyUi(legacyKind)
+    : undefined;
+  if (!formId || !legacyUi) {
+    return undefined;
+  }
+  return {
+    procedure: continuation.procedure,
+    question: continuation.question,
+    formId,
+    formPayload: legacyUi,
+    inputHint: continuation.inputHint,
+    suggestedReplies: continuation.suggestedReplies,
+    rawUi: legacyUi,
+  };
 }
 
-function isSimplify2CheckpointContinuation(
-  continuation: FrontendSimplify2CheckpointContinuation | FrontendSimplify2FocusPickerContinuation,
-): continuation is FrontendSimplify2CheckpointContinuation {
-  return continuation.ui.kind === "simplify2_checkpoint";
-}
-
-function buildSimplify2ContinuationSignature(
-  continuation: FrontendContinuation,
+function buildContinuationFormSignature(
+  continuation: FrontendContinuationWithFormId,
 ): string {
   return JSON.stringify({
     procedure: continuation.procedure,
     question: continuation.question,
     inputHint: continuation.inputHint,
     suggestedReplies: continuation.suggestedReplies,
-    ui: continuation.ui,
+    formId: continuation.formId,
+    payload: continuation.formPayload,
   });
 }

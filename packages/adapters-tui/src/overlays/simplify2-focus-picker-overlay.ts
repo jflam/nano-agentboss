@@ -10,7 +10,7 @@ import {
 import type { Simplify2FocusPickerContinuationUiEntry } from "@nanoboss/contracts";
 import type { NanobossTuiTheme } from "../theme.ts";
 
-export type Simplify2FocusPickerOverlayAction =
+type Simplify2FocusPickerOverlayAction =
   | { kind: "continue"; focusId: string }
   | { kind: "archive"; focusId: string }
   | { kind: "new" }
