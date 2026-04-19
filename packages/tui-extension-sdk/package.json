@@ -1,0 +1,16 @@
+{
+  "name": "@nanoboss/tui-extension-sdk",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@nanoboss/adapters-tui": "workspace:*"
+  }
+}

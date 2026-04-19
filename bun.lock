@@ -157,6 +157,13 @@
         "@nanoboss/procedure-sdk": "workspace:*",
       },
     },
+    "packages/tui-extension-sdk": {
+      "name": "@nanoboss/tui-extension-sdk",
+      "version": "0.0.0",
+      "dependencies": {
+        "@nanoboss/adapters-tui": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@0.17.1", "", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-yjyIn8POL18IOXioLySYiL0G44kZ/IZctAls7vS3AC3X+qLhFXbWmzABSZehwRnWFShMXT+ODa/HJG1+mGXZ1A=="],
@@ -228,6 +235,8 @@
     "@nanoboss/procedure-sdk": ["@nanoboss/procedure-sdk@workspace:packages/procedure-sdk"],
 
     "@nanoboss/store": ["@nanoboss/store@workspace:packages/store"],
+
+    "@nanoboss/tui-extension-sdk": ["@nanoboss/tui-extension-sdk@workspace:packages/tui-extension-sdk"],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.4", "", { "dependencies": { "@tybys/wasm-util": "^0.10.1" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow=="],
 
