@@ -172,6 +172,7 @@ describe("NanobossTuiApp", () => {
     currentState = {
       ...currentState,
       inputDisabled: true,
+      inputDisabledReason: "run",
     };
     capturedOnStateChange?.(currentState);
     expect(editor.disableSubmit).toBe(false);
@@ -187,6 +188,67 @@ describe("NanobossTuiApp", () => {
         ],
       },
     ]);
+  });
+
+  test("disables submit for all input while a local busy state is active", () => {
+    const editor = new FakeEditor();
+    let currentState: UiState = createInitialUiState({
+      cwd: "/repo",
+      showToolCalls: true,
+    });
+    let capturedOnStateChange: ((state: UiState) => void) | undefined;
+
+    new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener() {},
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: (_params, deps) => {
+          capturedOnStateChange = deps.onStateChange;
+          return {
+            getState: () => currentState,
+            async handleSubmit() {},
+            async queuePrompt() {},
+            async cancelActiveRun() {},
+            toggleToolOutput() {},
+            toggleToolCardsHidden() {},
+            toggleSimplify2AutoApprove() {},
+            showStatus() {},
+            showLocalCard() {},
+            requestExit() {},
+            async run() {
+              return undefined;
+            },
+            async stop() {},
+          };
+        },
+        createView: () => createViewStub(),
+      },
+    );
+
+    editor.setText("still typing");
+    currentState = {
+      ...currentState,
+      inputDisabled: true,
+      inputDisabledReason: "local",
+    };
+    capturedOnStateChange?.(currentState);
+
+    expect(editor.disableSubmit).toBe(true);
   });
 
   test("keeps the leading slash when completing namespaced slash commands", async () => {
@@ -391,13 +453,18 @@ describe("NanobossTuiApp", () => {
   test("uses discovered catalog data for the inline model picker", async () => {
     const editor = new FakeEditor();
     const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    const statusCalls: string[] = [];
+    const discoverCalls: Array<{ provider: string; forceRefresh?: boolean }> = [];
     const app = new NanobossTuiApp(
       {
         serverUrl: "http://localhost:3000",
         showToolCalls: true,
       },
       {
-        discoverAgentCatalog: async () => ({
+        hasAgentCatalogRefreshedToday: () => false,
+        discoverAgentCatalog: async (provider, options) => {
+          discoverCalls.push({ provider, forceRefresh: options?.forceRefresh });
+          return {
           provider: "copilot",
           label: "Copilot",
           models: [
@@ -407,7 +474,8 @@ describe("NanobossTuiApp", () => {
               description: "Premium reasoning model",
             },
           ],
-        }),
+          };
+        },
         createTerminal: () => ({
           setTitle() {},
           async drainInput() {},
@@ -425,14 +493,16 @@ describe("NanobossTuiApp", () => {
           getState: () => currentState,
           async handleSubmit() {},
           async queuePrompt() {},
-          async cancelActiveRun() {},
-          toggleToolOutput() {},
+            async cancelActiveRun() {},
+            toggleToolOutput() {},
             toggleToolCardsHidden() {},
-          toggleSimplify2AutoApprove() {},
-          showStatus() {},
-          showLocalCard() {},
-          requestExit() {},
-          async run() {
+            toggleSimplify2AutoApprove() {},
+            showStatus(text: string) {
+              statusCalls.push(text);
+            },
+            showLocalCard() {},
+            requestExit() {},
+            async run() {
             return undefined;
           },
           async stop() {},
@@ -459,6 +529,11 @@ describe("NanobossTuiApp", () => {
       provider: "copilot",
       model: "claude-opus-4.7",
     });
+    expect(discoverCalls).toEqual([{ provider: "copilot", forceRefresh: true }]);
+    expect(statusCalls).toEqual([
+      "[model] refreshing Copilot model cache…",
+      "[model] choose a Copilot model",
+    ]);
     expect(prompts[1]).toMatchObject({
       title: "Choose a Copilot model",
       items: [
@@ -471,6 +546,91 @@ describe("NanobossTuiApp", () => {
     });
   });
 
+  test("reuses a same-day cached catalog in the inline model picker without forcing refresh", async () => {
+    const editor = new FakeEditor();
+    const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    const statusCalls: string[] = [];
+    const discoverCalls: Array<{ provider: string; forceRefresh?: boolean }> = [];
+    const app = new NanobossTuiApp(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        hasAgentCatalogRefreshedToday: () => true,
+        discoverAgentCatalog: async (provider, options) => {
+          discoverCalls.push({ provider, forceRefresh: options?.forceRefresh });
+          return {
+            provider: "copilot",
+            label: "Copilot",
+            models: [
+              {
+                id: "gpt-5.4",
+                name: "GPT-5.4",
+              },
+            ],
+          };
+        },
+        createTerminal: () => ({
+          setTitle() {},
+          async drainInput() {},
+        }),
+        createTui: () => ({
+          addInputListener() {},
+          addChild() {},
+          setFocus() {},
+          start() {},
+          requestRender() {},
+          stop() {},
+        }),
+        createEditor: () => editor,
+        createController: () => ({
+          getState: () => currentState,
+          async handleSubmit() {},
+          async queuePrompt() {},
+          async cancelActiveRun() {},
+          toggleToolOutput() {},
+          toggleToolCardsHidden() {},
+          toggleSimplify2AutoApprove() {},
+          showStatus(text: string) {
+            statusCalls.push(text);
+          },
+          showLocalCard() {},
+          requestExit() {},
+          async run() {
+            return undefined;
+          },
+          async stop() {},
+        }),
+        createView: () => createViewStub(),
+      },
+    );
+
+    const prompts: unknown[] = [];
+    const appLike = app as unknown as {
+      promptForInlineModelSelection: (
+        currentSelection?: { provider: string; model?: string },
+      ) => Promise<{ provider: string; model?: string } | undefined>;
+      promptWithInlineSelect: (options: unknown) => Promise<string | undefined>;
+    };
+    appLike.promptWithInlineSelect = async (options: unknown) => {
+      prompts.push(options);
+      return prompts.length === 1 ? "copilot" : "gpt-5.4";
+    };
+
+    const selection = await appLike.promptForInlineModelSelection();
+
+    expect(selection).toEqual({
+      provider: "copilot",
+      model: "gpt-5.4",
+    });
+    expect(discoverCalls).toEqual([{ provider: "copilot", forceRefresh: undefined }]);
+    expect(statusCalls).toEqual([
+      "[model] using Copilot model cache refreshed today",
+      "[model] choose a Copilot model",
+    ]);
+  });
+
   test("reports provider refresh failures from the inline model picker", async () => {
     const editor = new FakeEditor();
     const currentState: UiState = createInitialUiState({ cwd: "/repo", showToolCalls: true });
@@ -480,6 +640,7 @@ describe("NanobossTuiApp", () => {
         showToolCalls: true,
       },
       {
+        hasAgentCatalogRefreshedToday: () => false,
         discoverAgentCatalog: async () => {
           throw new Error("probe offline");
         },
@@ -750,6 +911,7 @@ describe("NanobossTuiApp", () => {
               showToolCalls: true,
             }),
             inputDisabled: true,
+            inputDisabledReason: "run",
           }),
           async handleSubmit() {},
           async queuePrompt(input) {
@@ -1317,6 +1479,7 @@ describe("NanobossTuiApp", () => {
     const currentState: UiState = {
       ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
       inputDisabled: true,
+      inputDisabledReason: "run",
     };
     let capturedOnStateChange: ((state: UiState) => void) | undefined;
     let inputListener: ((data: string) => unknown) | undefined;
@@ -1381,6 +1544,7 @@ describe("NanobossTuiApp", () => {
     const currentState: UiState = {
       ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
       inputDisabled: true,
+      inputDisabledReason: "run",
     };
     let inputListener: ((data: string) => unknown) | undefined;
 
@@ -1449,6 +1613,7 @@ describe("NanobossTuiApp", () => {
     const currentState: UiState = {
       ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
       inputDisabled: true,
+      inputDisabledReason: "run",
     };
     let inputListener: ((data: string) => unknown) | undefined;
 
@@ -1553,6 +1718,7 @@ describe("NanobossTuiApp", () => {
               currentState = {
                 ...currentState,
                 inputDisabled: true,
+                inputDisabledReason: "run",
                 runStartedAtMs: 1_000,
               };
               capturedOnStateChange?.(currentState);

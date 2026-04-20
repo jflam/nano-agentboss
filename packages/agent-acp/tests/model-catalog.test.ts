@@ -9,6 +9,7 @@ import {
   buildReasoningModelSelection,
   discoverAgentCatalog,
   findSelectableModelOptionInCatalog,
+  hasAgentCatalogRefreshedToday,
   isKnownAgentProvider,
   isKnownModelSelectionInCatalog,
   listKnownProviders,
@@ -86,6 +87,28 @@ async function discoverMockCatalog(
       rmSync(logDir, { recursive: true, force: true });
     }
   }
+}
+
+function hasMockCatalogRefreshedToday(
+  provider: "copilot" | "codex" | "claude" | "gemini",
+  options?: {
+    env?: Record<string, string>;
+    extraArgs?: string[];
+    logPath?: string;
+  },
+): boolean {
+  return hasAgentCatalogRefreshedToday(provider, {
+    config: {
+      command: "bun",
+      args: ["run", DISCOVERY_MOCK_AGENT_PATH, ...(options?.extraArgs ?? [])],
+      cwd: REPO_ROOT,
+      env: {
+        ...(options?.logPath ? { DISCOVERY_AGENT_LOG: options.logPath } : {}),
+        DISCOVERY_AGENT_PROVIDER: provider,
+        ...options?.env,
+      },
+    },
+  });
 }
 
 async function withDiscoveryLog<T>(
@@ -289,6 +312,7 @@ test("reuses cached discovery results for the same effective harness config", as
     const extraArgs = ["--scope", randomUUID()];
     const first = await discoverMockCatalog("copilot", { extraArgs, forceRefresh: true, logPath });
     expect(first.events.length).toBeGreaterThan(0);
+    expect(hasMockCatalogRefreshedToday("copilot", { extraArgs, logPath })).toBe(true);
 
     const second = await discoverMockCatalog("copilot", { extraArgs, logPath });
     expect(second.catalog).toEqual(first.catalog);

@@ -428,6 +428,53 @@ describe("NanobossTuiController", () => {
     await runPromise;
   });
 
+  test("/model locks input while the local picker flow is active", async () => {
+    const sendCalls: string[] = [];
+    let resolveSelection: ((selection: DownstreamAgentSelection | undefined) => void) | undefined;
+    const selectionPromise = new Promise<DownstreamAgentSelection | undefined>((resolve) => {
+      resolveSelection = resolve;
+    });
+    const controller = new NanobossTuiController(
+      {
+        serverUrl: "http://localhost:3000",
+        showToolCalls: true,
+      },
+      {
+        ensureMatchingHttpServer: async () => {},
+        createHttpSession: async () => createSession("session-1"),
+        sendSessionPrompt: async (_baseUrl, _sessionId, prompt) => {
+          sendCalls.push(toPromptText(prompt));
+        },
+        startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
+        promptForModelSelection: async () => await selectionPromise,
+      },
+    );
+
+    const runPromise = controller.run();
+    await waitFor(() => controller.getState().sessionId === "session-1");
+
+    const submitPromise = controller.handleSubmit("/model");
+    await Bun.sleep(20);
+
+    expect(controller.getState().inputDisabled).toBe(true);
+    expect(controller.getState().inputDisabledReason).toBe("local");
+    expect(controller.getState().statusLine).toBe("[model] choose an agent");
+
+    await controller.handleSubmit("hello");
+    expect(sendCalls).toEqual([]);
+    expect(controller.getState().statusLine).toBe(
+      "[model] wait for the current model update to finish before sending more input",
+    );
+
+    resolveSelection?.(undefined);
+    await submitPromise;
+    expect(controller.getState().inputDisabled).toBe(false);
+    expect(controller.getState().inputDisabledReason).toBeUndefined();
+
+    controller.requestExit();
+    await runPromise;
+  });
+
   test("inline /model waits for async discovery validation before updating local banner state and forwarding the command", async () => {
     const sendCalls: string[] = [];
     const persisted: DownstreamAgentSelection[] = [];
@@ -467,6 +514,7 @@ describe("NanobossTuiController", () => {
           sendCalls.push(toPromptText(prompt));
         },
         startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
+        hasAgentCatalogRefreshedToday: () => false,
         discoverAgentCatalog: async (provider, options) => {
           discoverCalls.push({
             provider,
@@ -490,6 +538,14 @@ describe("NanobossTuiController", () => {
     expect(discoverCalls).toEqual([{ provider: "copilot", cwd: process.cwd() }]);
     expect(controller.getState().defaultAgentSelection).toBeUndefined();
     expect(sendCalls).toEqual([]);
+    expect(controller.getState().inputDisabled).toBe(true);
+    expect(controller.getState().inputDisabledReason).toBe("local");
+
+    await controller.handleSubmit("hello");
+    expect(sendCalls).toEqual([]);
+    expect(controller.getState().statusLine).toBe(
+      "[model] wait for the current model update to finish before sending more input",
+    );
 
     resolveCatalog?.({
       provider: "copilot",
@@ -536,6 +592,7 @@ describe("NanobossTuiController", () => {
           sendCalls.push(toPromptText(prompt));
         },
         startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
+        hasAgentCatalogRefreshedToday: () => false,
         discoverAgentCatalog: async () => ({
           provider: "copilot",
           label: "Copilot",
@@ -582,6 +639,7 @@ describe("NanobossTuiController", () => {
           sendCalls.push(toPromptText(prompt));
         },
         startSessionEventStream: ({ sessionId, onEvent }) => createFakeStream([], sessionId, onEvent),
+        hasAgentCatalogRefreshedToday: () => false,
         discoverAgentCatalog: async () => {
           throw new Error("probe offline");
         },

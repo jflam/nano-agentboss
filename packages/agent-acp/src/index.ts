@@ -26,6 +26,7 @@ export { describeBlockedNanobossAccess } from "./runtime.ts";
 export {
   discoverAgentCatalog,
   formatAgentCatalogRefreshError,
+  hasAgentCatalogRefreshedToday,
 } from "./catalog-discovery.ts";
 export {
   collectTextSessionUpdates,

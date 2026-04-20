@@ -51,6 +51,13 @@ export type UiAction =
       text?: string;
     }
   | {
+      type: "local_busy_started";
+      text: string;
+    }
+  | {
+      type: "local_busy_finished";
+    }
+  | {
       type: "local_stop_requested";
       runId?: string;
     }
@@ -168,6 +175,7 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         stopRequestedRunId: undefined,
         statusLine: "[run] waiting for response",
         inputDisabled: true,
+        inputDisabledReason: "run",
         panels: evictPanelsByLifetime(state.panels, {
           scopes: ["turn"],
         }),
@@ -198,12 +206,30 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
         stopRequestedRunId: undefined,
         statusLine: `[run] ${action.error}`,
         inputDisabled: false,
+        inputDisabledReason: undefined,
       };
     }
     case "local_status":
       return {
         ...state,
         statusLine: action.text,
+      };
+    case "local_busy_started":
+      return {
+        ...state,
+        statusLine: action.text,
+        inputDisabled: true,
+        inputDisabledReason: "local",
+      };
+    case "local_busy_finished":
+      if (state.inputDisabledReason !== "local") {
+        return state;
+      }
+      return {
+        ...state,
+        statusLine: undefined,
+        inputDisabled: false,
+        inputDisabledReason: undefined,
       };
     case "local_stop_requested":
       return {
@@ -415,6 +441,7 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
         stopRequestedRunId,
         statusLine: stopRequestedRunId ? STOP_REQUESTED_STATUS : `[run] invoking /${event.data.procedure}…`,
         inputDisabled: true,
+        inputDisabledReason: "run",
       };
     }
     case "continuation_updated":
@@ -816,6 +843,7 @@ function finishRun(
     tokenUsage: params.tokenUsage ?? nextState.tokenUsage,
     statusLine: params.statusLine,
     inputDisabled: false,
+    inputDisabledReason: undefined,
     panels: evictPanelsByLifetime(nextState.panels, {
       runId: state.activeRunId,
       scopes: ["turn", "run"],

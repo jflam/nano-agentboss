@@ -30,6 +30,7 @@ import {
   discoverAgentCatalog,
   formatAgentCatalogRefreshError,
   getProviderLabel,
+  hasAgentCatalogRefreshedToday,
   listKnownProviders,
   listSelectableModelOptionsFromCatalog,
 } from "@nanoboss/agent-acp";
@@ -133,6 +134,7 @@ interface ControllerLike {
 
 interface NanobossTuiAppDeps {
   discoverAgentCatalog?: typeof discoverAgentCatalog;
+  hasAgentCatalogRefreshedToday?: typeof hasAgentCatalogRefreshedToday;
   createTheme?: () => NanobossTuiTheme;
   createTerminal?: () => TerminalLike;
   createTui?: (terminal: TerminalLike) => TuiLike;
@@ -387,7 +389,11 @@ export class NanobossTuiApp {
   }
 
   private updateEditorSubmitState(): void {
-    this.editor.disableSubmit = shouldDisableEditorSubmit(this.state.inputDisabled, this.editor.getText());
+    this.editor.disableSubmit = shouldDisableEditorSubmit(
+      this.state.inputDisabled,
+      this.state.inputDisabledReason,
+      this.editor.getText(),
+    );
   }
 
   private async handleCtrlVImagePaste(): Promise<void> {
@@ -491,15 +497,26 @@ export class NanobossTuiApp {
       return undefined;
     }
 
+    const refreshedToday = (this.deps.hasAgentCatalogRefreshedToday ?? hasAgentCatalogRefreshedToday)(provider, {
+      config: { cwd: this.cwd },
+    });
+    this.controller.showStatus(
+      refreshedToday
+        ? `[model] using ${getProviderLabel(provider)} model cache refreshed today`
+        : `[model] refreshing ${getProviderLabel(provider)} model cache…`,
+    );
+
     let catalog: Awaited<ReturnType<typeof discoverAgentCatalog>>;
     try {
       catalog = await (this.deps.discoverAgentCatalog ?? discoverAgentCatalog)(provider, {
         config: { cwd: this.cwd },
+        ...(refreshedToday ? {} : { forceRefresh: true }),
       });
     } catch (error) {
       throw new Error(formatAgentCatalogRefreshError(provider, error));
     }
 
+    this.controller.showStatus(`[model] choose a ${catalog.label} model`);
     const items = listSelectableModelOptionsFromCatalog(catalog).map((option) => ({
       value: option.value,
       label: option.label,

@@ -5,6 +5,7 @@ import {
 } from "@nanoboss/agent-acp";
 import type { DownstreamAgentSelection } from "@nanoboss/contracts";
 import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
+import type { UiInputDisabledReason } from "./state.ts";
 import type { ToolCardThemeMode } from "./theme.ts";
 
 export const LOCAL_TUI_COMMANDS = [
@@ -30,8 +31,20 @@ export function isExitRequest(trimmed: string): boolean {
   return trimmed === "exit" || trimmed === "quit" || trimmed === "/end" || trimmed === "/quit" || trimmed === "/exit";
 }
 
-export function shouldDisableEditorSubmit(inputDisabled: boolean, text: string): boolean {
-  return inputDisabled && text.trim().length === 0;
+export function shouldDisableEditorSubmit(
+  inputDisabled: boolean,
+  inputDisabledReason: UiInputDisabledReason | undefined,
+  text: string,
+): boolean {
+  if (!inputDisabled) {
+    return false;
+  }
+
+  if (inputDisabledReason === "local") {
+    return true;
+  }
+
+  return text.trim().length === 0;
 }
 
 export function isNewSessionRequest(trimmed: string): boolean {

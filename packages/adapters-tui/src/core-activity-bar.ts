@@ -113,7 +113,7 @@ const SEGMENTS: ActivityBarSegment[] = [
     id: "runState.timer",
     line: "runState",
     order: 2,
-    shouldRender: (state) => state.inputDisabled && state.runStartedAtMs !== undefined,
+    shouldRender: (state) => state.inputDisabledReason === "run" && state.runStartedAtMs !== undefined,
     render: ({ state, theme, nowMs }) => {
       if (state.runStartedAtMs === undefined) {
         return undefined;

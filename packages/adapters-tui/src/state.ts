@@ -16,6 +16,8 @@ export interface UiPendingPrompt {
   promptInput?: PromptInput;
 }
 
+export type UiInputDisabledReason = "run" | "local";
+
 export interface UiTurn {
   id: string;
   role: "user" | "assistant" | "system";
@@ -124,6 +126,7 @@ export interface UiState {
   tokenUsage?: TokenUsageSummary;
   pendingContinuation?: FrontendContinuation;
   inputDisabled: boolean;
+  inputDisabledReason?: UiInputDisabledReason;
   showToolCalls: boolean;
   expandedToolOutput: boolean;
   toolCardThemeMode: ToolCardThemeMode;

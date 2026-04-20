@@ -134,13 +134,17 @@ function buildFooterLine(theme: NanobossTuiTheme, state: UiState): string {
   }
   const parts: string[] = [];
   if (state.inputDisabled) {
-    const pendingCount = state.pendingPrompts.length;
-    parts.push(
-      "esc stop",
-      "tab queue",
-      pendingCount > 0 ? `${pendingCount} pending` : "run active",
-      "ctrl+h keys",
-    );
+    if (state.inputDisabledReason === "local") {
+      parts.push("busy", "please wait", "ctrl+h keys");
+    } else {
+      const pendingCount = state.pendingPrompts.length;
+      parts.push(
+        "esc stop",
+        "tab queue",
+        pendingCount > 0 ? `${pendingCount} pending` : "run active",
+        "ctrl+h keys",
+      );
+    }
   } else {
     parts.push("ctrl+h keys", "enter send", "/help");
   }

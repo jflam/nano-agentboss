@@ -8,24 +8,29 @@ import {
 
 describe("tui commands", () => {
   test("keeps submit enabled for exit commands while a run is active", () => {
-    expect(shouldDisableEditorSubmit(true, "/quit")).toBe(false);
-    expect(shouldDisableEditorSubmit(true, "/exit")).toBe(false);
-    expect(shouldDisableEditorSubmit(true, "/end")).toBe(false);
-    expect(shouldDisableEditorSubmit(true, "/light")).toBe(false);
-    expect(shouldDisableEditorSubmit(true, "/dark")).toBe(false);
-    expect(shouldDisableEditorSubmit(true, "quit")).toBe(false);
-    expect(shouldDisableEditorSubmit(true, "hello")).toBe(false);
-    expect(shouldDisableEditorSubmit(true, "/new")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "run", "/quit")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "run", "/exit")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "run", "/end")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "run", "/light")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "run", "/dark")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "run", "quit")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "run", "hello")).toBe(false);
+    expect(shouldDisableEditorSubmit(true, "run", "/new")).toBe(false);
   });
 
   test("disables submit for blank input while a run is active", () => {
-    expect(shouldDisableEditorSubmit(true, "")).toBe(true);
-    expect(shouldDisableEditorSubmit(true, "   ")).toBe(true);
+    expect(shouldDisableEditorSubmit(true, "run", "")).toBe(true);
+    expect(shouldDisableEditorSubmit(true, "run", "   ")).toBe(true);
+  });
+
+  test("disables submit for all input during a local busy state", () => {
+    expect(shouldDisableEditorSubmit(true, "local", "")).toBe(true);
+    expect(shouldDisableEditorSubmit(true, "local", "hello")).toBe(true);
   });
 
   test("leaves submit enabled when no run is active", () => {
-    expect(shouldDisableEditorSubmit(false, "hello")).toBe(false);
-    expect(shouldDisableEditorSubmit(false, "/quit")).toBe(false);
+    expect(shouldDisableEditorSubmit(false, undefined, "hello")).toBe(false);
+    expect(shouldDisableEditorSubmit(false, undefined, "/quit")).toBe(false);
   });
 
   test("parses local tool card theme commands", () => {

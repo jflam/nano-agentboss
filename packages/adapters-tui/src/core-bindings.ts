@@ -77,9 +77,9 @@ const CORE_BINDINGS: KeyBinding[] = [
     match: "escape",
     label: "esc stop",
     order: 3,
-    when: (state) => state.inputDisabled,
+    when: (state) => state.inputDisabledReason === "run",
     run: ({ controller, state }) => {
-      if (state.inputDisabled) {
+      if (state.inputDisabledReason === "run") {
         void controller.cancelActiveRun();
         return { consume: true };
       }
@@ -92,7 +92,7 @@ const CORE_BINDINGS: KeyBinding[] = [
     match: "tab",
     label: "tab queue",
     order: 4,
-    when: (state) => state.inputDisabled,
+    when: (state) => state.inputDisabledReason === "run",
     run: ({ app }) => {
       return app.handleTabQueue() ? { consume: true } : { consume: false };
     },

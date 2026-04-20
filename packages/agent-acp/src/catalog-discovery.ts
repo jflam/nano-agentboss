@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type * as acp from "@agentclientprotocol/sdk";
 import type { DownstreamAgentProvider } from "@nanoboss/contracts";
 
-import { resolveSelectedDownstreamAgentConfig } from "./config.ts";
+import { getNanobossHome, resolveSelectedDownstreamAgentConfig } from "./config.ts";
 import {
   getProviderLabel,
   getAgentCatalog,
@@ -22,6 +25,8 @@ export interface DiscoverAgentCatalogOptions {
 }
 
 const AGENT_CATALOG_DISCOVERY_CACHE_TTL_MS = 5_000;
+const AGENT_CATALOG_DISCOVERY_CACHE_DIR = "agent-catalogs";
+const AGENT_CATALOG_DISCOVERY_CACHE_VERSION = 1;
 
 export function formatAgentCatalogRefreshError(
   provider: DownstreamAgentProvider,
@@ -37,6 +42,7 @@ interface CachedAgentCatalogValue {
   kind: "value";
   catalog: AgentCatalogEntry;
   expiresAt: number;
+  refreshedAtMs: number;
 }
 
 interface CachedAgentCatalogPromise {
@@ -48,6 +54,30 @@ interface CachedAgentCatalogPromise {
 type CachedAgentCatalogEntry = CachedAgentCatalogValue | CachedAgentCatalogPromise;
 
 const discoveredAgentCatalogCache = new Map<string, CachedAgentCatalogEntry>();
+
+interface PersistedAgentCatalogRecord {
+  version: number;
+  updatedAt: string;
+  catalog: AgentCatalogEntry;
+}
+
+export function hasAgentCatalogRefreshedToday(
+  provider: DownstreamAgentProvider,
+  options: DiscoverAgentCatalogOptions = {},
+): boolean {
+  const now = Date.now();
+  const config = resolveAgentCatalogDiscoveryConfig(provider, options);
+  const cacheKey = createAgentCatalogDiscoveryCacheKey(provider, config);
+  const cached = discoveredAgentCatalogCache.get(cacheKey);
+  if (cached?.kind === "value" && isTimestampToday(cached.refreshedAtMs, now)) {
+    return true;
+  }
+  if (cached?.kind === "promise" && cached.fallback && isTimestampToday(cached.fallback.refreshedAtMs, now)) {
+    return true;
+  }
+
+  return getPersistedAgentCatalogValue(cacheKey, now, true) !== undefined;
+}
 
 export async function discoverAgentCatalog(
   provider: DownstreamAgentProvider,
@@ -62,9 +92,16 @@ export async function discoverAgentCatalog(
     if (cached) {
       return cached;
     }
+
+    const persisted = getPersistedAgentCatalogValue(cacheKey, now, true);
+    if (persisted) {
+      discoveredAgentCatalogCache.set(cacheKey, persisted);
+      return persisted.catalog;
+    }
   }
 
-  const fallback = getCachedAgentCatalogValue(cacheKey, now);
+  const fallback = getCachedAgentCatalogValue(cacheKey, now)
+    ?? getPersistedAgentCatalogValue(cacheKey, now, true);
   const discovery = discoverAgentCatalogUncached(provider, config);
 
   return storePendingAgentCatalogDiscovery(cacheKey, discovery, fallback);
@@ -193,11 +230,14 @@ function storePendingAgentCatalogDiscovery(
     (catalog) => {
       const current = discoveredAgentCatalogCache.get(cacheKey);
       if (current?.kind === "promise" && current.promise === pendingPromise) {
+        const refreshedAtMs = Date.now();
         discoveredAgentCatalogCache.set(cacheKey, {
           kind: "value",
           catalog,
-          expiresAt: Date.now() + AGENT_CATALOG_DISCOVERY_CACHE_TTL_MS,
+          expiresAt: refreshedAtMs + AGENT_CATALOG_DISCOVERY_CACHE_TTL_MS,
+          refreshedAtMs,
         });
+        writePersistedAgentCatalog(cacheKey, catalog, refreshedAtMs);
       }
       return catalog;
     },
@@ -217,6 +257,108 @@ function storePendingAgentCatalogDiscovery(
   pendingEntry.promise = pendingPromise;
   discoveredAgentCatalogCache.set(cacheKey, pendingEntry);
   return pendingPromise;
+}
+
+function getPersistedAgentCatalogValue(
+  cacheKey: string,
+  now: number,
+  requireToday: boolean,
+): CachedAgentCatalogValue | undefined {
+  const persisted = readPersistedAgentCatalog(cacheKey);
+  if (!persisted) {
+    return undefined;
+  }
+
+  const refreshedAtMs = Date.parse(persisted.updatedAt);
+  if (!Number.isFinite(refreshedAtMs)) {
+    return undefined;
+  }
+  if (requireToday && !isTimestampToday(refreshedAtMs, now)) {
+    return undefined;
+  }
+
+  return {
+    kind: "value",
+    catalog: persisted.catalog,
+    expiresAt: now + AGENT_CATALOG_DISCOVERY_CACHE_TTL_MS,
+    refreshedAtMs,
+  };
+}
+
+function readPersistedAgentCatalog(cacheKey: string): PersistedAgentCatalogRecord | undefined {
+  const path = getPersistedAgentCatalogPath(cacheKey);
+  if (!existsSync(path)) {
+    return undefined;
+  }
+
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<PersistedAgentCatalogRecord>;
+    if (
+      raw.version !== AGENT_CATALOG_DISCOVERY_CACHE_VERSION
+      || typeof raw.updatedAt !== "string"
+      || !isAgentCatalogEntry(raw.catalog)
+    ) {
+      return undefined;
+    }
+
+    return {
+      version: raw.version,
+      updatedAt: raw.updatedAt,
+      catalog: raw.catalog,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function writePersistedAgentCatalog(
+  cacheKey: string,
+  catalog: AgentCatalogEntry,
+  refreshedAtMs: number,
+): void {
+  const path = getPersistedAgentCatalogPath(cacheKey);
+  const tempPath = `${path}.${process.pid}.tmp`;
+  const record: PersistedAgentCatalogRecord = {
+    version: AGENT_CATALOG_DISCOVERY_CACHE_VERSION,
+    updatedAt: new Date(refreshedAtMs).toISOString(),
+    catalog,
+  };
+
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(tempPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  renameSync(tempPath, path);
+}
+
+function getPersistedAgentCatalogPath(cacheKey: string): string {
+  return join(
+    getNanobossHome(),
+    "cache",
+    AGENT_CATALOG_DISCOVERY_CACHE_DIR,
+    `${createHash("sha256").update(cacheKey).digest("hex")}.json`,
+  );
+}
+
+function isAgentCatalogEntry(value: unknown): value is AgentCatalogEntry {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return typeof record.provider === "string"
+    && typeof record.label === "string"
+    && Array.isArray(record.models);
+}
+
+function isTimestampToday(timestampMs: number, nowMs: number): boolean {
+  return formatLocalDateKey(timestampMs) === formatLocalDateKey(nowMs);
+}
+
+function formatLocalDateKey(timestampMs: number): string {
+  const date = new Date(timestampMs);
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function resolveAgentCatalogDiscoveryConfig(

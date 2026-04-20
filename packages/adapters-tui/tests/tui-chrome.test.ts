@@ -110,6 +110,7 @@ describe("chrome registry", () => {
         ...createInitialUiState({ cwd: "/repo" }),
         sessionId: "session-1",
         inputDisabled: true,
+        inputDisabledReason: "run",
       },
     );
 

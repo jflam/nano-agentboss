@@ -75,6 +75,7 @@ describe("NanobossAppView", () => {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
       inputDisabled: true,
+      inputDisabledReason: "run" as const,
       pendingPrompts: [
         { id: "pending-1", text: "steer next", kind: "steering" as const },
         { id: "pending-2", text: "then queue", kind: "queued" as const },
@@ -111,6 +112,7 @@ describe("NanobossAppView", () => {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
       inputDisabled: true,
+      inputDisabledReason: "run" as const,
       runStartedAtMs: 5_000,
       tokenUsageLine: "[tokens] 512 / 8,192 (6.3%)",
       defaultAgentSelection: {
@@ -216,6 +218,7 @@ describe("NanobossAppView", () => {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
       inputDisabled: true,
+      inputDisabledReason: "run" as const,
       pendingPrompts: [
         { id: "pending-1", text: "first", kind: "queued" as const },
         { id: "pending-2", text: "second", kind: "queued" as const },
@@ -1093,6 +1096,7 @@ describe("NanobossAppView", () => {
         ...createInitialUiState({ cwd: "/repo", showToolCalls: true }),
         sessionId: "session-1",
         inputDisabled: true,
+        inputDisabledReason: "run" as const,
         activeProcedure: "linter",
       },
     );
@@ -1274,6 +1278,7 @@ describe("NanobossAppView", () => {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
       inputDisabled: true,
+      inputDisabledReason: "run" as const,
       runStartedAtMs: 5_000,
     };
 

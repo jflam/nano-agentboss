@@ -112,7 +112,7 @@ describe("activity-bar registry", () => {
     const runStateIdle = buildActivityBarLine("runState", idle, theme, 0, sep);
     expect(runStateIdle).toBeUndefined();
 
-    const busy = { ...idle, inputDisabled: true, runStartedAtMs: 0 };
+    const busy = { ...idle, inputDisabled: true, inputDisabledReason: "run" as const, runStartedAtMs: 0 };
     const runStateBusy = stripAnsi(buildActivityBarLine("runState", busy, theme, 5_000, sep) ?? "");
     expect(runStateBusy).toContain("● busy");
     expect(runStateBusy.length).toBeGreaterThan("● busy".length);

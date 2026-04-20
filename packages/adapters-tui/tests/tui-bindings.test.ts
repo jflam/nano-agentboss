@@ -188,6 +188,7 @@ describe("keybinding registry", () => {
     const state: UiState = {
       ...createInitialUiState({ cwd: "/repo" }),
       inputDisabled: true,
+      inputDisabledReason: "run",
     };
     const ctx = makeCtx(state, {
       app: makeAppHooks({ handleTabQueue: () => false }),

@@ -17,6 +17,8 @@ import { getBuildLabel } from "@nanoboss/app-support";
 import {
   discoverAgentCatalog,
   formatAgentCatalogRefreshError,
+  getProviderLabel,
+  hasAgentCatalogRefreshedToday,
   isKnownModelSelectionInCatalog,
 } from "@nanoboss/agent-acp";
 import {
@@ -75,6 +77,7 @@ export interface NanobossTuiControllerDeps {
     onError?: (error: unknown) => void;
   }) => SessionStreamHandle;
   discoverAgentCatalog?: typeof discoverAgentCatalog;
+  hasAgentCatalogRefreshedToday?: typeof hasAgentCatalogRefreshedToday;
   promptForModelSelection?: (
     currentSelection?: DownstreamAgentSelection,
   ) => Promise<DownstreamAgentSelection | undefined>;
@@ -203,6 +206,14 @@ export class NanobossTuiController {
     }
 
     if (this.state.inputDisabled) {
+      if (this.state.inputDisabledReason === "local") {
+        this.dispatch({
+          type: "local_status",
+          text: getLocalBusyInputStatus(this.state.statusLine),
+        });
+        return;
+      }
+
       const blockedCommand = getBusyLocalCommandLabel(trimmed);
       if (blockedCommand) {
         this.dispatch({
@@ -257,6 +268,14 @@ export class NanobossTuiController {
       return;
     }
 
+    if (this.state.inputDisabledReason === "local") {
+      this.dispatch({
+        type: "local_status",
+        text: getLocalBusyInputStatus(this.state.statusLine),
+      });
+      return;
+    }
+
     const blockedCommand = getBusyLocalCommandLabel(trimmed);
     if (blockedCommand) {
       this.dispatch({
@@ -276,16 +295,16 @@ export class NanobossTuiController {
       return;
     }
 
-    // If no active run is in flight but a continuation is paused, route the
-    // soft-stop through the engine-authoritative continuation cancel path so
-    // form-esc and ctrl+c share a single terminal transition.
-    if (!this.state.inputDisabled) {
-      if (this.state.pendingContinuation) {
+    if (this.state.inputDisabledReason !== "run") {
+      if (!this.state.inputDisabled && this.state.pendingContinuation) {
         await this.handleContinuationCancel();
       }
       return;
     }
 
+    // If no active run is in flight but a continuation is paused, route the
+    // soft-stop through the engine-authoritative continuation cancel path so
+    // form-esc and ctrl+c share a single terminal transition.
     const activeRunId = this.state.activeRunId;
     const stopAlreadyLatched = this.state.pendingStopRequest
       || (activeRunId !== undefined && this.state.stopRequestedRunId === activeRunId);
@@ -575,7 +594,10 @@ export class NanobossTuiController {
     this.deps.onClearInput?.();
     let selection: DownstreamAgentSelection | undefined;
     try {
-      selection = await this.deps.promptForModelSelection?.(this.state.defaultAgentSelection);
+      selection = await this.withLocalBusy(
+        "[model] choose an agent",
+        async () => await this.deps.promptForModelSelection?.(this.state.defaultAgentSelection),
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.showLocalCard({
@@ -605,10 +627,27 @@ export class NanobossTuiController {
       return undefined;
     }
 
-    try {
-      const catalog = await (this.deps.discoverAgentCatalog ?? discoverAgentCatalog)(selection.provider, {
+    const refreshedToday = (this.deps.hasAgentCatalogRefreshedToday ?? hasAgentCatalogRefreshedToday)(
+      selection.provider,
+      {
         config: { cwd: this.cwd },
-      });
+      },
+    );
+    const discoverCatalog = async () => await (this.deps.discoverAgentCatalog ?? discoverAgentCatalog)(
+      selection.provider,
+      {
+        config: { cwd: this.cwd },
+        ...(refreshedToday ? {} : { forceRefresh: true }),
+      },
+    );
+
+    try {
+      const catalog = refreshedToday
+        ? await discoverCatalog()
+        : await this.withLocalBusy(
+            `[model] refreshing ${getProviderLabel(selection.provider)} model cache…`,
+            discoverCatalog,
+          );
       return isKnownModelSelectionInCatalog(catalog, selection.model)
         ? selection
         : undefined;
@@ -659,6 +698,15 @@ export class NanobossTuiController {
         markdown: `Failed to save default: ${message}`,
         severity: "error",
       });
+    }
+  }
+
+  private async withLocalBusy<T>(status: string, work: () => Promise<T>): Promise<T> {
+    this.dispatch({ type: "local_busy_started", text: status });
+    try {
+      return await work();
+    } finally {
+      this.dispatch({ type: "local_busy_finished" });
     }
   }
 
@@ -730,4 +778,12 @@ function selectNextPendingPrompt(prompts: UiPendingPrompt[]): UiPendingPrompt | 
 
 function formatPendingPromptClearStatus(count: number): string {
   return `[run] cleared ${count} pending prompt${count === 1 ? "" : "s"} after send failed`;
+}
+
+function getLocalBusyInputStatus(statusLine: string | undefined): string {
+  if (statusLine?.startsWith("[model]")) {
+    return "[model] wait for the current model update to finish before sending more input";
+  }
+
+  return "[status] wait for the current local task to finish before sending more input";
 }
