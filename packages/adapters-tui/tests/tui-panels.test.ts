@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
 import {
+  bootExtensions,
   createInitialUiState,
   createNanobossTuiTheme,
   getPanelRenderer,
@@ -9,6 +10,26 @@ import {
   reduceUiState,
   registerPanelRenderer,
 } from "@nanoboss/adapters-tui";
+
+// The `nb/card@1` panel renderer is contributed by the built-in
+// `nanoboss-core-ui` TUI extension, which is only registered at
+// `bootExtensions()` time (see packages/tui-extension-catalog/src/builtins.ts).
+// Per-package `bun test` runs pick up
+// `packages/adapters-tui/bunfig.toml`'s `[test].preload`, which activates the
+// builtins via `tests/preload-boot-extensions.ts`. But Bun only reads the
+// bunfig in the CWD where `bun test` is invoked, so runs from the repo root
+// skip that preload and `getPanelRenderer("nb/card@1")` returns undefined.
+// Make the dependency explicit here so tests pass regardless of CWD. The
+// guard keeps the per-package run idempotent (no duplicate-activation
+// shadow-warning noise when preload already registered the renderer).
+beforeAll(async () => {
+  if (getPanelRenderer("nb/card@1")) return;
+  await bootExtensions("/tmp/nanoboss-adapters-tui-tests-panels", {
+    extensionRoots: [],
+    skipDisk: true,
+    log: () => {},
+  });
+});
 
 function stripAnsi(text: string): string {
   const esc = String.fromCharCode(27);
