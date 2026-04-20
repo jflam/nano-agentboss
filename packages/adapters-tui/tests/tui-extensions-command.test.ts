@@ -120,9 +120,9 @@ describe("/extensions slash command", () => {
     expect(payload.markdown).toContain("extcmd-active");
     expect(payload.markdown).toContain("`builtin`");
     expect(payload.markdown).toContain("active");
-    expect(payload.markdown).toContain("bindings=1");
-    expect(payload.markdown).toContain("chrome=1");
-    expect(payload.markdown).toContain("panels=1");
+    expect(payload.markdown).toContain("key bindings: 1");
+    expect(payload.markdown).toContain("chrome contributions: 1");
+    expect(payload.markdown).toContain("panel renderers: 1");
 
     // Transcript item is appended so the card is actually visible.
     const items = getState().transcriptItems;

@@ -119,12 +119,32 @@ export function formatExtensionsCard(
     const version = entry.metadata.version ? `@${entry.metadata.version}` : "";
     const statusIcon = entry.status === "failed" ? "✗" : "✓";
     lines.push(`- ${statusIcon} **${entry.metadata.name}**${version} — \`${entry.scope}\` — ${entry.status}`);
+
+    // Prefer the declared `provides` IDs (e.g. "nb/card@1") so the user
+    // sees what the extension actually contributes. Fall back to the
+    // runtime counts when `provides` was not declared.
+    const provides = entry.metadata.provides ?? {};
     const counts = entry.contributions;
-    if (counts) {
-      lines.push(
-        `    bindings=${counts.bindings} · chrome=${counts.chromeContributions} · activityBar=${counts.activityBarSegments} · panels=${counts.panelRenderers}`,
-      );
+    const sections: { label: string; ids?: readonly string[]; count?: number }[] = [
+      { label: "key bindings", ids: provides.bindings, count: counts?.bindings },
+      { label: "chrome contributions", ids: provides.chromeContributions, count: counts?.chromeContributions },
+      { label: "activity-bar segments", ids: provides.activityBarSegments, count: counts?.activityBarSegments },
+      { label: "panel renderers", ids: provides.panelRenderers, count: counts?.panelRenderers },
+    ];
+    for (const section of sections) {
+      const ids = section.ids ?? [];
+      const count = ids.length > 0 ? ids.length : section.count ?? 0;
+      if (count === 0) continue;
+      if (ids.length > 0) {
+        const quoted = ids.map((id) => `\`${id}\``).join(", ");
+        lines.push(`    ${section.label}: ${quoted}`);
+      } else {
+        // No IDs declared, but the extension registered some at runtime.
+        // Surface the count so the entry is not silently dropped.
+        lines.push(`    ${section.label}: ${count}`);
+      }
     }
+
     if (entry.metadata.description) {
       lines.push(`    ${entry.metadata.description}`);
     }
