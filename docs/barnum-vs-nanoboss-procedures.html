@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Barnum vs nanoboss procedures</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --bg2: #0d1830;
+      --panel: rgba(16, 28, 49, 0.82);
+      --panel-2: rgba(22, 38, 67, 0.9);
+      --text: #edf3ff;
+      --muted: #a9bcdf;
+      --soft: #7288b1;
+      --line: rgba(173, 196, 255, 0.18);
+      --accent: #7aa8ff;
+      --accent2: #7ef0cf;
+      --warn: #ffbf69;
+      --danger: #ff7b8f;
+      --ok: #79e88d;
+      --shadow: 0 24px 72px rgba(0, 0, 0, 0.34);
+      --radius: 22px;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --max: 1380px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(122, 168, 255, 0.18), transparent 30%),
+        radial-gradient(circle at 86% 0%, rgba(126, 240, 207, 0.14), transparent 24%),
+        linear-gradient(135deg, var(--bg), #060b15 56%, var(--bg2));
+      color: var(--text);
+      font-family: var(--sans);
+      letter-spacing: 0.01em;
+      scroll-behavior: smooth;
+    }
+
+    body { padding-bottom: 48px; }
+    code, pre, .mono { font-family: var(--mono); }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(12px);
+      background: rgba(5, 11, 22, 0.72);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .topbar-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .brand .eyebrow {
+      color: var(--accent2);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .brand .title {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .nav a, .chip {
+      color: #dce8ff;
+      text-decoration: none;
+      border: 1px solid var(--line);
+      background: rgba(20, 35, 61, 0.72);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .page {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 28px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      padding: 26px 28px 18px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: linear-gradient(180deg, rgba(21, 34, 61, 0.78), rgba(10, 17, 31, 0.84));
+      box-shadow: var(--shadow);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 58px;
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p.lead {
+      margin: 18px 0 0;
+      font-size: 24px;
+      line-height: 1.32;
+      color: #f4f8ff;
+      max-width: 1140px;
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(17, 28, 49, 0.76), rgba(10, 16, 29, 0.82));
+      box-shadow: var(--shadow);
+      padding: 22px 24px;
+    }
+
+    .section-head {
+      margin-bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+
+    .section-head .sub {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.34;
+      max-width: 900px;
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1.02fr 0.98fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .stack { display: grid; gap: 14px; }
+
+    .panel {
+      min-width: 0;
+      padding: 18px 18px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(22, 37, 65, 0.82), rgba(11, 20, 36, 0.84));
+    }
+
+    .panel h3 {
+      margin: 0 0 10px;
+      font-size: 21px;
+      letter-spacing: -0.02em;
+    }
+
+    .panel p, .panel li, .panel td, .panel th {
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .kpi {
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(20,33,57,0.94), rgba(12,20,35,0.88));
+    }
+
+    .kpi .n {
+      font-size: 31px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin-bottom: 6px;
+    }
+
+    .kpi .l {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+    }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+    }
+
+    .flow-step {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: rgba(12, 22, 39, 0.78);
+    }
+
+    .flow-step .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--accent2);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    .flow-step .value {
+      font-size: 17px;
+      line-height: 1.35;
+    }
+
+    .arrow {
+      text-align: center;
+      color: var(--soft);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .bullets {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .bullets li { margin: 8px 0; }
+    .bullets li::marker { color: var(--accent2); }
+
+    .quote {
+      border-left: 3px solid var(--accent2);
+      padding-left: 14px;
+      color: #f1f6ff;
+      font-size: 17px;
+      line-height: 1.45;
+    }
+
+    .code {
+      background: rgba(6, 12, 24, 0.8);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+      color: #d6e4ff;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow: auto;
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+    }
+
+    .matrix th, .matrix td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+      line-height: 1.42;
+    }
+
+    .matrix th {
+      color: var(--accent2);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.13em;
+    }
+
+    .matrix tr:last-child td { border-bottom: 0; }
+
+    .score {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .score.ok { color: #d0f8d7; border-color: rgba(121,232,141,0.38); }
+    .score.warn { color: #ffe2b0; border-color: rgba(255,191,105,0.36); }
+    .score.danger { color: #ffd1d7; border-color: rgba(255,123,143,0.34); }
+
+    .bars { display: grid; gap: 10px; }
+    .bar {
+      display: grid;
+      grid-template-columns: 250px 1fr 90px;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .bar .label { font-size: 14px; color: #dce7ff; }
+    .bar .track {
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.07);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .bar .fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+    }
+
+    .bar .value {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .source-list {
+      columns: 2;
+      column-gap: 28px;
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .source-list li {
+      break-inside: avoid;
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .footer-note {
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.45;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 1120px) {
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+      .bar { grid-template-columns: 1fr; }
+      .source-list { columns: 1; }
+      .hero h1 { font-size: 44px; }
+      .hero p.lead { font-size: 20px; }
+      .section-head h2 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="eyebrow">technical deep dive</div>
+        <div class="title">Barnum vs nanoboss procedures</div>
+      </div>
+      <div class="nav">
+        <a href="#summary">Summary</a>
+        <a href="#barnum">Barnum</a>
+        <a href="#nanoboss">nanoboss</a>
+        <a href="#compare">Compare</a>
+        <a href="#ideas">Cross-pollination</a>
+        <a href="#sources">Sources</a>
+      </div>
+    </div>
+  </div>
+
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">single-page presentation · generated 2026-04-20</div>
+      <h1>Barnum is a workflow compiler.<br />nanoboss procedures are a durable command runtime.</h1>
+      <p class="lead">
+        They live in the same agent-orchestration neighborhood, but they optimize different layers.
+        Barnum turns orchestration into a typed AST and executes it as a Rust-managed state machine.
+        nanoboss keeps procedures as ordinary TypeScript modules and surrounds them with session state,
+        UI events, durable run storage, continuation support, and downstream-agent policy.
+      </p>
+      <div class="hero-meta">
+        <span class="chip">Barnum analyzed from <span class="mono">/Users/jflam/src/barnum</span></span>
+        <span class="chip">nanoboss analyzed from <span class="mono">~/agentboss/workspaces/nanoboss</span></span>
+        <span class="chip">Focus: execution model, state, control flow, typing, isolation, UX</span>
+      </div>
+    </section>
+
+    <section id="summary" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Executive summary</h2>
+          <div class="sub">The short version of what matters architecturally.</div>
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="panel">
+          <h3>Barnum’s core idea</h3>
+          <p class="quote">Author a workflow as a typed DSL, serialize it, compile it to a compact runtime plan, and let a Rust event loop drive the state machine.</p>
+          <ul class="bullets">
+            <li>Workflow structure is explicit and machine-checkable.</li>
+            <li>Concurrency, branching, looping, racing, and retries are engine primitives.</li>
+            <li>Every TypeScript handler runs in an isolated subprocess.</li>
+            <li>Zod contracts become both compile-time types and runtime validators.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>nanoboss’s core idea</h3>
+          <p class="quote">Author a procedure as normal TypeScript, then let the procedure engine supply agent calls, nested procedures, session policy, run persistence, UI, and pause/resume semantics.</p>
+          <ul class="bullets">
+            <li>The workflow is mostly the host language’s control flow.</li>
+            <li>Durability is first-class: runs, refs, prompt images, metadata, continuations.</li>
+            <li>Agent calls are bounded through <span class="mono">ctx.agent.run(...)</span>.</li>
+            <li>Human-in-the-loop experiences are built into the model.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Bottom line</h3>
+          <ul class="bullets">
+            <li><strong>Barnum</strong> is stronger when the primary problem is <em>precise orchestration semantics</em>.</li>
+            <li><strong>nanoboss</strong> is stronger when the primary problem is <em>interactive agent tooling inside a persistent operator session</em>.</li>
+            <li>They are more complementary than competitive.</li>
+            <li>The most interesting future shape would be: Barnum-like subworkflow semantics inside nanoboss’s durable session/runtime shell.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid-4" style="margin-top: 16px;">
+        <div class="kpi"><div class="n">9</div><div class="l">Barnum core AST node kinds</div></div>
+        <div class="kpi"><div class="n">3</div><div class="l">nanoboss run kinds: top_level / procedure / agent</div></div>
+        <div class="kpi"><div class="n">2</div><div class="l">nanoboss agent session modes: fresh / default</div></div>
+        <div class="kpi"><div class="n">3</div><div class="l">nanoboss child procedure session modes: inherit / default / fresh</div></div>
+      </div>
+    </section>
+
+    <section id="barnum" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Barnum deep dive</h2>
+          <div class="sub">Barnum is not just “TypeScript orchestration code.” It is a compiled workflow system with a real runtime model.</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="stack">
+          <div class="panel">
+            <h3>1) Authoring model</h3>
+            <div class="flow">
+              <div class="flow-step"><div class="label">TypeScript DSL</div><div class="value"><span class="mono">TypedAction&lt;In, Out&gt;</span> values compose with <span class="mono">pipe</span>, <span class="mono">all</span>, <span class="mono">forEach</span>, <span class="mono">branch</span>, <span class="mono">loop</span>, <span class="mono">race</span>, and friends.</div></div>
+              <div class="arrow">↓</div>
+              <div class="flow-step"><div class="label">Serializable AST</div><div class="value">Non-enumerable methods and phantom types disappear under <span class="mono">JSON.stringify()</span>, leaving a clean workflow tree.</div></div>
+              <div class="arrow">↓</div>
+              <div class="flow-step"><div class="label">Rust engine input</div><div class="value">The Rust side receives a declarative action graph rather than arbitrary user code.</div></div>
+            </div>
+            <ul class="bullets" style="margin-top: 12px;">
+              <li><span class="mono">createHandler(...)</span> captures module path + export name and embeds JSON Schema for input/output validators.</li>
+              <li>The AST is closed over nine action kinds: <span class="mono">Invoke</span>, <span class="mono">Chain</span>, <span class="mono">All</span>, <span class="mono">ForEach</span>, <span class="mono">Branch</span>, <span class="mono">ResumeHandle</span>, <span class="mono">ResumePerform</span>, <span class="mono">RestartHandle</span>, <span class="mono">RestartPerform</span>.</li>
+              <li>The user-facing API feels fluent, but the runtime sees a strict algebra of nodes.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>2) Compilation and execution</h3>
+            <ul class="bullets">
+              <li>The Rust compiler flattens the tree into a linear <span class="mono">FlatConfig</span>, replacing pointers with indexed cross-references.</li>
+              <li>Identical handlers are interned so schemas and handler identities are compiled once per unique handler, not once per call site.</li>
+              <li>The runtime uses a frame arena + pending effect queue. <span class="mono">advance()</span> expands structure; <span class="mono">complete()</span> delivers results upward.</li>
+              <li>The event loop drains pending effects before waiting for external completions, which makes restart/race semantics precise.</li>
+              <li>Stale completions are dropped via liveness checks after restarts or races tear down parts of the frame tree.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <h3>3) Isolation, effects, and validation</h3>
+            <ul class="bullets">
+              <li><strong>Isolation:</strong> TypeScript handlers run in isolated Node subprocesses via <span class="mono">worker.ts</span>; builtins run in-process.</li>
+              <li><strong>Effects:</strong> <span class="mono">loop</span>, <span class="mono">tryCatch</span>, <span class="mono">earlyReturn</span>, <span class="mono">race</span>, and <span class="mono">withTimeout</span> are compiled onto algebraic-effect-style restart/resume handlers.</li>
+              <li><strong>Validation:</strong> Zod → JSON Schema at definition time, then Rust <span class="mono">Validator</span> objects validate handler input pre-dispatch and output post-completion.</li>
+              <li><strong>Result:</strong> Barnum minimizes hidden state and keeps each step narrow, explicit, and machine-governed.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>Representative Barnum shape</h3>
+            <div class="code">runPipeline(
+  listFiles.forEach(
+    pipe(
+      refactor,
+      evaluate,
+      loop((recur, done) =&gt;
+        pipe(typeCheck, classifyErrors).branch({
+          HasErrors: pipe(forEach(fix).drop(), recur),
+          Clean: done,
+        })
+      ),
+      commit,
+      createPR,
+    )
+  ),
+);</div>
+            <p style="margin: 12px 0 0; color: var(--muted);">
+              The important thing here is not syntax sugar. The whole control-flow structure is present in the runtime model.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="nanoboss" class="section">
+      <div class="section-head">
+        <div>
+          <h2>How nanoboss procedures work</h2>
+          <div class="sub">nanoboss procedures are runtime-integrated command modules, not compiled workflow graphs.</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="stack">
+          <div class="panel">
+            <h3>1) Authoring and discovery</h3>
+            <div class="flow">
+              <div class="flow-step"><div class="label">Procedure module</div><div class="value">A default export satisfies <span class="mono">Procedure</span>: <span class="mono">name</span>, <span class="mono">description</span>, <span class="mono">execute(...)</span>, optional <span class="mono">resume(...)</span>, optional <span class="mono">cancel(...)</span>.</div></div>
+              <div class="arrow">↓</div>
+              <div class="flow-step"><div class="label">Registry layer</div><div class="value">Builtins are lazily registered; disk procedures are discovered recursively by scanning <span class="mono">.ts</span> files for static metadata and a default export.</div></div>
+              <div class="arrow">↓</div>
+              <div class="flow-step"><div class="label">Execution entry</div><div class="value"><span class="mono">executeProcedure(...)</span> creates the top-level run and builds a concrete <span class="mono">CommandContextImpl</span>.</div></div>
+            </div>
+            <ul class="bullets" style="margin-top: 12px;">
+              <li>Procedures stay as ordinary TypeScript/Bun code — no AST compilation step.</li>
+              <li>Control flow is mostly explicit <span class="mono">await</span>, <span class="mono">if</span>, loops, and helper functions in the host language.</li>
+              <li>The procedure engine provides the runtime shell, not a second workflow language.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>2) The procedure context is the real platform</h3>
+            <ul class="bullets">
+              <li><span class="mono">ctx.agent</span>: the only supported route for downstream agent calls; supports typed JSON descriptors, refs, model selection, and fresh/default session modes.</li>
+              <li><span class="mono">ctx.procedures</span>: nested procedure calls with <span class="mono">inherit</span>, <span class="mono">default</span>, or <span class="mono">fresh</span> session binding.</li>
+              <li><span class="mono">ctx.state</span>: read-only durable run/ref inspection over <span class="mono">SessionStore</span>.</li>
+              <li><span class="mono">ctx.session</span>: live default-agent selection and token snapshots/usage.</li>
+              <li><span class="mono">ctx.ui</span>: text, status, cards, and structured procedure panels.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <h3>3) Persistence and continuation are first-class</h3>
+            <ul class="bullets">
+              <li>Every top-level procedure, child procedure, and agent call becomes a durable run record.</li>
+              <li>Run output can be addressed through stable refs instead of being held only in memory.</li>
+              <li>Prompt images and session metadata are persisted alongside the run graph.</li>
+              <li>A procedure can return <span class="mono">pause: { question, state, ... }</span>; later the engine resumes through the procedure’s <span class="mono">resume(...)</span> hook.</li>
+              <li>Async/background work is supported with detached procedure-dispatch workers, job JSON files, progress JSONL, cancellation files, and recovery helpers.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>Representative nanoboss shapes</h3>
+            <div class="code">// research.ts
+const brief = expectData(await ctx.agent.run(
+  buildResearchBriefPrompt(prompt),
+  ResearchBriefType,
+  { session: "default", stream: false },
+));
+
+const report = expectData(await ctx.agent.run(
+  buildResearchExecutionPrompt(prompt),
+  ResearchResultType,
+  { refs: { brief: briefRef }, stream: false },
+));
+
+return { data, display, summary };
+
+// simplify.ts
+return {
+  pause: {
+    question,
+    state,
+    suggestedReplies,
+  },
+};</div>
+            <p style="margin: 12px 0 0; color: var(--muted);">
+              The nanoboss style is imperative orchestration wrapped by durable runtime services.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="compare" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Side-by-side comparison</h2>
+          <div class="sub">The sharpest distinction: Barnum compiles orchestration semantics; nanoboss operationalizes command execution inside a long-lived session product.</div>
+        </div>
+      </div>
+      <div class="panel">
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Dimension</th>
+              <th>Barnum</th>
+              <th>nanoboss procedures</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Authoring unit</strong></td>
+              <td>Composable typed workflow actions and handlers.</td>
+              <td>Plain TypeScript procedure module with <span class="mono">execute</span> / optional <span class="mono">resume</span>.</td>
+            </tr>
+            <tr>
+              <td><strong>Intermediate representation</strong></td>
+              <td>Explicit serializable AST, then flattened <span class="mono">FlatConfig</span>.</td>
+              <td>No workflow IR; the host language remains the control-flow representation.</td>
+            </tr>
+            <tr>
+              <td><strong>Runtime substrate</strong></td>
+              <td>Rust event loop + frame arena + pending-effect queue.</td>
+              <td>JavaScript/Bun async execution + procedure engine services + durable store.</td>
+            </tr>
+            <tr>
+              <td><strong>Concurrency model</strong></td>
+              <td>First-class via <span class="mono">All</span>, <span class="mono">ForEach</span>, <span class="mono">race</span>.</td>
+              <td>Mostly manual via host code; background dispatch exists at whole-procedure granularity.</td>
+            </tr>
+            <tr>
+              <td><strong>Isolation default</strong></td>
+              <td>Each TypeScript handler runs in its own subprocess.</td>
+              <td>Procedure code runs in-process; isolation happens mainly at downstream agent calls or detached workers.</td>
+            </tr>
+            <tr>
+              <td><strong>Control-flow expressiveness</strong></td>
+              <td>Loops, restarts, races, and effect handling are engine-native.</td>
+              <td>Mostly imperative JS patterns plus explicit pause/resume at the procedure boundary.</td>
+            </tr>
+            <tr>
+              <td><strong>State persistence</strong></td>
+              <td>Ephemeral engine state; returns a terminal JSON result.</td>
+              <td>Durable session graph with runs, refs, metadata, images, and continuations.</td>
+            </tr>
+            <tr>
+              <td><strong>Typing and validation</strong></td>
+              <td>Zod drives TS inference and runtime JSON Schema validation for each handler boundary.</td>
+              <td>Typed agent outputs via <span class="mono">jsonType(...)</span> + parse/validate/retry; no equivalent full-graph step typing.</td>
+            </tr>
+            <tr>
+              <td><strong>Human-in-the-loop UX</strong></td>
+              <td>Not a primary runtime concern.</td>
+              <td>Core feature: procedure UI events, pending continuations, resume, cancellation hooks.</td>
+            </tr>
+            <tr>
+              <td><strong>Session continuity</strong></td>
+              <td>No built-in notion of a default downstream conversation.</td>
+              <td>Explicit fresh/default/inherit session semantics.</td>
+            </tr>
+            <tr>
+              <td><strong>Recovery story</strong></td>
+              <td>Precise in-run liveness handling for stale tasks.</td>
+              <td>Out-of-process job recovery if transport or caller loses the terminal result.</td>
+            </tr>
+            <tr>
+              <td><strong>Best fit</strong></td>
+              <td>Precise agent workflow orchestration with explicit parallel/branch/restart semantics.</td>
+              <td>Interactive command systems for persistent agent sessions and operator-facing tooling.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid-2" style="margin-top: 16px;">
+        <div class="panel">
+          <h3>What Barnum is better at</h3>
+          <div class="bars">
+            <div class="bar"><div class="label">Explicit workflow topology</div><div class="track"><div class="fill" style="width: 95%"></div></div><div class="value">very high</div></div>
+            <div class="bar"><div class="label">Engine-native parallelism</div><div class="track"><div class="fill" style="width: 94%"></div></div><div class="value">very high</div></div>
+            <div class="bar"><div class="label">Per-step isolation</div><div class="track"><div class="fill" style="width: 92%"></div></div><div class="value">very high</div></div>
+            <div class="bar"><div class="label">Boundary validation</div><div class="track"><div class="fill" style="width: 89%"></div></div><div class="value">high</div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>What nanoboss is better at</h3>
+          <div class="bars">
+            <div class="bar"><div class="label">Durable run graph / refs</div><div class="track"><div class="fill" style="width: 96%"></div></div><div class="value">very high</div></div>
+            <div class="bar"><div class="label">Human continuation UX</div><div class="track"><div class="fill" style="width: 95%"></div></div><div class="value">very high</div></div>
+            <div class="bar"><div class="label">Session continuity with agents</div><div class="track"><div class="fill" style="width: 93%"></div></div><div class="value">very high</div></div>
+            <div class="bar"><div class="label">Frontend / transport integration</div><div class="track"><div class="fill" style="width: 92%"></div></div><div class="value">very high</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>The most important conceptual difference</h2>
+          <div class="sub">These systems put the “smartness” in different places.</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Barnum pushes intelligence into the engine</h3>
+          <ul class="bullets">
+            <li>The runtime understands the workflow’s structure.</li>
+            <li>The scheduler knows what is parallel, what is restartable, what is in-flight, and what becomes stale.</li>
+            <li>The language and runtime cooperate to reduce hidden context and hidden control flow.</li>
+            <li>It is closer to a workflow VM than to a command plugin system.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>nanoboss pushes intelligence into the runtime shell</h3>
+          <ul class="bullets">
+            <li>The engine does not own a compiled procedure graph; it owns execution boundaries, persistence, and product behavior.</li>
+            <li>The important abstractions are session state, child runs, refs, continuation state, UI emission, and agent policy.</li>
+            <li>Procedures are closer to <em>commands with powerful services</em> than to declarative state machines.</li>
+            <li>It is closer to an application runtime for agent tools than to a dedicated workflow language.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="ideas" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Cross-pollination ideas</h2>
+          <div class="sub">If you wanted these codebases to learn from each other, these are the highest-leverage imports.</div>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Ideas nanoboss could borrow from Barnum</h3>
+          <ul class="bullets">
+            <li><strong>Declarative subworkflows inside procedures.</strong> A Barnum-like mini DSL for fan-out, branch, race, and retry would remove a lot of imperative boilerplate from complex procedures like <span class="mono">simplify2</span>.</li>
+            <li><strong>Engine-visible topology.</strong> If nanoboss could optionally compile subgraphs, the runtime could visualize, analyze, and debug orchestration plans before running them.</li>
+            <li><strong>Boundary validation between substeps.</strong> Barnum’s “validate input before dispatch, validate output before delivery” model is very strong.</li>
+            <li><strong>Step isolation as a policy tool.</strong> Barnum’s subprocess boundary is a practical way to reduce accidental state bleed across agentic steps.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Ideas Barnum could borrow from nanoboss</h3>
+          <ul class="bullets">
+            <li><strong>Durable run graph + refs.</strong> Barnum currently feels ephemeral compared with nanoboss’s session store.</li>
+            <li><strong>Pause/resume continuations.</strong> nanoboss has a concrete model for human checkpoints and resumable commands.</li>
+            <li><strong>Operator-facing UI events.</strong> nanoboss procedures can surface status, panels, cards, and async job progress cleanly.</li>
+            <li><strong>Persistent default agent sessions.</strong> Barnum intentionally isolates steps, but some workflows benefit from a reusable conversational memory channel.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="panel" style="margin-top: 16px;">
+        <h3>My synthesis</h3>
+        <p class="quote">
+          Barnum solves the “how do I make the orchestration itself precise?” problem.
+          nanoboss solves the “how do I make agent commands durable, resumable, inspectable, and productized?” problem.
+          A hybrid would be compelling: Barnum-like compiled orchestration inside nanoboss’s durable session/runtime shell.
+        </p>
+      </div>
+    </section>
+
+    <section id="sources" class="section">
+      <div class="section-head">
+        <div>
+          <h2>Key files examined</h2>
+          <div class="sub">Primary source paths used for this comparison.</div>
+        </div>
+      </div>
+      <div class="panel">
+        <ul class="source-list mono">
+          <li>/Users/jflam/src/barnum/README.md</li>
+          <li>/Users/jflam/src/barnum/docs-website/docs/architecture/index.md</li>
+          <li>/Users/jflam/src/barnum/docs-website/docs/architecture/compiler.md</li>
+          <li>/Users/jflam/src/barnum/docs-website/docs/architecture/algebraic-effect-handlers.md</li>
+          <li>/Users/jflam/src/barnum/docs-website/docs/architecture/validation.md</li>
+          <li>/Users/jflam/src/barnum/docs-website/docs/architecture/typescript-ast.md</li>
+          <li>/Users/jflam/src/barnum/libs/barnum/src/ast.ts</li>
+          <li>/Users/jflam/src/barnum/libs/barnum/src/handler.ts</li>
+          <li>/Users/jflam/src/barnum/libs/barnum/src/run.ts</li>
+          <li>/Users/jflam/src/barnum/libs/barnum/src/worker.ts</li>
+          <li>/Users/jflam/src/barnum/crates/barnum_engine/src/lib.rs</li>
+          <li>/Users/jflam/src/barnum/crates/barnum_event_loop/src/lib.rs</li>
+          <li>/Users/jflam/src/barnum/crates/barnum_typescript_handler/src/lib.rs</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/docs/procedure-engine-package.md</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/docs/procedure-sdk-package.md</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/docs/store-package.md</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/docs/procedure-packages.md</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-sdk/src/index.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/procedure-runner.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/context.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/agent-api.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/procedure-api.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/session-api.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/state-api.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/ui-api.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/jobs.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/progress.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-catalog/src/registry.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-catalog/src/disk-loader.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-catalog/src/builtins.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/packages/agent-acp/src/transport.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/procedures/default.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/procedures/research.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/procedures/simplify.ts</li>
+          <li>/Users/jflam/agentboss/workspaces/nanoboss/procedures/create.ts</li>
+        </ul>
+        <div class="footer-note">
+          Prepared as a single self-contained HTML page for the nanoboss docs directory.
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>no-mistakes × nanoboss procedures feasibility</title>
+  <style>
+    :root {
+      --bg: #07111f;
+      --bg2: #0d1830;
+      --panel: rgba(16, 28, 49, 0.82);
+      --panel2: rgba(22, 38, 67, 0.92);
+      --text: #ecf2ff;
+      --muted: #a6b9df;
+      --soft: #7187b0;
+      --line: rgba(173, 196, 255, 0.18);
+      --accent: #7aa8ff;
+      --accent2: #7ef0cf;
+      --warn: #ffbf69;
+      --danger: #ff7b8f;
+      --ok: #79e88d;
+      --shadow: 0 24px 72px rgba(0, 0, 0, 0.34);
+      --radius: 22px;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(122, 168, 255, 0.18), transparent 30%),
+        radial-gradient(circle at 86% 0%, rgba(126, 240, 207, 0.14), transparent 24%),
+        linear-gradient(135deg, var(--bg), #060b15 56%, var(--bg2));
+      color: var(--text);
+      font-family: var(--sans);
+      letter-spacing: 0.01em;
+    }
+
+    code, pre, .mono { font-family: var(--mono); }
+
+    .progress {
+      position: fixed;
+      inset: 0 0 auto 0;
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      z-index: 50;
+    }
+    .progress > div {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      box-shadow: 0 0 18px rgba(122,168,255,0.52);
+      transition: width 180ms ease;
+    }
+
+    .hud {
+      position: fixed;
+      top: 14px;
+      right: 18px;
+      z-index: 50;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(6, 12, 24, 0.68);
+      backdrop-filter: blur(8px);
+    }
+
+    .deck {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 48px 56px 56px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+      opacity: 0;
+      transform: translateX(32px) scale(0.985);
+      pointer-events: none;
+      transition: opacity 220ms ease, transform 220ms ease;
+    }
+    .slide.active {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .eyebrow {
+      color: var(--accent2);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    h1, h2, h3 { margin: 0; letter-spacing: -0.03em; }
+    h1 { font-size: 58px; line-height: 0.98; }
+    h2 { font-size: 40px; line-height: 1.02; }
+    h3 { font-size: 21px; line-height: 1.1; }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1.34;
+      max-width: 1050px;
+    }
+    .lead {
+      font-size: 24px;
+      line-height: 1.32;
+      color: #f4f8ff;
+      max-width: 1080px;
+    }
+    .big-quote {
+      font-size: 33px;
+      line-height: 1.18;
+      letter-spacing: -0.03em;
+      max-width: 1120px;
+      color: #f5f9ff;
+    }
+
+    .content {
+      min-height: 0;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+    .rows { display: grid; gap: 14px; }
+    .grid-2 { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+
+    .panel {
+      min-width: 0;
+      padding: 20px 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(21, 34, 61, 0.75), rgba(10, 17, 31, 0.84));
+      box-shadow: var(--shadow);
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .kpi {
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(20,33,57,0.94), rgba(12,20,35,0.88));
+    }
+    .kpi .n {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin-bottom: 6px;
+    }
+    .kpi .l {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      line-height: 1.3;
+    }
+
+    .bullets {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .bullets li {
+      margin: 8px 0;
+      font-size: 16px;
+      line-height: 1.42;
+    }
+    .bullets li::marker { color: var(--accent2); }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      background: rgba(20, 35, 61, 0.75);
+      color: #dce7ff;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .chip.ok { color: #cff8d6; border-color: rgba(121,232,141,0.38); }
+    .chip.warn { color: #ffe2b0; border-color: rgba(255,191,105,0.36); }
+    .chip.danger { color: #ffd1d7; border-color: rgba(255,123,143,0.34); }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+    }
+    .flow-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      min-height: 92px;
+      background: linear-gradient(180deg, rgba(18,30,54,0.95), rgba(10,18,33,0.86));
+    }
+    .node strong { display: block; font-size: 15px; margin-bottom: 6px; }
+    .node span { color: var(--muted); font-size: 14px; line-height: 1.35; }
+    .arrow {
+      text-align: center;
+      color: var(--accent2);
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+    .stack-item {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 14px;
+      align-items: start;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(173,196,255,0.12);
+      background: rgba(255,255,255,0.03);
+    }
+    .stack-item .label {
+      color: var(--accent2);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .stack-item .value {
+      color: var(--muted);
+      line-height: 1.42;
+      font-size: 15px;
+    }
+
+    .codeblock {
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      border: 1px solid rgba(173,196,255,0.16);
+      background: rgba(8, 13, 24, 0.76);
+      border-radius: 18px;
+      padding: 16px 18px;
+      color: #e9f1ff;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 15px;
+    }
+    .table th, .table td {
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(173,196,255,0.12);
+      line-height: 1.4;
+    }
+    .table th {
+      color: var(--accent2);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-weight: 700;
+    }
+
+    .fit-strong { color: #d8ffe0; }
+    .fit-medium { color: #fff0cc; }
+    .fit-weak { color: #ffd6dc; }
+
+    .callout {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(126,240,207,0.24);
+      background: rgba(18, 38, 43, 0.28);
+      color: #e9fef8;
+      line-height: 1.42;
+      font-size: 16px;
+    }
+    .callout.warn {
+      border-color: rgba(255,191,105,0.3);
+      background: rgba(60, 41, 14, 0.28);
+      color: #fff1d6;
+    }
+    .callout.danger {
+      border-color: rgba(255,123,143,0.28);
+      background: rgba(61, 23, 33, 0.30);
+      color: #ffe7eb;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .refs {
+      color: var(--soft);
+      font-size: 12px;
+      text-align: right;
+      max-width: 62%;
+      line-height: 1.45;
+    }
+
+    .nav {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      display: flex;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(6, 12, 24, 0.66);
+      backdrop-filter: blur(8px);
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      border: 0;
+      background: rgba(255,255,255,0.18);
+      cursor: pointer;
+    }
+    .dot.active {
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      box-shadow: 0 0 16px rgba(122,168,255,0.5);
+    }
+
+    .two-col-list {
+      columns: 2;
+      column-gap: 24px;
+      margin: 0;
+      padding-left: 20px;
+    }
+    .two-col-list li {
+      break-inside: avoid;
+      margin: 8px 0;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 1220px) {
+      .slide { padding: 40px 34px 60px; }
+      .grid-2, .grid-3, .grid-4, .kpis { grid-template-columns: 1fr; }
+      .flow-row { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      .stack-item { grid-template-columns: 1fr; }
+      .two-col-list { columns: 1; }
+      h1 { font-size: 46px; }
+      h2 { font-size: 34px; }
+      .big-quote { font-size: 28px; }
+    }
+
+    @media print {
+      html, body { overflow: visible; background: #fff; color: #111; }
+      .progress, .hud, .nav { display: none !important; }
+      .deck { height: auto; }
+      .slide {
+        position: relative;
+        inset: auto;
+        opacity: 1 !important;
+        transform: none !important;
+        pointer-events: auto;
+        height: 100vh;
+        page-break-after: always;
+        background: #fff;
+        color: #111;
+      }
+      .panel, .flow, .codeblock, .kpi, .callout, .node, .stack-item {
+        background: #fff;
+        color: #111;
+        border-color: #ddd;
+        box-shadow: none;
+      }
+      .subtitle, .footer, .refs, .chip, .kpi .l, .node span, .stack-item .value { color: #444; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress"><div id="progress-bar"></div></div>
+  <div class="hud">
+    <span>no-mistakes × nanoboss</span>
+    <span id="slide-counter">1 / 9</span>
+  </div>
+
+  <main class="deck">
+    <section class="slide active" data-title="Cover">
+      <header>
+        <div class="eyebrow">Feasibility deep dive · single-page slide deck</div>
+        <h1>Could <code>no-mistakes</code> be rebuilt on nanoboss procedures?</h1>
+        <p class="subtitle">Short answer: <strong>yes for the inner workflow engine, no for the outer git-gate shell</strong>. A credible rewrite would keep a thin custom gate/hook/worktree wrapper and move the step logic, approvals, and agent orchestration into nanoboss procedures.</p>
+      </header>
+      <div class="content rows">
+        <div class="kpis">
+          <div class="kpi"><div class="n">20.8k</div><div class="l">no-mistakes non-test Go LOC</div></div>
+          <div class="kpi"><div class="n">41.4k</div><div class="l">no-mistakes test LOC</div></div>
+          <div class="kpi"><div class="n">8</div><div class="l">fixed pipeline steps</div></div>
+          <div class="kpi"><div class="n">green</div><div class="l"><code>go test ./...</code> and build snapshot</div></div>
+        </div>
+        <div class="panel rows">
+          <h3>Bottom line</h3>
+          <div class="big-quote">Nanoboss is a good fit for the parts of <code>no-mistakes</code> that are really <em>workflow semantics</em>: typed agent calls, fix loops, pause/resume approvals, durable run history, and UI surfaces. It is <em>not</em> a drop-in replacement for the git remote gate, post-receive hook, disposable worktree manager, branch supersession policy, or OS-managed daemon story.</div>
+          <div class="chips">
+            <span class="chip ok">strong fit: step engine</span>
+            <span class="chip ok">strong fit: approvals + fixes</span>
+            <span class="chip warn">medium fit: persistence + detached jobs</span>
+            <span class="chip danger">weak fit: gate remote + hook + worktrees</span>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Snapshot date: 2026-04-20. Local inspection included source reads plus <code>go test ./...</code> and <code>go build -o /tmp/no-mistakes-build ./cmd/no-mistakes</code>.</div>
+        <div class="refs">Evidence: <code>README.md</code> · <code>docs/src/content/docs/concepts/gate-model.md</code> · <code>internal/daemon/manager.go</code> · <code>~/agentboss/workspaces/nanoboss/docs/procedure-engine-package.md</code> · <code>~/agentboss/workspaces/nanoboss/procedures/nanoboss/pre-commit-checks.ts</code></div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Backgrounder">
+      <header>
+        <div class="eyebrow">1 · no-mistakes backgrounder</div>
+        <h2><code>no-mistakes</code> is not just an AI reviewer. It is a git transport gate plus a long-running orchestration service.</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Architecture in one view</h3>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><strong>Working repo</strong><span>developer pushes to named remote <code>no-mistakes</code>, not <code>origin</code></span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>Local bare gate repo</strong><span><code>~/.no-mistakes/repos/&lt;id&gt;.git</code> receives the push</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>post-receive hook</strong><span>non-blocking notification into the daemon</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><strong>Daemon</strong><span>branch locking, run creation, crash recovery, IPC, service integration</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>Disposable worktree</strong><span>safe place for rebases, edits, tests, commits, pushes</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>Fixed pipeline</strong><span><code>rebase → review → test → document → lint → push → pr → ci</code></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>What makes the product shape unusual</h3>
+          <ul class="bullets">
+            <li><strong>Named remote gate</strong>: it preserves normal Git semantics; <code>origin</code> is never hijacked.</li>
+            <li><strong>Daemon ownership</strong>: pushes stay fast because the hook exits immediately and the daemon does the real work.</li>
+            <li><strong>Ephemeral worktrees</strong>: agent edits never touch the developer’s live checkout.</li>
+            <li><strong>SQLite + IPC + Bubble Tea TUI</strong>: runs, step states, step rounds, findings, diffs, and logs are durable and attachable.</li>
+            <li><strong>Human checkpoints</strong>: approve, fix, skip, abort; auto-fix loops are bounded and recorded.</li>
+          </ul>
+          <div class="callout warn">This means a full rewrite has to respect two very different concerns at once: <em>repository event plumbing</em> and <em>agentic workflow semantics</em>.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>The core mental model is “local git proxy + daemonized validation machine,” not “chat app with a review command.”</div>
+        <div class="refs">Evidence: <code>docs/src/content/docs/concepts/gate-model.md</code> · <code>docs/src/content/docs/concepts/daemon.md</code> · <code>internal/git/hook.go</code> · <code>internal/daemon/daemon.go</code></div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Repo anatomy">
+      <header>
+        <div class="eyebrow">2 · repository anatomy</div>
+        <h2>The codebase splits cleanly into workflow core, repo plumbing, provider integrations, and UX.</h2>
+      </header>
+      <div class="content grid-3">
+        <div class="panel rows">
+          <h3>Transport + bootstrap</h3>
+          <ul class="bullets">
+            <li><code>internal/gate</code>: init/eject, bare gate repo, remote wiring</li>
+            <li><code>internal/git/hook.go</code>: post-receive hook generation</li>
+            <li><code>internal/daemon/service*.go</code>: launchd/systemd/schtasks lifecycle</li>
+            <li><code>internal/update</code>: binary replacement + daemon reset</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>Run engine</h3>
+          <ul class="bullets">
+            <li><code>internal/daemon/manager.go</code>: per-branch locks, cancellation, worktree lifecycle</li>
+            <li><code>internal/pipeline/executor.go</code>: sequential step execution + approval loop</li>
+            <li><code>internal/pipeline/steps/*</code>: eight opinionated steps and common helpers</li>
+            <li><code>internal/db/schema.go</code>: repos, runs, step_results, step_rounds</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>Agents + providers + UX</h3>
+          <ul class="bullets">
+            <li><code>internal/agent</code>: Claude, Codex, Rovo Dev, OpenCode adapters</li>
+            <li><code>internal/scm/*</code> + <code>internal/bitbucket</code>: PR/CI hosts</li>
+            <li><code>internal/tui</code>: step-centric live run view with findings and diff review</li>
+            <li><code>internal/wizard</code>: onboarding flow to create branch/commit/push</li>
+          </ul>
+        </div>
+      </div>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Why the implementation is solid</h3>
+          <ul class="bullets">
+            <li><strong>Tests are heavy</strong>: 264 Go files, 144 test files, and <code>go test ./...</code> passed in this snapshot.</li>
+            <li><strong>State is explicit</strong>: step rounds record findings, selected finding IDs, fix summaries, and durations.</li>
+            <li><strong>Cross-platform concerns are real</strong>: service managers, IPC transport, and shell environment reloading are all first-class.</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>Where the complexity sits</h3>
+          <div class="chips">
+            <span class="chip">largest workflow hotspots: <code>wizard.go</code> 675 LOC, <code>prsummary.go</code> 647, <code>executor.go</code> 590, <code>manager.go</code> 538</span>
+            <span class="chip ok">most complexity is product plumbing, not prompt text</span>
+            <span class="chip warn">several subsystems exist only because the product is a git gate, not just a workflow</span>
+          </div>
+          <div class="callout">That split is exactly why nanoboss is attractive: it can absorb the workflow half of the problem, but not the repo-plumbing half by itself.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Important hidden asset: <code>step_rounds</code> already encode a run graph of attempts, selections, and outcomes.</div>
+        <div class="refs">Evidence: <code>internal/pipeline/executor.go</code> · <code>internal/pipeline/steps/round_history.go</code> · <code>internal/db/schema.go</code> · <code>internal/scm/host.go</code></div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Nanoboss capabilities">
+      <header>
+        <div class="eyebrow">3 · nanoboss capability map</div>
+        <h2>Nanoboss already has most of the primitives needed for the <em>inner</em> half of <code>no-mistakes</code>.</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Procedure/runtime primitives</h3>
+          <div class="stack">
+            <div class="stack-item"><div class="label mono">ctx.agent</div><div class="value">typed agent calls, fresh/default session modes, named refs, downstream model selection</div></div>
+            <div class="stack-item"><div class="label mono">pause / resume</div><div class="value">native continuation state, suggested replies, and form payloads for human checkpoints</div></div>
+            <div class="stack-item"><div class="label mono">ctx.procedures</div><div class="value">nested child procedures, so each pipeline step can be its own run with its own typed result</div></div>
+            <div class="stack-item"><div class="label mono">SessionStore</div><div class="value">durable runs, refs, traversal, and session metadata instead of bespoke step JSON blobs</div></div>
+            <div class="stack-item"><div class="label mono">dispatch jobs</div><div class="value">detached background procedure workers with progress forwarding and recovery helpers</div></div>
+            <div class="stack-item"><div class="label mono">ui.panel / TUI extensions</div><div class="value">pipeline cards, status chrome, custom panels, and focus/checkpoint forms without rewriting the whole terminal runtime</div></div>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Repo-aware proof points already in nanoboss</h3>
+          <ul class="bullets">
+            <li><strong><code>procedures/nanoboss/pre-commit-checks.ts</code></strong> already runs repo validation, auto-fix passes, and continuation-based approval.</li>
+            <li><strong><code>procedures/linter.ts</code></strong> already does iterative shell-driven repo fixing with nested commits.</li>
+            <li><strong><code>procedures/simplify2.ts</code></strong> proves that a large resumable harness with forms, panels, local FS, git checks, and agent phases is viable.</li>
+            <li><strong><code>docs/procedure-engine-package.md</code></strong> makes background dispatch and resumable top-level runs a first-class engine concern.</li>
+          </ul>
+          <div class="callout">Procedures are not glorified prompts. They are programmable harnesses with durable state and UI hooks.</div>
+          <div class="callout warn">Important mismatch: nanoboss natively targets Claude/Codex/Copilot/Gemini via ACP. <code>no-mistakes</code> also supports Rovo Dev and OpenCode, so exact provider parity would require extra adapter work or a product decision.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>If you port only the workflow semantics, nanoboss is already much closer than a generic chat harness.</div>
+        <div class="refs">Evidence: <code>~/agentboss/workspaces/nanoboss/docs/procedure-sdk-package.md</code> · <code>~/agentboss/workspaces/nanoboss/procedures/linter.ts</code> · <code>~/agentboss/workspaces/nanoboss/procedures/nanoboss/commit.ts</code> · <code>~/agentboss/workspaces/nanoboss/README.md</code></div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Fit matrix">
+      <header>
+        <div class="eyebrow">4 · subsystem fit matrix</div>
+        <h2>Where the port is natural, and where it is not</h2>
+      </header>
+      <div class="content">
+        <table class="table panel">
+          <thead>
+            <tr><th>Subsystem</th><th>Fit</th><th>Why</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Review / test / document / lint / PR-summary step logic</td><td class="fit-strong"><strong>Strong</strong></td><td>These are exactly the sort of deterministic harness procedures nanoboss is built for: agent calls, shell commands, nested runs, typed outputs.</td></tr>
+            <tr><td>Approve / fix / skip / abort loop</td><td class="fit-strong"><strong>Strong</strong></td><td>Native pause/resume, suggested replies, forms, and procedure-owned control flow map well to <code>no-mistakes</code> approval states.</td></tr>
+            <tr><td>Run history + fix provenance</td><td class="fit-medium"><strong>Medium+</strong></td><td>Session runs/refs can replace much of <code>runs + step_results + step_rounds</code>, but repo/branch lookup policy is custom.</td></tr>
+            <tr><td>Detached background execution</td><td class="fit-medium"><strong>Medium</strong></td><td>Dispatch workers exist, but post-receive-triggered lifecycle and long-lived server/process ownership remain outside procedures.</td></tr>
+            <tr><td>Pipeline visualization in the TUI</td><td class="fit-medium"><strong>Medium</strong></td><td>Panels/extensions can reproduce much of the UX, but nanoboss is transcript-first while <code>no-mistakes</code> is step-ladder-first.</td></tr>
+            <tr><td>Git gate remote + hook install + disposable worktree lifecycle</td><td class="fit-weak"><strong>Weak</strong></td><td>Nanoboss has no built-in primitive for “be a git remote that forks work into detached worktrees.”</td></tr>
+            <tr><td>Per-branch supersession / locking / cancellation</td><td class="fit-weak"><strong>Weak–Medium</strong></td><td>Easy to implement in a thin wrapper, but not something procedures solve by themselves.</td></tr>
+            <tr><td>GitHub / GitLab / Bitbucket PR + CI host integrations</td><td class="fit-medium"><strong>Medium</strong></td><td>Porting the provider layer is straightforward in principle, but it still has to be rewritten or wrapped.</td></tr>
+            <tr><td>Agent coverage parity</td><td class="fit-weak"><strong>Weak–Medium</strong></td><td>ACP gives nanoboss a cleaner mainstream provider story, but <code>rovodev</code> and <code>opencode</code> are not present out of the box.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <footer class="footer">
+        <div>The workflow core ports well. The repo-event shell does not.</div>
+        <div class="refs">Evidence: <code>internal/pipeline/steps/*.go</code> · <code>internal/daemon/manager.go</code> · <code>~/agentboss/workspaces/nanoboss/docs/architecture.md</code> · <code>~/agentboss/workspaces/nanoboss/docs/procedure-engine-package.md</code></div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Target architecture">
+      <header>
+        <div class="eyebrow">5 · recommended architecture boundary</div>
+        <h2>The cleanest rewrite is a hybrid: thin custom gate wrapper outside, nanoboss procedure package inside.</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Proposed flow</h3>
+          <div class="flow">
+            <div class="flow-row">
+              <div class="node"><strong><code>git push no-mistakes</code></strong><span>keep the existing explicit gate UX</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>thin gate wrapper</strong><span>hook install, branch lock, worktree create/cleanup, active-run index</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>dispatch nanoboss run</strong><span>one nanoboss session per pipeline run, started in the detached worktree</span></div>
+            </div>
+            <div class="flow-row">
+              <div class="node"><strong><code>/nm/run</code></strong><span>top-level harness procedure</span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>child procedures</strong><span><code>/nm/rebase</code>, <code>/nm/review</code>, <code>/nm/test</code>, <code>/nm/document</code>, <code>/nm/lint</code>, <code>/nm/push</code>, <code>/nm/pr</code>, <code>/nm/ci</code></span></div>
+              <div class="arrow">→</div>
+              <div class="node"><strong>nanoboss UI + store</strong><span>panels/forms/cards + durable run graph instead of custom step-event protocol</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Why this split is the right one</h3>
+          <ul class="bullets">
+            <li><strong>Outer layer stays deterministic and tiny</strong>: no prompts, no agent logic, only git/event/process policy.</li>
+            <li><strong>Inner layer becomes reusable</strong>: each step is a normal procedure with typed outputs and child-run provenance.</li>
+            <li><strong>History gets richer</strong>: prior findings, diffs, and fix attempts can live as refs/run outputs instead of only JSON columns.</li>
+            <li><strong>UI becomes cheaper to evolve</strong>: panels + forms are easier to change than a fully bespoke Bubble Tea surface.</li>
+            <li><strong>Reruns become natural</strong>: wrapper just dispatches another top-level procedure against a fresh worktree.</li>
+          </ul>
+          <div class="callout">I would model each pipeline run as its own nanoboss session and keep a tiny repo/branch index outside nanoboss to answer “what is the current active run for this branch?”</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>This preserves the product-defining git semantics while collapsing a large amount of custom workflow machinery.</div>
+        <div class="refs">Evidence: <code>internal/gate/gate.go</code> · <code>internal/daemon/manager.go</code> · <code>~/agentboss/workspaces/nanoboss/packages/store/src/index.ts</code> · <code>~/agentboss/workspaces/nanoboss/packages/procedure-sdk/src/index.ts</code></div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="What gets simpler">
+      <header>
+        <div class="eyebrow">6 · simplifications vs irreducible custom pieces</div>
+        <h2>The win is real, but it is concentrated in executor/agent/UI layers — not in the git gate itself.</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>Likely simpler after the port</h3>
+          <ul class="bullets">
+            <li><strong>Agent backend surface</strong>: stop maintaining custom Claude/Codex/Rovo/OpenCode invocation code and lean on ACP-backed nanoboss paths where possible.</li>
+            <li><strong>Approval engine</strong>: replace bespoke <code>awaiting_approval / fix_review</code> state transitions with first-class continuations and forms.</li>
+            <li><strong>Provenance model</strong>: use nested runs/refs instead of a purpose-built step event protocol plus DB round serialization.</li>
+            <li><strong>TUI customization burden</strong>: build pipeline panels/extensions on top of nanoboss instead of owning the full Bubble Tea app stack.</li>
+            <li><strong>Workflow composition</strong>: PR summary generation, CI babysitting, and repo validation become ordinary procedures instead of tightly coupled step types.</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>Still custom, or potentially harder</h3>
+          <ul class="bullets">
+            <li><strong>Gate init/eject + remote semantics</strong>: nanoboss has no opinionated git-remote interception layer.</li>
+            <li><strong>Managed daemon / service / update lifecycle</strong>: if you still want hands-off background execution, this remains your responsibility.</li>
+            <li><strong>Branch-oriented querying</strong>: nanoboss is session/run oriented, not repo+branch database oriented.</li>
+            <li><strong>Provider host ports</strong>: GitHub/GitLab/Bitbucket CI/PR code has to move or be wrapped.</li>
+            <li><strong>Exact UX parity</strong>: the current <code>no-mistakes</code> step-box UI is a better at-a-glance pipeline monitor than a default transcript UI.</li>
+          </ul>
+          <div class="callout warn">I would plan to delete <em>most</em> of the custom executor and agent plumbing — but not the thin gate wrapper, and not every bit of repo-local state indexing.</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>In practice: nanoboss can replace the orchestration core, not the product shell.</div>
+        <div class="refs">Evidence: <code>internal/ipc/protocol.go</code> · <code>internal/tui/app.go</code> · <code>internal/agent/agent.go</code> · <code>~/agentboss/workspaces/nanoboss/README.md</code> · <code>~/agentboss/workspaces/nanoboss/procedures/linter.ts</code></div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Verdict">
+      <header>
+        <div class="eyebrow">7 · verdict</div>
+        <h2>My recommendation</h2>
+      </header>
+      <div class="content rows">
+        <div class="big-quote">If the goal is to make <code>no-mistakes</code> less bespoke in its workflow engine, <strong>yes</strong> — nanoboss procedures are a credible target. If the goal is to replace the whole product with “just procedures,” <strong>no</strong> — the git-gate, worktree, branch-coordination, and service-management shell still has to exist.</div>
+        <div class="grid-3">
+          <div class="panel rows">
+            <h3>Could it be done?</h3>
+            <div class="lead" style="font-size:22px">Yes, with a hybrid architecture.</div>
+            <ul class="bullets">
+              <li>Port the fixed pipeline to a procedure package.</li>
+              <li>Use nested child procedures for each step.</li>
+              <li>Use nanoboss continuations for approvals/fixes.</li>
+            </ul>
+          </div>
+          <div class="panel rows">
+            <h3>Could it be done with procedures alone?</h3>
+            <div class="lead" style="font-size:22px">No.</div>
+            <ul class="bullets">
+              <li>Git hook intake is external.</li>
+              <li>Detached worktree lifecycle is external.</li>
+              <li>Per-branch cancellation policy is external.</li>
+            </ul>
+          </div>
+          <div class="panel rows">
+            <h3>Would I recommend it?</h3>
+            <div class="lead" style="font-size:22px">Yes, if you accept some product reshaping.</div>
+            <ul class="bullets">
+              <li>Keep the explicit gate UX.</li>
+              <li>Shrink the custom core around it.</li>
+              <li>Expect some TUI/provider migration work.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="panel rows">
+          <h3>Suggested migration order</h3>
+          <ol class="bullets">
+            <li>Implement a repo-local <code>.nanoboss/procedures/no-mistakes/*</code> package for the eight steps and the top-level <code>/nm/run</code> harness.</li>
+            <li>Build a tiny wrapper that receives push events, creates the worktree, and dispatches the top-level nanoboss run.</li>
+            <li>Add a nanoboss TUI extension/panel renderer for a step-ladder pipeline view and approval actions.</li>
+            <li>Port PR/CI provider hosts and decide whether to keep a tiny repo index or continue using SQLite for branch lookup.</li>
+          </ol>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Shortest summary: <strong>rewrite the engine on nanoboss; do not pretend the git gate disappears.</strong></div>
+        <div class="refs">Prepared from direct source inspection of both repos and local command execution.</div>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="Evidence">
+      <header>
+        <div class="eyebrow">8 · evidence appendix</div>
+        <h2>Primary files and commands used for this assessment</h2>
+      </header>
+      <div class="content grid-2">
+        <div class="panel rows">
+          <h3>no-mistakes files inspected</h3>
+          <ul class="two-col-list mono">
+            <li>README.md</li>
+            <li>AGENTS.md</li>
+            <li>cmd/no-mistakes/main.go</li>
+            <li>internal/cli/root.go</li>
+            <li>internal/gate/gate.go</li>
+            <li>internal/git/hook.go</li>
+            <li>internal/daemon/daemon.go</li>
+            <li>internal/daemon/manager.go</li>
+            <li>internal/daemon/service.go</li>
+            <li>internal/ipc/protocol.go</li>
+            <li>internal/pipeline/pipeline.go</li>
+            <li>internal/pipeline/executor.go</li>
+            <li>internal/pipeline/steps/review.go</li>
+            <li>internal/pipeline/steps/test.go</li>
+            <li>internal/pipeline/steps/pr.go</li>
+            <li>internal/pipeline/steps/ci.go</li>
+            <li>internal/pipeline/steps/common_fix.go</li>
+            <li>internal/pipeline/steps/round_history.go</li>
+            <li>internal/db/schema.go</li>
+            <li>internal/agent/agent.go</li>
+            <li>internal/scm/host.go</li>
+            <li>internal/tui/app.go</li>
+            <li>internal/tui/DESIGN.md</li>
+            <li>docs/src/content/docs/concepts/gate-model.md</li>
+            <li>docs/src/content/docs/concepts/daemon.md</li>
+            <li>docs/src/content/docs/concepts/pipeline.md</li>
+            <li>docs/src/content/docs/reference/pipeline-steps.md</li>
+          </ul>
+        </div>
+        <div class="panel rows">
+          <h3>nanoboss files inspected</h3>
+          <ul class="two-col-list mono">
+            <li>README.md</li>
+            <li>docs/architecture.md</li>
+            <li>docs/procedure-engine-package.md</li>
+            <li>docs/procedure-sdk-package.md</li>
+            <li>docs/procedure-packages.md</li>
+            <li>docs/store-package.md</li>
+            <li>packages/procedure-sdk/src/index.ts</li>
+            <li>procedures/default.ts</li>
+            <li>procedures/research.ts</li>
+            <li>procedures/linter.ts</li>
+            <li>procedures/simplify2.ts</li>
+            <li>procedures/nanoboss/pre-commit-checks.ts</li>
+            <li>procedures/nanoboss/commit.ts</li>
+          </ul>
+          <h3>Commands run</h3>
+          <div class="codeblock">cd /Users/jflam/src/no-mistakes
+find . -name '*.go' ...
+go test ./...
+go build -o /tmp/no-mistakes-build ./cmd/no-mistakes
+
+git status --short
+
+cd ~/agentboss/workspaces/nanoboss
+find . -name '*.ts' ...</div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div>Output file: <code>docs/no-mistakes-vs-nanoboss-procedures.html</code></div>
+        <div class="refs">This deck is intended to be self-contained and printable.</div>
+      </footer>
+    </section>
+  </main>
+
+  <div class="nav" id="nav"></div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const nav = document.getElementById('nav');
+    const counter = document.getElementById('slide-counter');
+    const progress = document.getElementById('progress-bar');
+    let index = 0;
+
+    function clamp(n) {
+      return Math.max(0, Math.min(slides.length - 1, n));
+    }
+
+    function buildNav() {
+      slides.forEach((slide, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'dot';
+        btn.title = `${i + 1}. ${slide.dataset.title || 'Slide'}`;
+        btn.addEventListener('click', () => go(i));
+        nav.appendChild(btn);
+      });
+    }
+
+    function go(next, push = true) {
+      index = clamp(next);
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+      [...nav.children].forEach((dot, i) => dot.classList.toggle('active', i === index));
+      counter.textContent = `${index + 1} / ${slides.length}`;
+      progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+      if (push) {
+        const hash = `#${index + 1}`;
+        if (location.hash !== hash) history.replaceState(null, '', hash);
+      }
+    }
+
+    function fromHash() {
+      const n = Number(location.hash.replace('#', ''));
+      if (Number.isFinite(n) && n >= 1 && n <= slides.length) {
+        go(n - 1, false);
+      } else {
+        go(0, false);
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (['ArrowRight', 'PageDown', ' '].includes(e.key)) {
+        e.preventDefault();
+        go(index + 1);
+      } else if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) {
+        e.preventDefault();
+        go(index - 1);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        go(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        go(slides.length - 1);
+      }
+    });
+
+    window.addEventListener('hashchange', fromHash);
+    buildNav();
+    fromHash();
+  </script>
+</body>
+</html>
