@@ -1633,6 +1633,80 @@ describe("tui reducer", () => {
       dismissible: false,
     });
   });
+  test("local_procedure_panel does NOT bind to active assistant turn or mark text boundary", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    // Start a run with an active assistant turn and streamed text.
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("run_started", {
+        runId: "run-1",
+        procedure: "demo",
+        prompt: "hi",
+        startedAt: new Date(0).toISOString(),
+      }),
+    });
+    state = reduceUiState(state, {
+      type: "frontend_event",
+      event: eventEnvelope("text_delta", { runId: "run-1", text: "streaming…" }),
+    });
+    const preActiveTurnId = state.activeAssistantTurnId;
+    const preBoundaryPending = state.assistantParagraphBreakPending;
+    expect(preActiveTurnId).toBeDefined();
+
+    state = reduceUiState(state, {
+      type: "local_procedure_panel",
+      panelId: "panel-local-1",
+      rendererId: "nb/card@1",
+      payload: { kind: "notice", title: "Extensions", markdown: "..." },
+      severity: "info",
+      dismissible: true,
+      key: "local:extensions",
+    });
+
+    // Panel is recorded and transcript item appended.
+    expect(state.procedurePanels).toHaveLength(1);
+    expect(state.procedurePanels[0]!.panelId).toBe("panel-local-1");
+    expect(state.procedurePanels[0]!.runId).toBeUndefined();
+    expect(state.procedurePanels[0]!.turnId).toBeUndefined();
+    expect(state.transcriptItems.some((it) => it.type === "procedure_panel" && it.id === "panel-local-1")).toBe(true);
+
+    // Critically: the active assistant turn is untouched — no block is
+    // appended, and the paragraph-break boundary is not marked.
+    const activeTurn = state.turns.find((turn) => turn.id === preActiveTurnId)!;
+    const hasPanelBlock = (activeTurn.blocks ?? []).some(
+      (block) => block.kind === "procedure_panel" && block.panelId === "panel-local-1",
+    );
+    expect(hasPanelBlock).toBe(false);
+    expect(state.activeAssistantTurnId).toBe(preActiveTurnId);
+    expect(state.assistantParagraphBreakPending).toBe(preBoundaryPending);
+  });
+
+  test("local_procedure_panel replaces in place when key matches and runId is absent", () => {
+    let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
+    state = reduceUiState(state, {
+      type: "local_procedure_panel",
+      panelId: "panel-local-a",
+      rendererId: "nb/card@1",
+      payload: { kind: "notice", title: "Extensions", markdown: "first" },
+      severity: "info",
+      dismissible: true,
+      key: "local:extensions",
+    });
+    state = reduceUiState(state, {
+      type: "local_procedure_panel",
+      panelId: "panel-local-b",
+      rendererId: "nb/card@1",
+      payload: { kind: "notice", title: "Extensions", markdown: "second" },
+      severity: "warn",
+      dismissible: true,
+      key: "local:extensions",
+    });
+
+    expect(state.procedurePanels).toHaveLength(1);
+    expect(state.procedurePanels[0]!.panelId).toBe("panel-local-a");
+    expect(state.procedurePanels[0]!.severity).toBe("warn");
+    expect((state.procedurePanels[0]!.payload as { markdown: string }).markdown).toBe("second");
+  });
 });
 
 function eventEnvelope<EventType extends RenderedFrontendEventEnvelope["type"]>(

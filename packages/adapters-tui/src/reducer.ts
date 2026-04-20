@@ -101,6 +101,31 @@ export type UiAction =
       type: "keybindingOverlay/dismiss";
     }
   | {
+      /**
+       * Insert (or in-place replace) a procedure-panel-shaped transcript
+       * card from a local source such as a slash command. Unlike a real
+       * `procedure_panel` frontend event this action:
+       *
+       * - Does NOT bind to `activeAssistantTurnId` (no turnId).
+       * - Does NOT call `appendProcedurePanelBlockToActiveTurn`, so a
+       *   mid-run `/extensions` cannot split the streaming assistant
+       *   turn into multiple turns.
+       * - Does NOT call `markAssistantTextBoundary`.
+       *
+       * In-place replacement keys by (rendererId, key) with runId always
+       * undefined so repeated invocations of the same local command
+       * collapse onto a single transcript card.
+       */
+      type: "local_procedure_panel";
+      panelId: string;
+      rendererId: string;
+      payload: unknown;
+      severity: "info" | "warn" | "error";
+      dismissible: boolean;
+      key?: string;
+      procedure?: string;
+    }
+  | {
       type: "frontend_event";
       event: RenderedFrontendEventEnvelope;
     };
@@ -273,7 +298,59 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
       };
     case "frontend_event":
       return reduceFrontendEvent(state, action.event);
+    case "local_procedure_panel":
+      return applyLocalProcedurePanel(state, action);
   }
+}
+
+function applyLocalProcedurePanel(
+  state: UiState,
+  action: Extract<UiAction, { type: "local_procedure_panel" }>,
+): UiState {
+  const existingByKey = action.key
+    ? state.procedurePanels.find((p) =>
+      p.key === action.key
+        && p.rendererId === action.rendererId
+        && p.runId === undefined
+    )
+    : undefined;
+
+  if (existingByKey) {
+    const updated: UiProcedurePanel = {
+      ...existingByKey,
+      rendererId: action.rendererId,
+      payload: action.payload,
+      severity: action.severity,
+      dismissible: action.dismissible,
+      procedure: action.procedure,
+    };
+    return {
+      ...state,
+      turns: replaceProcedurePanelBlockInTurns(state.turns, existingByKey.panelId, updated),
+      procedurePanels: state.procedurePanels.map((p) =>
+        p.panelId === existingByKey.panelId ? updated : p,
+      ),
+    };
+  }
+
+  const entry: UiProcedurePanel = {
+    panelId: action.panelId,
+    rendererId: action.rendererId,
+    payload: action.payload,
+    severity: action.severity,
+    dismissible: action.dismissible,
+    ...(action.key !== undefined ? { key: action.key } : {}),
+    ...(action.procedure !== undefined ? { procedure: action.procedure } : {}),
+  };
+
+  return {
+    ...state,
+    procedurePanels: [...state.procedurePanels, entry],
+    transcriptItems: appendTranscriptItem(state.transcriptItems, {
+      type: "procedure_panel",
+      id: entry.panelId,
+    }),
+  };
 }
 
 function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelope): UiState {

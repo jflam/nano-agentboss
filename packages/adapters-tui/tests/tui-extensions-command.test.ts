@@ -7,6 +7,7 @@ import { TuiExtensionRegistry } from "@nanoboss/tui-extension-catalog";
 
 import {
   bootExtensions,
+  formatExtensionsCard,
   formatExtensionsList,
   NanobossTuiController,
   type NanobossTuiControllerDeps,
@@ -32,6 +33,7 @@ async function makeController(
 ): Promise<{
   controller: NanobossTuiController;
   statuses: string[];
+  getState: () => ReturnType<NanobossTuiController["getState"]>;
 }> {
   const statuses: string[] = [];
   const controller = new NanobossTuiController(
@@ -47,7 +49,7 @@ async function makeController(
       ...overrides,
     },
   );
-  return { controller, statuses };
+  return { controller, statuses, getState: () => controller.getState() };
 }
 
 describe("/extensions slash command", () => {
@@ -99,20 +101,32 @@ describe("/extensions slash command", () => {
       panelRenderers: 1,
     });
 
-    // Controller dispatch produces a readable status line per extension,
-    // and the active extension's line reflects its registered counts.
-    const { controller, statuses } = await makeController({
+    // Controller dispatch now produces a `nb/card@1` procedure panel that
+    // lands in the transcript (state.procedurePanels), not a status line.
+    // Status-line emission was replaced because users could not see it.
+    const { controller, getState } = await makeController({
       listExtensionEntries: () => result.registry.listMetadata(),
     });
     await controller.handleSubmit("/extensions");
 
-    const activeLine = statuses.find((line) => line.includes("extcmd-active"));
-    expect(activeLine).toBeDefined();
-    expect(activeLine).toContain("[builtin]");
-    expect(activeLine).toContain("active");
-    expect(activeLine).toContain("bindings=1");
-    expect(activeLine).toContain("chrome=1");
-    expect(activeLine).toContain("panels=1");
+    const panels = getState().procedurePanels;
+    expect(panels).toHaveLength(1);
+    const panel = panels[0]!;
+    expect(panel.rendererId).toBe("nb/card@1");
+    expect(panel.key).toBe("local:extensions");
+    expect(panel.severity).toBe("info");
+    const payload = panel.payload as { title: string; markdown: string };
+    expect(payload.title).toBe("Extensions");
+    expect(payload.markdown).toContain("extcmd-active");
+    expect(payload.markdown).toContain("`builtin`");
+    expect(payload.markdown).toContain("active");
+    expect(payload.markdown).toContain("bindings=1");
+    expect(payload.markdown).toContain("chrome=1");
+    expect(payload.markdown).toContain("panels=1");
+
+    // Transcript item is appended so the card is actually visible.
+    const items = getState().transcriptItems;
+    expect(items.some((it) => it.type === "procedure_panel" && it.id === panel.panelId)).toBe(true);
   });
 
   test("lists a failed extension with status=failed and the captured error message", async () => {
@@ -138,9 +152,17 @@ describe("/extensions slash command", () => {
     expect(entry?.status).toBe("failed");
     expect(entry?.error?.message).toBe("activate kaboom");
 
-    // formatExtensionsList is the direct formatter behind the slash
-    // command; asserting on it keeps the test resilient to unrelated
-    // status-line noise that might appear before the command line fires.
+    // `formatExtensionsCard` is the direct formatter behind the new
+    // card-based slash command rendering. Asserting on it keeps the
+    // test resilient to run-local concerns like transcript ordering.
+    const card = formatExtensionsCard(result.registry.listMetadata());
+    expect(card.severity).toBe("warn");
+    expect(card.markdown).toContain("extcmd-broken");
+    expect(card.markdown).toContain("failed");
+    expect(card.markdown).toContain("error: activate kaboom");
+
+    // Legacy one-line-per-extension formatter is still exported for
+    // backwards compatibility; verify it keeps working too.
     const lines = formatExtensionsList(result.registry.listMetadata());
     const failedLine = lines.find((line) => line.includes("extcmd-broken"));
     expect(failedLine).toBeDefined();
@@ -148,8 +170,49 @@ describe("/extensions slash command", () => {
     expect(failedLine).toContain("error=activate kaboom");
   });
 
+  test("formatExtensionsCard produces an empty-state payload when the registry is empty", () => {
+    const card = formatExtensionsCard([]);
+    expect(card.title).toBe("Extensions");
+    expect(card.markdown).toContain("No extensions loaded");
+    expect(card.severity).toBe("info");
+  });
+
   test("formatExtensionsList falls back to a single summary line when the registry is empty", () => {
     expect(formatExtensionsList([])).toEqual(["[extensions] no extensions loaded"]);
+  });
+
+  test("running /extensions twice replaces the card in place via stable key", async () => {
+    const registry = makeRegistry();
+    registry.registerBuiltinExtension({
+      metadata: { name: "extcmd-replace", version: "1.0.0", description: "replace" },
+      activate() {},
+    });
+    const result = await bootExtensions("/tmp/nonexistent-extensions-command", {
+      registry,
+      log: () => {},
+    });
+
+    const { controller, getState } = await makeController({
+      listExtensionEntries: () => result.registry.listMetadata(),
+    });
+    await controller.handleSubmit("/extensions");
+    await controller.handleSubmit("/extensions");
+
+    const panels = getState().procedurePanels;
+    expect(panels).toHaveLength(1);
+    expect(panels[0]!.key).toBe("local:extensions");
+  });
+
+  test("/extensions surfaces a visible error card when the registry is not wired in", async () => {
+    // Omit listExtensionEntries entirely so the controller takes the
+    // registry-unavailable branch.
+    const { controller, getState } = await makeController();
+    await controller.handleSubmit("/extensions");
+    const panels = getState().procedurePanels;
+    expect(panels).toHaveLength(1);
+    expect(panels[0]!.severity).toBe("error");
+    const payload = panels[0]!.payload as { markdown: string };
+    expect(payload.markdown).toContain("registry is not available");
   });
 
   test("aggregate failure status is emitted via bootExtensions.aggregateStatus when >=1 extension fails", async () => {

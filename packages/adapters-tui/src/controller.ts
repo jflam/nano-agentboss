@@ -29,7 +29,7 @@ import { formatAgentSelectionLabel } from "./agent-label.ts";
 import { getBuildFreshnessNotice } from "./build-freshness.ts";
 import { buildModelCommand } from "./model-command.ts";
 import {
-  formatExtensionsList,
+  formatExtensionsCard,
   isExitRequest,
   isExtensionsListRequest,
   isModelPickerRequest,
@@ -352,13 +352,36 @@ export class NanobossTuiController {
   private emitExtensionsList(): void {
     const provider = this.deps.listExtensionEntries;
     if (!provider) {
-      this.dispatch({ type: "local_status", text: "[extensions] extension registry is not available" });
+      this.dispatch({
+        type: "local_procedure_panel",
+        panelId: `local-extensions-${Date.now()}`,
+        rendererId: "nb/card@1",
+        payload: {
+          kind: "notice",
+          title: "Extensions",
+          markdown: "Extension registry is not available.",
+        },
+        severity: "error",
+        dismissible: true,
+        key: "local:extensions",
+      });
       return;
     }
     const entries = provider();
-    for (const line of formatExtensionsList(entries)) {
-      this.dispatch({ type: "local_status", text: line });
-    }
+    const card = formatExtensionsCard(entries);
+    this.dispatch({
+      type: "local_procedure_panel",
+      panelId: `local-extensions-${Date.now()}`,
+      rendererId: "nb/card@1",
+      payload: {
+        kind: "notice",
+        title: card.title,
+        markdown: card.markdown,
+      },
+      severity: card.severity,
+      dismissible: true,
+      key: "local:extensions",
+    });
   }
 
   requestExit(): void {
