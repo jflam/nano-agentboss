@@ -102,7 +102,7 @@ describe("NanobossAppView", () => {
     expect(plain).toContain("@copilot");
     expect(plain).toContain("esc stop");
     expect(plain).toContain("tab queue");
-    expect(plain).toContain("ctrl+k keys");
+    expect(plain).toContain("ctrl+h keys");
   });
 
   test("shows a live run timer next to token usage while a run is active", () => {
@@ -202,7 +202,7 @@ describe("NanobossAppView", () => {
 
     const plain = stripAnsi(view.render(200).join("\n"));
 
-    expect(plain).toContain("ctrl+k keys • enter send • /help");
+    expect(plain).toContain("ctrl+h keys • enter send • /help");
     expect(plain).not.toContain("shift+enter");
     expect(plain).not.toContain("ctrl+o tools");
     expect(plain).not.toContain("ctrl+g auto-approve");
@@ -210,7 +210,7 @@ describe("NanobossAppView", () => {
     expect(plain).not.toContain("/model");
   });
 
-  test("footer shows esc stop / tab queue / pending count plus ctrl+k keys when input is disabled", () => {
+  test("footer shows esc stop / tab queue / pending count plus ctrl+h keys when input is disabled", () => {
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
@@ -233,7 +233,7 @@ describe("NanobossAppView", () => {
     expect(plain).toContain("esc stop");
     expect(plain).toContain("tab queue");
     expect(plain).toContain("3 pending");
-    expect(plain).toContain("ctrl+k keys");
+    expect(plain).toContain("ctrl+h keys");
     expect(plain).not.toContain("enter send");
     expect(plain).not.toContain("shift+enter");
   });
@@ -256,7 +256,7 @@ describe("NanobossAppView", () => {
     expect(plain).toContain(
       "⏸ updates paused — ctrl+p to resume (native terminal scrollback works while paused)",
     );
-    expect(plain).not.toContain("ctrl+k keys");
+    expect(plain).not.toContain("ctrl+h keys");
   });
 
   test("footer appends /dismiss when a continuation is pending", () => {
@@ -277,7 +277,7 @@ describe("NanobossAppView", () => {
 
     const plain = stripAnsi(view.render(200).join("\n"));
 
-    expect(plain).toContain("ctrl+k keys • enter send • /help • /dismiss");
+    expect(plain).toContain("ctrl+h keys • enter send • /help • /dismiss");
   });
 
   test("keybinding overlay is hidden by default", () => {
@@ -297,7 +297,7 @@ describe("NanobossAppView", () => {
     expect(plain).not.toContain("keybindings");
   });
 
-  test("keybinding overlay renders all categorized bindings including ctrl+k when visible", () => {
+  test("keybinding overlay renders all categorized bindings including ctrl+h when visible", () => {
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
@@ -330,7 +330,7 @@ describe("NanobossAppView", () => {
     expect(plain).toContain("/quit");
     expect(plain).toContain("/dismiss");
     // self-reference
-    expect(plain).toContain("ctrl+k keys");
+    expect(plain).toContain("ctrl+h keys");
   });
 
   test("keybinding overlay is derived from listKeyBindings()", () => {

@@ -269,7 +269,7 @@ Add a slash command `/extensions` that prints the current
 `TuiExtensionRegistry.listMetadata()` with scope + activation status +
 contribution counts. Parallel to today's `/help` and `/model`.
 
-Add a new panel in the `ctrl+k` overlay (after step 1 of the primitives
+Add a new panel in the `ctrl+h` overlay (after step 1 of the primitives
 plan) listing disabled extensions with the reason (typically
 `activate` threw).
 
@@ -333,6 +333,188 @@ plan) listing disabled extensions with the reason (typically
 
 Steps 1–5 are infrastructure with no user-visible change. Steps 6–8 turn
 it into a feature users can discover and use.
+
+## Manual testing guide
+
+Use this section to sanity-check the extension catalog end-to-end without
+touching any automated tests.
+
+### 0. What is actually migrated as a builtin extension
+
+Per step 6, **only `nb/card@1`** (the card panel renderer) has been ported
+from "registered at core module import" to "registered as a builtin
+extension" (`nb-core-cards` in
+`packages/tui-extension-catalog/src/builtins.ts`). The step's goal was to
+prove the builtin tier works without a behavior change — not to relocate
+every core contribution.
+
+The following core contributions are **still registered at module-import
+time** inside `@nanoboss/adapters-tui` and were intentionally not moved:
+
+- **Keybindings / help overlay** — `src/core-bindings.ts` (drives the
+  `ctrl+h` help overlay via `listKeyBindings()`).
+- **Status / footer / header chrome** — `src/core-chrome.ts`.
+- **Activity-bar segments** (agent, model, token usage) —
+  `src/core-activity-bar.ts`.
+- **Other core panel renderers** (`nb/simplify2-*@1`, etc.) —
+  `src/core-panels.ts`.
+
+A follow-up plan can migrate any of these if we want them to go through
+the builtin → profile → repo precedence pipeline. Extensions can already
+**add** new bindings / chrome / segments / renderers today; they just
+can't yet shadow the core ones by name.
+
+### 1. Prerequisites
+
+```bash
+bun install
+bun run build
+bun test                        # compact unit + e2e, should be green
+bun run test:packages           # per-package tests
+```
+
+The extension-specific tests to look at if something breaks:
+
+```bash
+bun test packages/tui-extension-catalog/tests
+bun test packages/adapters-tui/tests/tui-boot-extensions.test.ts
+bun test packages/adapters-tui/tests/tui-fixture-extension.test.ts
+bun test packages/adapters-tui/tests/tui-extensions-command.test.ts
+```
+
+### 2. Smoke-test the fixture extension from the CLI
+
+The repo already ships a fixture at
+`tests/fixtures/extensions/acme-hello/.nanoboss/extensions/acme-hello.ts`
+— point the TUI at that cwd and boot it:
+
+```bash
+cd tests/fixtures/extensions/acme-hello
+bun --cwd "$(git rev-parse --show-toplevel)" run nanoboss.ts cli
+```
+
+Or from the repo root:
+
+```bash
+(cd tests/fixtures/extensions/acme-hello && bun "$OLDPWD"/nanoboss.ts cli)
+```
+
+Inside the TUI:
+
+1. Type `/extensions` and press enter. You should see at least:
+   - `nb-core-cards` — scope `builtin`, status `active`, 1 renderer.
+   - `acme-hello` — scope `repo`, status `active`, 1 binding, 1 chrome
+     contribution.
+2. Type `/help` (or press `ctrl+h`) — confirm the help overlay still
+   renders. Core bindings come from `core-bindings.ts`; extension
+   bindings appear under their namespaced ids (`acme-hello/greet`).
+3. Watch the footer — the fixture's `acme-hello/badge` contribution is
+   rendered into the `footer` slot.
+
+### 3. Exercise the profile tier
+
+Drop a trivial extension into `~/.nanoboss/extensions/` and restart:
+
+```bash
+mkdir -p ~/.nanoboss/extensions
+cat > ~/.nanoboss/extensions/hello-profile.ts <<'EOF'
+import type { TuiExtension, TuiExtensionMetadata } from "@nanoboss/tui-extension-sdk";
+
+export const metadata: TuiExtensionMetadata = {
+  name: "hello-profile",
+  version: "0.0.1",
+  description: "Profile-tier sanity extension",
+};
+
+const extension: TuiExtension = {
+  metadata,
+  activate(ctx) {
+    ctx.log.info("hello-profile activated from " + ctx.scope);
+  },
+};
+
+export default extension;
+EOF
+
+bun run nanoboss.ts cli
+```
+
+Inside the TUI, `/extensions` should list `hello-profile` with scope
+`profile`. The info-log line should appear on the status line during
+boot.
+
+### 4. Verify precedence (repo shadows profile)
+
+With `~/.nanoboss/extensions/hello-profile.ts` still in place, add a
+same-name extension in the current repo:
+
+```bash
+mkdir -p .nanoboss/extensions
+cp ~/.nanoboss/extensions/hello-profile.ts .nanoboss/extensions/hello-profile.ts
+# edit description to "Repo-tier override" so you can tell them apart
+```
+
+Restart the TUI. `/extensions` should show **one** `hello-profile`
+entry, scope `repo`, description "Repo-tier override". The profile
+copy is silently shadowed.
+
+Clean up:
+
+```bash
+rm .nanoboss/extensions/hello-profile.ts
+rm ~/.nanoboss/extensions/hello-profile.ts
+```
+
+### 5. Verify failure isolation
+
+Drop a broken extension next to the fixture:
+
+```bash
+cat > ~/.nanoboss/extensions/boom.ts <<'EOF'
+import type { TuiExtension, TuiExtensionMetadata } from "@nanoboss/tui-extension-sdk";
+export const metadata: TuiExtensionMetadata = {
+  name: "boom", version: "0.0.1", description: "Always throws",
+};
+const extension: TuiExtension = {
+  metadata,
+  activate() { throw new Error("intentional test failure"); },
+};
+export default extension;
+EOF
+```
+
+Restart the TUI. Expected:
+
+- A status-line line similar to
+  `[extensions] 1 extension(s) failed to activate`.
+- `/extensions` shows `boom` with status `failed` and the error
+  message.
+- `nb-core-cards` and `acme-hello` (if still present) remain `active`
+  — the TUI did **not** crash.
+
+Clean up: `rm ~/.nanoboss/extensions/boom.ts`.
+
+### 6. Verify the builtin card renderer still works
+
+Run any procedure that emits a `ui.panel({ rendererId: "nb/card@1", …
+})` (most interactive procedures do). The card should render exactly
+as before — this is the regression check for step 6's builtin-tier
+migration. If cards render, the `nb-core-cards` builtin extension
+activation path is working.
+
+### 7. Inspect the on-disk compile cache (optional)
+
+Compiled extension modules land under
+`~/.nanoboss/runtime/` alongside compiled procedures. Delete that
+directory to force a clean re-compile:
+
+```bash
+rm -rf ~/.nanoboss/runtime
+```
+
+Boot the TUI again and confirm `/extensions` still lists everything —
+this exercises the full discover → compile → import → activate path
+from cold cache.
 
 ## Non-goals
 

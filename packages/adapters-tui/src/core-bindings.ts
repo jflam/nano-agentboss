@@ -152,8 +152,8 @@ const CORE_BINDINGS: KeyBinding[] = [
   {
     id: "overlay.toggle",
     category: "overlay",
-    match: "ctrl+k",
-    label: "ctrl+k keys",
+    match: "ctrl+h",
+    label: "ctrl+h keys",
     order: 0,
     run: ({ controller }) => {
       controller.toggleKeybindingOverlay();

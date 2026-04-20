@@ -31,11 +31,17 @@ const extension: TuiExtension = {
     });
 
     // Local id "badge" must be namespaced to "acme-hello/badge" in the
-    // chrome-contribution registry's "footer" slot.
+    // chrome-contribution registry's "footer" slot. The render() must
+    // return a pi-tui Component — i.e. any object with a
+    // `render(width: number): string[]` method. The SDK currently types
+    // Component as `unknown`, so we satisfy the structural contract
+    // inline to avoid a runtime crash in Container.render.
     ctx.registerChromeContribution({
       id: "badge",
       slot: "footer",
-      render: () => ({ acme: true } as unknown as never),
+      render: () => (({
+        render: (_width: number) => [ctx.theme.dim("[acme-hello badge]")],
+      }) as unknown as never),
     });
 
     ctx.log.info("acme-hello activated");

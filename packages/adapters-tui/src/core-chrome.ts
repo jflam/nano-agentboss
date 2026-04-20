@@ -169,10 +169,10 @@ function buildFooterLine(theme: NanobossTuiTheme, state: UiState): string {
       "esc stop",
       "tab queue",
       pendingCount > 0 ? `${pendingCount} pending` : "run active",
-      "ctrl+k keys",
+      "ctrl+h keys",
     );
   } else {
-    parts.push("ctrl+k keys", "enter send", "/help");
+    parts.push("ctrl+h keys", "enter send", "/help");
   }
   if (state.pendingContinuation) {
     parts.push("/dismiss");
