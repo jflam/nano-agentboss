@@ -4,6 +4,7 @@ import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
 import {
   createInitialUiState,
   createNanobossTuiTheme,
+  dispatchKeyBinding,
   NanobossAppView,
   reduceUiState,
   registerKeyBinding,
@@ -297,47 +298,65 @@ describe("NanobossAppView", () => {
     expect(plain).not.toContain("keybindings");
   });
 
-  test("keybinding overlay renders all categorized bindings including ctrl+h when visible", () => {
+  test("ctrl+h keybindings card markdown contains all categorized bindings", () => {
+    // The legacy in-chrome overlay was replaced by a transcript card
+    // emitted via controller.showLocalCard. Dispatch the ctrl+h binding
+    // against a stub controller and inspect the markdown it produces.
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
-      keybindingOverlayVisible: true,
     };
-    const view = new NanobossAppView(
-      { render: () => [""], invalidate() {} } as never,
-      createNanobossTuiTheme(),
+    let markdown = "";
+    dispatchKeyBinding("\b", {
+      controller: {
+        toggleToolOutput() {},
+        toggleToolCardsHidden() {},
+        toggleSimplify2AutoApprove() {},
+        showLocalCard: (opts) => {
+          markdown = opts.markdown;
+        },
+        cancelActiveRun: () => {},
+        queuePrompt: () => {},
+      },
       state,
-    );
-    const plain = stripAnsi(view.render(200).join("\n"));
+      editor: { getText: () => "", isShowingAutocomplete: () => false },
+      app: {
+        handleCtrlC: () => false,
+        handleCtrlVImagePaste: async () => {},
+        handleCtrlOWithCooldown() {},
+        toggleLiveUpdatesPaused() {},
+        handleTabQueue: () => false,
+      },
+    });
     // send/compose
-    expect(plain).toContain("enter send");
-    expect(plain).toContain("shift+enter newline");
+    expect(markdown).toContain("enter send");
+    expect(markdown).toContain("shift+enter newline");
     // tools
-    expect(plain).toContain("ctrl+o tools");
+    expect(markdown).toContain("ctrl+o tools");
     // run control
-    expect(plain).toContain("ctrl+g auto-approve");
-    expect(plain).toContain("ctrl+p pause");
-    expect(plain).toContain("ctrl+t tool cards");
-    expect(plain).toContain("esc stop");
-    expect(plain).toContain("tab queue");
+    expect(markdown).toContain("ctrl+g auto-approve");
+    expect(markdown).toContain("ctrl+p pause");
+    expect(markdown).toContain("ctrl+t tool cards");
+    expect(markdown).toContain("esc stop");
+    expect(markdown).toContain("tab queue");
     // theme
-    expect(plain).toContain("/light");
-    expect(plain).toContain("/dark");
+    expect(markdown).toContain("/light");
+    expect(markdown).toContain("/dark");
     // commands
-    expect(plain).toContain("/new");
-    expect(plain).toContain("/model");
-    expect(plain).toContain("/help");
-    expect(plain).toContain("/quit");
-    expect(plain).toContain("/dismiss");
+    expect(markdown).toContain("/new");
+    expect(markdown).toContain("/model");
+    expect(markdown).toContain("/help");
+    expect(markdown).toContain("/quit");
+    expect(markdown).toContain("/dismiss");
     // self-reference
-    expect(plain).toContain("ctrl+h keys");
+    expect(markdown).toContain("ctrl+h keys");
   });
 
-  test("keybinding overlay is derived from listKeyBindings()", () => {
-    // Regression guard: the overlay must iterate the registry rather
+  test("ctrl+h help card is derived from listKeyBindings()", () => {
+    // Regression guard: the card must iterate the registry rather
     // than ship a hand-written literal. Registering a new binding in a
-    // user-facing category should make it appear in the overlay
-    // without editing views.ts.
+    // user-facing category should make it appear in the help card
+    // without editing core-bindings.ts.
     registerKeyBinding({
       id: "test-only.overlay-derivation",
       category: "tools",
@@ -348,15 +367,30 @@ describe("NanobossAppView", () => {
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
-      keybindingOverlayVisible: true,
     };
-    const view = new NanobossAppView(
-      { render: () => [""], invalidate() {} } as never,
-      createNanobossTuiTheme(),
+    let markdown = "";
+    dispatchKeyBinding("\b", {
+      controller: {
+        toggleToolOutput() {},
+        toggleToolCardsHidden() {},
+        toggleSimplify2AutoApprove() {},
+        showLocalCard: (opts) => {
+          markdown = opts.markdown;
+        },
+        cancelActiveRun: () => {},
+        queuePrompt: () => {},
+      },
       state,
-    );
-    const plain = stripAnsi(view.render(200).join("\n"));
-    expect(plain).toContain("derived-overlay-marker");
+      editor: { getText: () => "", isShowingAutocomplete: () => false },
+      app: {
+        handleCtrlC: () => false,
+        handleCtrlVImagePaste: async () => {},
+        handleCtrlOWithCooldown() {},
+        toggleLiveUpdatesPaused() {},
+        handleTabQueue: () => false,
+      },
+    });
+    expect(markdown).toContain("derived-overlay-marker");
   });
 
   test("renders the reducer-produced visible transcript contract and resets cleanly on session_ready", () => {

@@ -95,12 +95,6 @@ export type UiAction =
       type: "toggle_tool_cards_hidden";
     }
   | {
-      type: "keybindingOverlay/toggle";
-    }
-  | {
-      type: "keybindingOverlay/dismiss";
-    }
-  | {
       /**
        * Insert (or in-place replace) a procedure-panel-shaped transcript
        * card from a local source such as a slash command. Unlike a real
@@ -281,19 +275,6 @@ export function reduceUiState(state: UiState, action: UiAction): UiState {
       return {
         ...state,
         toolCardsHidden: !state.toolCardsHidden,
-      };
-    case "keybindingOverlay/toggle":
-      return {
-        ...state,
-        keybindingOverlayVisible: !state.keybindingOverlayVisible,
-      };
-    case "keybindingOverlay/dismiss":
-      if (!state.keybindingOverlayVisible) {
-        return state;
-      }
-      return {
-        ...state,
-        keybindingOverlayVisible: false,
       };
     case "frontend_event":
       return reduceFrontendEvent(state, action.event);

@@ -157,8 +157,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -230,8 +228,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -319,8 +315,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -377,8 +371,6 @@ describe("NanobossTuiApp", () => {
           },
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -439,8 +431,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -516,8 +506,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -598,8 +586,6 @@ describe("NanobossTuiApp", () => {
           showLocalCard(opts: { markdown: string }) {
             statuses.push(opts.markdown);
           },
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -686,8 +672,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -779,8 +763,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -854,8 +836,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -937,8 +917,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -1034,8 +1012,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -1130,8 +1106,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {
             exits.push("exit");
           },
@@ -1192,8 +1166,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {
             exits.push("exit");
           },
@@ -1254,8 +1226,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {
             exits.push("exit");
           },
@@ -1318,8 +1288,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -1388,8 +1356,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -1453,8 +1419,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -1523,8 +1487,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -1586,8 +1548,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               currentState = {
@@ -1671,8 +1631,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               return undefined;
@@ -1768,8 +1726,6 @@ describe("NanobossTuiApp", () => {
           toggleSimplify2AutoApprove() {},
           showStatus() {},
           showLocalCard() {},
-          toggleKeybindingOverlay() {},
-          dismissKeybindingOverlay() {},
           requestExit() {},
           async run() {
             return undefined;
@@ -1837,8 +1793,6 @@ describe("NanobossTuiApp", () => {
             toggleSimplify2AutoApprove() {},
             showStatus() {},
           showLocalCard() {},
-            toggleKeybindingOverlay() {},
-            dismissKeybindingOverlay() {},
             requestExit() {},
             async run() {
               return undefined;

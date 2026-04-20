@@ -1316,32 +1316,6 @@ describe("tui reducer", () => {
     expect(state.statusLine).toBe("[session] auto-approve on");
   });
 
-  test("keybindingOverlayVisible defaults to false and toggles via keybindingOverlay/toggle", () => {
-    let state = createInitialUiState({ cwd: "/repo" });
-    expect(state.keybindingOverlayVisible).toBe(false);
-
-    state = reduceUiState(state, { type: "keybindingOverlay/toggle" });
-    expect(state.keybindingOverlayVisible).toBe(true);
-
-    state = reduceUiState(state, { type: "keybindingOverlay/toggle" });
-    expect(state.keybindingOverlayVisible).toBe(false);
-  });
-
-  test("keybindingOverlay/dismiss hides the overlay and is a no-op when already hidden", () => {
-    let state = createInitialUiState({ cwd: "/repo" });
-
-    state = reduceUiState(state, { type: "keybindingOverlay/toggle" });
-    expect(state.keybindingOverlayVisible).toBe(true);
-
-    state = reduceUiState(state, { type: "keybindingOverlay/dismiss" });
-    expect(state.keybindingOverlayVisible).toBe(false);
-
-    const before = state;
-    state = reduceUiState(state, { type: "keybindingOverlay/dismiss" });
-    expect(state).toBe(before);
-    expect(state.keybindingOverlayVisible).toBe(false);
-  });
-
   test("resume error does not trap user in paused state (execute-plan regression)", () => {
     let state = createInitialUiState({ cwd: "/repo", showToolCalls: true });
 

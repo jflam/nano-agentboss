@@ -35,8 +35,13 @@ export interface KeyBindingController {
   toggleToolOutput(): void;
   toggleToolCardsHidden(): void;
   toggleSimplify2AutoApprove(): void;
-  toggleKeybindingOverlay(): void;
-  dismissKeybindingOverlay(): void;
+  showLocalCard(opts: {
+    key?: string;
+    title: string;
+    markdown: string;
+    severity?: "info" | "warn" | "error";
+    dismissible?: boolean;
+  }): void;
   cancelActiveRun(): Promise<void> | void;
   queuePrompt(input: string | PromptInput): Promise<void> | void;
 }

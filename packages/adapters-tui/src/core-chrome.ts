@@ -1,5 +1,4 @@
 import {
-  Box,
   Container,
   Spacer,
   Text,
@@ -12,7 +11,6 @@ import type { UiState } from "./state.ts";
 import type { NanobossTuiTheme } from "./theme.ts";
 import { registerChromeContribution } from "./chrome.ts";
 import { buildActivityBarLine } from "./activity-bar.ts";
-import { listKeyBindings, type KeyBindingCategory } from "./bindings.ts";
 
 /**
  * Core chrome contributions shipped with @nanoboss/adapters-tui. Registered
@@ -80,60 +78,6 @@ class ActivityBarComponent implements Component {
       out.push(...new Text(runStateLine, 0, 0).render(width));
     }
     return out;
-  }
-
-  invalidate(): void {}
-}
-
-// Keybinding overlay — non-modal: rendered as a bordered panel between the
-// activity bar and the footer when `keybindingOverlayVisible` is true. We
-// chose non-modal because the integration is trivial (just a conditional
-// component in the existing layout) — it does not need to intercept the
-// input listener. Dismissal is handled by the controller on ctrl+k (toggle)
-// and esc (explicit dismiss).
-class KeybindingOverlayComponent implements Component {
-  constructor(
-    private readonly theme: NanobossTuiTheme,
-    private readonly getState: () => UiState,
-  ) {}
-
-  render(width: number): string[] {
-    const state = this.getState();
-    if (!state.keybindingOverlayVisible) {
-      return [];
-    }
-
-    const theme = this.theme;
-    const lines: string[] = [theme.accent("keybindings")];
-
-    // Overlay groups mirror the user-visible categories. "custom" is
-    // intentionally excluded here; user-authored custom bindings can opt
-    // into a future overlay slot, but today the overlay documents only
-    // the built-in keyboard surface.
-    const displayGroups: { category: KeyBindingCategory; label: string }[] = [
-      { category: "compose", label: "send/compose" },
-      { category: "tools", label: "tools" },
-      { category: "run", label: "run control" },
-      { category: "theme", label: "theme" },
-      { category: "commands", label: "commands" },
-      { category: "overlay", label: "overlay" },
-    ];
-
-    const allBindings = listKeyBindings();
-    for (const group of displayGroups) {
-      const groupBindings = allBindings.filter((binding) => binding.category === group.category);
-      if (groupBindings.length === 0) {
-        continue;
-      }
-      const labels = groupBindings.map((binding) => theme.text(binding.label)).join("  ");
-      lines.push(`${theme.dim(`${group.label}:`)} ${labels}`);
-    }
-
-    const box = new Box(1, 0, theme.toolCardPendingBg);
-    for (const line of lines) {
-      box.addChild(new TruncatedText(line));
-    }
-    return box.render(width);
   }
 
   invalidate(): void {}
@@ -236,13 +180,6 @@ registerChromeContribution({
   slot: "activityBar",
   order: 0,
   render: ({ getState, getNowMs, theme }) => new ActivityBarComponent(theme, getState, getNowMs),
-});
-
-registerChromeContribution({
-  id: "core.overlay.keybindings",
-  slot: "overlay",
-  order: 0,
-  render: ({ getState, theme }) => new KeybindingOverlayComponent(theme, getState),
 });
 
 registerChromeContribution({

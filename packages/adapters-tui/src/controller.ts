@@ -342,24 +342,7 @@ export class NanobossTuiController {
     void this.toggleSessionAutoApprove();
   }
 
-  toggleKeybindingOverlay(): void {
-    this.dispatch({ type: "keybindingOverlay/toggle" });
-  }
-
-  dismissKeybindingOverlay(): void {
-    this.dispatch({ type: "keybindingOverlay/dismiss" });
-  }
-
-  /**
-   * Handles the `esc` key. If the keybinding overlay is visible, dismiss it
-   * without touching run state. Otherwise fall through to the existing
-   * esc-stop behavior so active runs can still be cancelled.
-   */
   async handleEscape(): Promise<void> {
-    if (this.state.keybindingOverlayVisible) {
-      this.dismissKeybindingOverlay();
-      return;
-    }
     await this.cancelActiveRun();
   }
 
@@ -375,10 +358,12 @@ export class NanobossTuiController {
    *
    * When a stable `key` is passed, repeated invocations replace the
    * previous card in place (see the `local_procedure_panel` reducer
-   * path) so the transcript does not fill up with duplicates.
+   * path) so the transcript does not fill up with duplicates. Omit
+   * `key` for affordances where each invocation should append a fresh
+   * card (e.g. the ctrl+h keybinding help).
    */
   showLocalCard(opts: {
-    key: string;
+    key?: string;
     title: string;
     markdown: string;
     severity?: "info" | "warn" | "error";
@@ -386,7 +371,7 @@ export class NanobossTuiController {
   }): void {
     this.dispatch({
       type: "local_procedure_panel",
-      panelId: `local-${opts.key}-${Date.now()}`,
+      panelId: `local-${opts.key ?? "anon"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       rendererId: "nb/card@1",
       payload: {
         kind: "notice",
@@ -395,7 +380,7 @@ export class NanobossTuiController {
       },
       severity: opts.severity ?? "info",
       dismissible: opts.dismissible ?? true,
-      key: opts.key,
+      ...(opts.key !== undefined ? { key: opts.key } : {}),
     });
   }
 

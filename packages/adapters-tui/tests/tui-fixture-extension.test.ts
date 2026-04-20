@@ -53,8 +53,7 @@ function makeBindingCtx(): BindingCtx {
     toggleToolOutput() {},
     toggleToolCardsHidden() {},
     toggleSimplify2AutoApprove() {},
-    toggleKeybindingOverlay() {},
-    dismissKeybindingOverlay() {},
+        showLocalCard() {},
     cancelActiveRun() {},
     queuePrompt() {},
   };

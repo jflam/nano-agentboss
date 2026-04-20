@@ -130,7 +130,6 @@ export interface UiState {
   simplify2AutoApprove: boolean;
   liveUpdatesPaused?: boolean;
   toolCardsHidden?: boolean;
-  keybindingOverlayVisible: boolean;
   /**
    * Panels registered via ui.panel events for non-transcript slots.
    * Transcript-slot panels are materialized directly into turns.
@@ -173,7 +172,6 @@ export function createInitialUiState(params: {
     toolCardThemeMode: params.toolCardThemeMode ?? "dark",
     simplify2AutoApprove: params.simplify2AutoApprove ?? false,
     toolCardsHidden: params.toolCardsHidden ?? false,
-    keybindingOverlayVisible: false,
     panels: [],
     procedurePanels: [],
   };

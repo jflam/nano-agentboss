@@ -19,8 +19,7 @@ function makeController(overrides: Partial<KeyBindingController> = {}): KeyBindi
     toggleToolOutput() {},
     toggleToolCardsHidden() {},
     toggleSimplify2AutoApprove() {},
-    toggleKeybindingOverlay() {},
-    dismissKeybindingOverlay() {},
+    showLocalCard() {},
     cancelActiveRun() {},
     queuePrompt() {},
     ...overrides,
@@ -123,13 +122,11 @@ describe("keybinding registry", () => {
   });
 
   test("when predicate gates dispatch without affecting overlay listing", () => {
-    // esc only dispatches when a run is active or the overlay is open.
-    // With neither condition true it must fall through so the editor
-    // can consume the key itself.
+    // esc only dispatches when a run is active. With no run active it must
+    // fall through so the editor can consume the key itself.
     const idleState: UiState = {
       ...createInitialUiState({ cwd: "/repo" }),
       inputDisabled: false,
-      keybindingOverlayVisible: false,
     };
 
     let cancelled = 0;
@@ -150,32 +147,28 @@ describe("keybinding registry", () => {
     expect(stopBinding?.label).toBe("esc stop");
   });
 
-  test("dispatch dismisses the overlay first when both overlay and run are active", () => {
+  test("ctrl+h emits a keybindings help card through showLocalCard", () => {
     const state: UiState = {
       ...createInitialUiState({ cwd: "/repo" }),
-      inputDisabled: true,
-      keybindingOverlayVisible: true,
     };
 
-    let dismissCalls = 0;
-    let cancelCalls = 0;
+    const cardCalls: Array<{ title: string; markdown: string; key?: string }> = [];
     const ctx = makeCtx(state, {
       controller: makeController({
-        dismissKeybindingOverlay: () => {
-          dismissCalls += 1;
-        },
-        cancelActiveRun: () => {
-          cancelCalls += 1;
+        showLocalCard: (opts) => {
+          cardCalls.push({ title: opts.title, markdown: opts.markdown, key: opts.key });
         },
       }),
     });
 
-    const result = dispatchKeyBinding("\u001b", ctx);
+    const result = dispatchKeyBinding("\b", ctx);
     expect(result).toEqual({ consume: true });
-    expect(dismissCalls).toBe(1);
-    // When the overlay is visible, esc must not also cancel the run in
-    // the same keystroke.
-    expect(cancelCalls).toBe(0);
+    expect(cardCalls).toHaveLength(1);
+    expect(cardCalls[0]!.title).toBe("Keybindings");
+    // Each invocation appends a fresh card (no stable key) so users can
+    // re-summon help even when an earlier card has scrolled off-screen.
+    expect(cardCalls[0]!.key).toBeUndefined();
+    expect(cardCalls[0]!.markdown).toContain("Send / compose");
   });
 
   test("docs-only bindings with no matcher never dispatch", () => {

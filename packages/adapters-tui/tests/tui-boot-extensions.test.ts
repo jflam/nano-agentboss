@@ -28,8 +28,7 @@ function makeBindingCtx(overrides: Partial<BindingCtx> = {}): BindingCtx {
     toggleToolOutput() {},
     toggleToolCardsHidden() {},
     toggleSimplify2AutoApprove() {},
-    toggleKeybindingOverlay() {},
-    dismissKeybindingOverlay() {},
+        showLocalCard() {},
     cancelActiveRun() {},
     queuePrompt() {},
   };

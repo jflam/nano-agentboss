@@ -118,11 +118,9 @@ interface ControllerLike {
   toggleToolOutput(): void;
   toggleToolCardsHidden(): void;
   toggleSimplify2AutoApprove(): void;
-  toggleKeybindingOverlay(): void;
-  dismissKeybindingOverlay(): void;
   showStatus(text: string): void;
   showLocalCard(opts: {
-    key: string;
+    key?: string;
     title: string;
     markdown: string;
     severity?: "info" | "warn" | "error";
@@ -334,7 +332,7 @@ export class NanobossTuiApp {
   }
 
   showLocalCard(opts: {
-    key: string;
+    key?: string;
     title: string;
     markdown: string;
     severity?: "info" | "warn" | "error";

@@ -43,7 +43,6 @@ describe("chrome registry", () => {
     expect(ids.has("core.transcript")).toBe(true);
     expect(ids.has("core.composerBelow.spacer")).toBe(true);
     expect(ids.has("core.activityBar")).toBe(true);
-    expect(ids.has("core.overlay.keybindings")).toBe(true);
     expect(ids.has("core.footer")).toBe(true);
   });
 
@@ -91,7 +90,7 @@ describe("chrome registry", () => {
         render: () => ["__gated_marker__"],
         invalidate: () => {},
       }),
-      shouldRender: (state) => state.keybindingOverlayVisible,
+      shouldRender: (state) => state.inputDisabled,
     });
 
     const theme = createNanobossTuiTheme();
@@ -101,7 +100,7 @@ describe("chrome registry", () => {
       {
         ...createInitialUiState({ cwd: "/repo" }),
         sessionId: "session-1",
-        keybindingOverlayVisible: false,
+        inputDisabled: false,
       },
     );
     const visibleView = new NanobossAppView(
@@ -110,7 +109,7 @@ describe("chrome registry", () => {
       {
         ...createInitialUiState({ cwd: "/repo" }),
         sessionId: "session-1",
-        keybindingOverlayVisible: true,
+        inputDisabled: true,
       },
     );
 

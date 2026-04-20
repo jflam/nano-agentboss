@@ -1130,7 +1130,7 @@ describe("NanobossTuiController", () => {
     await expect(runPromise).resolves.toBe("session-resume");
   });
 
-  test("toggleKeybindingOverlay flips overlay visibility and handleEscape dismisses it without cancelling the active run", async () => {
+  test("ctrl+h surfaces keybindings help as a fresh transcript card each invocation and handleEscape cancels active runs", async () => {
     const cancelCalls: Array<{ sessionId: string; runId: string }> = [];
     const streams: FakeStreamRecord[] = [];
     const controller = new NanobossTuiController(
@@ -1152,14 +1152,19 @@ describe("NanobossTuiController", () => {
     const runPromise = controller.run();
     await waitFor(() => controller.getState().sessionId === "session-1");
 
-    expect(controller.getState().keybindingOverlayVisible).toBe(false);
-    controller.toggleKeybindingOverlay();
-    expect(controller.getState().keybindingOverlayVisible).toBe(true);
-    controller.toggleKeybindingOverlay();
-    expect(controller.getState().keybindingOverlayVisible).toBe(false);
+    // showLocalCard without a stable key must append a new panel every
+    // time it is called (tool-call-card-style behavior). This guarantees
+    // the help card is reachable even when earlier invocations have
+    // scrolled off-screen.
+    controller.showLocalCard({ title: "Keybindings", markdown: "body" });
+    controller.showLocalCard({ title: "Keybindings", markdown: "body" });
+    expect(controller.getState().procedurePanels).toHaveLength(2);
 
-    // Start an active run and open the overlay; esc must dismiss the overlay
-    // without issuing a cancel request or latching a stop.
+    // Esc with no run active is a no-op for the controller.
+    await controller.handleEscape();
+    expect(cancelCalls).toEqual([]);
+
+    // Esc during an active run cancels it (no longer diverted by overlay).
     await controller.handleSubmit("hello");
     streams[0]?.emit(eventEnvelope("run_started", {
       runId: "run-1",
@@ -1169,17 +1174,6 @@ describe("NanobossTuiController", () => {
     }));
     expect(controller.getState().inputDisabled).toBe(true);
 
-    controller.toggleKeybindingOverlay();
-    expect(controller.getState().keybindingOverlayVisible).toBe(true);
-
-    await controller.handleEscape();
-
-    expect(controller.getState().keybindingOverlayVisible).toBe(false);
-    expect(cancelCalls).toEqual([]);
-    expect(controller.getState().pendingStopRequest).toBe(false);
-    expect(controller.getState().stopRequestedRunId).toBeUndefined();
-
-    // Now with the overlay closed, esc should still stop the active run.
     await controller.handleEscape();
     expect(cancelCalls).toEqual([{ sessionId: "session-1", runId: "run-1" }]);
     expect(controller.getState().statusLine).toBe(
