@@ -205,7 +205,7 @@ describe("NanobossAppView", () => {
 
     expect(plain).toContain("ctrl+h keys • enter send • /help");
     expect(plain).not.toContain("shift+enter");
-    expect(plain).not.toContain("ctrl+o tools");
+    expect(plain).not.toContain("ctrl+o expand tool output");
     expect(plain).not.toContain("ctrl+g auto-approve");
     expect(plain).not.toContain("/quit");
     expect(plain).not.toContain("/model");
@@ -293,7 +293,7 @@ describe("NanobossAppView", () => {
     );
     const plain = stripAnsi(view.render(200).join("\n"));
     expect(plain).not.toContain("shift+enter newline");
-    expect(plain).not.toContain("ctrl+o tools");
+    expect(plain).not.toContain("ctrl+o expand tool output");
     expect(plain).not.toContain("ctrl+g auto-approve");
     expect(plain).not.toContain("keybindings");
   });
@@ -332,11 +332,11 @@ describe("NanobossAppView", () => {
     expect(markdown).toContain("enter send");
     expect(markdown).toContain("shift+enter newline");
     // tools
-    expect(markdown).toContain("ctrl+o tools");
+    expect(markdown).toContain("ctrl+o expand tool output");
     // run control
     expect(markdown).toContain("ctrl+g auto-approve");
     expect(markdown).toContain("ctrl+p pause");
-    expect(markdown).toContain("ctrl+t tool cards");
+    expect(markdown).toContain("ctrl+t hide tool cards");
     expect(markdown).toContain("esc stop");
     expect(markdown).toContain("tab queue");
     // theme

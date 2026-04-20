@@ -29,7 +29,7 @@ const CORE_BINDINGS: KeyBinding[] = [
     id: "tools.toggleOutput",
     category: "tools",
     match: "ctrl+o",
-    label: "ctrl+o tools",
+    label: "ctrl+o expand tool output",
     order: 0,
     run: ({ app }) => {
       app.handleCtrlOWithCooldown();
@@ -64,7 +64,7 @@ const CORE_BINDINGS: KeyBinding[] = [
     id: "run.toggleToolCards",
     category: "run",
     match: "ctrl+t",
-    label: "ctrl+t tool cards",
+    label: "ctrl+t hide tool cards",
     order: 2,
     run: ({ controller }) => {
       controller.toggleToolCardsHidden();
