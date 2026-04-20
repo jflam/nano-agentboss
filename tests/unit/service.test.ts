@@ -1015,6 +1015,32 @@ describe("NanobossService", () => {
     }
   });
 
+  test("does not append the final display again after pre-tool commentary has already streamed", async () => {
+    await withMockAgentEnv(async () => {
+      const registry = new ProcedureRegistry({ procedureRoots: [mkdtempSync(join(tmpdir(), "nab-pretool-reg-"))] });
+      registry.loadBuiltins();
+      const service = new NanobossService(registry);
+      const session = service.createSession({ cwd: process.cwd() });
+
+      try {
+        await service.promptSession(session.sessionId, "pre-tool commentary demo");
+        const replay = normalizeReplayEvents(
+          service.getSessionEvents(session.sessionId)?.after(-1) ?? [],
+        );
+        const textChunks = replay
+          .filter((event): event is Extract<ReplayableFrontendEvent, { type: "text_delta" }> => event.type === "text_delta")
+          .map((event) => event.text);
+
+        expect(textChunks).toEqual([
+          "I found the relevant docs; checking the exact behavior.",
+          "Final answer.",
+        ]);
+      } finally {
+        service.destroySession(session.sessionId);
+      }
+    });
+  });
+
   test("includes retrieval guidance without a memory-card preamble when recovery guidance is active", async () => {
     const mockSessionStoreDir = mkdtempSync(join(tmpdir(), "nab-service-guidance-agent-"));
     await withMockAgentEnv(async () => {

@@ -148,6 +148,44 @@ class MockAgent implements acp.Agent {
       });
     }
 
+    if (prompt.toLowerCase().includes("pre-tool commentary demo")) {
+      const toolCallId = crypto.randomUUID();
+      await this.connection.sessionUpdate({
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: "I found the relevant docs; checking the exact behavior.",
+          },
+        },
+      });
+      await this.connection.sessionUpdate({
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId,
+          title: "Mock read README.md",
+          kind: "read",
+          status: "in_progress",
+          rawInput: {
+            path: "README.md",
+          },
+        },
+      });
+      await this.connection.sessionUpdate({
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId,
+          status: "completed",
+          rawOutput: {
+            path: "README.md",
+          },
+        },
+      });
+    }
+
     await this.connection.sessionUpdate({
       sessionId: params.sessionId,
       update: {
@@ -272,6 +310,10 @@ async function answerForPrompt(
 
   if (normalized.includes("nested tool trace demo")) {
     return "hidden nested output";
+  }
+
+  if (normalized.includes("pre-tool commentary demo")) {
+    return "Final answer.";
   }
 
   return `mock:${prompt.trim()}`;

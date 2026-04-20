@@ -29,6 +29,7 @@ export {
   hasAgentCatalogRefreshedToday,
 } from "./catalog-discovery.ts";
 export {
+  collectFinalTextSessionOutput,
   collectTextSessionUpdates,
   parseAssistantNoticeText,
   summarizeAgentOutput,

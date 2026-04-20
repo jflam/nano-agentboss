@@ -1,6 +1,7 @@
 import * as acp from "@agentclientprotocol/sdk";
 import { getBuildLabel } from "@nanoboss/app-support";
 import {
+  parseAssistantNoticeText,
   promptInputFromAcpBlocks,
   setAgentRuntimeSessionRuntimeFactory,
 } from "@nanoboss/agent-acp";
@@ -11,14 +12,16 @@ import type {
   DownstreamAgentSelection,
 } from "@nanoboss/contracts";
 import {
+  parseProcedureUiMarker,
   toProcedureUiSessionUpdate,
   type ProcedureUiEvent,
   type SessionUpdateEmitter,
 } from "@nanoboss/procedure-engine";
 import { Readable, Writable } from "node:stream";
 
-class QueuedSessionUpdateEmitter implements SessionUpdateEmitter {
+export class QueuedSessionUpdateEmitter implements SessionUpdateEmitter {
   private queue = Promise.resolve();
+  private pendingAssistantMessageChunks: Array<Extract<acp.SessionUpdate, { sessionUpdate: "agent_message_chunk" }>> = [];
 
   constructor(
     private readonly connection: acp.AgentSideConnection,
@@ -28,10 +31,7 @@ class QueuedSessionUpdateEmitter implements SessionUpdateEmitter {
   emit(update: acp.SessionUpdate): void {
     this.queue = this.queue
       .then(() =>
-        this.connection.sessionUpdate({
-          sessionId: this.sessionId,
-          update,
-        })
+        this.forwardUpdate(update)
       )
       .catch((error: unknown) => {
         console.error("failed to emit session update", error);
@@ -43,7 +43,43 @@ class QueuedSessionUpdateEmitter implements SessionUpdateEmitter {
   }
 
   flush(): Promise<void> {
+    this.queue = this.queue
+      .then(() => this.flushPendingAssistantMessageChunks("message"))
+      .catch((error: unknown) => {
+        console.error("failed to flush session updates", error);
+      });
     return this.queue;
+  }
+
+  private async forwardUpdate(update: acp.SessionUpdate): Promise<void> {
+    if (shouldBufferClientFacingAssistantMessageChunk(update)) {
+      this.pendingAssistantMessageChunks.push(update);
+      return;
+    }
+
+    if (update.sessionUpdate === "tool_call" && this.pendingAssistantMessageChunks.length > 0) {
+      await this.flushPendingAssistantMessageChunks("thought");
+    }
+
+    await this.connection.sessionUpdate({
+      sessionId: this.sessionId,
+      update,
+    });
+  }
+
+  private async flushPendingAssistantMessageChunks(mode: "message" | "thought"): Promise<void> {
+    const pending = this.pendingAssistantMessageChunks;
+    if (pending.length === 0) {
+      return;
+    }
+
+    this.pendingAssistantMessageChunks = [];
+    for (const update of pending) {
+      await this.connection.sessionUpdate({
+        sessionId: this.sessionId,
+        update: mode === "message" ? update : toThoughtChunk(update),
+      });
+    }
   }
 }
 
@@ -114,6 +150,24 @@ export function buildTopLevelSessionMeta(): NonNullable<acp.NewSessionResponse["
         note: "Session inspection is available through the globally registered `nanoboss` MCP server.",
       },
     },
+  };
+}
+
+function shouldBufferClientFacingAssistantMessageChunk(
+  update: acp.SessionUpdate,
+): update is Extract<acp.SessionUpdate, { sessionUpdate: "agent_message_chunk" }> {
+  return update.sessionUpdate === "agent_message_chunk"
+    && update.content.type === "text"
+    && !parseAssistantNoticeText(update.content.text)
+    && !parseProcedureUiMarker(update.content.text);
+}
+
+function toThoughtChunk(
+  update: Extract<acp.SessionUpdate, { sessionUpdate: "agent_message_chunk" }>,
+): Extract<acp.SessionUpdate, { sessionUpdate: "agent_thought_chunk" }> {
+  return {
+    ...update,
+    sessionUpdate: "agent_thought_chunk",
   };
 }
 

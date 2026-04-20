@@ -43,6 +43,29 @@ export function collectTextSessionUpdates(updates: acp.SessionUpdate[]): string 
   return text || undefined;
 }
 
+export function collectFinalTextSessionOutput(updates: acp.SessionUpdate[]): string | undefined {
+  let text = "";
+
+  for (const update of updates) {
+    if (update.sessionUpdate === "tool_call") {
+      text = "";
+      continue;
+    }
+
+    if (update.sessionUpdate !== "agent_message_chunk" || update.content.type !== "text") {
+      continue;
+    }
+
+    if (parseAssistantNoticeText(update.content.text) || parseProcedureUiMarker(update.content.text)) {
+      continue;
+    }
+
+    text += update.content.text;
+  }
+
+  return text || undefined;
+}
+
 export function summarizeAgentOutput(data: unknown, raw: string): string | undefined {
   if (typeof data === "string") {
     return summarizeText(data);

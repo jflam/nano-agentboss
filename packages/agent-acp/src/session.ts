@@ -5,7 +5,7 @@ import {
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
 
-import { parseAssistantNoticeText } from "./updates.ts";
+import { collectFinalTextSessionOutput, parseAssistantNoticeText } from "./updates.ts";
 import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
 import { waitForSettledUpdateQueue } from "./prompt-settle.ts";
 import {
@@ -409,9 +409,10 @@ class PersistentAcpSession {
         sessionId: this.sessionId,
         updates: collector.updates,
       }) ?? this.tokenSnapshot;
+      const finalRaw = collectFinalTextSessionOutput(collector.updates) ?? collector.raw;
 
       return {
-        raw: collector.raw,
+        raw: finalRaw,
         logFile: this.state.transcriptPath,
         updates: [...collector.updates],
         tokenSnapshot: this.tokenSnapshot,

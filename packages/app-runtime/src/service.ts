@@ -104,6 +104,8 @@ class CompositeSessionUpdateEmitter implements SessionUpdateEmitter {
 
     if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
       this.streamedText += update.content.text;
+    } else if (update.sessionUpdate === "tool_call") {
+      this.streamedText = "";
     }
 
     for (const event of mapSessionUpdateToRuntimeEvents(this.runId, this.procedure, update)) {

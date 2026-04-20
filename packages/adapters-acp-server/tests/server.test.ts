@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type * as acp from "@agentclientprotocol/sdk";
 
 import {
   buildTopLevelSessionMeta,
   extractDefaultAgentSelection,
   extractNanobossSessionId,
+  QueuedSessionUpdateEmitter,
   runAcpServerCommand,
 } from "@nanoboss/adapters-acp-server";
 
@@ -58,5 +60,64 @@ describe("top-level ACP session diagnostics", () => {
         },
       },
     })).toBeUndefined();
+  });
+
+  test("reclassifies buffered pre-tool assistant commentary as thought chunks for ACP clients", async () => {
+    const forwarded: acp.SessionUpdate[] = [];
+    const emitter = new QueuedSessionUpdateEmitter(
+      {
+        sessionUpdate: async ({ update }: { update: acp.SessionUpdate }) => {
+          forwarded.push(update);
+        },
+      } as unknown as acp.AgentSideConnection,
+      "session-1",
+    );
+
+    emitter.emit({
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "text",
+        text: "I’m tracing the code first.",
+      },
+    });
+    emitter.emit({
+      sessionUpdate: "tool_call",
+      toolCallId: "tool-1",
+      title: "rg",
+      kind: "other",
+      status: "pending",
+    });
+    emitter.emit({
+      sessionUpdate: "agent_message_chunk",
+      content: {
+        type: "text",
+        text: "Fixed.",
+      },
+    });
+    await emitter.flush();
+
+    expect(forwarded).toEqual([
+      {
+        sessionUpdate: "agent_thought_chunk",
+        content: {
+          type: "text",
+          text: "I’m tracing the code first.",
+        },
+      },
+      {
+        sessionUpdate: "tool_call",
+        toolCallId: "tool-1",
+        title: "rg",
+        kind: "other",
+        status: "pending",
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: "Fixed.",
+        },
+      },
+    ]);
   });
 });

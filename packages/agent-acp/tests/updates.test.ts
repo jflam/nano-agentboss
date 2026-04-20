@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { collectTextSessionUpdates, parseAssistantNoticeText } from "@nanoboss/agent-acp";
+import {
+  collectFinalTextSessionOutput,
+  collectTextSessionUpdates,
+  parseAssistantNoticeText,
+} from "@nanoboss/agent-acp";
 
 describe("acp-updates", () => {
   test("recognizes assistant notices", () => {
@@ -42,5 +46,36 @@ describe("acp-updates", () => {
         },
       },
     ])).toBe("First sentence. Second sentence.");
+  });
+
+  test("keeps only the trailing assistant message after tool boundaries for final output", () => {
+    expect(collectFinalTextSessionOutput([
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: "I found the docs; checking exact behavior.",
+        },
+      },
+      {
+        sessionUpdate: "tool_call",
+        toolCallId: "tool-1",
+        title: "rg",
+        kind: "other",
+        status: "pending",
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "tool-1",
+        status: "completed",
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: {
+          type: "text",
+          text: "Final answer.",
+        },
+      },
+    ])).toBe("Final answer.");
   });
 });

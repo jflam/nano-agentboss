@@ -4,7 +4,7 @@ import {
   hasPromptInputImages,
 } from "@nanoboss/procedure-sdk";
 
-import { parseAssistantNoticeText } from "./updates.ts";
+import { collectFinalTextSessionOutput, parseAssistantNoticeText } from "./updates.ts";
 import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
 import { resolveDefaultDownstreamAgentConfig } from "./config.ts";
 import { waitForSettledUpdateQueue } from "./prompt-settle.ts";
@@ -431,10 +431,11 @@ async function runAcpPrompt(
       throw error;
     }
     await waitForSettledUpdateQueue(() => lastUpdateTask);
+    const finalRaw = collectFinalTextSessionOutput(updates) ?? raw;
 
     return {
       agentSessionId: sessionId,
-      raw,
+      raw: finalRaw,
       logFile: state.transcriptPath,
       updates: [...updates],
       tokenSnapshot: await collectTokenSnapshot({
