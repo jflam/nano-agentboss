@@ -38,6 +38,21 @@ class ComputedTruncatedText implements Component {
   invalidate(): void {}
 }
 
+class ComputedTruncatedLines implements Component {
+  constructor(private readonly getLines: () => string[]) {}
+
+  render(width: number): string[] {
+    const out: string[] = [];
+    for (const line of this.getLines()) {
+      if (line.length === 0) continue;
+      out.push(...new TruncatedText(line).render(width));
+    }
+    return out;
+  }
+
+  invalidate(): void {}
+}
+
 class ActivityBarComponent implements Component {
   constructor(
     private readonly theme: NanobossTuiTheme,
@@ -83,16 +98,27 @@ class ActivityBarComponent implements Component {
   invalidate(): void {}
 }
 
-function buildHeaderLine(theme: NanobossTuiTheme, state: UiState): string {
+// Width for caption column so that "build", "cwd", and "session" align.
+const IDENTITY_CAPTION_WIDTH = 9;
+
+function formatIdentityRow(theme: NanobossTuiTheme, caption: string, value: string, valueStyle: (text: string) => string): string {
+  const paddedCaption = `${caption}:`.padEnd(IDENTITY_CAPTION_WIDTH, " ");
+  return `${theme.dim(paddedCaption)}${valueStyle(value)}`;
+}
+
+function buildHeaderLines(theme: NanobossTuiTheme, state: UiState): string[] {
   const cwd = state.cwd || process.cwd();
-  return theme.accent(`${state.buildLabel} • ${cwd}`);
+  return [
+    formatIdentityRow(theme, "build", state.buildLabel, theme.accent),
+    formatIdentityRow(theme, "cwd", cwd, theme.accent),
+  ];
 }
 
 function buildSessionLine(theme: NanobossTuiTheme, state: UiState): string {
   if (!state.sessionId) {
-    return theme.dim("Connecting to nanoboss…");
+    return formatIdentityRow(theme, "session", "connecting to nanoboss…", theme.dim);
   }
-  return theme.dim(`session ${state.sessionId.slice(0, 8)} • retained transcript + pi-tui editor`);
+  return formatIdentityRow(theme, "session", state.sessionId.slice(0, 8), theme.accent);
 }
 
 function buildStatusLine(theme: NanobossTuiTheme, state: UiState): string | undefined {
@@ -144,7 +170,7 @@ registerChromeContribution({
   id: "core.header",
   slot: "header",
   order: 0,
-  render: ({ getState, theme }) => new ComputedTruncatedText(() => buildHeaderLine(theme, getState())),
+  render: ({ getState, theme }) => new ComputedTruncatedLines(() => buildHeaderLines(theme, getState())),
 });
 
 registerChromeContribution({
