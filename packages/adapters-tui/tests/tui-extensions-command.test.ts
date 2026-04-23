@@ -8,7 +8,6 @@ import { TuiExtensionRegistry } from "@nanoboss/tui-extension-catalog";
 import {
   bootExtensions,
   formatExtensionsCard,
-  formatExtensionsList,
   NanobossTuiController,
   type NanobossTuiControllerDeps,
   type PanelRenderer,
@@ -161,13 +160,6 @@ describe("/extensions slash command", () => {
     expect(card.markdown).toContain("failed");
     expect(card.markdown).toContain("error: activate kaboom");
 
-    // Legacy one-line-per-extension formatter is still exported for
-    // backwards compatibility; verify it keeps working too.
-    const lines = formatExtensionsList(result.registry.listMetadata());
-    const failedLine = lines.find((line) => line.includes("extcmd-broken"));
-    expect(failedLine).toBeDefined();
-    expect(failedLine).toContain("failed");
-    expect(failedLine).toContain("error=activate kaboom");
   });
 
   test("formatExtensionsCard produces an empty-state payload when the registry is empty", () => {
@@ -175,10 +167,6 @@ describe("/extensions slash command", () => {
     expect(card.title).toBe("Extensions");
     expect(card.markdown).toContain("No extensions loaded");
     expect(card.severity).toBe("info");
-  });
-
-  test("formatExtensionsList falls back to a single summary line when the registry is empty", () => {
-    expect(formatExtensionsList([])).toEqual(["[extensions] no extensions loaded"]);
   });
 
   test("running /extensions twice replaces the card in place via stable key", async () => {

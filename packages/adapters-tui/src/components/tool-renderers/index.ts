@@ -2,8 +2,8 @@ import type { UiToolCall } from "../../state.ts";
 import type { NanobossTuiTheme } from "../../theme.ts";
 import type { RenderedToolCard } from "../tool-card-format.ts";
 import { getCanonicalToolName, renderPreviewToolCard } from "../tool-card-format.ts";
+import { renderDefaultToolCard } from "./default.ts";
 import { renderEditToolCard } from "./edit.ts";
-import { renderFallbackToolCard } from "./fallback.ts";
 import { renderReadToolCard } from "./read.ts";
 import { renderWriteToolCard } from "./write.ts";
 
@@ -22,6 +22,6 @@ export function renderToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, ex
     case "ls":
       return renderPreviewToolCard(theme, toolCall, expanded, { collapsedLines: 10 });
     default:
-      return renderFallbackToolCard(theme, toolCall, expanded);
+      return renderDefaultToolCard(theme, toolCall, expanded);
   }
 }

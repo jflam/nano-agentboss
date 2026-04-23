@@ -627,7 +627,7 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
         : `[run] ${event.data.procedure} completed`;
       return finishRun(state, {
         turnStatus: "complete",
-        fallbackText: event.data.display,
+        completionText: event.data.display,
         tokenUsageLine,
         tokenUsage,
         completedAt: event.data.completedAt,
@@ -642,7 +642,7 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
       const tokenUsage = event.data.tokenUsage ? toTokenUsageSummary(event.data.tokenUsage) : state.tokenUsage;
       const nextState = finishRun(state, {
         turnStatus: "complete",
-        fallbackText: event.data.display ?? event.data.question,
+        completionText: event.data.display ?? event.data.question,
         tokenUsageLine,
         tokenUsage,
         completedAt: event.data.pausedAt,
@@ -665,7 +665,7 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
       }
       const nextState = finishRun(state, {
         turnStatus: "failed",
-        fallbackText: event.data.error,
+        completionText: event.data.error,
         failureMessage: event.data.error,
         completedAt: event.data.completedAt,
         statusLine: `[run] ${event.data.error}`,
@@ -678,7 +678,7 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
       }
       const nextState = finishRun(state, {
         turnStatus: "cancelled",
-        fallbackText: event.data.message,
+        completionText: event.data.message,
         statusMessage: event.data.message,
         completedAt: event.data.completedAt,
         statusLine: `[run] ${event.data.procedure} stopped`,
@@ -809,7 +809,7 @@ function finishRun(
   state: UiState,
   params: {
     turnStatus: UiTurn["status"];
-    fallbackText?: string;
+    completionText?: string;
     tokenUsageLine?: string;
     tokenUsage?: TokenUsageSummary;
     failureMessage?: string;
@@ -821,12 +821,12 @@ function finishRun(
   const completionNote = buildTurnCompletionNote(state, params.turnStatus, params.completedAt);
   const nextState = finalizeAssistantTurn(state, {
     status: params.turnStatus,
-      fallbackText: params.fallbackText,
-      tokenUsageLine: params.tokenUsageLine,
-      failureMessage: params.failureMessage,
-      statusMessage: params.statusMessage,
-      completionNote,
-    });
+    completionText: params.completionText,
+    tokenUsageLine: params.tokenUsageLine,
+    failureMessage: params.failureMessage,
+    statusMessage: params.statusMessage,
+    completionNote,
+  });
 
   return {
     ...nextState,
@@ -855,7 +855,7 @@ function finalizeAssistantTurn(
   state: UiState,
   params: {
     status: UiTurn["status"];
-    fallbackText?: string;
+    completionText?: string;
     tokenUsageLine?: string;
     failureMessage?: string;
     statusMessage?: string;
@@ -864,31 +864,31 @@ function finalizeAssistantTurn(
 ): UiState {
   const activeAssistantTurnId = state.activeAssistantTurnId;
   if (!activeAssistantTurnId) {
-    if (!params.fallbackText) {
+    if (!params.completionText) {
       return state;
     }
 
-      const turn = createTurn({
-        id: nextTurnId("assistant", state.turns.length),
-        role: "assistant",
-        markdown: params.fallbackText,
-        blocks: [{ kind: "text", text: params.fallbackText, origin: "replay" }],
-        status: params.status,
-        runId: state.activeRunId,
-        displayStyle: params.status === "complete" ? "inline" : "card",
-        cardTone: params.status === "failed"
-          ? "error"
-          : params.status === "cancelled"
-            ? "warning"
-            : "info",
-        meta: buildAssistantTurnMeta({
-          procedure: state.activeProcedure,
-          tokenUsageLine: params.tokenUsageLine,
-          failureMessage: undefined,
-          statusMessage: undefined,
-          completionNote: params.completionNote,
-        }),
-      });
+    const turn = createTurn({
+      id: nextTurnId("assistant", state.turns.length),
+      role: "assistant",
+      markdown: params.completionText,
+      blocks: [{ kind: "text", text: params.completionText, origin: "replay" }],
+      status: params.status,
+      runId: state.activeRunId,
+      displayStyle: params.status === "complete" ? "inline" : "card",
+      cardTone: params.status === "failed"
+        ? "error"
+        : params.status === "cancelled"
+          ? "warning"
+          : "info",
+      meta: buildAssistantTurnMeta({
+        procedure: state.activeProcedure,
+        tokenUsageLine: params.tokenUsageLine,
+        failureMessage: undefined,
+        statusMessage: undefined,
+        completionNote: params.completionNote,
+      }),
+    });
 
     return {
       ...state,
@@ -905,11 +905,11 @@ function finalizeAssistantTurn(
       }
 
       const hadStreamedText = turn.markdown.length > 0;
-      const markdown = hadStreamedText ? turn.markdown : (params.fallbackText ?? turn.markdown);
+      const markdown = hadStreamedText ? turn.markdown : (params.completionText ?? turn.markdown);
       const blocks = hadStreamedText
         ? turn.blocks
-        : params.fallbackText !== undefined
-          ? [{ kind: "text" as const, text: params.fallbackText, origin: "replay" as const }]
+        : params.completionText !== undefined
+          ? [{ kind: "text" as const, text: params.completionText, origin: "replay" as const }]
           : turn.blocks;
       return {
         ...turn,

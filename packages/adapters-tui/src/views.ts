@@ -310,8 +310,11 @@ class ProcedurePanelTranscriptComponent implements Component {
       });
     }
     if (!body) {
+      // Compatibility fallback: persisted transcript replay can reference
+      // procedure-panel renderers that are no longer installed. Keep the
+      // original panel visible instead of dropping historical output.
       const tone = procedurePanelTone(this.panel.severity);
-      const text = formatProcedurePanelFallback(this.panel);
+      const text = formatProcedurePanelReplayText(this.panel);
       body = new MessageCardComponent(this.theme, text.split("\n"), tone);
     }
     this.container.addChild(body);
@@ -338,7 +341,7 @@ function procedurePanelTone(severity: UiProcedurePanel["severity"]): NonNullable
   }
 }
 
-function formatProcedurePanelFallback(panel: UiProcedurePanel): string {
+function formatProcedurePanelReplayText(panel: UiProcedurePanel): string {
   const payload = panel.payload;
   if (payload && typeof payload === "object") {
     const message = (payload as { message?: unknown }).message;

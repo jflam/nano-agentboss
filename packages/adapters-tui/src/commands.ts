@@ -59,43 +59,6 @@ export function isExtensionsListRequest(trimmed: string): boolean {
   return trimmed === "/extensions";
 }
 
-/**
- * Legacy one-line-per-extension formatter for the `/extensions` slash
- * command. Retained as a public export for backwards compatibility with
- * any out-of-tree consumers; the live TUI pathway now renders the list
- * as a `nb/card@1` procedure panel via `formatExtensionsCardMarkdown`.
- *
- * Layout:
- *   [extensions] <name>@<version> [<scope>] <status> bindings=N chrome=N activityBar=N panels=N
- * For failed extensions the error message is appended after `error=…`.
- * When no extensions are loaded a single summary line is returned so
- * the command produces at least one visible line.
- */
-export function formatExtensionsList(entries: readonly TuiExtensionStatus[]): string[] {
-  if (entries.length === 0) {
-    return ["[extensions] no extensions loaded"];
-  }
-
-  return entries.map((entry) => {
-    const parts: string[] = [];
-    const version = entry.metadata.version ? `@${entry.metadata.version}` : "";
-    parts.push(`[extensions] ${entry.metadata.name}${version} [${entry.scope}] ${entry.status}`);
-    const counts = entry.contributions;
-    if (counts) {
-      parts.push(
-        `bindings=${counts.bindings}`,
-        `chrome=${counts.chromeContributions}`,
-        `activityBar=${counts.activityBarSegments}`,
-        `panels=${counts.panelRenderers}`,
-      );
-    }
-    if (entry.status === "failed" && entry.error) {
-      parts.push(`error=${entry.error.message}`);
-    }
-    return parts.join(" ");
-  });
-}
-
 export interface ExtensionsCardPayload {
   title: string;
   markdown: string;

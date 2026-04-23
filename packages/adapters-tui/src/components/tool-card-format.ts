@@ -70,8 +70,8 @@ export function getCanonicalToolName(toolCall: Pick<UiToolCall, "toolName">): st
   return toolCall.toolName?.trim().toLowerCase() || undefined;
 }
 
-export function formatToolHeader(theme: NanobossTuiTheme, header: string | undefined, fallbackTitle: string): string {
-  const text = stripWrappingBackticks((header?.trim() || fallbackTitle).trim());
+export function formatToolHeader(theme: NanobossTuiTheme, header: string | undefined, defaultTitle: string): string {
+  const text = stripWrappingBackticks((header?.trim() || defaultTitle).trim());
 
   if (text.startsWith("$ ")) {
     return `${theme.toolCardTitle("$")} ${theme.toolCardBody(text.slice(2))}`;

@@ -302,9 +302,9 @@ describe("NanobossAppView", () => {
   });
 
   test("ctrl+h keybindings card markdown contains all categorized bindings", () => {
-    // The legacy in-chrome overlay was replaced by a transcript card
-    // emitted via controller.showLocalCard. Dispatch the ctrl+h binding
-    // against a stub controller and inspect the markdown it produces.
+    // The keybinding help UI is emitted as a transcript card via
+    // controller.showLocalCard. Dispatch the ctrl+h binding against a
+    // stub controller and inspect the markdown it produces.
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",
@@ -927,7 +927,7 @@ describe("NanobossAppView", () => {
     expect(plain).not.toContain("_report_");
   });
 
-  test("renders info procedure panels as cards", () => {
+  test("replays persisted procedure panel text when its renderer is unavailable", () => {
     const view = new NanobossAppView(
       {
         render: () => [""],
@@ -1176,7 +1176,7 @@ describe("NanobossAppView", () => {
     expect(plain).not.toMatch(/tok 512\//);
   });
 
-  test("falls back to legacy tokenUsageLine when structured usage is unavailable", () => {
+  test("uses tokenUsageLine when structured usage is unavailable", () => {
     const state = {
       ...createInitialUiState({ cwd: "/repo" }),
       sessionId: "session-1",

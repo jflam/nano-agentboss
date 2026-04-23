@@ -632,9 +632,8 @@ export class NanobossTuiApp {
   ): void {
     const renderer = getFormRenderer(continuation.formId);
     if (!renderer) {
-      // Unknown formId: fall back to dismissing locally so the user can
-      // still type a free-form reply. This mirrors the legacy "other"
-      // action path and avoids a hard crash on unregistered forms.
+      // Unknown formId: dismiss the inline composer so the user can
+      // still type a free-form reply instead of crashing the TUI.
       this.dismissedSimplify2ContinuationSignature = signature;
       return;
     }
@@ -846,10 +845,8 @@ function getFormContinuation(
   if (!continuation) {
     return undefined;
   }
-  // Procedures that need a continuation form emit `continuation.form`
-  // directly via the form-renderer registry; the legacy
-  // `continuation.ui` shim and its closed `ContinuationUi` union have
-  // been removed from contracts.
+  // Procedures that need an inline continuation form emit
+  // `continuation.form` directly via the form-renderer registry.
   const form = (continuation as { form?: { formId?: unknown; payload?: unknown } }).form;
   if (!form || typeof form !== "object" || typeof form.formId !== "string") {
     return undefined;

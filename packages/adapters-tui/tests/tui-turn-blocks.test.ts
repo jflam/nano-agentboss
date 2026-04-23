@@ -88,7 +88,7 @@ describe("tui turn blocks regression", () => {
       event: envelope("text_delta", { runId: "run-1", text: "all done", stream: "agent" }),
     });
 
-    // run_completed with a display fallback that matches the already-streamed final message
+    // run_completed display text matches the already-streamed final message.
     state = reduceUiState(state, {
       type: "frontend_event",
       event: envelope("run_completed", {

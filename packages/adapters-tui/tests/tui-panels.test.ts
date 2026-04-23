@@ -80,9 +80,9 @@ function newRunState(): ReturnType<typeof createInitialUiState> {
 }
 
 describe("tui panels", () => {
-  test("ui_panel { rendererId: 'nb/card@1' } renders identically to legacy ui.card transcript card", () => {
-    let legacyState = newRunState();
-    legacyState = reduceUiState(legacyState, {
+  test("ui_panel { rendererId: 'nb/card@1' } renders identically to procedure_card transcript card", () => {
+    let cardState = newRunState();
+    cardState = reduceUiState(cardState, {
       type: "frontend_event",
       event: eventEnvelope("procedure_card", {
         runId: "run-1",
@@ -113,25 +113,25 @@ describe("tui panels", () => {
       }),
     });
 
-    const legacyTurn = legacyState.turns.at(-1);
+    const cardTurn = cardState.turns.at(-1);
     const panelTurn = panelState.turns.at(-1);
 
     // The two paths must produce identical final turn shapes so the
     // view layer renders them byte-for-byte the same.
     expect(panelTurn).toMatchObject({
-      role: legacyTurn?.role,
-      displayStyle: legacyTurn?.displayStyle,
-      cardTone: legacyTurn?.cardTone,
-      markdown: legacyTurn?.markdown,
-      status: legacyTurn?.status,
-      runId: legacyTurn?.runId,
-      meta: { procedure: legacyTurn?.meta?.procedure },
+      role: cardTurn?.role,
+      displayStyle: cardTurn?.displayStyle,
+      cardTone: cardTurn?.cardTone,
+      markdown: cardTurn?.markdown,
+      status: cardTurn?.status,
+      runId: cardTurn?.runId,
+      meta: { procedure: cardTurn?.meta?.procedure },
     });
   });
 
   test("ui.panel via nb/card@1 renders identically in the TUI view", () => {
-    let legacyState = newRunState();
-    legacyState = reduceUiState(legacyState, {
+    let cardState = newRunState();
+    cardState = reduceUiState(cardState, {
       type: "frontend_event",
       event: eventEnvelope("procedure_card", {
         runId: "run-1",
@@ -163,10 +163,10 @@ describe("tui panels", () => {
     });
 
     const theme = createNanobossTuiTheme();
-    const legacyView = new NanobossAppView(
+    const cardView = new NanobossAppView(
       { render: () => [""], invalidate() {} } as never,
       theme,
-      legacyState,
+      cardState,
     );
     const panelView = new NanobossAppView(
       { render: () => [""], invalidate() {} } as never,
@@ -174,10 +174,10 @@ describe("tui panels", () => {
       panelState,
     );
 
-    const legacyPlain = legacyView.render(120).map(stripAnsi).join("\n");
+    const cardPlain = cardView.render(120).map(stripAnsi).join("\n");
     const panelPlain = panelView.render(120).map(stripAnsi).join("\n");
 
-    expect(panelPlain).toBe(legacyPlain);
+    expect(panelPlain).toBe(cardPlain);
     expect(panelPlain).toContain("Final summary");
   });
 

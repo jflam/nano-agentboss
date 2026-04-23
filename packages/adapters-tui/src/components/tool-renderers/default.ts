@@ -14,7 +14,7 @@ import {
   type RenderedToolCard,
 } from "../tool-card-format.ts";
 
-export function renderFallbackToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
+export function renderDefaultToolCard(theme: NanobossTuiTheme, toolCall: UiToolCall, expanded: boolean): RenderedToolCard {
   const header = expanded ? formatExpandedToolHeader(toolCall) ?? toolCall.callPreview?.header : toolCall.callPreview?.header;
   const isProcedureCallMarker = (header ?? toolCall.title).startsWith("Calling ");
 
