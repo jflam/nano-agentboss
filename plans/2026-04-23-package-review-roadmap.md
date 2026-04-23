@@ -112,6 +112,10 @@ Review goal:
 - Extend architecture tests so these helper names cannot reappear in multiple
   package owners.
 
+Specific plan:
+
+- `plans/2026-04-23-cross-package-duplicate-helper-sweep-plan.md`
+
 ### 3. `@nanoboss/adapters-tui`
 
 Why this is separate from target 1:

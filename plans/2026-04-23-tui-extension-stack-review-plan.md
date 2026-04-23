@@ -16,6 +16,46 @@ The desired outcome is a cycle-free extension architecture where SDK and catalog
 packages define or load extension contracts without depending on concrete TUI
 runtime implementation details.
 
+## Completion summary
+
+Completed on 2026-04-23.
+
+What changed:
+
+- Inventoried all 120 public exports across `@nanoboss/adapters-tui`,
+  `@nanoboss/tui-extension-sdk`, and `@nanoboss/tui-extension-catalog`, with
+  consumer evidence and disposition guidance for each surface.
+- Made `@nanoboss/tui-extension-sdk` the leaf-level authoring package for
+  extension-facing structural contracts. It no longer imports
+  `@nanoboss/adapters-tui`, and SDK smoke coverage proves extension contracts
+  compile without the concrete adapter.
+- Moved the builtin `nanoboss-core-ui` extension implementation into
+  `@nanoboss/adapters-tui`, where the concrete `nb/card@1` renderer lives.
+  `@nanoboss/tui-extension-catalog` now stays focused on registry, discovery,
+  activation, precedence, and status.
+- Put both TUI extension packages under dependency-direction validation and
+  removed the architecture-test exception that treated their prior cycle as
+  intentional.
+- Removed the unused one-line `/extensions` legacy formatter and stale
+  continuation UI compatibility checks. The only remaining panel fallback path
+  is the explicit, tested compatibility case for persisted transcript replay.
+
+How this improves the Nanoboss design:
+
+- Restores one-way package ownership: SDK owns authoring contracts, catalog owns
+  extension discovery/status policy, and `adapters-tui` owns concrete TUI
+  runtime wiring and renderer implementations.
+- Replaces an implicit cyclic design with an acyclic dependency graph enforced
+  by tests, so future changes cannot quietly reintroduce the adapter/catalog/SDK
+  loop.
+- Removes dynamic imports from lower-level extension packages back into the TUI
+  adapter, making package boundaries easier to reason about and safer to change.
+- Narrows public and compatibility surfaces, which reduces the chance that
+  tests or out-of-date fallback paths become accidental product APIs.
+- Leaves extension boot with one clear path for builtin, profile, and repo
+  extensions: catalog activation flows into adapter-owned registries through
+  the SDK-owned contracts.
+
 ## Current state
 
 ### Dependency shape
