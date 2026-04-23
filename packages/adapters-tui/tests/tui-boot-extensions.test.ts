@@ -267,9 +267,9 @@ describe("bootExtensions", () => {
   });
 
   test("after bootExtensions runs, the built-in nb/card@1 renderer is resolvable and renders a sample card payload", async () => {
-    // The built-in nanoboss-core-ui extension is loaded by
-    // registry.loadBuiltins(). We do NOT pass a pre-built registry, so
-    // loadBuiltins runs and activates the builtin, registering nb/card@1.
+    // We do NOT pass a pre-built registry, so bootExtensions seeds and
+    // activates the adapter-owned nanoboss-core-ui builtin through the
+    // catalog path, registering nb/card@1.
     await bootExtensions("/tmp/nonexistent", {
       extensionRoots: [],
       skipDisk: true,

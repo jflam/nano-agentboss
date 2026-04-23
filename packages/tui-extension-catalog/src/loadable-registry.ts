@@ -5,9 +5,8 @@ import type {
 } from "@nanoboss/tui-extension-sdk";
 
 /**
- * Minimal registry surface that disk loading and builtins consume. Kept
- * separate from `TuiExtensionRegistry` itself so `builtins.ts` and other
- * loaders do not need to reach into the registry's private shape.
+ * Minimal registry surface consumed by callers that seed already-constructed
+ * builtin extensions before activation.
  */
 export interface LoadableTuiExtensionRegistry {
   registerBuiltinExtension(extension: TuiExtension): void;

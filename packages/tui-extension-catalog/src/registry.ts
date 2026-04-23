@@ -7,7 +7,6 @@ import type {
   TuiExtensionScope,
 } from "@nanoboss/tui-extension-sdk";
 
-import { loadBuiltinTuiExtensions } from "./builtins.ts";
 import { discoverDiskTuiExtensions, loadTuiExtensionFromPath } from "./disk-loader.ts";
 import {
   assertTuiExtension,
@@ -73,10 +72,6 @@ export class TuiExtensionRegistry implements LoadableTuiExtensionRegistry {
     const roots = options.extensionRoots
       ?? resolveWorkspaceExtensionRoots(cwd, this.profileExtensionRoot);
     this.extensionRoots = uniquePaths(roots);
-  }
-
-  loadBuiltins(): void {
-    loadBuiltinTuiExtensions(this);
   }
 
   registerBuiltinExtension(extension: TuiExtension): void {

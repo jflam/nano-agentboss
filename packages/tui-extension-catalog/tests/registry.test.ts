@@ -210,17 +210,30 @@ describe("TuiExtensionRegistry", () => {
     expect(brokenLogs.some((log) => log.text.includes("boom"))).toBe(true);
   });
 
-  test("loadBuiltins() + activateAll registers the built-in nanoboss-core-ui extension and listMetadata() surfaces it with scope 'builtin'", async () => {
-    // No disk roots: the only extension exercised here is the built-in.
+  test("registerBuiltinExtension() + activateAll keeps caller-supplied builtins on the catalog activation path", async () => {
     const registry = new TuiExtensionRegistry({ extensionRoots: [] });
-    registry.loadBuiltins();
+    registry.registerBuiltinExtension({
+      metadata: {
+        name: "catalog-builtin",
+        version: "1.0.0",
+        description: "catalog-owned builtin registration fixture",
+        provides: { panelRenderers: ["fixture/card@1"] },
+      },
+      activate(ctx) {
+        ctx.registerPanelRenderer({
+          rendererId: "fixture/card@1",
+          schema: {} as never,
+          render: () => ({ __fixture: true } as never),
+        });
+      },
+    });
 
     const metadata = registry.listMetadata();
-    const coreCards = metadata.find((entry) => entry.metadata.name === "nanoboss-core-ui");
-    expect(coreCards).toBeDefined();
-    expect(coreCards?.scope).toBe("builtin");
-    expect(coreCards?.status).toBe("pending");
-    expect(coreCards?.metadata.provides?.panelRenderers).toContain("nb/card@1");
+    const builtin = metadata.find((entry) => entry.metadata.name === "catalog-builtin");
+    expect(builtin).toBeDefined();
+    expect(builtin?.scope).toBe("builtin");
+    expect(builtin?.status).toBe("pending");
+    expect(builtin?.metadata.provides?.panelRenderers).toContain("fixture/card@1");
 
     const captured: CapturedActivation[] = [];
     let registeredRendererId: string | undefined;
@@ -248,13 +261,13 @@ describe("TuiExtensionRegistry", () => {
 
     const afterActivate = registry
       .listMetadata()
-      .find((entry) => entry.metadata.name === "nanoboss-core-ui");
+      .find((entry) => entry.metadata.name === "catalog-builtin");
     if (afterActivate?.status === "failed") {
-      throw new Error(`nanoboss-core-ui activation failed: ${afterActivate.error?.message}`);
+      throw new Error(`catalog-builtin activation failed: ${afterActivate.error?.message}`);
     }
 
-    expect(captured.some((entry) => entry.metadata.name === "nanoboss-core-ui" && entry.scope === "builtin")).toBe(true);
-    expect(registeredRendererId).toBe("nb/card@1");
+    expect(captured.some((entry) => entry.metadata.name === "catalog-builtin" && entry.scope === "builtin")).toBe(true);
+    expect(registeredRendererId).toBe("fixture/card@1");
 
     expect(afterActivate?.status).toBe("active");
   });

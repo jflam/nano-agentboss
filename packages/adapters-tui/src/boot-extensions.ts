@@ -12,6 +12,7 @@ import {
   registerActivityBarSegment as defaultRegisterActivityBarSegment,
   type ActivityBarSegment,
 } from "./activity-bar.ts";
+import { registerBuiltinTuiExtensions } from "./builtin-extensions.ts";
 import {
   registerKeyBinding as defaultRegisterKeyBinding,
   type KeyBinding,
@@ -164,7 +165,7 @@ export interface BootExtensionsOptions {
   registry?: TuiExtensionRegistry;
   /** Skip calling `loadFromDisk()`. Useful for hermetic tests. */
   skipDisk?: boolean;
-  /** Skip calling `loadBuiltins()`. Useful for hermetic tests. */
+  /** Skip seeding adapter-owned builtins. Useful for hermetic tests. */
   skipBuiltins?: boolean;
   /** Override for the per-extension context factory (tests only). */
   contextFactory?: TuiExtensionContextFactory;
@@ -202,7 +203,7 @@ export async function bootExtensions(
 
   if (!options.registry && !options.skipBuiltins) {
     try {
-      registry.loadBuiltins();
+      registerBuiltinTuiExtensions(registry);
     } catch (error) {
       log("error", `failed to load builtin extensions: ${formatError(error)}`);
     }

@@ -13,7 +13,7 @@ import {
 
 // The `nb/card@1` panel renderer is contributed by the built-in
 // `nanoboss-core-ui` TUI extension, which is only registered at
-// `bootExtensions()` time (see packages/tui-extension-catalog/src/builtins.ts).
+// `bootExtensions()` time from adapters-tui's builtin extension list.
 // Per-package `bun test` runs pick up
 // `packages/adapters-tui/bunfig.toml`'s `[test].preload`, which activates the
 // builtins via `tests/preload-boot-extensions.ts`. But Bun only reads the
