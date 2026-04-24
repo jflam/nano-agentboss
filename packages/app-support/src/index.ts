@@ -1,5 +1,11 @@
 export { getBuildCommit, getBuildLabel } from "./build-info.ts";
 export {
+  resolveSelfCommand,
+  resolveSelfCommandWithRuntime,
+  type SelfCommand,
+  type SelfCommandRuntime,
+} from "./self-command.ts";
+export {
   discoverDiskModules,
   getDiskModuleDefaultExport,
   loadDiskModule,

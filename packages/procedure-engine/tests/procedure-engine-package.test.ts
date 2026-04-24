@@ -9,6 +9,7 @@ import {
   findRecoveredProcedureDispatchRun,
   procedureDispatchResultFromRecoveredRun,
   ProcedureCancelledError,
+  resolveSelfCommandWithRuntime,
   waitForRecoveredProcedureDispatchRun,
 } from "@nanoboss/procedure-engine";
 import type {
@@ -94,6 +95,16 @@ function createStore(name: string): SessionStore {
     rootDir,
   });
 }
+
+test("keeps the self-command compatibility re-export", () => {
+  expect(resolveSelfCommandWithRuntime("mcp", [], {
+    executable: "/Users/jflam/.local/bin/nanoboss",
+    scriptPath: "/$bunfs/root/nanoboss.js",
+  })).toEqual({
+    command: "/Users/jflam/.local/bin/nanoboss",
+    args: ["mcp"],
+  });
+});
 
 function createFakeStore(): {
   store: Parameters<typeof executeProcedure>[0]["store"];

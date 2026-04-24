@@ -1,9 +1,33 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { resolveSelfCommandWithRuntime } from "@nanoboss/procedure-engine";
+import {
+  resolveSelfCommand,
+  resolveSelfCommandWithRuntime,
+} from "@nanoboss/app-support";
+
+const originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
+
+afterEach(() => {
+  if (originalSelfCommand === undefined) {
+    Reflect.deleteProperty(process.env, "NANOBOSS_SELF_COMMAND");
+  } else {
+    process.env.NANOBOSS_SELF_COMMAND = originalSelfCommand;
+  }
+});
+
+describe("resolveSelfCommand", () => {
+  test("uses NANOBOSS_SELF_COMMAND as the executable override", () => {
+    process.env.NANOBOSS_SELF_COMMAND = "nanoboss-test";
+
+    expect(resolveSelfCommand("mcp", ["--verbose"])).toEqual({
+      command: "nanoboss-test",
+      args: ["mcp", "--verbose"],
+    });
+  });
+});
 
 describe("resolveSelfCommandWithRuntime", () => {
   test("uses the source entrypoint when running from a real script on disk", () => {

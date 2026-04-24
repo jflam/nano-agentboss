@@ -1,10 +1,9 @@
 import type * as acp from "@agentclientprotocol/sdk";
+import { resolveSelfCommand } from "@nanoboss/app-support";
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-
-import { resolveSelfCommand } from "./self-command.ts";
 
 export const REGISTERED_MCP_SERVER_NAME = "nanoboss";
 

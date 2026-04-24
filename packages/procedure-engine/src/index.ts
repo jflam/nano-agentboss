@@ -85,7 +85,7 @@ export {
 export {
   resolveSelfCommand,
   resolveSelfCommandWithRuntime,
-} from "./self-command.ts";
+} from "@nanoboss/app-support";
 export {
   createProcedureUiMarkerStream,
   formatProcedureStatusText,

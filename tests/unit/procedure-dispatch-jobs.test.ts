@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, describe, test } from "bun:test";
@@ -66,6 +66,64 @@ async function withMockAgentEnv(run: () => Promise<void>): Promise<void> {
 }
 
 describe("ProcedureDispatchJobManager", () => {
+  test("spawns workers through the shared self-command resolver", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "nab-dispatch-jobs-self-cmd-"));
+    const commandPath = join(rootDir, "nanoboss-self-command");
+    const argsPath = join(rootDir, "args.log");
+    writeFileSync(commandPath, [
+      "#!/bin/sh",
+      "for arg in \"$@\"; do",
+      "  printf '%s\\n' \"$arg\"",
+      "done > \"$NANOBOSS_TEST_SELF_COMMAND_LOG\"",
+      "",
+    ].join("\n"), "utf8");
+    chmodSync(commandPath, 0o755);
+
+    const originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
+    const originalArgsLog = process.env.NANOBOSS_TEST_SELF_COMMAND_LOG;
+    process.env.NANOBOSS_SELF_COMMAND = commandPath;
+    process.env.NANOBOSS_TEST_SELF_COMMAND_LOG = argsPath;
+
+    try {
+      const manager = createManager(rootDir, async () => ({
+        get: (name) => name === "review"
+          ? {
+              name: "review",
+              description: "test review",
+              async execute() {
+                return { display: "done" };
+              },
+            }
+          : undefined,
+        register() {},
+        listMetadata: () => [],
+      }));
+
+      const started = await manager.start({
+        name: "review",
+        prompt: "please review",
+      });
+
+      expect(started.status).toBe("queued");
+      await waitForFile(argsPath);
+      const args = readFileSync(argsPath, "utf8").trim().split("\n");
+      expect(args).toEqual([
+        "procedure-dispatch-worker",
+        "--session-id",
+        "session-1",
+        "--cwd",
+        rootDir,
+        "--root-dir",
+        rootDir,
+        "--dispatch-id",
+        started.dispatchId,
+      ]);
+    } finally {
+      restoreEnv("NANOBOSS_SELF_COMMAND", originalSelfCommand);
+      restoreEnv("NANOBOSS_TEST_SELF_COMMAND_LOG", originalArgsLog);
+    }
+  });
+
   test("marks queued jobs as failed when their worker pid is dead", async () => {
     const rootDir = mkdtempSync(join(tmpdir(), "nab-dispatch-jobs-"));
     mkdirSync(join(rootDir, "procedure-dispatch-jobs"), { recursive: true });
@@ -169,3 +227,21 @@ describe("ProcedureDispatchJobManager", () => {
     });
   }, 30_000);
 });
+
+async function waitForFile(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (existsSync(path)) {
+      return;
+    }
+    await Bun.sleep(25);
+  }
+  throw new Error(`Timed out waiting for ${path}`);
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    Reflect.deleteProperty(process.env, name);
+  } else {
+    process.env[name] = value;
+  }
+}

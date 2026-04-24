@@ -21,6 +21,7 @@ const BANNED_CORE_BARRIER_FILES = [
 const BANNED_ENGINE_HELPER_BARRIER_FILES = [
   "packages/procedure-engine/src/cancellation.ts",
   "packages/procedure-engine/src/error-format.ts",
+  "packages/procedure-engine/src/self-command.ts",
   "packages/procedure-engine/src/text.ts",
 ] as const;
 
@@ -37,8 +38,8 @@ const CANONICAL_IMPORTERS = [
   ["packages/app-runtime/src/default-agent-policy.ts", 'from "@nanoboss/procedure-engine"'],
   ["packages/app-runtime/src/runtime-service.ts", 'from "@nanoboss/procedure-engine"'],
   ["packages/app-runtime/src/service.ts", 'from "@nanoboss/procedure-engine"'],
+  ["packages/app-support/tests/self-command.test.ts", 'from "@nanoboss/app-support"'],
   ["packages/procedure-engine/tests/logger.test.ts", 'from "@nanoboss/procedure-engine/testing"'],
-  ["packages/procedure-engine/tests/self-command.test.ts", 'from "@nanoboss/procedure-engine"'],
 ] as const;
 
 const ROOT_TS_FILES = [

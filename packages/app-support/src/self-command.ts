@@ -2,12 +2,12 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-interface SelfCommandRuntime {
+export interface SelfCommandRuntime {
   executable: string;
   scriptPath?: string;
 }
 
-interface SelfCommand {
+export interface SelfCommand {
   command: string;
   args: string[];
 }

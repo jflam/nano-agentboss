@@ -10,6 +10,7 @@ import {
   registerMcpCodex,
   registerMcpCopilot,
   registerMcpGemini,
+  resolveMcpCommand,
 } from "@nanoboss/adapters-mcp";
 
 const tempDirs: string[] = [];
@@ -17,6 +18,7 @@ const TEST_COMMAND = {
   command: "bun",
   args: ["/repo/nanoboss.ts", "mcp"],
 };
+const originalSelfCommand = process.env.NANOBOSS_SELF_COMMAND;
 
 afterEach(() => {
   while (tempDirs.length > 0) {
@@ -25,6 +27,7 @@ afterEach(() => {
       rmSync(path, { recursive: true, force: true });
     }
   }
+  restoreEnv("NANOBOSS_SELF_COMMAND", originalSelfCommand);
 });
 
 describe("mcp registration", () => {
@@ -35,6 +38,15 @@ describe("mcp registration", () => {
       command: "bun",
       args: ["/repo/nanoboss.ts", "mcp"],
       env: [],
+    });
+  });
+
+  test("uses the shared self-command resolver for the default mcp command", () => {
+    process.env.NANOBOSS_SELF_COMMAND = "nanoboss-test";
+
+    expect(resolveMcpCommand()).toEqual({
+      command: "nanoboss-test",
+      args: ["mcp"],
     });
   });
 

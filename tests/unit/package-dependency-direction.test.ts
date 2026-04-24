@@ -47,7 +47,7 @@ const ALLOWED_LAYERING: Record<PackageName, readonly PackageName[]> = {
     "tui-extension-catalog",
     "tui-extension-sdk",
   ],
-  "agent-acp": ["contracts", "procedure-sdk", "store"],
+  "agent-acp": ["app-support", "contracts", "procedure-sdk", "store"],
   "app-runtime": [
     "agent-acp",
     "app-support",
@@ -60,7 +60,7 @@ const ALLOWED_LAYERING: Record<PackageName, readonly PackageName[]> = {
   "app-support": [],
   contracts: [],
   "procedure-catalog": ["app-support", "procedure-sdk"],
-  "procedure-engine": ["agent-acp", "contracts", "procedure-catalog", "procedure-sdk", "store"],
+  "procedure-engine": ["agent-acp", "app-support", "contracts", "procedure-catalog", "procedure-sdk", "store"],
   "procedure-sdk": ["contracts"],
   store: ["app-support", "contracts", "procedure-sdk"],
   "tui-extension-catalog": ["app-support", "tui-extension-sdk"],

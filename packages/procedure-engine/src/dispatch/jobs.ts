@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
+import { resolveSelfCommand } from "@nanoboss/app-support";
 import { findRecoveredProcedureDispatchRun } from "./recovery.ts";
 import {
   ProcedureDispatchProgressEmitter,
@@ -37,7 +38,6 @@ import { resolveDownstreamAgentConfig } from "../agent-config.ts";
 import { requireValue } from "../argv.ts";
 import type { RuntimeBindings } from "../context/shared.ts";
 import { runResultFromRunRecord } from "../run-result.ts";
-import { resolveSelfCommand } from "../self-command.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "../timing-trace.ts";
 
 const PROCEDURE_DISPATCH_JOBS_DIR = "procedure-dispatch-jobs";
