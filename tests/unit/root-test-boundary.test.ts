@@ -24,6 +24,7 @@ const ROOT_OWNED_TESTS = [
   "model-command.test.ts",
   "nanoboss.test.ts",
   "package-dependency-direction.test.ts",
+  "package-helper-ownership.test.ts",
   "pre-commit-checks.test.ts",
   "procedure-dispatch-jobs.test.ts",
   "procedure-engine-helper-convergence.test.ts",

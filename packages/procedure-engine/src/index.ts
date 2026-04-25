@@ -78,10 +78,14 @@ export {
   createRunTimingTrace,
   type RunTimingTrace,
 } from "./timing-trace.ts";
+// Compatibility re-export: data shape helpers moved to @nanoboss/procedure-sdk.
+// Removal note: prefer importing these helpers from @nanoboss/procedure-sdk.
 export {
   inferDataShape,
   stringifyCompactShape,
 } from "@nanoboss/procedure-sdk";
+// Compatibility re-export: self-command helpers moved to @nanoboss/app-support.
+// Removal note: prefer importing these helpers from @nanoboss/app-support.
 export {
   resolveSelfCommand,
   resolveSelfCommandWithRuntime,
