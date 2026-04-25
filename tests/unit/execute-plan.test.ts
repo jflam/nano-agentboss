@@ -256,9 +256,9 @@ describe("/execute-plan", () => {
         model: "gpt-5.4/high",
       },
       refs: {
-        implementationRun: runRef("worker"),
-        preCommitRun: runRef("precommit"),
-        commitRun: runRef("commit-proc"),
+        implementationResult: createRef(runRef("worker"), "output.data"),
+        preCommitResult: createRef(runRef("precommit"), "output.data"),
+        commitDisplay: createRef(runRef("commit-proc"), "output.display"),
       },
     });
   });

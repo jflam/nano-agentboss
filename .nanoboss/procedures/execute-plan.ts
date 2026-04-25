@@ -4,10 +4,12 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 import typia from "typia";
 
-import type {
-  DownstreamAgentSelection,
-  KernelValue,
-  RunRef,
+import {
+  createRef,
+  type DownstreamAgentSelection,
+  type KernelValue,
+  type Ref,
+  type RunRef,
 } from "@nanoboss/contracts";
 import {
   expectData,
@@ -650,6 +652,7 @@ function buildFollowUpQuestionPrompt(state: ExecutePlanState, question: string):
     "Answer the user's follow-up question about the work you just completed.",
     "Respond directly and precisely.",
     "You may inspect the repository if needed.",
+    "Compact source refs for the implementation result, pre-commit result, and commit result are attached when available.",
     lastStep
       ? `The relevant completed step was ${formatStepLabel(lastStep.stepId, lastStep.stepTitle)}.`
       : undefined,
@@ -809,11 +812,14 @@ function buildMemory(state: ExecutePlanState, record: CompletedStepRecord): stri
   return `execute-plan ${record.status} ${formatStepLabel(record.stepId, record.stepTitle)} from ${state.planPath}. Summary: ${singleLine(record.implementationSummary) || "n/a"}.${commit}`;
 }
 
-function buildLastStepRefs(record: CompletedStepRecord): Record<string, RunRef> {
+function buildLastStepRefs(record: CompletedStepRecord): Record<string, Ref> {
+  // Pass compact output refs rather than whole run refs. Whole agent/procedure
+  // runs include prompts, streams, and agent update logs; inlining those on a
+  // follow-up can exceed downstream model context windows.
   return {
-    implementationRun: record.implementationRun,
-    ...(record.preCommitRun ? { preCommitRun: record.preCommitRun } : {}),
-    ...(record.commitRun ? { commitRun: record.commitRun } : {}),
+    implementationResult: createRef(record.implementationRun, "output.data"),
+    ...(record.preCommitRun ? { preCommitResult: createRef(record.preCommitRun, "output.data") } : {}),
+    ...(record.commitRun ? { commitDisplay: createRef(record.commitRun, "output.display") } : {}),
   };
 }
 
