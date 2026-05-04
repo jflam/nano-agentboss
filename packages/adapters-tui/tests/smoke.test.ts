@@ -9,4 +9,9 @@ test("public entrypoint exports a smoke symbol", () => {
   expect("renderNbCardV1Markdown" in adaptersTui).toBe(false);
   expect("createNbCardV1Renderer" in adaptersTui).toBe(false);
   expect("NbCardV1PayloadType" in adaptersTui).toBe(false);
+  expect("LOCAL_TUI_COMMANDS" in adaptersTui).toBe(false);
+  expect("formatExtensionsCard" in adaptersTui).toBe(false);
+  expect("parseModelSelectionCommand" in adaptersTui).toBe(false);
+  expect("parseToolCardThemeCommand" in adaptersTui).toBe(false);
+  expect("shouldDisableEditorSubmit" in adaptersTui).toBe(false);
 });

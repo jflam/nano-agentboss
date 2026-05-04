@@ -59,7 +59,7 @@ export function isExtensionsListRequest(trimmed: string): boolean {
   return trimmed === "/extensions";
 }
 
-export interface ExtensionsCardPayload {
+interface ExtensionsCardPayload {
   title: string;
   markdown: string;
   severity: "info" | "warn" | "error";
