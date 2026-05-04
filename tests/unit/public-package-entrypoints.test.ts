@@ -32,7 +32,7 @@ const PACKAGE_EXPORT_EXPECTATIONS = [
   ["packages/adapters-http/src/index.ts", "startHttpServer"],
   ["packages/adapters-mcp/src/index.ts", "runMcpServer"],
   ["packages/adapters-mcp/src/index.ts", "registerSupportedAgentMcp"],
-  ["packages/adapters-tui/src/index.ts", 'export * from "./controller.ts";'],
+  ["packages/adapters-tui/src/index.ts", "NanobossTuiController"],
   ["packages/agent-acp/src/index.ts", 'from "./token-metrics.ts";'],
   ["packages/procedure-sdk/src/index.ts", 'from "./tagged-json-line-stream.ts";'],
   ["packages/procedure-sdk/src/index.ts", 'from "./text.ts";'],

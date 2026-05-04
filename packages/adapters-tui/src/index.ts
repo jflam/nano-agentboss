@@ -1,10 +1,52 @@
-export * from "./app.ts";
-export * from "./commands.ts";
-export * from "./reducer.ts";
-export * from "./run.ts";
-export * from "./state.ts";
-export * from "./controller.ts";
-export * from "./views.ts";
+export {
+  NanobossTuiApp,
+  type NanobossTuiAppParams,
+} from "./app.ts";
+export {
+  LOCAL_TUI_COMMANDS,
+  formatExtensionsCard,
+  isExitRequest,
+  isExtensionsListRequest,
+  isModelPickerRequest,
+  isNewSessionRequest,
+  parseModelSelectionCommand,
+  parseToolCardThemeCommand,
+  shouldDisableEditorSubmit,
+  type ExtensionsCardPayload,
+} from "./commands.ts";
+export {
+  reduceUiState,
+  type UiAction,
+} from "./reducer.ts";
+export {
+  assertInteractiveTty,
+  canUseNanobossTui,
+  runTuiCli,
+  type RunTuiCliDeps,
+  type RunTuiCliParams,
+} from "./run.ts";
+export {
+  createInitialUiState,
+  type FrontendContinuation,
+  type UiInputDisabledReason,
+  type UiPanel,
+  type UiPendingPrompt,
+  type UiProcedurePanel,
+  type UiState,
+  type UiToolCall,
+  type UiTranscriptItem,
+  type UiTurn,
+} from "./state.ts";
+export {
+  NanobossTuiController,
+  type NanobossTuiControllerDeps,
+  type NanobossTuiControllerParams,
+  type SessionResponse,
+} from "./controller.ts";
+export {
+  NanobossAppView,
+  TranscriptComponent,
+} from "./views.ts";
 export type { FrontendConnectionMode } from "./connection-mode.ts";
 export {
   createNanobossTuiTheme,
@@ -12,7 +54,11 @@ export {
   type ToolCardThemeMode,
 } from "./theme.ts";
 export { promptForStoredSessionSelection } from "./overlays/session-picker.ts";
-export * from "./overlays/select-overlay.ts";
+export {
+  SelectOverlay,
+  promptWithSelectList,
+  type SelectOverlayOptions,
+} from "./overlays/select-overlay.ts";
 export {
   registerKeyBinding,
   listKeyBindings,
