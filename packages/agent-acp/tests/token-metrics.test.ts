@@ -6,12 +6,14 @@ import { expect, test } from "bun:test";
 
 import {
   collectTokenSnapshot,
+} from "@nanoboss/agent-acp";
+import {
   findCopilotLogsForPids,
   parseClaudeDebugMetrics,
   parseCopilotLogMetrics,
   parseCopilotSessionState,
   parseDescendantPidsFromPsOutput,
-} from "@nanoboss/agent-acp";
+} from "../src/token-metrics.ts";
 
 test("collectTokenSnapshot uses ACP usage_update for codex", async () => {
   const snapshot = await collectTokenSnapshot({

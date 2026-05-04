@@ -101,8 +101,13 @@ Important boundary:
 
 ### 4. Token and model helpers
 
-- token usage helpers from `token-usage.ts` and `token-metrics.ts`
+- token usage helpers from `token-usage.ts`
+- `collectTokenSnapshot(...)` for best-effort provider token snapshots
 - model catalog helpers from `model-catalog.ts` and `catalog-discovery.ts`
+
+Provider-specific log parsers such as Claude debug parsing and Copilot log
+parsing are implementation/test seams in `token-metrics.ts`; they are not
+package entrypoint APIs.
 
 The model catalog is discovered from the installed ACP harness for the effective
 provider config, with a short-lived cache to avoid reprobing on every caller
@@ -238,6 +243,19 @@ Clients should code to that split:
 ## Executable examples
 
 The strongest package-level usage examples are in [packages/agent-acp/tests/agent-acp-package.test.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/agent-acp/tests/agent-acp-package.test.ts).
+
+## Current Review Metrics
+
+Measured during the 2026-05 token-metrics boundary review:
+
+- source files: 17
+- source lines: 3,675
+- largest file: `src/catalog-discovery.ts` at 677 lines
+- runtime value exports: 51 -> 46
+- public wildcard exports: 0
+- code simplification applied: removed provider-specific token parser helpers
+  from the package entrypoint while keeping direct source-level tests for those
+  parser seams
 
 Those tests demonstrate:
 

@@ -37,11 +37,6 @@ export {
 export {
   collectTokenSnapshot,
   enrichToolCallUpdateWithTokenUsage,
-  findCopilotLogsForPids,
-  parseClaudeDebugMetrics,
-  parseCopilotLogMetrics,
-  parseCopilotSessionState,
-  parseDescendantPidsFromPsOutput,
 } from "./token-metrics.ts";
 export {
   getAgentTokenUsagePercent,

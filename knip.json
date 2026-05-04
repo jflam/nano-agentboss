@@ -48,6 +48,9 @@
     ],
     "packages/procedure-catalog/src/names.ts": [
       "exports"
+    ],
+    "packages/agent-acp/src/token-metrics.ts": [
+      "exports"
     ]
   },
   "project": [
