@@ -39,7 +39,6 @@ export {
   normalizeAgentTokenUsage,
 } from "./token-usage.ts";
 export {
-  buildReasoningModelSelection,
   findSelectableModelOptionInCatalog,
   getAgentCatalog,
   getProviderLabel,

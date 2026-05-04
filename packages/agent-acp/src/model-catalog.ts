@@ -312,7 +312,7 @@ export function isKnownModelSelectionInCatalog(
   return (baseEntry.supportedReasoningEfforts ?? []).includes(reasoningEffort);
 }
 
-export function buildReasoningModelSelection(
+function buildReasoningModelSelection(
   modelId: string,
   reasoningEffort?: ReasoningEffort,
 ): string {

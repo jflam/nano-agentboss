@@ -247,7 +247,7 @@ Measured during the 2026-05 agent-acp boundary reviews:
 - source files: 16
 - source lines: 3,578
 - largest file: `src/catalog-discovery.ts` at 677 lines
-- runtime value exports: 51 -> 33
+- runtime value exports: 51 -> 32
 - public wildcard exports: 0
 - code simplification applied:
   - removed provider-specific token parser helpers from the package entrypoint
@@ -259,6 +259,8 @@ Measured during the 2026-05 agent-acp boundary reviews:
   - centralized the duplicated timing trace writer in `@nanoboss/app-support`
   - removed provider-taking model catalog wrappers; callers use refreshed
     catalog-aware helpers for selection checks and option lookup
+  - internalized the reasoning model selection string builder behind model
+    option construction
 
 Those tests demonstrate:
 

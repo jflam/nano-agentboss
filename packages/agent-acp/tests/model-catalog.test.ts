@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  buildReasoningModelSelection,
   discoverAgentCatalog,
   findSelectableModelOptionInCatalog,
   hasAgentCatalogRefreshedToday,
@@ -147,7 +146,6 @@ test("shared reasoning helpers parse and rebuild known effort suffixes", () => {
     baseModel: "gpt-5.4",
     reasoningEffort: "xhigh",
   });
-  expect(buildReasoningModelSelection("gpt-5.4", "xhigh")).toBe("gpt-5.4/xhigh");
   expect(parseReasoningModelSelection("gpt-5.2-codex/xhigh")).toEqual({
     baseModel: "gpt-5.2-codex",
     reasoningEffort: "xhigh",
@@ -155,6 +153,12 @@ test("shared reasoning helpers parse and rebuild known effort suffixes", () => {
   expect(parseReasoningModelSelection("gemini-2.5-pro")).toEqual({
     baseModel: "gemini-2.5-pro",
   });
+  expect(listSelectableModelOptionsFromCatalog({
+    models: [{
+      id: "gpt-5.4",
+      supportedReasoningEfforts: ["xhigh"],
+    }],
+  })).toContainEqual(expect.objectContaining({ value: "gpt-5.4/xhigh" }));
 });
 
 test("discovers and normalizes Copilot model-specific reasoning metadata", async () => {

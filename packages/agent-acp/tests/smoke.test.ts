@@ -21,4 +21,5 @@ test("public entrypoint exports a smoke symbol", () => {
   expect("findSelectableModelOption" in agentAcp).toBe(false);
   expect("isKnownModelSelection" in agentAcp).toBe(false);
   expect("listSelectableModelOptions" in agentAcp).toBe(false);
+  expect("buildReasoningModelSelection" in agentAcp).toBe(false);
 });

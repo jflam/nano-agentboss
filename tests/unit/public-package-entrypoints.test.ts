@@ -60,7 +60,6 @@ const PHASE_2_COLLAPSED_HELPER_FILES = new Map<string, readonly string[]>([
   ["workspace-identity.ts", ["packages/app-support/src/workspace-identity.ts"]],
 ]);
 const PHASE_2_HELPER_FUNCTION_OWNERS = new Map<string, string>([
-  ["buildReasoningModelSelection", "packages/agent-acp/src/model-catalog.ts"],
   ["buildImageTokenLabel", "packages/procedure-sdk/src/prompt-input.ts"],
   ["computeProceduresFingerprint", "packages/app-support/src/workspace-identity.ts"],
   ["createTextPromptInput", "packages/procedure-sdk/src/prompt-input.ts"],
