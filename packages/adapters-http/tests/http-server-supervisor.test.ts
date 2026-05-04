@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { getWorkspaceIdentity } from "@nanoboss/app-support";
-import { describeWorkspaceMismatch, matchesServerBuild, startPrivateHttpServer } from "@nanoboss/adapters-http";
+import { startPrivateHttpServer } from "@nanoboss/adapters-http";
+import { describeWorkspaceMismatch, matchesServerBuild } from "../src/server-supervisor.ts";
 
 describe("http server supervisor", () => {
   test("treats dirty and clean builds as different", () => {

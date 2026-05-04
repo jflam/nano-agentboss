@@ -34,6 +34,12 @@
     "packages/adapters-acp-server/src/server.ts": [
       "exports"
     ],
+    "packages/adapters-http/src/server-supervisor.ts": [
+      "exports"
+    ],
+    "packages/adapters-http/src/server.ts": [
+      "exports"
+    ],
     "packages/procedure-catalog/src/names.ts": [
       "exports"
     ]

@@ -28,8 +28,8 @@ const CANONICAL_IMPORT_EXPECTATIONS = [
 ] as const;
 
 const PACKAGE_EXPORT_EXPECTATIONS = [
-  ["packages/adapters-http/src/index.ts", 'export * from "./client.ts";'],
-  ["packages/adapters-http/src/index.ts", 'export * from "./server.ts";'],
+  ["packages/adapters-http/src/index.ts", "getServerHealth"],
+  ["packages/adapters-http/src/index.ts", "startHttpServer"],
   ["packages/adapters-mcp/src/index.ts", 'export * from "./jsonrpc.ts";'],
   ["packages/adapters-tui/src/index.ts", 'export * from "./controller.ts";'],
   ["packages/agent-acp/src/index.ts", 'from "./token-metrics.ts";'],
