@@ -7,6 +7,7 @@ test("public entrypoint exports a smoke symbol", () => {
 
 test("public entrypoint keeps server parsing and supervisor test seams internal", () => {
   expect("parseSessionPromptRequestBody" in adaptersHttp).toBe(false);
+  expect("parseSseStream" in adaptersHttp).toBe(false);
   expect("matchesServerBuild" in adaptersHttp).toBe(false);
   expect("describeWorkspaceMismatch" in adaptersHttp).toBe(false);
 });

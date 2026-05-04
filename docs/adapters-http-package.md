@@ -54,13 +54,13 @@ parses CLI options and calls this function.
 - `cancelSessionRun(...)`
 - `cancelSessionContinuation(...)`
 - `startSessionEventStream(...)`
-- `parseSseStream(...)`
 - `ServerHealthResponse`
 - `SessionStreamHandle`
 
 These helpers are frontend transport operations. They keep endpoint paths,
-JSON bodies, SSE parsing, and connection-close behavior in one place so the TUI
-does not duplicate HTTP details.
+JSON bodies, and connection-close behavior in one place so the TUI does not
+duplicate HTTP details. SSE parsing lives in `src/sse-stream.ts` as an internal
+client/parser seam.
 
 ### Private Server Supervision
 
@@ -116,7 +116,9 @@ server/client APIs above.
   Bun HTTP server, route dispatch, prompt body parsing, SSE formatting, and
   admin shutdown endpoint.
 - `src/client.ts`
-  HTTP client helpers and SSE stream parsing.
+  HTTP client helpers and stream lifecycle behavior.
+- `src/sse-stream.ts`
+  Internal SSE parser used by the client and focused parser tests.
 - `src/event-mapping.ts`
   Frontend-named aliases over app-runtime event projection.
 - `src/private-server.ts`
@@ -140,13 +142,13 @@ server/client APIs above.
 Measured during the 2026-05 HTTP adapter review:
 
 - source files: 6
-- source lines: 1,078
-- largest file: `src/client.ts` at 356 lines
+- source lines: 1,077
+- largest file: `src/server.ts` at 312 lines
 - public barrel wildcard exports: reduced from 5 to 0
-- public package symbols: reduced from 51 to 48
+- public package symbols: reduced from 51 to 47
 - internalized package-entrypoint test seams:
-  `parseSessionPromptRequestBody(...)`, `matchesServerBuild(...)`, and
-  `describeWorkspaceMismatch(...)`
+  `parseSessionPromptRequestBody(...)`, `parseSseStream(...)`,
+  `matchesServerBuild(...)`, and `describeWorkspaceMismatch(...)`
 
 This is a public-surface cleanup. Runtime behavior is unchanged; focused tests
 still cover the internal parsing/supervisor seams through source imports.
@@ -155,7 +157,5 @@ still cover the internal parsing/supervisor seams through source imports.
 
 - Split `src/server.ts` route handlers if new endpoints are added, while
   keeping one public `startHttpServer(...)` entrypoint.
-- Consider whether `parseSseStream(...)` should remain public after all current
-  tests and frontend call sites are reviewed.
 - Keep event aliasing thin; any duplicated event projection should move back to
   `@nanoboss/app-runtime`.

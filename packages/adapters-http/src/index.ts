@@ -3,7 +3,6 @@ export {
   cancelSessionRun,
   createHttpSession,
   getServerHealth,
-  parseSseStream,
   requestServerShutdown,
   resumeHttpSession,
   sendSessionPrompt,
