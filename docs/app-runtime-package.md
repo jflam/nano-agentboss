@@ -98,21 +98,13 @@ package internals.
 - `collectUnsyncedProcedureMemoryCards(...)`
 - `materializeProcedureMemoryCard(...)`
 - `renderProcedureMemoryCardsSection(...)`
-- `summarizeToolCallStart(...)`
-- `summarizeToolCallUpdate(...)`
 - `buildTurnDisplay(...)`
 
 These helpers are runtime presentation policy, not procedure authoring API.
-They are exported because adapters and tests need the same summary behavior, but
-they should stay small and deterministic. Generic data helpers belong in
-`@nanoboss/procedure-sdk` or `@nanoboss/app-support`, not here.
-
-### 5. Runtime mode
-
-- `shouldLoadDiskCommands(...)`
-
-This is the small environment gate that decides whether disk procedures are
-loaded. Keep this package-level because it affects runtime composition.
+They should stay small and deterministic. Tool-call preview summarizers and
+runtime-mode gates are source-level implementation seams, not package
+entrypoint APIs. Generic data helpers belong in `@nanoboss/procedure-sdk` or
+`@nanoboss/app-support`, not here.
 
 ## Package Structure
 
@@ -154,8 +146,7 @@ Foreground interactive flow:
 1. `nanoboss.ts` routes `nanoboss cli` or `nanoboss resume`.
 2. The TUI adapter creates or resumes a live `NanobossService`.
 3. `NanobossService` loads procedures, manages session state, and calls
-   `runProcedure(...)` or `resumeProcedure(...)` from
-   `@nanoboss/procedure-engine`.
+   `executeProcedure(...)` from `@nanoboss/procedure-engine`.
 4. Procedure/ACP updates are projected into runtime events and adapter views.
 
 MCP/runtime tool flow:
@@ -195,11 +186,13 @@ HTTP/frontend flow:
 Measured during the 2026-05 app-runtime review:
 
 - source files: 17
-- source lines: 3,998
+- source lines: 4,037
 - largest file: `src/service.ts` at 1,479 lines
 - public barrel wildcard exports: reduced from 2 to 0
 - public app-runtime symbols: reduced from 58 to 57 by removing the accidental
   `UiApiImpl` value re-export
+- runtime value exports: 29 -> 26 by internalizing runtime-mode and tool-call
+  preview helper exports
 
 The small surface reduction matters more than the raw symbol count: the package
 now exports runtime abstractions intentionally instead of forwarding every
