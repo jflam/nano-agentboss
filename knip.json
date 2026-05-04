@@ -1,17 +1,5 @@
 {
   "$schema": "./node_modules/knip/schema.json",
-  "entry": [
-    "nanoboss.ts",
-    "cli.ts",
-    "resume.ts",
-    "build.ts",
-    "preload.ts",
-    "scripts/**/*.ts",
-    "packages/*/src/index.ts",
-    "packages/app-runtime/src/runtime-service.ts",
-    "procedures/**/*.ts",
-    "src/runtime/service.ts"
-  ],
   "include": [
     "files",
     "exports",
@@ -41,13 +29,22 @@
       "exports"
     ]
   },
-  "project": [
-    "*.ts",
-    "scripts/**/*.ts",
-    "packages/**/*.ts",
-    "procedures/**/*.ts",
-    "src/**/*.ts"
-  ],
+  "workspaces": {
+    ".": {
+      "entry": [
+        "cli.ts",
+        "resume.ts",
+        "scripts/**/*.ts",
+        "procedures/**/*.ts"
+      ],
+      "project": [
+        "*.ts",
+        "scripts/**/*.ts",
+        "procedures/**/*.ts",
+        "src/**/*.ts"
+      ]
+    }
+  },
   "ignore": [
     "packages/adapters-tui/tests/preload-boot-extensions.ts",
     "packages/procedure-sdk/test-fixtures/consumer/index.ts"
