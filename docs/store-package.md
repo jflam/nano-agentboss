@@ -152,7 +152,7 @@ These are store-owned because they are durable local persistence, but they are g
 - cleanup helpers:
   `inspectSessionCleanupCandidates`, `selectCleanupCandidates`, `summarizeCleanupCandidates`, `deleteCleanupCandidates`
 - formatting helpers:
-  `formatSessionLine`, `formatSessionDetailLine`, `formatSessionInitialPrompt`, `formatTimestamp`
+  `formatSessionLine`, `formatSessionDetailLine`, `formatSessionInitialPrompt`
 - value normalization helpers:
   `publicKernelValueFromStored`, `publicContinuationFromStored`
 - path helpers:
@@ -251,3 +251,15 @@ Current package tests are strongest when they behave like contract examples:
   Settings parsing failure behavior.
 
 The right standard for future tests is: if a new client capability depends on the store package, the first place a reader should be able to learn that capability is a store-package test.
+
+## Current Review Metrics
+
+Measured during the 2026-05 store boundary review:
+
+- source files: 10
+- source lines: 1,816
+- largest file: `src/session-store.ts` at 978 lines
+- runtime value exports: 24 -> 23
+- public wildcard exports: 0
+- code simplification applied: made `formatTimestamp(...)` a module-private
+  helper behind the public session-picker formatting functions
