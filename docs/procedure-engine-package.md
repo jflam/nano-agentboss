@@ -35,10 +35,9 @@ The public entrypoint is [packages/procedure-engine/src/index.ts](/Users/jflam/a
 
 Callers normally use:
 
-- `runProcedure(...)`
-- `resumeProcedure(...)`
+- `executeProcedure(...)`
 
-Those are thin public wrappers over [executeTopLevelProcedure(...)](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/top-level-runner.ts:59), which is the actual root-run orchestrator.
+That is the root-run orchestrator in [procedure-runner.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/procedure-runner.ts:78).
 
 Use this path when you already resolved the `Procedure`, have a `SessionStore`, and want to execute it inside an existing nanoboss session.
 
@@ -58,7 +57,7 @@ The central type is `ProcedureDispatchJobManager`.
 
 ### Execution core
 
-- [src/top-level-runner.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/top-level-runner.ts:1)
+- [src/procedure-runner.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/procedure-runner.ts:1)
   Owns top-level run lifecycle, root `CommandContextImpl` creation, cancellation/error normalization, and final `RunResult` shaping.
 - [src/run-result.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/run-result.ts:1)
   Converts stored runs into public `RunResult` values.
@@ -97,14 +96,14 @@ The central type is `ProcedureDispatchJobManager`.
 
 - [src/agent-config.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/agent-config.ts:1)
   Session-aware downstream-agent selection/config resolution.
-- [src/self-command.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/self-command.ts:1)
-  Resolves how a worker process should re-enter the nanoboss executable.
 - [src/logger.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/logger.ts:1)
   Per-run JSONL trace logging.
 - [src/timing-trace.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/timing-trace.ts:1)
   Structured timing traces for cross-boundary latency debugging.
-- [src/data-shape.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/data-shape.ts:1)
-  Compact shape inference used in runtime schema inspection and recovery prompts.
+- `@nanoboss/app-support`
+  Owns self-command resolution used by dispatch workers.
+- `@nanoboss/procedure-sdk`
+  Owns compact data-shape helpers used by run-result and recovery code.
 
 ## How the CLI reaches this package
 
@@ -114,7 +113,7 @@ The `nanoboss` binary does not call this package directly for normal foreground 
 2. `nanoboss cli` goes to [cli.ts](/Users/jflam/agentboss/workspaces/nanoboss/cli.ts:1).
 3. `cli.ts` launches the TUI adapter.
 4. The TUI frontend talks to app runtime services.
-5. [packages/app-runtime/src/service.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/app-runtime/src/service.ts:1) eventually calls `runProcedure(...)` or `resumeProcedure(...)`.
+5. [packages/app-runtime/src/service.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/app-runtime/src/service.ts:1) eventually calls `executeProcedure(...)`.
 
 The relevant foreground call site is here:
 
@@ -140,7 +139,7 @@ So the package has two runtime-facing roles:
 Important integration points:
 
 - [packages/app-runtime/src/service.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/app-runtime/src/service.ts:1)
-  Uses `runProcedure`, `resumeProcedure`, cancellation helpers, recovery helpers, dispatch job manager, progress bridge, and UI event types.
+  Uses `executeProcedure`, cancellation helpers, recovery helpers, dispatch job manager, progress bridge, and UI event types.
 - [packages/app-runtime/src/default-agent-policy.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/app-runtime/src/default-agent-policy.ts:1)
   Supplies `prepareDefaultPrompt(...)`, which plugs into the engine’s default-session transport path.
 - [packages/app-runtime/src/runtime-service.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/app-runtime/src/runtime-service.ts:1)
@@ -151,7 +150,7 @@ The core contract is:
 - app-runtime owns session state and event publication
 - procedure-engine owns execution semantics once a procedure call begins
 
-## How to use `runProcedure(...)`
+## How to use `executeProcedure(...)`
 
 The public API is defined in [src/index.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/index.ts:91).
 
@@ -170,7 +169,7 @@ Minimum required inputs:
 Typical usage from a runtime looks like this:
 
 ```ts
-const result = await runProcedure({
+const result = await executeProcedure({
   cwd,
   sessionId,
   store,
@@ -207,16 +206,17 @@ Behavior of the top-level runner:
 
 The top-level runner is also where root-level selection changes are captured. It compares the default-agent selection before and after execution and persists the changed selection on the top-level run metadata.
 
-## How to use `resumeProcedure(...)`
+## How to resume a procedure
 
-`resumeProcedure(...)` is the same engine path with an extra `resume` payload passed down to the procedure’s `resume(...)` hook.
+Resuming uses the same `executeProcedure(...)` engine path with an extra
+`resume` payload passed down to the procedure’s `resume(...)` hook.
 
 This is the only supported way to continue a paused top-level procedure through this package. Do not call `procedure.resume(...)` directly from runtime code.
 
 Relevant implementation:
 
-- [packages/procedure-engine/src/index.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/index.ts:182)
-- [packages/procedure-engine/src/top-level-runner.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/top-level-runner.ts:203)
+- [packages/procedure-engine/src/procedure-runner.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/procedure-runner.ts:78)
+- [packages/app-runtime/src/service.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/app-runtime/src/service.ts:969)
 
 ## What procedure code gets from `CommandContextImpl`
 
@@ -328,7 +328,7 @@ The flow is:
 1. `ProcedureDispatchJobManager.start(...)` validates the procedure and writes a queued job.
 2. It spawns a detached worker using `resolveSelfCommand(...)`.
 3. The worker re-enters `nanoboss procedure-dispatch-worker`.
-4. `manager.run(dispatchId)` loads the job and runs the procedure with `executeTopLevelProcedure(...)`.
+4. `manager.run(dispatchId)` loads the job and runs the procedure with `executeProcedure(...)`.
 5. Progress updates are appended to a JSONL progress file.
 6. A foreground runtime can bridge those updates back into its live emitter with `startProcedureDispatchProgressBridge(...)`.
 7. If the prompt/transport path loses the terminal result, recovery helpers can rediscover the stored run by `dispatchCorrelationId`.
@@ -343,7 +343,7 @@ Important source references:
 
 If the goal is to keep behavior centralized and avoid duplicate execution semantics, runtime code should follow these rules:
 
-1. Use `runProcedure(...)` and `resumeProcedure(...)` for top-level execution.
+1. Use `executeProcedure(...)` for top-level execution and pass its `resume` payload for resume.
 2. Use `ctx.procedures.run(...)` for nested procedure calls.
 3. Use `ctx.agent.run(...)` for downstream agent calls.
 4. Use `ProcedureDispatchJobManager` for async/background procedure execution.
@@ -390,3 +390,16 @@ The neighboring packages should remain simpler because of that split:
 - app-runtime decides when to invoke the engine and how to surface the result
 
 If new execution logic is added outside these paths, that is usually a sign that the behavior belongs back in `@nanoboss/procedure-engine`.
+
+## Current Review Metrics
+
+Measured during the 2026-05 compatibility re-export review:
+
+- source files: 20
+- source lines: 3,167
+- largest file: `src/dispatch/jobs.ts` at 741 lines
+- runtime value exports: 36 -> 32
+- public wildcard exports: 0
+- code simplification applied: removed compatibility re-exports for data-shape
+  helpers and self-command helpers; import those from `@nanoboss/procedure-sdk`
+  and `@nanoboss/app-support` instead

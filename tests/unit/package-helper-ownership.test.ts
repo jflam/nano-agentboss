@@ -46,13 +46,6 @@ const HELPER_FAMILIES = [
         names: ["inferDataShape", "stringifyCompactShape"],
         source: "./data-shape.ts",
       },
-      {
-        packageName: "@nanoboss/procedure-engine",
-        barrel: "packages/procedure-engine/src/index.ts",
-        names: ["inferDataShape", "stringifyCompactShape"],
-        source: "@nanoboss/procedure-sdk",
-        removalNote: "Compatibility re-export: data shape helpers moved to @nanoboss/procedure-sdk.",
-      },
     ],
   },
   {
@@ -153,13 +146,6 @@ const HELPER_FAMILIES = [
         barrel: "packages/app-support/src/index.ts",
         names: ["resolveSelfCommand", "resolveSelfCommandWithRuntime", "SelfCommand", "SelfCommandRuntime"],
         source: "./self-command.ts",
-      },
-      {
-        packageName: "@nanoboss/procedure-engine",
-        barrel: "packages/procedure-engine/src/index.ts",
-        names: ["resolveSelfCommand", "resolveSelfCommandWithRuntime"],
-        source: "@nanoboss/app-support",
-        removalNote: "Compatibility re-export: self-command helpers moved to @nanoboss/app-support.",
       },
     ],
   },
