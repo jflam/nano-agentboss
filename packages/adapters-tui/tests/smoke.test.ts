@@ -15,6 +15,5 @@ test("public entrypoint exports a smoke symbol", () => {
   expect("parseToolCardThemeCommand" in adaptersTui).toBe(false);
   expect("shouldDisableEditorSubmit" in adaptersTui).toBe(false);
   expect("registerFormRenderer" in adaptersTui).toBe(false);
-  expect("listFormRenderers" in adaptersTui).toBe(false);
   expect("getFormRenderer" in adaptersTui).toBe(false);
 });

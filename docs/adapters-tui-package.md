@@ -110,6 +110,8 @@ Measured during the 2026-05 TUI adapter review:
   - internalized local command parser/formatter helpers behind controller/app
     behavior
   - internalized form renderer registry helpers behind TUI app behavior
+  - removed test-only form renderer list/reset helpers by using isolated
+    registry ids in tests
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad

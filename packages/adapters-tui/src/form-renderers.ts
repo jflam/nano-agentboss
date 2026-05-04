@@ -54,16 +54,3 @@ export function registerFormRenderer<T>(renderer: FormRenderer<T>): void {
 export function getFormRenderer(formId: string): FormRenderer<unknown> | undefined {
   return registry.get(formId);
 }
-
-export function listFormRenderers(): FormRenderer<unknown>[] {
-  return Array.from(registry.values());
-}
-
-/**
- * Test helper. Clears the module-level registry so unit tests can
- * re-register with a known baseline. Not exported from the package
- * index; tests import from this module directly.
- */
-export function clearFormRenderers(): void {
-  registry.clear();
-}
