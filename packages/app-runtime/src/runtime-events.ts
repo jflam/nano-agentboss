@@ -1,7 +1,7 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
 import { normalizeAgentTokenUsage, parseAssistantNoticeText } from "@nanoboss/agent-acp";
-import { UiApiImpl, type ProcedureUiEvent } from "@nanoboss/procedure-engine";
+import type { ProcedureUiEvent } from "@nanoboss/procedure-engine";
 import type {
   AgentTokenUsage,
   ContinuationForm,
@@ -15,8 +15,6 @@ import {
   summarizeToolCallUpdate,
   type ToolPreviewBlock,
 } from "./tool-call-preview.ts";
-
-export { UiApiImpl };
 
 export interface RuntimeCommand {
   name: string;
