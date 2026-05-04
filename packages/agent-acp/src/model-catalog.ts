@@ -29,14 +29,14 @@ export interface ParsedModelSelection {
   reasoningEffort?: ReasoningEffort;
 }
 
-export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
+const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
   low: "Low",
   medium: "Medium",
   high: "High",
   xhigh: "Extra High",
 };
 
-export const REASONING_EFFORT_DESCRIPTIONS: Record<ReasoningEffort, string> = {
+const REASONING_EFFORT_DESCRIPTIONS: Record<ReasoningEffort, string> = {
   low: "Faster responses, lighter reasoning",
   medium: "Balanced speed and reasoning depth",
   high: "More thorough reasoning, slower responses",

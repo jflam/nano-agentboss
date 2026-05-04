@@ -44,7 +44,6 @@ export {
 } from "./token-usage.ts";
 export {
   buildReasoningModelSelection,
-  buildAgentModelSelection,
   findSelectableModelOption,
   findSelectableModelOptionInCatalog,
   getAgentCatalog,
@@ -52,15 +51,10 @@ export {
   isKnownAgentProvider,
   isKnownModelSelection,
   isKnownModelSelectionInCatalog,
-  isReasoningEffort,
   listKnownProviders,
   listSelectableModelOptions,
   listSelectableModelOptionsFromCatalog,
-  parseAgentModelSelection,
   parseReasoningModelSelection,
-  REASONING_EFFORT_DESCRIPTIONS,
-  REASONING_EFFORT_LABELS,
-  REASONING_EFFORTS,
 } from "./model-catalog.ts";
 
 export type {

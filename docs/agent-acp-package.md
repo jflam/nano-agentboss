@@ -246,16 +246,18 @@ The strongest package-level usage examples are in [packages/agent-acp/tests/agen
 
 ## Current Review Metrics
 
-Measured during the 2026-05 token-metrics boundary review:
+Measured during the 2026-05 agent-acp boundary reviews:
 
 - source files: 17
 - source lines: 3,675
 - largest file: `src/catalog-discovery.ts` at 677 lines
-- runtime value exports: 51 -> 46
+- runtime value exports: 51 -> 40
 - public wildcard exports: 0
-- code simplification applied: removed provider-specific token parser helpers
-  from the package entrypoint while keeping direct source-level tests for those
-  parser seams
+- code simplification applied:
+  - removed provider-specific token parser helpers from the package entrypoint
+    while keeping direct source-level tests for those parser seams
+  - removed model-selection parser/constants that are only used by
+    `agent-acp` implementation modules from the package entrypoint
 
 Those tests demonstrate:
 
