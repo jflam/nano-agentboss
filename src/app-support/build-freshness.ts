@@ -16,7 +16,7 @@ interface ExecutableBuildState {
   mtimeMs?: number;
 }
 
-export interface BuildFreshnessStatus {
+interface BuildFreshnessStatus {
   outOfDate: boolean;
   reason?: string;
 }
