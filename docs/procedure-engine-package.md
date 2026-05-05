@@ -106,6 +106,8 @@ The central type is `ProcedureDispatchJobManager`.
   Dispatch wait timeout bounds and poll interval policy.
 - [src/dispatch/recovery.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/recovery.ts:1)
   Recovery when the outer polling path loses the terminal result.
+- `src/dispatch/runtime-bindings.ts`
+  Default-agent runtime binding closure for detached dispatch execution.
 - [src/dispatch/progress.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/progress.ts:1)
   JSONL progress bridge between detached workers and live emitters.
 - [src/ui-events.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/ui-events.ts:1)
@@ -413,9 +415,9 @@ If new execution logic is added outside these paths, that is usually a sign that
 
 Measured during the 2026-05 compatibility re-export review:
 
-- source files: 28
-- source lines: 3,168
-- largest file: `src/dispatch/jobs.ts` at 474 lines
+- source files: 29
+- source lines: 3,178
+- largest file: `src/dispatch/jobs.ts` at 465 lines
 - runtime value exports: 36 -> 30
 - public wildcard exports: 0
 - code simplification applied: removed compatibility re-exports for data-shape
@@ -429,3 +431,5 @@ Measured during the 2026-05 compatibility re-export review:
   job manager module
 - code simplification applied: split detached-worker cancellation polling out
   of the job manager module
+- code simplification applied: split detached dispatch runtime bindings out of
+  the job manager module

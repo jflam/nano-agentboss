@@ -10,8 +10,6 @@ import type {
 import { defaultCancellationMessage } from "@nanoboss/procedure-sdk";
 import { SessionStore } from "@nanoboss/store";
 
-import { resolveDownstreamAgentConfig } from "../agent-config.ts";
-import type { RuntimeBindings } from "../context/shared.ts";
 import {
   ProcedureCancelledError,
   ProcedureExecutionError,
@@ -30,6 +28,7 @@ import {
   buildProcedureDispatchProgressPath,
 } from "./progress.ts";
 import { findRecoveredProcedureDispatchRun } from "./recovery.ts";
+import { createProcedureDispatchRuntimeBindings } from "./runtime-bindings.ts";
 import {
   isDeadWorkerJob,
   isTerminalStatus,
@@ -267,15 +266,7 @@ export class ProcedureDispatchJobManager {
     this.jobStore.write(job);
 
     const store = this.createStore();
-    let defaultAgentConfig = resolveDownstreamAgentConfig(this.params.cwd, job.defaultAgentSelection);
-    const bindings = {
-      getDefaultAgentConfig: () => defaultAgentConfig,
-      setDefaultAgentSelection: (selection) => {
-        const nextConfig = resolveDownstreamAgentConfig(this.params.cwd, selection);
-        defaultAgentConfig = nextConfig;
-        return nextConfig;
-      },
-    } satisfies RuntimeBindings;
+    const bindings = createProcedureDispatchRuntimeBindings(this.params.cwd, job.defaultAgentSelection);
     const emitter = new ProcedureDispatchProgressEmitter(
       buildProcedureDispatchProgressPath(store.rootDir, job.dispatchCorrelationId),
       () => {
