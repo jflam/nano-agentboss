@@ -31,7 +31,6 @@ import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { SessionStore } from "@nanoboss/store";
 import type {
   DownstreamAgentSelection,
-  RunRecord,
   RunRef,
 } from "@nanoboss/contracts";
 import type {
@@ -45,6 +44,13 @@ import type { RuntimeBindings } from "../context/shared.ts";
 import { runResultFromRunRecord } from "../run-result.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "@nanoboss/app-support";
 import { parseProcedureDispatchWorkerArgs } from "./worker-args.ts";
+import {
+  isDeadWorkerJob,
+  isTerminalStatus,
+  looksLikeProcedureFailureRecord,
+  markJobCancelled,
+  toProcedureDispatchStatusResult,
+} from "./status.ts";
 
 const DEFAULT_WAIT_MS = 1_000;
 const MAX_WAIT_MS = 2_000;
@@ -596,67 +602,4 @@ function clampWaitMs(value: number | undefined): number {
   }
 
   return Math.min(Math.max(Math.floor(value), 1), MAX_WAIT_MS);
-}
-
-function isTerminalStatus(status: ProcedureDispatchJobStatus): boolean {
-  return status === "completed" || status === "failed" || status === "cancelled";
-}
-
-function isDeadWorkerJob(job: ProcedureDispatchJob): boolean {
-  return (
-    (job.status === "queued" || job.status === "running") &&
-    typeof job.workerPid === "number" &&
-    job.workerPid > 0 &&
-    !isProcessAlive(job.workerPid)
-  );
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EPERM") {
-      return true;
-    }
-    return false;
-  }
-}
-
-function looksLikeProcedureFailureRecord(record: RunRecord): boolean {
-  return (
-    record.output.data === undefined &&
-    record.output.display === undefined &&
-    record.output.memory === undefined &&
-    typeof record.output.summary === "string" &&
-    /^Error:/i.test(record.output.summary)
-  );
-}
-
-function toProcedureDispatchStatusResult(job: ProcedureDispatchJob): ProcedureDispatchStatusResult {
-  return {
-    dispatchId: job.dispatchId,
-    status: job.status,
-    procedure: job.procedure,
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt,
-    startedAt: job.startedAt,
-    completedAt: job.completedAt,
-    run: job.run,
-    result: job.result,
-    error: job.error,
-  };
-}
-
-function markJobCancelled(
-  job: ProcedureDispatchJob,
-  timestamp = new Date().toISOString(),
-): ProcedureDispatchJob {
-  return {
-    ...job,
-    status: "cancelled",
-    updatedAt: timestamp,
-    completedAt: job.completedAt ?? timestamp,
-    error: job.error ?? defaultCancellationMessage("soft_stop"),
-  };
 }
