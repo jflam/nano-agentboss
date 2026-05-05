@@ -25,12 +25,10 @@ import {
   Editor,
   ProcessTerminal,
   TUI,
-  isKeyRelease,
-  matchesKey,
 } from "./pi-tui.ts";
 import { NanobossAutocompleteProvider } from "./app-autocomplete.ts";
 import { createAppBindingHooks as createAppBindingHooksInternal } from "./app-binding-hooks.ts";
-import { dispatchKeyBinding, type BindingCtx } from "./bindings.ts";
+import { bindAppInputListener } from "./app-input-listener.ts";
 // Side-effect import: registers the core keybindings into the module-level
 // registry so dispatchKeyBinding() resolves them without the caller having
 // to wire individual handlers.
@@ -158,39 +156,13 @@ export class NanobossTuiApp {
       updateEditorSubmitState: () => this.updateEditorSubmitState(),
     });
 
-    this.tui.addInputListener((data) => {
-      if (isKeyRelease(data)) {
-        return undefined;
-      }
-
-      // Editor-local pre-step: backspace/delete image-token removal
-      // depends on cursor state and the composer's image token map,
-      // neither of which is surfaced through BindingCtx. Keep this
-      // handler ahead of the registry dispatch so a successful token
-      // deletion consumes the key before the registry sees it.
-      if (matchesKey(data, "backspace") && this.handleImageTokenDeletion("backspace")) {
-        return { consume: true };
-      }
-
-      if (matchesKey(data, "delete") && this.handleImageTokenDeletion("delete")) {
-        return { consume: true };
-      }
-
-      const ctx: BindingCtx = {
-        controller: this.controller,
-        state: this.state,
-        editor: {
-          getText: () => this.editor.getText(),
-          isShowingAutocomplete: () => this.editor.isShowingAutocomplete(),
-        },
-        app: this.createBindingAppHooks(),
-      };
-
-      const result = dispatchKeyBinding(data, ctx);
-      if (result && result.consume !== false) {
-        return { consume: true };
-      }
-      return undefined;
+    bindAppInputListener({
+      tui: this.tui,
+      controller: this.controller,
+      editor: this.editor,
+      getState: () => this.state,
+      createBindingAppHooks: () => this.createBindingAppHooks(),
+      handleImageTokenDeletion: (direction) => this.handleImageTokenDeletion(direction),
     });
 
     this.tui.addChild(this.view);
