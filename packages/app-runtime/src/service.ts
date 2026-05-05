@@ -50,8 +50,9 @@ import {
   buildPendingContinuation,
   createDismissContinuationProcedure,
   DISMISS_CONTINUATION_COMMAND_NAME,
+  publishPendingContinuation,
   resolveCommand,
-  toRuntimeContinuation,
+  setPendingContinuation,
 } from "./continuations.ts";
 import { requestContinuationCancel as requestContinuationCancelInternal } from "./continuation-cancel.ts";
 import {
@@ -128,7 +129,7 @@ export class NanobossService {
       type: "commands_updated",
       commands: state.commands,
     });
-    this.publishPendingContinuation(sessionId, state);
+    publishPendingContinuation(sessionId, state);
 
     return buildSessionDescriptor(sessionId, state);
   }
@@ -188,7 +189,7 @@ export class NanobossService {
       type: "commands_updated",
       commands: state.commands,
     });
-    this.publishPendingContinuation(params.sessionId, state);
+    publishPendingContinuation(params.sessionId, state);
 
     return buildSessionDescriptor(params.sessionId, state);
   }
@@ -232,22 +233,6 @@ export class NanobossService {
     session.autoApprove = enabled;
     persistSessionState(session);
     return buildSessionDescriptor(sessionId, session);
-  }
-
-  private publishPendingContinuation(sessionId: string, session: SessionState): void {
-    session.events.publish(sessionId, {
-      type: "continuation_updated",
-      continuation: toRuntimeContinuation(session.pendingContinuation),
-    });
-  }
-
-  private setPendingContinuation(
-    sessionId: string,
-    session: SessionState,
-    continuation?: PendingContinuation,
-  ): void {
-    session.pendingContinuation = continuation;
-    this.publishPendingContinuation(sessionId, session);
   }
 
   getSessionEvents(sessionId: string): SessionEventLog | undefined {
@@ -298,7 +283,7 @@ export class NanobossService {
       sessionId,
       registry: this.registry,
       setPendingContinuation: (continuation) => {
-        this.setPendingContinuation(sessionId, session, continuation);
+        setPendingContinuation(sessionId, session, continuation);
       },
     });
   }
@@ -441,7 +426,7 @@ export class NanobossService {
           ? `Pending continuation for /${commandName} is no longer available.`
           : `Unknown command: /${commandName}`;
         if (continuation) {
-          this.setPendingContinuation(sessionId, session, undefined);
+          setPendingContinuation(sessionId, session, undefined);
         }
         delegate?.emit({
           sessionUpdate: "agent_message_chunk",
@@ -466,7 +451,7 @@ export class NanobossService {
 
       if (continuation && !procedure.resume) {
         const error = `Procedure /${procedure.name} does not support continuation.`;
-        this.setPendingContinuation(sessionId, session, undefined);
+        setPendingContinuation(sessionId, session, undefined);
         delegate?.emit({
           sessionUpdate: "agent_message_chunk",
           content: {
@@ -528,7 +513,7 @@ export class NanobossService {
         });
 
         if (result.pause) {
-          this.setPendingContinuation(
+          setPendingContinuation(
             sessionId,
             session,
             buildPendingContinuation(procedure.name, result),
@@ -546,9 +531,9 @@ export class NanobossService {
           });
         } else {
           if (continuation) {
-            this.setPendingContinuation(sessionId, session, undefined);
+            setPendingContinuation(sessionId, session, undefined);
           } else if (procedure.name === DISMISS_CONTINUATION_COMMAND_NAME) {
-            this.setPendingContinuation(sessionId, session, undefined);
+            setPendingContinuation(sessionId, session, undefined);
           }
           publishRunCompleted({
             session,
