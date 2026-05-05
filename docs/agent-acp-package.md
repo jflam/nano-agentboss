@@ -244,9 +244,9 @@ The strongest package-level usage examples are in [packages/agent-acp/tests/agen
 
 Measured during the 2026-05 agent-acp boundary reviews:
 
-- source files: 20
-- source lines: 3,595
-- largest file: `src/session.ts` at 516 lines
+- source files: 21
+- source lines: 3,597
+- largest file: `src/session.ts` at 485 lines
 - runtime value exports: 51 -> 31
 - public wildcard exports: 0
 - code simplification applied:
@@ -271,6 +271,7 @@ Measured during the 2026-05 agent-acp boundary reviews:
     code
   - split ACP usage/prompt-response token snapshot merging and raw-output
     enrichment out of provider log collection
+  - split default-agent config equality out of session lifecycle code
 
 Those tests demonstrate:
 
