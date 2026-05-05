@@ -112,6 +112,8 @@ are:
   picker, and default persistence helpers
 - `controller-prompt-flow.ts`: controller-owned prompt forwarding and
   pending-prompt flushing helpers
+- `controller-run.ts`: controller-owned initial run/connect/resume lifecycle
+  helper
 - `controller-session.ts`: controller-owned HTTP session connect/create and
   `/new` session lifecycle helpers
 - `controller-stop.ts`: controller-owned run stop and continuation cancel
@@ -148,9 +150,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 77
-- source lines: 8,804
-- largest file: `src/controller.ts` at 435 lines
+- source files: 78
+- source lines: 8,838
+- largest file: `src/controller.ts` at 414 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -210,6 +212,8 @@ Measured during the 2026-05 TUI adapter review:
     controller
   - split controller-owned prompt forwarding and pending-prompt flushing
     helpers out of the TUI controller
+  - split controller-owned initial run/connect/resume lifecycle helper out of
+    the TUI controller
   - split controller-owned HTTP session connect/create and `/new` session
     lifecycle helpers out of the TUI controller
   - split controller-owned run stop and continuation cancel helpers out of

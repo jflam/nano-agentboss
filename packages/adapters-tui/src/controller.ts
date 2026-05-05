@@ -34,8 +34,8 @@ import {
 } from "./controller-model-selection.ts";
 import {
   createAndApplyControllerSession,
-  connectControllerSession,
 } from "./controller-session.ts";
+import { runControllerSession } from "./controller-run.ts";
 import {
   cancelActiveRun as cancelActiveRunInternal,
   handleContinuationCancel as handleContinuationCancelInternal,
@@ -95,42 +95,21 @@ export class NanobossTuiController {
   }
 
   async run(): Promise<string | undefined> {
-    try {
-      const { session, buildFreshnessNotice } = await connectControllerSession({
-        deps: this.deps,
-        serverUrl: this.params.serverUrl,
-        cwd: this.cwd,
-        sessionId: this.params.sessionId,
-        simplify2AutoApprove: this.params.simplify2AutoApprove,
-        onStatus: (text) => {
-          this.dispatch({ type: "local_status", text });
-        },
-      });
-      await this.applySession(session);
-      // Cards are emitted *after* applySession because session_ready
-      // resets procedurePanels as part of initial-state derivation.
-      if (buildFreshnessNotice) {
-        this.showLocalCard({
-          key: "local:build-freshness",
-          title: "Build",
-          markdown: buildFreshnessNotice,
-          severity: "warn",
-        });
-      }
-      if (this.params.sessionId) {
-        this.showLocalCard({
-          key: "local:session",
-          title: "Session",
-          markdown: `Resumed session \`${session.sessionId}\`.`,
-          severity: "info",
-        });
-      }
-
-      await this.exited;
-      return this.state.sessionId || session.sessionId;
-    } finally {
-      await this.stop();
-    }
+    return await runControllerSession({
+      deps: this.deps,
+      serverUrl: this.params.serverUrl,
+      cwd: this.cwd,
+      sessionId: this.params.sessionId,
+      simplify2AutoApprove: this.params.simplify2AutoApprove,
+      exited: this.exited,
+      getCurrentSessionId: () => this.state.sessionId,
+      onStatus: (text) => {
+        this.dispatch({ type: "local_status", text });
+      },
+      applySession: async (session) => await this.applySession(session),
+      showLocalCard: (opts) => this.showLocalCard(opts),
+      stop: async () => await this.stop(),
+    });
   }
 
   async handleSubmit(input: string | PromptInput): Promise<void> {
