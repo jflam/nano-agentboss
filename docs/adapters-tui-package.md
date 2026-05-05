@@ -79,6 +79,7 @@ are:
 - `app-model-selection.ts`: app-level inline model picker and persistence
   confirmation flow
 - `reducer.ts`: frontend event reduction and state transition logic
+- `reducer-local-actions.ts`: reducer-owned local/controller action handling
 - `reducer-tool-calls.ts`: reducer-owned tool-call list and preview helpers
 - `reducer-turns.ts`: reducer-owned assistant turn and transcript helpers
 - `reducer-run-completion.ts`: reducer-owned terminal run and completion-note
@@ -114,9 +115,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 58
-- source lines: 8,077
-- largest file: `src/reducer.ts` at 680 lines
+- source files: 59
+- source lines: 8,101
+- largest file: `src/app.ts` at 670 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -133,6 +134,8 @@ Measured during the 2026-05 TUI adapter review:
   - internalized key binding, chrome, activity-bar, and panel registry helpers
     behind adapter source modules and extension boot context wiring
   - split reducer-owned tool-call list and preview helpers out of the central
+    reducer
+  - split reducer-owned local/controller action handling out of the central
     reducer
   - split reducer-owned assistant turn and transcript helpers out of the
     central reducer
