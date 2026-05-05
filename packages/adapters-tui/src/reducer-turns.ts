@@ -1,6 +1,5 @@
 import type {
   UiState,
-  UiTranscriptItem,
   UiTurn,
 } from "./state.ts";
 import {
@@ -8,6 +7,7 @@ import {
   createTurn,
   nextTurnId,
 } from "./reducer-turn-factory.ts";
+import { appendTranscriptItem } from "./reducer-transcript-items.ts";
 
 export function appendAssistantText(state: UiState, text: string): UiState {
   const activeAssistantTurnId = state.activeAssistantTurnId;
@@ -102,19 +102,6 @@ export function appendToolCallBlockToActiveTurn(state: UiState, toolCallId: stri
       };
     }),
   };
-}
-
-export function appendTranscriptItem(items: UiTranscriptItem[], nextItem: UiTranscriptItem): UiTranscriptItem[] {
-  const exists = items.some((item) => item.type === nextItem.type && item.id === nextItem.id);
-  return exists ? items : [...items, nextItem];
-}
-
-export function removeTranscriptItem(
-  items: UiTranscriptItem[],
-  type: UiTranscriptItem["type"],
-  id: string,
-): UiTranscriptItem[] {
-  return items.filter((item) => !(item.type === type && item.id === id));
 }
 
 function createAssistantTurn(state: UiState, markdown: string): UiTurn {

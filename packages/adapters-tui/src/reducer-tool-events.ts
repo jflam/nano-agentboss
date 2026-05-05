@@ -2,11 +2,13 @@ import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
 
 import type { UiState, UiToolCall } from "./state.ts";
 import {
-  appendTranscriptItem,
   appendToolCallBlockToActiveTurn,
   markAssistantTextBoundary,
-  removeTranscriptItem,
 } from "./reducer-turns.ts";
+import {
+  appendTranscriptItem,
+  removeTranscriptItem,
+} from "./reducer-transcript-items.ts";
 import {
   appendUniqueString,
   isTerminalToolStatus,

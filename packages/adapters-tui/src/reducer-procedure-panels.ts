@@ -5,9 +5,9 @@ import type {
   UiState,
 } from "./state.ts";
 import {
-  appendTranscriptItem,
   markAssistantTextBoundary,
 } from "./reducer-turns.ts";
+import { appendTranscriptItem } from "./reducer-transcript-items.ts";
 import {
   appendProcedurePanelBlockToActiveTurn,
   replaceProcedurePanelBlockInTurns,

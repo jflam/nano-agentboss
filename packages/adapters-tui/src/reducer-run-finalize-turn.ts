@@ -1,7 +1,5 @@
 import type { UiState, UiTurn } from "./state.ts";
-import {
-  appendTranscriptItem,
-} from "./reducer-turns.ts";
+import { appendTranscriptItem } from "./reducer-transcript-items.ts";
 import {
   buildAssistantTurnMeta,
   createTurn,

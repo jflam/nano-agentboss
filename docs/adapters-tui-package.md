@@ -111,7 +111,10 @@ are:
 - `reducer-tool-events.ts`: reducer-owned tool start/update event reducers
 - `reducer-turn-factory.ts`: reducer-owned generic turn id, construction,
   and assistant meta helpers
-- `reducer-turns.ts`: reducer-owned assistant turn and transcript helpers
+- `reducer-turns.ts`: reducer-owned streamed assistant turn and active-turn
+  block helpers
+- `reducer-transcript-items.ts`: reducer-owned transcript item add/remove
+  helpers
 - `reducer-run-completion.ts`: reducer-owned terminal run cleanup helpers
 - `reducer-run-completion-note.ts`: reducer-owned run completion-note
   duration and turn-number formatting helpers
@@ -225,8 +228,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 121
-- source lines: 9,529
+- source files: 122
+- source lines: 9,527
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -255,6 +258,8 @@ Measured during the 2026-05 TUI adapter review:
     reducer
   - split reducer-owned assistant turn and transcript helpers out of the
     central reducer
+  - split reducer-owned transcript item add/remove helpers out of streamed
+    assistant turn mutation
   - split reducer-owned generic turn construction and assistant meta helpers
     out of streamed assistant text handling
   - split terminal run completion, completion-note, and panel-eviction helpers
