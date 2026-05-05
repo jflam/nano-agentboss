@@ -1,11 +1,6 @@
 import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
-import type { ProcedureUiEvent } from "@nanoboss/procedure-engine";
 
-import {
-  nbCardV1Tone,
-  renderNbCardV1Markdown,
-  type NbCardV1Payload,
-} from "./core-panels.ts";
+import type { NbCardV1Payload } from "./core-panels.ts";
 import { getPanelRenderer } from "./panel-renderers.ts";
 import type {
   UiPanel,
@@ -15,11 +10,15 @@ import type {
 } from "./state.ts";
 import {
   appendTranscriptItem,
-  buildAssistantTurnMeta,
-  createTurn,
   markAssistantTextBoundary,
-  nextTurnId,
 } from "./reducer-turns.ts";
+import {
+  applyTranscriptCardPanel,
+} from "./reducer-panel-cards.ts";
+
+export {
+  appendProcedureCard,
+} from "./reducer-panel-cards.ts";
 
 interface LocalProcedurePanelInput {
   panelId: string;
@@ -78,37 +77,6 @@ export function applyLocalProcedurePanel(
       type: "procedure_panel",
       id: entry.panelId,
     }),
-  };
-}
-
-export function appendProcedureCard(
-  state: UiState,
-  card: Extract<RenderedFrontendEventEnvelope, { type: "procedure_card" }>["data"],
-): UiState {
-  const turns = state.activeAssistantTurnId
-    ? state.turns.map((turn) => turn.id === state.activeAssistantTurnId && turn.status === "streaming"
-      ? { ...turn, status: "complete" as const }
-      : turn)
-    : state.turns;
-  const turn = createTurn({
-    id: nextTurnId("assistant", turns.length),
-    role: "assistant",
-    markdown: renderProcedureCardMarkdown(card.card),
-    status: "complete",
-    runId: card.runId,
-    displayStyle: "card",
-    cardTone: procedureCardTone(card.card.kind),
-    meta: buildAssistantTurnMeta({
-      procedure: card.card.procedure,
-    }),
-  });
-
-  return {
-    ...state,
-    turns: [...turns, turn],
-    transcriptItems: appendTranscriptItem(state.transcriptItems, { type: "turn", id: turn.id }),
-    activeAssistantTurnId: undefined,
-    assistantParagraphBreakPending: false,
   };
 }
 
@@ -191,31 +159,7 @@ export function applyUiPanel(
 
   if (data.rendererId === "nb/card@1" && data.slot === "transcript") {
     const payload = data.payload as NbCardV1Payload;
-    const turns = state.activeAssistantTurnId
-      ? state.turns.map((turn) => turn.id === state.activeAssistantTurnId && turn.status === "streaming"
-        ? { ...turn, status: "complete" as const }
-        : turn)
-      : state.turns;
-    const turn = createTurn({
-      id: nextTurnId("assistant", turns.length),
-      role: "assistant",
-      markdown: renderNbCardV1Markdown(payload),
-      status: "complete",
-      runId: data.runId,
-      displayStyle: "card",
-      cardTone: nbCardV1Tone(payload.kind),
-      meta: buildAssistantTurnMeta({
-        procedure: data.procedure,
-      }),
-    });
-
-    return {
-      ...state,
-      turns: [...turns, turn],
-      transcriptItems: appendTranscriptItem(state.transcriptItems, { type: "turn", id: turn.id }),
-      activeAssistantTurnId: undefined,
-      assistantParagraphBreakPending: false,
-    };
+    return applyTranscriptCardPanel(state, data, payload);
   }
 
   const entry: UiPanel = {
@@ -306,25 +250,4 @@ function withDiagnosticStatus(state: UiState, text: string): UiState {
     ...state,
     statusLine: text,
   };
-}
-
-function renderProcedureCardMarkdown(card: Extract<ProcedureUiEvent, { type: "card" }>): string {
-  return [
-    `## ${card.title}`,
-    "",
-    `_${card.kind}_`,
-    "",
-    card.markdown.trim(),
-  ].filter((line, index, lines) => line.length > 0 || index < lines.length - 1).join("\n");
-}
-
-function procedureCardTone(kind: Extract<ProcedureUiEvent, { type: "card" }>["kind"]): NonNullable<UiTurn["cardTone"]> {
-  switch (kind) {
-    case "summary":
-      return "success";
-    case "checkpoint":
-      return "warning";
-    default:
-      return "info";
-  }
 }

@@ -102,6 +102,8 @@ are:
 - `reducer-turns.ts`: reducer-owned assistant turn and transcript helpers
 - `reducer-run-completion.ts`: reducer-owned terminal run and completion-note
   helpers
+- `reducer-panel-cards.ts`: reducer-owned procedure-card and transcript card
+  rendering helpers
 - `reducer-panels.ts`: reducer-owned procedure-card, procedure-panel, and
   ui-panel helpers
 - `controller.ts`: session/runtime orchestration for the TUI
@@ -155,8 +157,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 81
-- source lines: 8,989
+- source files: 82
+- source lines: 9,014
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -186,6 +188,8 @@ Measured during the 2026-05 TUI adapter review:
     out of the central reducer
   - split procedure-card, procedure-panel, and ui-panel helpers out of the
     central reducer
+  - split reducer-owned procedure-card and transcript card rendering helpers
+    out of the panel reducer
   - split app-level composer snapshot, prompt-input, and cursor helpers out of
     the TUI app
   - split app-level keybinding hook wiring for cooldown and queued-prompt
