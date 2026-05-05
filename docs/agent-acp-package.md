@@ -102,8 +102,8 @@ Important boundary:
 - model catalog helpers from `model-catalog.ts` and `catalog-discovery.ts`
 
 Provider-specific log parsers such as Claude debug parsing and Copilot log
-parsing are implementation/test seams in `token-metrics.ts`; they are not
-package entrypoint APIs.
+parsing are private `token-metrics.ts` implementation details covered through
+`collectTokenSnapshot(...)`; they are not package entrypoint APIs.
 
 The model catalog is discovered from the installed ACP harness for the effective
 provider config, with a short-lived cache to avoid reprobing on every caller
@@ -247,7 +247,7 @@ Measured during the 2026-05 agent-acp boundary reviews:
 - source files: 16
 - source lines: 3,578
 - largest file: `src/catalog-discovery.ts` at 677 lines
-- runtime value exports: 51 -> 32
+- runtime value exports: 51 -> 31
 - public wildcard exports: 0
 - code simplification applied:
   - removed provider-specific token parser helpers from the package entrypoint
@@ -261,6 +261,8 @@ Measured during the 2026-05 agent-acp boundary reviews:
     catalog-aware helpers for selection checks and option lookup
   - internalized the reasoning model selection string builder behind model
     option construction
+  - internalized token-usage enrichment behind session/transport behavior while
+    keeping `collectTokenSnapshot(...)` public for diagnostics
 
 Those tests demonstrate:
 

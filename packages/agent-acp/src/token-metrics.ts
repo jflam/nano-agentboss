@@ -313,7 +313,7 @@ function findCopilotProcessLogs(childPid: number | undefined): string[] {
   return findMostRecentCopilotLogs(dir, entries, 8);
 }
 
-export function findCopilotLogsForPids(
+function findCopilotLogsForPids(
   dir: string,
   pids: number[],
   entries: string[] = readdirSync(dir),
@@ -332,7 +332,7 @@ export function findCopilotLogsForPids(
     .sort((left, right) => right.localeCompare(left));
 }
 
-export function parseDescendantPidsFromPsOutput(psOutput: string, rootPid: number): number[] {
+function parseDescendantPidsFromPsOutput(psOutput: string, rootPid: number): number[] {
   const children = new Map<number, number[]>();
 
   for (const line of psOutput.split(/\n+/)) {
@@ -397,7 +397,7 @@ function findMostRecentCopilotLogs(dir: string, entries: string[], limit: number
     .map((entry) => join(dir, entry));
 }
 
-export function parseClaudeDebugMetrics(
+function parseClaudeDebugMetrics(
   text: string,
   config: DownstreamAgentConfig,
   sessionId: acp.SessionId,
@@ -419,7 +419,7 @@ export function parseClaudeDebugMetrics(
   };
 }
 
-export function parseCopilotLogMetrics(
+function parseCopilotLogMetrics(
   text: string,
   config: DownstreamAgentConfig,
   sessionId: acp.SessionId,
@@ -465,7 +465,7 @@ export function parseCopilotLogMetrics(
   };
 }
 
-export function parseCopilotSessionState(
+function parseCopilotSessionState(
   text: string,
   config: DownstreamAgentConfig,
   sessionId: acp.SessionId,

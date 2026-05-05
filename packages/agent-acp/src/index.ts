@@ -32,7 +32,6 @@ export {
 } from "./updates.ts";
 export {
   collectTokenSnapshot,
-  enrichToolCallUpdateWithTokenUsage,
 } from "./token-metrics.ts";
 export {
   getAgentTokenUsagePercent,

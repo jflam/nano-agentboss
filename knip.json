@@ -24,9 +24,6 @@
     ],
     "packages/adapters-http/src/server.ts": [
       "exports"
-    ],
-    "packages/agent-acp/src/token-metrics.ts": [
-      "exports"
     ]
   },
   "workspaces": {
