@@ -8,10 +8,13 @@ import {
   isKnownModelSelectionInCatalog,
 } from "@nanoboss/agent-acp";
 
-import { formatAgentSelectionLabel } from "./agent-label.ts";
 import { buildModelCommand } from "./model-command.ts";
 import type { UiAction } from "./reducer-actions.ts";
 import type { ControllerLocalCardOptions } from "./controller-local-cards.ts";
+import {
+  createLocalAgentSelectionAction,
+  maybePersistDefaultSelection,
+} from "./controller-model-persistence.ts";
 
 export interface ControllerModelSelectionDeps {
   discoverAgentCatalog?: typeof discoverAgentCatalog;
@@ -73,49 +76,6 @@ async function validateInlineModelSelection(params: {
       severity: "error",
     });
     return undefined;
-  }
-}
-
-function createLocalAgentSelectionAction(selection: DownstreamAgentSelection): UiAction {
-  return {
-    type: "local_agent_selection",
-    agentLabel: formatAgentSelectionLabel(selection),
-    selection,
-  };
-}
-
-async function maybePersistDefaultSelection(params: {
-  selection: DownstreamAgentSelection;
-  deps: ControllerModelSelectionDeps;
-  showLocalCard: ShowLocalCard;
-}): Promise<void> {
-  const confirm = params.deps.confirmPersistDefaultAgentSelection;
-  const persist = params.deps.persistDefaultAgentSelection;
-  if (!confirm || !persist) {
-    return;
-  }
-
-  try {
-    const shouldPersist = await confirm(params.selection);
-    if (!shouldPersist) {
-      return;
-    }
-
-    await persist(params.selection);
-    params.showLocalCard({
-      key: "local:model",
-      title: "Model",
-      markdown: `Saved **${formatAgentSelectionLabel(params.selection)}** as the default for future runs.`,
-      severity: "info",
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    params.showLocalCard({
-      key: "local:model",
-      title: "Model",
-      markdown: `Failed to save default: ${message}`,
-      severity: "error",
-    });
   }
 }
 

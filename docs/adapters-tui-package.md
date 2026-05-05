@@ -123,6 +123,8 @@ are:
   `/extensions` card formatting helpers
 - `controller-model-selection.ts`: controller-owned inline model validation,
   picker, and default persistence helpers
+- `controller-model-persistence.ts`: controller-owned model selection
+  persistence and local selection action helpers
 - `controller-prompt-flow.ts`: controller-owned prompt forwarding and
   pending-prompt flushing helpers
 - `controller-run.ts`: controller-owned initial run/connect/resume lifecycle
@@ -185,8 +187,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 99
-- source lines: 9,255
+- source files: 100
+- source lines: 9,272
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -301,6 +303,8 @@ Measured during the 2026-05 TUI adapter review:
   - split restored run replay transitions out of live run lifecycle reducers
   - split local submitted/send-failed turn construction out of local action
     dispatch
+  - split model selection persistence and local selection action helpers out
+    of controller model validation/picker flow
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad
