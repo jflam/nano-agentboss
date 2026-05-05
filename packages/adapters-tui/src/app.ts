@@ -13,7 +13,6 @@ import {
   handleImageTokenDeletion as handleImageTokenDeletionInternal,
 } from "./app-clipboard.ts";
 import { AppContinuationComposer } from "./app-continuation-composer.ts";
-import { bindAppEditorHandlers } from "./app-editor-handlers.ts";
 import { AppSigintExit } from "./app-sigint-exit.ts";
 
 import {
@@ -23,7 +22,6 @@ import {
 import { shouldDisableEditorSubmit } from "./commands.ts";
 import { AppAutocompleteSync } from "./app-autocomplete.ts";
 import { createAppBindingHooks as createAppBindingHooksInternal } from "./app-binding-hooks.ts";
-import { bindAppInputListener } from "./app-input-listener.ts";
 // Side-effect import: registers the core keybindings into the module-level
 // registry so dispatchKeyBinding() resolves them without the caller having
 // to wire individual handlers.
@@ -47,6 +45,7 @@ import {
   stopAppLifecycle,
 } from "./app-lifecycle.ts";
 import { AppModelPrompts } from "./app-model-prompts.ts";
+import { bindAppInteractions } from "./app-interaction-wiring.ts";
 export type { NanobossTuiAppParams } from "./app-types.ts";
 import type {
   ControllerLike,
@@ -163,10 +162,12 @@ export class NanobossTuiApp {
         await this.promptWithInlineSelect(options),
     });
 
-    bindAppEditorHandlers({
+    bindAppInteractions({
+      tui: this.tui,
       editor: this.editor,
       controller: this.controller,
       composerState: this.composerState,
+      getState: () => this.state,
       getClearedComposerStateSnapshot: () => this.clearedComposerStateSnapshot,
       setClearedComposerStateSnapshot: (snapshot) => {
         this.clearedComposerStateSnapshot = snapshot;
@@ -175,13 +176,6 @@ export class NanobossTuiApp {
         this.clearedComposerStateSnapshot = undefined;
       },
       updateEditorSubmitState: () => this.updateEditorSubmitState(),
-    });
-
-    bindAppInputListener({
-      tui: this.tui,
-      controller: this.controller,
-      editor: this.editor,
-      getState: () => this.state,
       createBindingAppHooks: () => this.createBindingAppHooks(),
       handleImageTokenDeletion: (direction) => this.handleImageTokenDeletion(direction),
     });

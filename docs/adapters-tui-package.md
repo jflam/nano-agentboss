@@ -94,6 +94,8 @@ are:
 - `app-editor-handlers.ts`: app-level editor submit/change handler wiring
 - `app-input-listener.ts`: app-level terminal input listener and keybinding
   dispatch wiring
+- `app-interaction-wiring.ts`: app-level editor handler and terminal input
+  listener binding helper
 - `app-inline-select.ts`: app-level inline select overlay mounting helper
 - `app-lifecycle.ts`: app-level start, stop, render-start, and terminal drain
   lifecycle helper
@@ -257,9 +259,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 137
-- source lines: 10,049
-- largest file: `src/app.ts` at 330 lines
+- source files: 138
+- source lines: 10,086
+- largest file: `src/app.ts` at 324 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -336,6 +338,8 @@ Measured during the 2026-05 TUI adapter review:
   - split app-level editor submit/change handler wiring out of the TUI app
   - split app-level terminal input listener and keybinding dispatch wiring out
     of the TUI app
+  - split app-level editor/input listener binding orchestration out of the
+    TUI app
   - split app-level ctrl-c double-press exit handling out of the TUI app
   - split app-level inline select overlay mounting out of the TUI app
   - split controller-owned busy-input, pending-prompt, and terminal-event
