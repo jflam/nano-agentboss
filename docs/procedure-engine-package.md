@@ -72,6 +72,8 @@ The central type is `ProcedureDispatchJobManager`.
   Implements `ctx.agent`.
 - `src/context/agent-output-events.ts`
   Internal structured-output panel formatting and nested agent update metadata helpers.
+- `src/context/named-refs.ts`
+  Internal named ref resolution for `ctx.agent.run(...)` inputs.
 - [src/context/procedure-api.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/procedure-api.ts:1)
   Implements `ctx.procedures`.
 - [src/context/session-api.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/session-api.ts:1)
@@ -415,8 +417,8 @@ If new execution logic is added outside these paths, that is usually a sign that
 
 Measured during the 2026-05 compatibility re-export review:
 
-- source files: 29
-- source lines: 3,178
+- source files: 30
+- source lines: 3,183
 - largest file: `src/dispatch/jobs.ts` at 465 lines
 - runtime value exports: 36 -> 30
 - public wildcard exports: 0
@@ -433,3 +435,5 @@ Measured during the 2026-05 compatibility re-export review:
   of the job manager module
 - code simplification applied: split detached dispatch runtime bindings out of
   the job manager module
+- code simplification applied: split named ref resolution out of the agent API
+  implementation module

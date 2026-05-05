@@ -8,7 +8,7 @@ import {
   toDownstreamAgentSelection,
   type CallAgentTransport,
 } from "@nanoboss/agent-acp";
-import { publicKernelValueFromStored, type SessionStore } from "@nanoboss/store";
+import type { SessionStore } from "@nanoboss/store";
 import type { ContextSessionApiImpl } from "./session-api.ts";
 import type { SessionUpdateEmitter } from "./shared.ts";
 import type {
@@ -18,9 +18,7 @@ import type {
   CommandCallAgentOptions,
   DownstreamAgentSelection,
   KernelValue,
-  Ref,
   RunResult,
-  RunRef,
   TypeDescriptor,
 } from "@nanoboss/procedure-sdk";
 import {
@@ -40,6 +38,7 @@ import {
   shouldForwardNestedAgentUpdate,
   withNestedToolCallMetadata,
 } from "./agent-output-events.ts";
+import { resolveNamedRefs } from "./named-refs.ts";
 
 type ActiveRun = ReturnType<SessionStore["startRun"]>;
 
@@ -439,26 +438,4 @@ function isTypeDescriptor<T>(value: unknown): value is TypeDescriptor<T> {
     "validate" in value &&
     typeof (value as { validate: unknown }).validate === "function"
   );
-}
-
-function resolveNamedRefs(
-  store: SessionStore,
-  refs: Record<string, RunRef | Ref> | undefined,
-): Record<string, unknown> | undefined {
-  if (!refs || Object.keys(refs).length === 0) {
-    return undefined;
-  }
-
-  return Object.fromEntries(
-    Object.entries(refs).map(([name, ref]) => [
-      name,
-      isRef(ref)
-        ? publicKernelValueFromStored(store.readRef(ref) as KernelValue)
-        : store.getRun(ref),
-    ]),
-  );
-}
-
-function isRef(value: RunRef | Ref): value is Ref {
-  return "path" in value;
 }
