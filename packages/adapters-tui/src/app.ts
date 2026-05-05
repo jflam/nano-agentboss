@@ -3,7 +3,6 @@ import {
   type PromptInput,
 } from "@nanoboss/procedure-sdk";
 import type {
-  DownstreamAgentProvider,
   DownstreamAgentSelection,
 } from "@nanoboss/contracts";
 import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
@@ -36,14 +35,6 @@ import { shouldDisableEditorSubmit } from "./commands.ts";
 import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
 
 import {
-  discoverAgentCatalog,
-  formatAgentCatalogRefreshError,
-  getProviderLabel,
-  hasAgentCatalogRefreshedToday,
-  listKnownProviders,
-  listSelectableModelOptionsFromCatalog,
-} from "@nanoboss/agent-acp";
-import {
   Editor,
   ProcessTerminal,
   TUI,
@@ -67,6 +58,11 @@ import type { UiState } from "./state.ts";
 import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
 import { NanobossAppView } from "./views.ts";
 import type { ClipboardImage } from "./composer.ts";
+import {
+  promptForInlineModelSelection as promptForInlineModelSelectionInternal,
+  promptToPersistInlineModelSelection as promptToPersistInlineModelSelectionInternal,
+  type InlineModelSelectionDeps,
+} from "./app-model-selection.ts";
 
 export interface NanobossTuiAppParams {
   cwd?: string;
@@ -139,8 +135,8 @@ interface ControllerLike {
 }
 
 interface NanobossTuiAppDeps {
-  discoverAgentCatalog?: typeof discoverAgentCatalog;
-  hasAgentCatalogRefreshedToday?: typeof hasAgentCatalogRefreshedToday;
+  discoverAgentCatalog?: InlineModelSelectionDeps["discoverAgentCatalog"];
+  hasAgentCatalogRefreshedToday?: InlineModelSelectionDeps["hasAgentCatalogRefreshedToday"];
   createTheme?: () => NanobossTuiTheme;
   createTerminal?: () => TerminalLike;
   createTui?: (terminal: TerminalLike) => TuiLike;
@@ -460,91 +456,22 @@ export class NanobossTuiApp {
   private async promptForInlineModelSelection(
     currentSelection?: DownstreamAgentSelection,
   ): Promise<DownstreamAgentSelection | undefined> {
-    const provider = await this.promptWithInlineSelect<DownstreamAgentProvider>({
-      title: "Choose an agent",
-      items: listKnownProviders().map((value) => ({
-        value,
-        label: getProviderLabel(value),
-      })),
-      initialValue: currentSelection?.provider,
-      footer: "↑↓ navigate • enter select • esc cancel",
+    return await promptForInlineModelSelectionInternal({
+      cwd: this.cwd,
+      currentSelection,
+      deps: this.deps,
+      showStatus: (text) => this.controller.showStatus(text),
+      promptWithInlineSelect: async (options) => await this.promptWithInlineSelect(options),
     });
-    if (!provider) {
-      return undefined;
-    }
-
-    const refreshedToday = (this.deps.hasAgentCatalogRefreshedToday ?? hasAgentCatalogRefreshedToday)(provider, {
-      config: { cwd: this.cwd },
-    });
-    this.controller.showStatus(
-      refreshedToday
-        ? `[model] using ${getProviderLabel(provider)} model cache refreshed today`
-        : `[model] refreshing ${getProviderLabel(provider)} model cache…`,
-    );
-
-    let catalog: Awaited<ReturnType<typeof discoverAgentCatalog>>;
-    try {
-      catalog = await (this.deps.discoverAgentCatalog ?? discoverAgentCatalog)(provider, {
-        config: { cwd: this.cwd },
-        ...(refreshedToday ? {} : { forceRefresh: true }),
-      });
-    } catch (error) {
-      throw new Error(formatAgentCatalogRefreshError(provider, error));
-    }
-
-    this.controller.showStatus(`[model] choose a ${catalog.label} model`);
-    const items = listSelectableModelOptionsFromCatalog(catalog).map((option) => ({
-      value: option.value,
-      label: option.label,
-      description: option.description,
-    }));
-    if (items.length === 0) {
-      throw new Error(`${provider} harness did not advertise any models`);
-    }
-
-    const model = await this.promptWithInlineSelect<string>({
-      title: `Choose a ${catalog.label} model`,
-      items,
-      initialValue: currentSelection?.provider === provider ? currentSelection.model : undefined,
-      selectedDetailTitle: "Details",
-      renderSelectedDetail: (item) => item.description ?? "",
-      footer: "↑↓ navigate • enter select • esc cancel",
-    });
-    if (!model) {
-      return undefined;
-    }
-
-    return {
-      provider,
-      model,
-    };
   }
 
   private async promptToPersistInlineModelSelection(
     selection: DownstreamAgentSelection,
   ): Promise<boolean> {
-    const decision = await this.promptWithInlineSelect<"no" | "yes">({
-      title: `Make ${selection.provider}/${selection.model ?? "default"} the default for future runs?`,
-      items: [
-        {
-          value: "no",
-          label: "No",
-          description: "Keep this model change in the current session only",
-        },
-        {
-          value: "yes",
-          label: "Yes",
-          description: "Persist this choice for future nanoboss runs",
-        },
-      ],
-      initialValue: "no",
-      selectedDetailTitle: "Choice",
-      renderSelectedDetail: (item) => item.description ?? "",
-      footer: "↑↓ choose • enter confirm • esc keep No",
-      maxVisible: 4,
+    return await promptToPersistInlineModelSelectionInternal({
+      selection,
+      promptWithInlineSelect: async (options) => await this.promptWithInlineSelect(options),
     });
-
-    return decision === "yes";
   }
 
   private async promptWithInlineSelect<T extends string>(

@@ -76,6 +76,8 @@ are:
   helpers
 - `app-continuation-form.ts`: app-level continuation form extraction and
   signature helpers
+- `app-model-selection.ts`: app-level inline model picker and persistence
+  confirmation flow
 - `reducer.ts`: frontend event reduction and state transition logic
 - `reducer-tool-calls.ts`: reducer-owned tool-call list and preview helpers
 - `reducer-turns.ts`: reducer-owned assistant turn and transcript helpers
@@ -110,9 +112,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 56
-- source lines: 7,983
-- largest file: `src/app.ts` at 743 lines
+- source files: 57
+- source lines: 8,028
+- largest file: `src/controller.ts` at 730 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -145,6 +147,8 @@ Measured during the 2026-05 TUI adapter review:
   - split controller-owned local card action and `/extensions` card formatting
     helpers out of the TUI controller
   - split the slash-aware app autocomplete provider out of the TUI app
+  - split app-level inline model picker and persistence confirmation flow out
+    of the TUI app
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad
