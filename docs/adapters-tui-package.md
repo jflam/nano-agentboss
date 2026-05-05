@@ -152,6 +152,9 @@ are:
 - `controller-submit.ts`: controller-owned prompt submit and queued-prompt
   command flow helpers
 - `controller-types.ts`: controller public and app-facing dependency contracts
+- `activity-bar-cascade.ts`: activity-bar priority-drop rendering cascade
+  helper
+- `activity-bar.ts`: activity-bar segment registry and line rendering entry
 - `boot-extension-context.ts`: extension context factory and contribution
   namespacing helpers
 - `build-freshness-rules.ts`: TUI build-freshness evaluation and git-status
@@ -216,8 +219,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 117
-- source lines: 9,482
+- source files: 118
+- source lines: 9,501
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -362,6 +365,8 @@ Measured during the 2026-05 TUI adapter review:
     controller model picker flow
   - split core identity activity-bar segments out of the run-state
     registration manifest
+  - split activity-bar priority-drop cascade rendering out of the segment
+    registry
   - split `/extensions` local command card formatting out of generic command
     parsing
 

@@ -4,7 +4,7 @@ import type {
 } from "@nanoboss/tui-extension-sdk";
 import type { UiState } from "./state.ts";
 import type { NanobossTuiTheme } from "./theme.ts";
-import { visibleWidth } from "./pi-tui.ts";
+import { renderActivityBarCascade } from "./activity-bar-cascade.ts";
 
 export type ActivityBarSegment =
   SdkActivityBarSegment<UiState, NanobossTuiTheme>;
@@ -37,12 +37,6 @@ function compareByOrder(a: ActivityBarSegment, b: ActivityBarSegment): number {
   return (insertionIndex.get(a.id) ?? 0) - (insertionIndex.get(b.id) ?? 0);
 }
 
-interface SegmentCascadeState {
-  segment: ActivityBarSegment;
-  detail: number;
-  dropped: boolean;
-}
-
 /**
  * Build a single activity-bar line by rendering every registered segment
  * for that line and applying the priority-drop cascade when the resulting
@@ -67,73 +61,13 @@ export function buildActivityBarLine(
     return undefined;
   }
 
-  const states: SegmentCascadeState[] = segments.map((segment) => ({
-    segment,
-    detail: 0,
-    dropped: false,
-  }));
-
-  const renderLine = (): string => {
-    const parts: string[] = [];
-    for (const entry of states) {
-      if (entry.dropped) {
-        continue;
-      }
-      const text = entry.segment.render({
-        state,
-        theme,
-        nowMs,
-        detail: entry.detail,
-      });
-      if (text !== undefined && text.length > 0) {
-        parts.push(text);
-      }
-    }
-    return parts.join(separator);
-  };
-
-  let current = renderLine();
-  if (width === undefined || width <= 0) {
-    return current;
-  }
-
-  // Degrade in priority order (lowest priority first). A degradation
-  // either advances detail by one (if the segment still has headroom)
-  // or drops the segment (if droppable). Segments with detailLevels=0
-  // drop immediately on their first degradation step, matching the old
-  // single-segment behavior.
-  const degradationOrder = [...states].sort((a, b) => {
-    const priorityA = a.segment.priority ?? 0;
-    const priorityB = b.segment.priority ?? 0;
-    if (priorityA !== priorityB) {
-      return priorityA - priorityB;
-    }
-    return (insertionIndex.get(a.segment.id) ?? 0) - (insertionIndex.get(b.segment.id) ?? 0);
+  return renderActivityBarCascade({
+    segments,
+    state,
+    theme,
+    nowMs,
+    separator,
+    width,
+    getOrderIndex: (segment) => insertionIndex.get(segment.id) ?? 0,
   });
-
-  while (visibleWidth(current) > width) {
-    let stepped = false;
-    for (const entry of degradationOrder) {
-      if (entry.dropped) {
-        continue;
-      }
-      const maxDetail = entry.segment.detailLevels ?? 0;
-      if (entry.detail < maxDetail) {
-        entry.detail += 1;
-        stepped = true;
-        break;
-      }
-      if (entry.segment.droppable !== false) {
-        entry.dropped = true;
-        stepped = true;
-        break;
-      }
-    }
-    if (!stepped) {
-      break;
-    }
-    current = renderLine();
-  }
-
-  return current;
 }
