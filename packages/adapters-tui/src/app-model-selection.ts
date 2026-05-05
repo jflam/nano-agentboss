@@ -11,6 +11,7 @@ import {
   listSelectableModelOptionsFromCatalog,
 } from "@nanoboss/agent-acp";
 
+import type { ControllerLike, NanobossTuiAppDeps } from "./app-types.ts";
 import type { SelectOverlayOptions } from "./overlays/select-overlay.ts";
 
 export interface InlineModelSelectionDeps {
@@ -22,7 +23,39 @@ type PromptWithInlineSelect = <T extends string>(
   options: SelectOverlayOptions<T>,
 ) => Promise<T | undefined>;
 
-export async function promptForInlineModelSelection(params: {
+export class AppModelPrompts {
+  constructor(
+    private readonly params: {
+      cwd: string;
+      deps: NanobossTuiAppDeps;
+      controller: ControllerLike;
+      promptWithInlineSelect: PromptWithInlineSelect;
+    },
+  ) {}
+
+  async promptForModelSelection(
+    currentSelection?: DownstreamAgentSelection,
+  ): Promise<DownstreamAgentSelection | undefined> {
+    return await promptForInlineModelSelection({
+      cwd: this.params.cwd,
+      currentSelection,
+      deps: this.params.deps,
+      showStatus: (text) => this.params.controller.showStatus(text),
+      promptWithInlineSelect: this.params.promptWithInlineSelect,
+    });
+  }
+
+  async confirmPersistDefaultAgentSelection(
+    selection: DownstreamAgentSelection,
+  ): Promise<boolean> {
+    return await promptToPersistInlineModelSelection({
+      selection,
+      promptWithInlineSelect: this.params.promptWithInlineSelect,
+    });
+  }
+}
+
+async function promptForInlineModelSelection(params: {
   cwd: string;
   currentSelection?: DownstreamAgentSelection;
   deps: InlineModelSelectionDeps;
@@ -89,7 +122,7 @@ export async function promptForInlineModelSelection(params: {
   };
 }
 
-export async function promptToPersistInlineModelSelection(params: {
+async function promptToPersistInlineModelSelection(params: {
   selection: DownstreamAgentSelection;
   promptWithInlineSelect: PromptWithInlineSelect;
 }): Promise<boolean> {

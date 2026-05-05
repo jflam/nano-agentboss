@@ -1,5 +1,5 @@
 import { createAppView } from "./app-components.ts";
-import { AppModelPrompts } from "./app-model-prompts.ts";
+import { AppModelPrompts } from "./app-model-selection.ts";
 import {
   createAppRuntimeHelpers,
   type AppRuntimeHelpers,

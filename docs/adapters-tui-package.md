@@ -102,10 +102,8 @@ are:
   lifecycle helper
 - `app-live-updates.ts`: app-level live-update pause and refresh timer
   behavior
-- `app-model-prompts.ts`: app-level inline model selection prompt adapter for
-  controller dependency wiring
-- `app-model-selection.ts`: app-level inline model picker and persistence
-  confirmation flow
+- `app-model-selection.ts`: app-level inline model picker, persistence
+  confirmation flow, and controller prompt adapter
 - `app-runtime-helpers.ts`: app-level autocomplete, SIGINT, continuation, and
   live-update helper construction bundle
 - `app-runtime-wiring.ts`: app-level view, runtime helper, and model-prompt
@@ -293,8 +291,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 157
-- source lines: 10,377
+- source files: 156
+- source lines: 10,358
 - largest file: `src/controller.ts` at 315 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -310,6 +308,8 @@ Measured during the 2026-05 TUI adapter review:
     overlay component
   - folded the one-caller inline select mounting helper into the continuation
     composer owner, reducing app helper indirection and one source file
+  - folded the one-caller app model prompt adapter into the model-selection
+    owner, reducing controller prompt wiring indirection and one source file
   - internalized local command parser/formatter helpers behind controller/app
     behavior
   - internalized form renderer registry helpers behind TUI app behavior

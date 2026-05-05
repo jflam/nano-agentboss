@@ -30,7 +30,7 @@ import {
   runAppLifecycle,
   stopAppLifecycle,
 } from "./app-lifecycle.ts";
-import { AppModelPrompts } from "./app-model-prompts.ts";
+import { AppModelPrompts } from "./app-model-selection.ts";
 import { bindAppInteractions } from "./app-interaction-wiring.ts";
 import { type AppRuntimeHelpers } from "./app-runtime-helpers.ts";
 import { createAppRuntimeWiring } from "./app-runtime-wiring.ts";
