@@ -71,6 +71,7 @@ The package is currently the largest Nanoboss package. The main size drivers
 are:
 
 - `reducer.ts`: frontend event reduction and state transition logic
+- `reducer-tool-calls.ts`: reducer-owned tool-call list and preview helpers
 - `app.ts`: terminal app wiring, editor behavior, and local command dispatch
 - `controller.ts`: session/runtime orchestration for the TUI
 - `views.ts`: transcript, chrome, and panel composition
@@ -95,9 +96,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 47
-- source lines: 7,963
-- largest file: `src/reducer.ts` at 1,418 lines
+- source files: 48
+- source lines: 7,862
+- largest file: `src/reducer.ts` at 1,337 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -113,6 +114,8 @@ Measured during the 2026-05 TUI adapter review:
     registry ids in tests
   - internalized key binding, chrome, activity-bar, and panel registry helpers
     behind adapter source modules and extension boot context wiring
+  - split reducer-owned tool-call list and preview helpers out of the central
+    reducer
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad
