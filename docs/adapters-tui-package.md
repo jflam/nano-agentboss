@@ -105,6 +105,8 @@ are:
 - `controller-stop.ts`: controller-owned run stop and continuation cancel
   helpers
 - `views.ts`: transcript, chrome, and panel composition
+- `views-transcript.ts`: transcript turn, tool, and procedure-panel rendering
+  components
 - `theme.ts`: adapter theme construction
 
 Keep changes in those files focused. When behavior naturally has its own
@@ -126,8 +128,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 65
-- source lines: 8,467
+- source files: 66
+- source lines: 8,472
 - largest file: `src/app.ts` at 587 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -162,6 +164,8 @@ Measured during the 2026-05 TUI adapter review:
     of the TUI app
   - split app-level live-update pause and refresh timer behavior out of the
     TUI app
+  - split transcript turn, tool, and procedure-panel rendering out of the
+    TUI view shell
   - split app-level continuation form extraction and signature helpers out of
     the TUI app
   - split controller-owned busy-input, pending-prompt, and terminal-event
