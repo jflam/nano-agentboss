@@ -81,8 +81,6 @@ The package re-exports app-runtime event projection under HTTP/frontend names:
 - `FrontendEventEnvelope`
 - `RenderedFrontendEventEnvelope`
 - frontend event type guards
-- `SessionEventLog`
-- `buildTurnDisplay(...)`
 - `mapSessionUpdateToFrontendEvents(...)`
 - `mapProcedureUiEventToFrontendEvent(...)`
 - `toFrontendCommands(...)`
@@ -145,10 +143,11 @@ Measured during the 2026-05 HTTP adapter review:
 - source lines: 1,077
 - largest file: `src/server.ts` at 312 lines
 - public barrel wildcard exports: reduced from 5 to 0
-- public package symbols: reduced from 51 to 47
+- public package symbols: reduced from 51 to 45
 - internalized package-entrypoint test seams:
   `parseSessionPromptRequestBody(...)`, `parseSseStream(...)`,
-  `matchesServerBuild(...)`, and `describeWorkspaceMismatch(...)`
+  `matchesServerBuild(...)`, `describeWorkspaceMismatch(...)`,
+  `SessionEventLog`, and `buildTurnDisplay(...)`
 
 This is a public-surface cleanup. Runtime behavior is unchanged; focused tests
 still cover the internal parsing/supervisor seams through source imports.

@@ -10,4 +10,6 @@ test("public entrypoint keeps server parsing and supervisor test seams internal"
   expect("parseSseStream" in adaptersHttp).toBe(false);
   expect("matchesServerBuild" in adaptersHttp).toBe(false);
   expect("describeWorkspaceMismatch" in adaptersHttp).toBe(false);
+  expect("SessionEventLog" in adaptersHttp).toBe(false);
+  expect("buildTurnDisplay" in adaptersHttp).toBe(false);
 });

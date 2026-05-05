@@ -12,7 +12,6 @@ export {
   type SessionStreamHandle,
 } from "./client.ts";
 export {
-  buildTurnDisplay,
   isCommandsUpdatedEvent,
   isMemorySyncFrontendEvent,
   isRenderedFrontendEvent,
@@ -24,7 +23,6 @@ export {
   isToolUpdatedEvent,
   mapProcedureUiEventToFrontendEvent,
   mapSessionUpdateToFrontendEvents,
-  SessionEventLog,
   toFrontendCommands,
   toReplayableFrontendEvent,
   type CommandsUpdatedEventEnvelope,
