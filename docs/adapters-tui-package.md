@@ -135,6 +135,8 @@ are:
 - `boot-extension-context.ts`: extension context factory and contribution
   namespacing helpers
 - `run-terminal.ts`: CLI terminal control-character and process signal helpers
+- `core-bindings.ts`: core keybinding registration manifest
+- `core-bindings-help.ts`: core keybinding help-card markdown formatter
 - `core-chrome.ts`: core chrome contribution registration manifest
 - `core-chrome-components.ts`: core chrome component factories and line
   formatting helpers
@@ -173,8 +175,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 91
-- source lines: 9,169
+- source files: 92
+- source lines: 9,171
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -274,6 +276,8 @@ Measured during the 2026-05 TUI adapter review:
     the registration manifest
   - split assistant-turn finalization and completion-note helpers out of
     reducer run cleanup
+  - split core keybinding help-card formatting out of the registration
+    manifest
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad
