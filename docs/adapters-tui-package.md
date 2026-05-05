@@ -105,6 +105,8 @@ are:
   controller dependency wiring
 - `app-model-selection.ts`: app-level inline model picker and persistence
   confirmation flow
+- `app-runtime-helpers.ts`: app-level autocomplete, SIGINT, continuation,
+  inline-select, and live-update helper construction bundle
 - `app-sigint-exit.ts`: app-level ctrl-c double-press exit helper
 - `app-types.ts`: app-local dependency adapter contracts
 - `reducer.ts`: frontend event reduction and state transition logic
@@ -259,9 +261,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 138
-- source lines: 10,086
-- largest file: `src/app.ts` at 324 lines
+- source files: 139
+- source lines: 10,138
+- largest file: `src/controller.ts` at 315 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -313,6 +315,7 @@ Measured during the 2026-05 TUI adapter review:
     the TUI app
   - split app-level concrete component construction and run/stop lifecycle
     helpers out of the TUI app
+  - split app-level runtime helper construction bundle out of the TUI app
   - split composer text and image-token prompt-input assembly out of composer
     image state
   - split app-level keybinding hook wiring for cooldown and queued-prompt

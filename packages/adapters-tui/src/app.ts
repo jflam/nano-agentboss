@@ -12,15 +12,11 @@ import {
   handleCtrlVImagePaste as handleCtrlVImagePasteInternal,
   handleImageTokenDeletion as handleImageTokenDeletionInternal,
 } from "./app-clipboard.ts";
-import { AppContinuationComposer } from "./app-continuation-composer.ts";
-import { AppSigintExit } from "./app-sigint-exit.ts";
-
 import {
   NanobossTuiController,
   type NanobossTuiControllerDeps,
 } from "./controller.ts";
 import { shouldDisableEditorSubmit } from "./commands.ts";
-import { AppAutocompleteSync } from "./app-autocomplete.ts";
 import { createAppBindingHooks as createAppBindingHooksInternal } from "./app-binding-hooks.ts";
 // Side-effect import: registers the core keybindings into the module-level
 // registry so dispatchKeyBinding() resolves them without the caller having
@@ -31,11 +27,9 @@ import "./core-bindings.ts";
 // nb/simplify2-checkpoint@1 and nb/simplify2-focus-picker@1 without
 // the caller having to wire individual handlers.
 import "./core-form-renderers.ts";
-import { AppInlineSelect } from "./app-inline-select.ts";
 import type { SelectOverlayOptions } from "./overlays/select-overlay.ts";
 import type { UiState } from "./state.ts";
 import type { NanobossTuiTheme } from "./theme.ts";
-import { AppLiveUpdates } from "./app-live-updates.ts";
 import {
   createAppCoreComponents,
   createAppView,
@@ -46,6 +40,10 @@ import {
 } from "./app-lifecycle.ts";
 import { AppModelPrompts } from "./app-model-prompts.ts";
 import { bindAppInteractions } from "./app-interaction-wiring.ts";
+import {
+  createAppRuntimeHelpers,
+  type AppRuntimeHelpers,
+} from "./app-runtime-helpers.ts";
 export type { NanobossTuiAppParams } from "./app-types.ts";
 import type {
   ControllerLike,
@@ -58,8 +56,6 @@ import type {
 } from "./app-types.ts";
 
 const TOOL_OUTPUT_TOGGLE_COOLDOWN_MS = 150;
-const CTRL_C_EXIT_WINDOW_MS = 500;
-
 export class NanobossTuiApp {
   private readonly cwd: string;
   private readonly theme: NanobossTuiTheme;
@@ -69,11 +65,7 @@ export class NanobossTuiApp {
   private readonly view: ViewLike;
   private readonly controller: ControllerLike;
   private readonly clipboardImageProvider: ClipboardImageProvider;
-  private readonly liveUpdates: AppLiveUpdates;
-  private readonly continuationComposer: AppContinuationComposer;
-  private readonly autocomplete: AppAutocompleteSync;
-  private readonly sigintExit: AppSigintExit;
-  private readonly inlineSelect: AppInlineSelect;
+  private readonly helpers: AppRuntimeHelpers;
   private readonly modelPrompts: AppModelPrompts;
   private readonly now: () => number;
   private state: UiState;
@@ -117,42 +109,21 @@ export class NanobossTuiApp {
       theme: this.theme,
       state: this.state,
     });
-    this.autocomplete = new AppAutocompleteSync({
-      editor: this.editor,
+    this.helpers = createAppRuntimeHelpers({
+      deps,
       cwd: this.cwd,
-    });
-    this.sigintExit = new AppSigintExit({
-      controller: this.controller,
-      editor: this.editor,
-      now: this.now,
-      exitWindowMs: CTRL_C_EXIT_WINDOW_MS,
-    });
-    this.continuationComposer = new AppContinuationComposer({
       tui: this.tui,
       view: this.view,
       editor: this.editor,
       controller: this.controller,
       theme: this.theme,
-      getState: () => this.state,
-      requestRender: (force) => this.requestRender(force),
-    });
-    this.inlineSelect = new AppInlineSelect({
-      tui: this.tui,
-      view: this.view,
-      theme: this.theme,
-      continuationComposer: this.continuationComposer,
-      requestRender: (force) => this.requestRender(force),
-    });
-    this.liveUpdates = new AppLiveUpdates({
-      tui: this.tui,
-      view: this.view,
       getState: () => this.state,
       setState: (state) => {
         this.state = state;
       },
       isStopped: () => this.stopped,
-      setInterval: deps.setInterval ?? globalThis.setInterval,
-      clearInterval: deps.clearInterval ?? globalThis.clearInterval,
+      now: this.now,
+      requestRender: (force) => this.requestRender(force),
     });
     this.modelPrompts = new AppModelPrompts({
       cwd: this.cwd,
@@ -189,7 +160,7 @@ export class NanobossTuiApp {
     return await runAppLifecycle({
       tui: this.tui,
       terminal: this.terminal,
-      liveUpdates: this.liveUpdates,
+      liveUpdates: this.helpers.liveUpdates,
       controller: this.controller,
       stop: async () => await this.stop(),
     });
@@ -219,27 +190,27 @@ export class NanobossTuiApp {
   }
 
   requestSigintExit(): boolean {
-    return this.sigintExit.request();
+    return this.helpers.sigintExit.request();
   }
 
   private syncState(state: UiState): void {
     if (this.theme.getToolCardMode() !== state.toolCardThemeMode) {
       this.theme.setToolCardMode(state.toolCardThemeMode);
     }
-    this.state = this.liveUpdates.withPauseState(state);
+    this.state = this.helpers.liveUpdates.withPauseState(state);
     this.updateEditorSubmitState();
-    this.autocomplete.refresh(this.state);
+    this.helpers.autocomplete.refresh(this.state);
     this.view.setState(this.state);
-    this.continuationComposer.sync();
+    this.helpers.continuationComposer.sync();
     this.requestRender();
   }
 
   private requestRender(force?: boolean): void {
-    this.liveUpdates.requestRender(force);
+    this.helpers.liveUpdates.requestRender(force);
   }
 
   private toggleLiveUpdatesPaused(): void {
-    this.liveUpdates.togglePaused();
+    this.helpers.liveUpdates.togglePaused();
   }
 
   private updateEditorSubmitState(): void {
@@ -283,7 +254,7 @@ export class NanobossTuiApp {
   private async promptWithInlineSelect<T extends string>(
     options: SelectOverlayOptions<T>,
   ): Promise<T | undefined> {
-    return await this.inlineSelect.prompt(options);
+    return await this.helpers.inlineSelect.prompt(options);
   }
 
   private createBindingAppHooks() {
@@ -295,7 +266,7 @@ export class NanobossTuiApp {
       clearClearedComposerStateSnapshot: () => {
         this.clearedComposerStateSnapshot = undefined;
       },
-      handleCtrlC: () => this.sigintExit.request(),
+      handleCtrlC: () => this.helpers.sigintExit.request(),
       handleCtrlVImagePaste: async () => await this.handleCtrlVImagePaste(),
       toggleLiveUpdatesPaused: () => {
         this.toggleLiveUpdatesPaused();
@@ -315,7 +286,7 @@ export class NanobossTuiApp {
       setStopped: (stopped) => {
         this.stopped = stopped;
       },
-      liveUpdates: this.liveUpdates,
+      liveUpdates: this.helpers.liveUpdates,
       controller: this.controller,
       terminal: this.terminal,
       tui: this.tui,
