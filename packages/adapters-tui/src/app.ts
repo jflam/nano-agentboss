@@ -8,19 +8,19 @@ import type {
 import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
 import { createClipboardImageProvider, type ClipboardImageProvider } from "./clipboard/provider.ts";
 import {
-  attachClipboardImage,
   clearComposerState,
-  findImageTokenRangeAtCursor,
   type ComposerState,
   createComposerState,
   reconcileComposerState,
 } from "./composer.ts";
 import {
-  applyEditorTextAndCursor,
   buildPromptInputForSubmit,
   cloneComposerState,
-  cursorToTextIndex,
 } from "./app-composer.ts";
+import {
+  handleCtrlVImagePaste as handleCtrlVImagePasteInternal,
+  handleImageTokenDeletion as handleImageTokenDeletionInternal,
+} from "./app-clipboard.ts";
 import {
   buildContinuationFormSignature,
   getFormContinuation,
@@ -57,7 +57,6 @@ import { getFormRenderer, type FormRenderContext } from "./form-renderers.ts";
 import type { UiState } from "./state.ts";
 import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
 import { NanobossAppView } from "./views.ts";
-import type { ClipboardImage } from "./composer.ts";
 import {
   promptForInlineModelSelection as promptForInlineModelSelectionInternal,
   promptToPersistInlineModelSelection as promptToPersistInlineModelSelectionInternal,
@@ -369,58 +368,21 @@ export class NanobossTuiApp {
   }
 
   private async handleCtrlVImagePaste(): Promise<void> {
-    const image = await this.clipboardImageProvider.readImage();
-    if (!image) {
-      this.controller.showLocalCard({
-        key: "local:clipboard",
-        title: "Clipboard",
-        markdown: "No image was readable from the clipboard.",
-        severity: "warn",
-      });
-      return;
-    }
-
-    const record = attachClipboardImage(this.composerState, image);
-    if (this.editor.insertTextAtCursor) {
-      this.editor.insertTextAtCursor(record.token);
-    } else {
-      this.editor.setText(`${this.editor.getText()}${record.token}`);
-    }
-    this.controller.showLocalCard({
-      key: "local:clipboard",
-      title: "Clipboard",
-      markdown: `Attached clipboard image as \`${record.token}\`.`,
-      severity: "info",
+    await handleCtrlVImagePasteInternal({
+      clipboardImageProvider: this.clipboardImageProvider,
+      composerState: this.composerState,
+      editor: this.editor,
+      showClipboardCard: (opts) => this.controller.showLocalCard(opts),
     });
   }
 
   private handleImageTokenDeletion(direction: "backspace" | "delete"): boolean {
-    const text = this.editor.getText();
-    if (text.length === 0 || this.composerState.imagesByToken.size === 0) {
-      return false;
-    }
-
-    const cursor = this.editor.getCursor?.();
-    if (!cursor) {
-      return false;
-    }
-
-    const cursorIndex = cursorToTextIndex(text, cursor);
-    const match = findImageTokenRangeAtCursor(this.composerState, text, cursorIndex, direction);
-    if (!match) {
-      return false;
-    }
-
-    this.composerState.imagesByToken.delete(match.token);
-    const nextText = `${text.slice(0, match.start)}${text.slice(match.end)}`;
-    applyEditorTextAndCursor(this.editor, nextText, match.start);
-    this.controller.showLocalCard({
-      key: "local:clipboard",
-      title: "Clipboard",
-      markdown: `Removed clipboard image \`${match.token}\`.`,
-      severity: "info",
+    return handleImageTokenDeletionInternal({
+      direction,
+      composerState: this.composerState,
+      editor: this.editor,
+      showClipboardCard: (opts) => this.controller.showLocalCard(opts),
     });
-    return true;
   }
 
   private handleCtrlC(): boolean {
