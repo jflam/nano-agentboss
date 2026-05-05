@@ -16,15 +16,17 @@ import {
 } from "./reducer-local-actions.ts";
 import { mergeAvailableCommands } from "./reducer-session-ready.ts";
 import {
-  reduceRunCancelledEvent,
-  reduceRunCompletedEvent,
-  reduceRunFailedEvent,
   reduceRunHeartbeatEvent,
-  reduceRunPausedEvent,
   reduceRunStartedEvent,
   reduceTextDeltaEvent,
   reduceTokenUsageEvent,
 } from "./reducer-run-events.ts";
+import {
+  reduceRunCancelledEvent,
+  reduceRunCompletedEvent,
+  reduceRunFailedEvent,
+  reduceRunPausedEvent,
+} from "./reducer-run-outcomes.ts";
 import {
   reduceRunRestoredEvent,
 } from "./reducer-run-restore.ts";

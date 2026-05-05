@@ -116,6 +116,7 @@ are:
 - `reducer-run-restore.ts`: reducer-owned restored run replay transitions
 - `reducer-run-events.ts`: reducer-owned live run lifecycle frontend event
   transitions
+- `reducer-run-outcomes.ts`: reducer-owned terminal run outcome transitions
 - `reducer-panel-cards.ts`: reducer-owned procedure-card and transcript card
   rendering helpers
 - `reducer-procedure-panel-turns.ts`: reducer-owned procedure-panel
@@ -209,8 +210,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 113
-- source lines: 9,462
+- source files: 114
+- source lines: 9,473
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -315,6 +316,8 @@ Measured during the 2026-05 TUI adapter review:
     of extension boot orchestration
   - split reducer-owned run lifecycle frontend event transitions out of the
     central reducer
+  - split reducer-owned terminal run outcome transitions out of live run
+    lifecycle updates
   - split CLI terminal control-character and signal helpers out of the TUI
     runner
   - split CLI TUI extension boot status buffering and process signal handling
