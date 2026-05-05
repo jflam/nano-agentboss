@@ -139,9 +139,9 @@ server/client APIs above.
 
 Measured during the 2026-05 HTTP adapter review:
 
-- source files: 6
-- source lines: 1,077
-- largest file: `src/server.ts` at 312 lines
+- source files: 8
+- source lines: 1,061
+- largest file: `src/server.ts` at 288 lines
 - public barrel wildcard exports: reduced from 5 to 0
 - public package symbols: reduced from 51 to 39
 - internalized package-entrypoint test seams:
@@ -149,6 +149,8 @@ Measured during the 2026-05 HTTP adapter review:
   `matchesServerBuild(...)`, `describeWorkspaceMismatch(...)`,
   `SessionEventLog`, `buildTurnDisplay(...)`, and unused app-runtime event
   guard aliases
+  - split prompt request parsing out of `src/server.ts` so the HTTP server
+    entrypoint only exports the server start API
 
 This is a public-surface cleanup. Runtime behavior is unchanged; focused tests
 still cover the internal parsing seams through source imports and the

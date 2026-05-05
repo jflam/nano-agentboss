@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseSessionPromptRequestBody } from "../src/server.ts";
+import { parseSessionPromptRequestBody } from "../src/prompt-request.ts";
 
 describe("HTTP prompt submission", () => {
   test("rejects empty structured prompt input before accepting the request", () => {
