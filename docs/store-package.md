@@ -260,10 +260,11 @@ The right standard for future tests is: if a new client capability depends on th
 
 Measured during the 2026-05 store boundary review:
 
-- source files: 12
-- source lines: 1,856
-- largest file: `src/session-store.ts` at 706 lines
+- source files: 13
+- source lines: 1,886
+- largest file: `src/session-store.ts` at 509 lines
 - runtime value exports: 24 -> 23
 - public wildcard exports: 0
 - code simplification applied: made `formatTimestamp(...)` a module-private
   helper behind the public session-picker formatting functions
+  and split session record/result shaping into private `session-records.ts`.

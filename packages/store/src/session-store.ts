@@ -4,12 +4,9 @@ import { dirname, join, resolve } from "node:path";
 import { writeJsonFileAtomicSync } from "@nanoboss/app-support";
 import {
   cellRefFromRunRef,
-  createCellRef,
-  createValueRef,
   valueRefFromRef,
 } from "./ref-store.ts";
 import { getSessionDir } from "./paths.ts";
-import { publicContinuationFromStored, publicKernelValueFromStored } from "./stored-values.ts";
 import {
   buildPreview,
   getValueAtPath,
@@ -19,8 +16,6 @@ import {
 } from "./stored-value-access.ts";
 import { PromptImageAttachmentStore } from "./prompt-image-attachments.ts";
 import type {
-  Continuation,
-  DownstreamAgentSelection,
   KernelValue,
   PromptImageSummary,
   PromptInput,
@@ -28,125 +23,32 @@ import type {
   RefStat,
   RunAncestorsOptions,
   RunDescendantsOptions,
-  RunFilterOptions,
   RunKind,
   RunListOptions,
-  RunRecord,
   RunRef,
   RunSummary,
 } from "@nanoboss/contracts";
 import { createRef, createRunRef } from "@nanoboss/contracts";
 import { inferDataShape, summarizeText, type ProcedureResult } from "@nanoboss/procedure-sdk";
+import {
+  matchesCell,
+  normalizeLimit,
+  normalizeProcedureResult,
+  toCellSummary,
+  toRunRecord,
+  toRunSummary,
+  type CellRecord,
+  type CellRef,
+  type CellSummary,
+  type CompleteRunOptions,
+  type RecentOptions,
+  type RunDraft,
+  type StoredRunRecord,
+  type StoredRunResult,
+} from "./session-records.ts";
 
-interface RunDraft {
-  run: RunRef;
-  procedure: string;
-  input: string;
-  meta: {
-    createdAt: string;
-    parentRunId?: string;
-    kind: RunKind;
-    dispatchCorrelationId?: string;
-    defaultAgentSelection?: DownstreamAgentSelection;
-    promptImages?: CellRecord["meta"]["promptImages"];
-  };
-  streamChunks: string[];
-}
-
-type CellRef = ReturnType<typeof createCellRef>;
-type ValueRef = ReturnType<typeof createValueRef>;
-
-interface CellRecord {
-  cellId: string;
-  procedure: string;
-  input: string;
-  output: {
-    data?: KernelValue;
-    display?: string;
-    stream?: string;
-    summary?: string;
-    memory?: string;
-    pause?: Continuation;
-    explicitDataSchema?: object;
-    agentUpdates?: unknown[];
-    replayEvents?: unknown[];
-  };
-  meta: {
-    createdAt: string;
-    parentCellId?: string;
-    kind: RunKind;
-    dispatchCorrelationId?: string;
-    defaultAgentSelection?: DownstreamAgentSelection;
-    promptImages?: PromptImageSummary[];
-  };
-}
-
-interface CellSummary {
-  cell: CellRef;
-  procedure: string;
-  kind: RunKind;
-  parentCellId?: string;
-  summary?: string;
-  memory?: string;
-  dataRef?: ValueRef;
-  displayRef?: ValueRef;
-  streamRef?: ValueRef;
-  dataShape?: ReturnType<typeof inferDataShape>;
-  explicitDataSchema?: object;
-  createdAt: string;
-}
-
-interface RecentOptions {
-  procedure?: string;
-  limit?: number;
-  excludeCellId?: string;
-}
-
-interface CompleteRunOptions {
-  display?: string;
-  stream?: string;
-  summary?: string;
-  raw?: string;
-  agentUpdates?: unknown[];
-  replayEvents?: unknown[];
-  meta?: Partial<CellRecord["meta"]>;
-}
-
-export interface StoredRunResult<T extends KernelValue = KernelValue> {
-  run: RunRef;
-  data?: T;
-  dataRef?: Ref;
-  display?: string;
-  displayRef?: Ref;
-  streamRef?: Ref;
-  memory?: string;
-  pause?: Continuation;
-  pauseRef?: Ref;
-  summary?: string;
-  dataShape?: ReturnType<typeof inferDataShape>;
-  explicitDataSchema?: object;
-  rawRef?: Ref;
-}
-
-interface StoredRunRecord extends RunRecord {
-  output: Omit<RunRecord["output"], "agentUpdates" | "replayEvents"> & {
-    agentUpdates?: unknown[];
-    replayEvents?: unknown[];
-  };
-}
-
-export function normalizeProcedureResult<T extends KernelValue = KernelValue>(
-  result: ProcedureResult<T> | string | void,
-): ProcedureResult<T> {
-  if (typeof result === "string") {
-    return {
-      display: result,
-      summary: summarizeText(result),
-    };
-  }
-
-  return result === undefined ? {} : result;
-}
+export { normalizeProcedureResult } from "./session-records.ts";
+export type { StoredRunResult } from "./session-records.ts";
 
 export class SessionStore {
   readonly sessionId: string;
@@ -433,7 +335,7 @@ export class SessionStore {
       }
 
       if (matchesCell(record, options)) {
-        descendants.push(this.toSummary(record));
+        descendants.push(toCellSummary(this.sessionId, record));
         if (limit !== undefined && descendants.length >= limit) {
           break;
         }
@@ -482,34 +384,13 @@ export class SessionStore {
     return loaded;
   }
 
-  private toSummary(record: CellRecord): CellSummary {
-    const cell = createCellRef(this.sessionId, record.cellId);
-
-    return {
-      cell,
-      procedure: record.procedure,
-      kind: record.meta.kind,
-      ...(record.meta.parentCellId ? { parentCellId: record.meta.parentCellId } : {}),
-      summary: record.output.summary,
-      memory: record.output.memory,
-      dataRef: record.output.data !== undefined ? createValueRef(cell, "output.data") : undefined,
-      displayRef: record.output.display !== undefined
-        ? createValueRef(cell, "output.display")
-        : undefined,
-      streamRef: record.output.stream !== undefined ? createValueRef(cell, "output.stream") : undefined,
-      dataShape: record.output.data !== undefined ? inferDataShape(record.output.data) : undefined,
-      explicitDataSchema: record.output.explicitDataSchema,
-      createdAt: record.meta.createdAt,
-    };
-  }
-
   private toSummaryByCellId(cellId: string): CellSummary {
     const record = this.cells.get(cellId);
     if (!record) {
       throw new Error(`Unknown cell: ${cellId}`);
     }
 
-    return this.toSummary(record);
+    return toCellSummary(this.sessionId, record);
   }
 
   private collectReverseSummaries(
@@ -538,7 +419,7 @@ export class SessionStore {
         continue;
       }
 
-      summaries.push(this.toSummary(record));
+      summaries.push(toCellSummary(this.sessionId, record));
       if (limit !== undefined && summaries.length >= limit) {
         break;
       }
@@ -626,81 +507,4 @@ export class SessionStore {
   discardPendingPromptImages(promptImages: CellRecord["meta"]["promptImages"]): void {
     this.attachments.discardPendingPromptImages(promptImages);
   }
-}
-
-function matchesCell(record: CellRecord, options: Pick<RunFilterOptions, "kind" | "procedure">): boolean {
-  if (options.kind && record.meta.kind !== options.kind) {
-    return false;
-  }
-
-  if (options.procedure && record.procedure !== options.procedure) {
-    return false;
-  }
-
-  return true;
-}
-
-function toRunRecord(sessionId: string, record: CellRecord): StoredRunRecord {
-  return {
-    run: {
-      sessionId,
-      runId: record.cellId,
-    },
-    kind: record.meta.kind,
-    procedure: record.procedure,
-    input: record.input,
-    output: {
-      data: publicKernelValueFromStored(record.output.data),
-      display: record.output.display,
-      stream: record.output.stream,
-      summary: record.output.summary,
-      memory: record.output.memory,
-      pause: publicContinuationFromStored(record.output.pause),
-      explicitDataSchema: record.output.explicitDataSchema,
-      agentUpdates: record.output.agentUpdates,
-      replayEvents: record.output.replayEvents,
-    },
-    meta: {
-      createdAt: record.meta.createdAt,
-      parentRunId: record.meta.parentCellId,
-      dispatchCorrelationId: record.meta.dispatchCorrelationId,
-      defaultAgentSelection: record.meta.defaultAgentSelection,
-      promptImages: record.meta.promptImages,
-    },
-  };
-}
-
-function toRunSummary(summary: CellSummary): RunSummary {
-  return {
-    run: createRunRef(summary.cell.sessionId, summary.cell.cellId),
-    procedure: summary.procedure,
-    kind: summary.kind,
-    parentRunId: summary.parentCellId,
-    summary: summary.summary,
-    memory: summary.memory,
-    dataRef: summary.dataRef
-      ? createRef(createRunRef(summary.dataRef.cell.sessionId, summary.dataRef.cell.cellId), summary.dataRef.path)
-      : undefined,
-    displayRef: summary.displayRef
-      ? createRef(createRunRef(summary.displayRef.cell.sessionId, summary.displayRef.cell.cellId), summary.displayRef.path)
-      : undefined,
-    streamRef: summary.streamRef
-      ? createRef(createRunRef(summary.streamRef.cell.sessionId, summary.streamRef.cell.cellId), summary.streamRef.path)
-      : undefined,
-    dataShape: summary.dataShape,
-    explicitDataSchema: summary.explicitDataSchema,
-    createdAt: summary.createdAt,
-  };
-}
-
-function normalizeLimit(value: number | undefined): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (!Number.isFinite(value)) {
-    return undefined;
-  }
-
-  return Math.max(0, Math.floor(value));
 }
