@@ -5,7 +5,6 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -16,6 +15,13 @@ import {
   ProcedureDispatchProgressEmitter,
   buildProcedureDispatchProgressPath,
 } from "./progress.ts";
+import {
+  buildProcedureDispatchJobPath,
+  buildProcedureDispatchJobsDir,
+  clearProcedureDispatchCancellation,
+  isProcedureDispatchCancellationRequested,
+  requestProcedureDispatchCancellation,
+} from "./files.ts";
 import {
   ProcedureCancelledError,
   ProcedureExecutionError,
@@ -40,11 +46,19 @@ import type { RuntimeBindings } from "../context/shared.ts";
 import { runResultFromRunRecord } from "../run-result.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "@nanoboss/app-support";
 
-const PROCEDURE_DISPATCH_JOBS_DIR = "procedure-dispatch-jobs";
-const PROCEDURE_DISPATCH_CANCELS_DIR = "procedure-dispatch-cancels";
 const DEFAULT_WAIT_MS = 1_000;
 const MAX_WAIT_MS = 2_000;
 const WAIT_POLL_MS = 100;
+
+export {
+  buildProcedureDispatchCancelPath,
+  buildProcedureDispatchCancelsDir,
+  buildProcedureDispatchJobPath,
+  buildProcedureDispatchJobsDir,
+  clearProcedureDispatchCancellation,
+  isProcedureDispatchCancellationRequested,
+  requestProcedureDispatchCancellation,
+} from "./files.ts";
 
 export type ProcedureDispatchJobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -556,43 +570,6 @@ export class ProcedureDispatchJobManager {
       clearInterval(timer);
     };
   }
-}
-
-export function buildProcedureDispatchJobsDir(rootDir: string): string {
-  return join(rootDir, PROCEDURE_DISPATCH_JOBS_DIR);
-}
-
-export function buildProcedureDispatchCancelsDir(rootDir: string): string {
-  return join(rootDir, PROCEDURE_DISPATCH_CANCELS_DIR);
-}
-
-export function buildProcedureDispatchJobPath(rootDir: string, dispatchId: string): string {
-  return join(buildProcedureDispatchJobsDir(rootDir), `${dispatchId}.json`);
-}
-
-export function buildProcedureDispatchCancelPath(rootDir: string, dispatchCorrelationId: string): string {
-  return join(buildProcedureDispatchCancelsDir(rootDir), `${dispatchCorrelationId}.cancel`);
-}
-
-export function requestProcedureDispatchCancellation(rootDir: string, dispatchCorrelationId: string): void {
-  mkdirSync(buildProcedureDispatchCancelsDir(rootDir), { recursive: true });
-  const targetPath = buildProcedureDispatchCancelPath(rootDir, dispatchCorrelationId);
-  const tempPath = `${targetPath}.${process.pid}.tmp`;
-  writeFileSync(tempPath, `${new Date().toISOString()}\n`, "utf8");
-  renameSync(tempPath, targetPath);
-}
-
-export function clearProcedureDispatchCancellation(rootDir: string, dispatchCorrelationId: string): void {
-  const filePath = buildProcedureDispatchCancelPath(rootDir, dispatchCorrelationId);
-  if (!existsSync(filePath)) {
-    return;
-  }
-
-  unlinkSync(filePath);
-}
-
-export function isProcedureDispatchCancellationRequested(rootDir: string, dispatchCorrelationId: string): boolean {
-  return existsSync(buildProcedureDispatchCancelPath(rootDir, dispatchCorrelationId));
 }
 
 export async function runProcedureDispatchWorkerCommand(argv: string[]): Promise<void> {

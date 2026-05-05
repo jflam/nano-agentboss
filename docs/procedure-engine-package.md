@@ -85,6 +85,8 @@ The central type is `ProcedureDispatchJobManager`.
 
 - [src/dispatch/jobs.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/jobs.ts:1)
   Job files, worker launch, wait/cancel/status reconciliation.
+- `src/dispatch/files.ts`
+  Dispatch job/cancellation path helpers and cancellation marker writes.
 - [src/dispatch/recovery.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/recovery.ts:1)
   Recovery when the outer polling path loses the terminal result.
 - [src/dispatch/progress.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/progress.ts:1)
@@ -394,9 +396,9 @@ If new execution logic is added outside these paths, that is usually a sign that
 
 Measured during the 2026-05 compatibility re-export review:
 
-- source files: 19
-- source lines: 3,071
-- largest file: `src/dispatch/jobs.ts` at 741 lines
+- source files: 20
+- source lines: 3,085
+- largest file: `src/dispatch/jobs.ts` at 718 lines
 - runtime value exports: 36 -> 30
 - public wildcard exports: 0
 - code simplification applied: removed compatibility re-exports for data-shape
