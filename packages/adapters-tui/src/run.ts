@@ -7,6 +7,7 @@ import {
   type TuiAppRunner,
 } from "./run-app.ts";
 import { cleanupTuiRun } from "./run-cleanup.ts";
+import { reportTuiRunExit } from "./run-exit-report.ts";
 export {
   assertInteractiveTty,
   canUseNanobossTui,
@@ -14,7 +15,6 @@ export {
 import { installTuiExitSignalHandlers } from "./run-signals.ts";
 import {
   addProcessSignalListener,
-  getSignalExitCode,
   setProcessExitCode,
   suspendReservedControlCharacters,
   type RestoreTerminalInput,
@@ -80,10 +80,10 @@ export async function runTuiCli(params: RunTuiCliParams, deps: RunTuiCliDeps = {
     });
   }
 
-  if (sessionId) {
-    (deps.writeStderr ?? process.stderr.write.bind(process.stderr))(`nanoboss session id: ${sessionId}\n`);
-  }
-  if (exitSignal) {
-    (deps.setExitCode ?? setProcessExitCode)(getSignalExitCode(exitSignal));
-  }
+  reportTuiRunExit({
+    sessionId,
+    exitSignal,
+    writeStderr: deps.writeStderr ?? process.stderr.write.bind(process.stderr),
+    setExitCode: deps.setExitCode ?? setProcessExitCode,
+  });
 }

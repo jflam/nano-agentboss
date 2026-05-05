@@ -204,6 +204,7 @@ are:
 - `run.ts`: public CLI runner and terminal/server lifecycle orchestration
 - `run-app.ts`: CLI app construction plus extension boot status replay
 - `run-cleanup.ts`: CLI signal, terminal, and private-server cleanup ordering
+- `run-exit-report.ts`: CLI session-id output and signal exit-code reporting
 - `run-extensions.ts`: CLI TUI extension boot status buffering and replay
 - `run-signals.ts`: CLI TUI process signal handling helpers
 - `run-terminal.ts`: CLI terminal control-character and process signal helpers
@@ -272,8 +273,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 147
-- source lines: 10,218
+- source files: 148
+- source lines: 10,238
 - largest file: `src/controller.ts` at 315 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -390,6 +391,8 @@ Measured during the 2026-05 TUI adapter review:
     public TUI runner
   - split CLI signal, terminal, and private-server cleanup ordering out of
     the public TUI runner
+  - split CLI session-id output and signal exit-code reporting out of the
+    public TUI runner
   - split public interactive-TTY guards out of the public TUI runner
   - split controller-owned session stream event reactions out of the TUI
     controller
