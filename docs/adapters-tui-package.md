@@ -123,7 +123,8 @@ are:
   helpers
 - `controller-stream.ts`: controller-owned session event stream lifecycle
   helpers
-- `controller-submit.ts`: controller-owned prompt submit command flow helper
+- `controller-submit.ts`: controller-owned prompt submit and queued-prompt
+  command flow helpers
 - `controller-types.ts`: controller public and app-facing dependency contracts
 - `views.ts`: transcript, chrome, and panel composition
 - `views-panels.ts`: non-transcript ui_panel chrome host components
@@ -155,8 +156,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 Measured during the 2026-05 TUI adapter review:
 
 - source files: 81
-- source lines: 8,972
-- largest file: `src/controller.ts` at 358 lines
+- source lines: 8,989
+- largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -226,8 +227,8 @@ Measured during the 2026-05 TUI adapter review:
     the TUI controller
   - split controller-owned session event stream lifecycle helpers out of the
     TUI controller
-  - split controller-owned prompt submit command flow helper out of the TUI
-    controller
+  - split controller-owned prompt submit and queued-prompt command flow
+    helpers out of the TUI controller
   - split controller public and app-facing dependency contracts out of the
     TUI controller
   - split the slash-aware app autocomplete provider and command-list

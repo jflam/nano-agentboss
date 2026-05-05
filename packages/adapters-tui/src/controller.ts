@@ -4,10 +4,6 @@ import {
 } from "@nanoboss/adapters-http";
 import type { PromptInput } from "@nanoboss/contracts";
 import { getBuildLabel } from "@nanoboss/app-support";
-import {
-  normalizePromptInput,
-  promptInputDisplayText,
-} from "@nanoboss/procedure-sdk";
 
 import { reduceUiState } from "./reducer.ts";
 import type { UiAction } from "./reducer-actions.ts";
@@ -43,7 +39,10 @@ import {
   applyControllerSessionStream,
   closeControllerStream,
 } from "./controller-stream.ts";
-import { handleControllerSubmit } from "./controller-submit.ts";
+import {
+  handleControllerSubmit,
+  queueControllerPrompt,
+} from "./controller-submit.ts";
 export type {
   NanobossTuiControllerDeps,
   NanobossTuiControllerParams,
@@ -124,14 +123,12 @@ export class NanobossTuiController {
   }
 
   async queuePrompt(input: string | PromptInput): Promise<void> {
-    const promptInput = normalizePromptInput(input);
-    const text = promptInputDisplayText(promptInput);
-    const trimmed = text.trim();
-    if (trimmed.length === 0 || !this.state.inputDisabled) {
-      return;
-    }
-
-    await this.handleBusyPromptInput(promptInput, text, trimmed, "queued");
+    await queueControllerPrompt({
+      input,
+      getState: () => this.state,
+      handleBusyPromptInput: async (promptInput, text, trimmed, kind) =>
+        await this.handleBusyPromptInput(promptInput, text, trimmed, kind),
+    });
   }
 
   async cancelActiveRun(): Promise<void> {

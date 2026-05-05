@@ -110,3 +110,23 @@ export async function handleControllerSubmit(params: {
   params.deps.onClearInput?.();
   await params.forwardPrompt(promptInput);
 }
+
+export async function queueControllerPrompt(params: {
+  input: string | PromptInput;
+  getState: () => UiState;
+  handleBusyPromptInput: (
+    promptInput: PromptInput,
+    text: string,
+    trimmed: string,
+    kind: UiPendingPrompt["kind"],
+  ) => Promise<boolean>;
+}): Promise<void> {
+  const promptInput = normalizePromptInput(params.input);
+  const text = promptInputDisplayText(promptInput);
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || !params.getState().inputDisabled) {
+    return;
+  }
+
+  await params.handleBusyPromptInput(promptInput, text, trimmed, "queued");
+}
