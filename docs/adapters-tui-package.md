@@ -102,8 +102,9 @@ are:
 - `reducer-tool-calls.ts`: reducer-owned tool-call list and preview helpers
 - `reducer-tool-events.ts`: reducer-owned tool start/update event reducers
 - `reducer-turns.ts`: reducer-owned assistant turn and transcript helpers
-- `reducer-run-completion.ts`: reducer-owned terminal run and completion-note
-  helpers
+- `reducer-run-completion.ts`: reducer-owned terminal run cleanup helpers
+- `reducer-run-finalize-turn.ts`: reducer-owned assistant-turn finalization
+  and completion-note helpers
 - `reducer-panel-cards.ts`: reducer-owned procedure-card and transcript card
   rendering helpers
 - `reducer-procedure-panels.ts`: reducer-owned procedure-panel transcript
@@ -172,8 +173,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 90
-- source lines: 9,164
+- source files: 91
+- source lines: 9,169
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -271,6 +272,8 @@ Measured during the 2026-05 TUI adapter review:
     helpers out of generic ui_panel handling
   - split core chrome component factories and line formatting helpers out of
     the registration manifest
+  - split assistant-turn finalization and completion-note helpers out of
+    reducer run cleanup
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad
