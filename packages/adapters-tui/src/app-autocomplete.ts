@@ -2,8 +2,39 @@ import {
   type AutocompleteItem,
   CombinedAutocompleteProvider,
 } from "./pi-tui.ts";
+import type { EditorLike } from "./app-types.ts";
+import type { UiState } from "./state.ts";
 
-export class NanobossAutocompleteProvider extends CombinedAutocompleteProvider {
+export class AppAutocompleteSync {
+  private signature = "";
+
+  constructor(
+    private readonly deps: {
+      editor: EditorLike;
+      cwd: string;
+    },
+  ) {}
+
+  refresh(state: UiState): void {
+    const signature = state.availableCommands.join("\n");
+    if (signature === this.signature) {
+      return;
+    }
+
+    this.signature = signature;
+    this.deps.editor.setAutocompleteProvider(
+      new NanobossAutocompleteProvider(
+        state.availableCommands.map((command) => ({
+          value: command.startsWith("/") ? command.slice(1) : command,
+          label: command,
+        })),
+        this.deps.cwd,
+      ),
+    );
+  }
+}
+
+class NanobossAutocompleteProvider extends CombinedAutocompleteProvider {
   override applyCompletion(
     lines: string[],
     cursorLine: number,

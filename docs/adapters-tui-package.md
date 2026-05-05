@@ -73,7 +73,8 @@ are:
 - `app.ts`: terminal app wiring, editor behavior, and local command dispatch
 - `app-binding-hooks.ts`: app-level keybinding hook wiring for cooldown and
   queued-prompt behavior
-- `app-autocomplete.ts`: slash-aware app autocomplete provider
+- `app-autocomplete.ts`: slash-aware app autocomplete provider and command
+  list synchronization helper
 - `app-clipboard.ts`: app-level clipboard image paste and image-token deletion
   helpers
 - `app-composer.ts`: app-level composer snapshot, prompt-input, and cursor
@@ -152,8 +153,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 Measured during the 2026-05 TUI adapter review:
 
 - source files: 79
-- source lines: 8,894
-- largest file: `src/app.ts` at 370 lines
+- source lines: 8,911
+- largest file: `src/controller.ts` at 358 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -225,7 +226,8 @@ Measured during the 2026-05 TUI adapter review:
     controller
   - split controller public and app-facing dependency contracts out of the
     TUI controller
-  - split the slash-aware app autocomplete provider out of the TUI app
+  - split the slash-aware app autocomplete provider and command-list
+    synchronization helper out of the TUI app
   - split app-level inline model picker and persistence confirmation flow out
     of the TUI app
   - split expanded tool-card payload normalization helpers out of shared

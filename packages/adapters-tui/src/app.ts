@@ -26,7 +26,7 @@ import {
   ProcessTerminal,
   TUI,
 } from "./pi-tui.ts";
-import { NanobossAutocompleteProvider } from "./app-autocomplete.ts";
+import { AppAutocompleteSync } from "./app-autocomplete.ts";
 import { createAppBindingHooks as createAppBindingHooksInternal } from "./app-binding-hooks.ts";
 import { bindAppInputListener } from "./app-input-listener.ts";
 // Side-effect import: registers the core keybindings into the module-level
@@ -72,11 +72,11 @@ export class NanobossTuiApp {
   private readonly clipboardImageProvider: ClipboardImageProvider;
   private readonly liveUpdates: AppLiveUpdates;
   private readonly continuationComposer: AppContinuationComposer;
+  private readonly autocomplete: AppAutocompleteSync;
   private readonly now: () => number;
   private state: UiState;
   private readonly composerState = createComposerState();
   private clearedComposerStateSnapshot?: ComposerState;
-  private autocompleteSignature = "";
   private stopped = false;
   private lastToolOutputToggleAt = Number.NEGATIVE_INFINITY;
   private lastCtrlCAt = Number.NEGATIVE_INFINITY;
@@ -121,6 +121,10 @@ export class NanobossTuiApp {
     this.controller = deps.createController?.(params, controllerDeps) ?? new NanobossTuiController(params, controllerDeps);
     this.state = this.controller.getState();
     this.view = deps.createView?.(this.editor, this.theme, this.state) ?? new NanobossAppView(this.editor as Editor, this.theme, this.state);
+    this.autocomplete = new AppAutocompleteSync({
+      editor: this.editor,
+      cwd: this.cwd,
+    });
     this.continuationComposer = new AppContinuationComposer({
       tui: this.tui,
       view: this.view,
@@ -216,7 +220,7 @@ export class NanobossTuiApp {
     }
     this.state = this.liveUpdates.withPauseState(state);
     this.updateEditorSubmitState();
-    this.refreshAutocompleteProvider();
+    this.autocomplete.refresh(this.state);
     this.view.setState(this.state);
     this.continuationComposer.sync();
     this.requestRender();
@@ -266,24 +270,6 @@ export class NanobossTuiApp {
     this.lastCtrlCAt = now;
     this.editor.setText("");
     return false;
-  }
-
-  private refreshAutocompleteProvider(): void {
-    const signature = this.state.availableCommands.join("\n");
-    if (signature === this.autocompleteSignature) {
-      return;
-    }
-
-    this.autocompleteSignature = signature;
-    this.editor.setAutocompleteProvider(
-      new NanobossAutocompleteProvider(
-        this.state.availableCommands.map((command) => ({
-          value: command.startsWith("/") ? command.slice(1) : command,
-          label: command,
-        })),
-        this.cwd,
-      ),
-    );
   }
 
   private async promptForInlineModelSelection(
