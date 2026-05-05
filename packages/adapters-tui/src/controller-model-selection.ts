@@ -1,24 +1,19 @@
 import type { DownstreamAgentSelection } from "@nanoboss/contracts";
 import { createTextPromptInput } from "@nanoboss/procedure-sdk";
-import {
-  discoverAgentCatalog,
-  formatAgentCatalogRefreshError,
-  getProviderLabel,
-  hasAgentCatalogRefreshedToday,
-  isKnownModelSelectionInCatalog,
-} from "@nanoboss/agent-acp";
 
 import { buildModelCommand } from "./model-command.ts";
 import type { UiAction } from "./reducer-actions.ts";
 import type { ControllerLocalCardOptions } from "./controller-local-cards.ts";
 import {
+  validateInlineModelSelection,
+  type ControllerInlineModelValidationDeps,
+} from "./controller-model-inline-validation.ts";
+import {
   createLocalAgentSelectionAction,
   maybePersistDefaultSelection,
 } from "./controller-model-persistence.ts";
 
-export interface ControllerModelSelectionDeps {
-  discoverAgentCatalog?: typeof discoverAgentCatalog;
-  hasAgentCatalogRefreshedToday?: typeof hasAgentCatalogRefreshedToday;
+export interface ControllerModelSelectionDeps extends ControllerInlineModelValidationDeps {
   confirmPersistDefaultAgentSelection?: (
     selection: DownstreamAgentSelection,
   ) => Promise<boolean>;
@@ -31,53 +26,6 @@ export interface ControllerModelSelectionDeps {
 type WithLocalBusy = <T>(status: string, work: () => Promise<T>) => Promise<T>;
 type ShowLocalCard = (opts: ControllerLocalCardOptions) => void;
 type Dispatch = (action: UiAction) => void;
-
-async function validateInlineModelSelection(params: {
-  selection: DownstreamAgentSelection;
-  cwd: string;
-  deps: ControllerModelSelectionDeps;
-  withLocalBusy: WithLocalBusy;
-  showLocalCard: ShowLocalCard;
-}): Promise<DownstreamAgentSelection | undefined> {
-  const { selection } = params;
-  if (!selection.model) {
-    return undefined;
-  }
-
-  const refreshedToday = (params.deps.hasAgentCatalogRefreshedToday ?? hasAgentCatalogRefreshedToday)(
-    selection.provider,
-    {
-      config: { cwd: params.cwd },
-    },
-  );
-  const discoverCatalog = async () => await (params.deps.discoverAgentCatalog ?? discoverAgentCatalog)(
-    selection.provider,
-    {
-      config: { cwd: params.cwd },
-      ...(refreshedToday ? {} : { forceRefresh: true }),
-    },
-  );
-
-  try {
-    const catalog = refreshedToday
-      ? await discoverCatalog()
-      : await params.withLocalBusy(
-        `[model] refreshing ${getProviderLabel(selection.provider)} model cache…`,
-        discoverCatalog,
-      );
-    return isKnownModelSelectionInCatalog(catalog, selection.model)
-      ? selection
-      : undefined;
-  } catch (error) {
-    params.showLocalCard({
-      key: "local:model",
-      title: "Model",
-      markdown: formatAgentCatalogRefreshError(selection.provider, error),
-      severity: "error",
-    });
-    return undefined;
-  }
-}
 
 export async function applyInlineModelSelection(params: {
   selection: DownstreamAgentSelection;

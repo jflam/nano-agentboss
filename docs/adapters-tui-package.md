@@ -131,8 +131,10 @@ are:
   and terminal-event helpers
 - `controller-local-cards.ts`: controller-owned local card action and
   `/extensions` card formatting helpers
-- `controller-model-selection.ts`: controller-owned inline model validation,
-  picker, and default persistence helpers
+- `controller-model-inline-validation.ts`: controller-owned inline model
+  catalog refresh and validation helpers
+- `controller-model-selection.ts`: controller-owned model selection
+  application, picker, and default persistence helpers
 - `controller-model-persistence.ts`: controller-owned model selection
   persistence and local selection action helpers
 - `controller-prompt-flow.ts`: controller-owned prompt forwarding and
@@ -212,8 +214,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 115
-- source lines: 9,474
+- source files: 116
+- source lines: 9,483
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -352,6 +354,8 @@ Measured during the 2026-05 TUI adapter review:
     dispatch
   - split model selection persistence and local selection action helpers out
     of controller model validation/picker flow
+  - split inline model catalog refresh and validation helpers out of
+    controller model picker flow
   - split core identity activity-bar segments out of the run-state
     registration manifest
   - split `/extensions` local command card formatting out of generic command
