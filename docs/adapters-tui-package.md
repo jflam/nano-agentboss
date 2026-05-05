@@ -71,6 +71,7 @@ The package is currently the largest Nanoboss package. The main size drivers
 are:
 
 - `app.ts`: terminal app wiring, editor behavior, and local command dispatch
+- `app-autocomplete.ts`: slash-aware app autocomplete provider
 - `app-composer.ts`: app-level composer snapshot, prompt-input, and cursor
   helpers
 - `app-continuation-form.ts`: app-level continuation form extraction and
@@ -109,9 +110,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 55
-- source lines: 7,980
-- largest file: `src/app.ts` at 774 lines
+- source files: 56
+- source lines: 7,983
+- largest file: `src/app.ts` at 743 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -143,6 +144,7 @@ Measured during the 2026-05 TUI adapter review:
     helpers out of the TUI controller
   - split controller-owned local card action and `/extensions` card formatting
     helpers out of the TUI controller
+  - split the slash-aware app autocomplete provider out of the TUI app
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad

@@ -44,14 +44,13 @@ import {
   listSelectableModelOptionsFromCatalog,
 } from "@nanoboss/agent-acp";
 import {
-  type AutocompleteItem,
-  CombinedAutocompleteProvider,
   Editor,
   ProcessTerminal,
   TUI,
   isKeyRelease,
   matchesKey,
 } from "./pi-tui.ts";
+import { NanobossAutocompleteProvider } from "./app-autocomplete.ts";
 import { dispatchKeyBinding, type BindingCtx, type KeyBindingAppHooks } from "./bindings.ts";
 // Side-effect import: registers the core keybindings into the module-level
 // registry so dispatchKeyBinding() resolves them without the caller having
@@ -159,36 +158,6 @@ interface NanobossTuiAppDeps {
 
 const TOOL_OUTPUT_TOGGLE_COOLDOWN_MS = 150;
 const CTRL_C_EXIT_WINDOW_MS = 500;
-
-class NanobossAutocompleteProvider extends CombinedAutocompleteProvider {
-  override applyCompletion(
-    lines: string[],
-    cursorLine: number,
-    cursorCol: number,
-    item: AutocompleteItem,
-    prefix: string,
-  ): {
-    lines: string[];
-    cursorLine: number;
-    cursorCol: number;
-  } {
-    if (prefix.startsWith("/")) {
-      const currentLine = lines[cursorLine] ?? "";
-      const beforePrefix = currentLine.slice(0, cursorCol - prefix.length);
-      if (beforePrefix.trim() === "") {
-        const completedLines = [...lines];
-        completedLines[cursorLine] = `${beforePrefix}/${item.value} ${currentLine.slice(cursorCol)}`;
-        return {
-          lines: completedLines,
-          cursorLine,
-          cursorCol: beforePrefix.length + item.value.length + 2,
-        };
-      }
-    }
-
-    return super.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
-  }
-}
 
 export class NanobossTuiApp {
   private readonly cwd: string;
