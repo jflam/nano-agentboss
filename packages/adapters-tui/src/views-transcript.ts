@@ -1,10 +1,10 @@
-import { Container, Spacer, type Component } from "./pi-tui.ts";
+import { Container, type Component } from "./pi-tui.ts";
 import type { UiProcedurePanel, UiState, UiToolCall, UiTranscriptItem, UiTurn } from "./state.ts";
 import type { NanobossTuiTheme } from "./theme.ts";
 import { registerChromeContribution } from "./chrome.ts";
-import { ToolCardComponent } from "./components/tool-card.ts";
 import { ProcedurePanelTranscriptComponent } from "./views-procedure-panels.ts";
 import { TurnTranscriptComponent } from "./views-turns.ts";
+import { ToolTranscriptEntryComponent } from "./views-tool-transcript.ts";
 
 /**
  * Transcript component used by the core "transcript" chrome contribution.
@@ -48,43 +48,6 @@ class TranscriptComponent implements Component {
 
   invalidate(): void {
     this.container.invalidate();
-  }
-}
-
-class ToolTranscriptEntryComponent implements Component {
-  private readonly container = new Container();
-
-  constructor(
-    private readonly theme: NanobossTuiTheme,
-    private toolCall: UiToolCall,
-    private expanded: boolean,
-  ) {
-    this.rebuild();
-  }
-
-  setToolCall(toolCall: UiToolCall, expanded: boolean, forceRefresh = false): void {
-    if (!forceRefresh && this.toolCall === toolCall && this.expanded === expanded) {
-      return;
-    }
-
-    this.toolCall = toolCall;
-    this.expanded = expanded;
-    this.rebuild();
-  }
-
-  render(width: number): string[] {
-    return this.container.render(width);
-  }
-
-  invalidate(): void {
-    this.container.invalidate();
-    this.rebuild();
-  }
-
-  private rebuild(): void {
-    this.container.clear();
-    this.container.addChild(new ToolCardComponent(this.theme, this.toolCall, this.expanded));
-    this.container.addChild(new Spacer(1));
   }
 }
 
