@@ -26,7 +26,6 @@ import {
   sendStopRequest as sendStopRequestInternal,
 } from "./controller-stop.ts";
 import {
-  buildPendingPromptAction,
   forwardPrompt as forwardPromptInternal,
 } from "./controller-prompt-flow.ts";
 import { toggleSessionAutoApprove as toggleSessionAutoApproveInternal } from "./controller-auto-approve.ts";
@@ -41,6 +40,7 @@ import {
   stopControllerLifecycle,
 } from "./controller-lifecycle.ts";
 import { applyControllerSessionEventStream } from "./controller-session-events.ts";
+import { enqueueControllerPendingPrompt } from "./controller-pending-prompts.ts";
 export type {
   NanobossTuiControllerDeps,
   NanobossTuiControllerParams,
@@ -231,17 +231,13 @@ export class NanobossTuiController {
   }
 
   private async enqueuePendingPrompt(promptInput: PromptInput, kind: UiPendingPrompt["kind"]): Promise<void> {
-    const pendingPrompt = buildPendingPromptAction({
+    this.nextPendingPromptId = await enqueueControllerPendingPrompt({
       promptInput,
       kind,
       nextPendingPromptId: this.nextPendingPromptId,
+      dispatch: (action) => this.dispatch(action),
+      cancelActiveRun: async () => await this.cancelActiveRun(),
     });
-    this.nextPendingPromptId = pendingPrompt.nextPendingPromptId;
-    this.dispatch(pendingPrompt.action);
-
-    if (kind === "steering") {
-      await this.cancelActiveRun();
-    }
   }
 
   private async handleBusyPromptInput(

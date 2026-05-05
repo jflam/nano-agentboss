@@ -155,6 +155,8 @@ are:
   catalog refresh and validation helpers
 - `controller-model-selection.ts`: controller-owned model selection
   application, picker, and default persistence helpers
+- `controller-pending-prompts.ts`: controller-owned pending-prompt enqueue,
+  id advancement, and steering cancel helper
 - `controller-model-persistence.ts`: controller-owned model selection
   persistence and local selection action helpers
 - `controller-prompt-flow.ts`: controller-owned prompt forwarding and
@@ -253,8 +255,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 135
-- source lines: 9,976
+- source files: 136
+- source lines: 10,000
 - largest file: `src/app.ts` at 333 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -348,6 +350,8 @@ Measured during the 2026-05 TUI adapter review:
     controller
   - split controller-owned prompt forwarding and pending-prompt flushing
     helpers out of the TUI controller
+  - split controller-owned pending-prompt enqueue and steering cancel handling
+    out of the TUI controller
   - split controller-owned initial run/connect/resume lifecycle helper out of
     the TUI controller
   - split controller-owned HTTP session connect/create and `/new` session
