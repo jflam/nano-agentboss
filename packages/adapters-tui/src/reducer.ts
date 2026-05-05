@@ -12,9 +12,9 @@ import {
   applyProcedurePanel,
 } from "./reducer-procedure-panels.ts";
 import {
-  mergeAvailableCommands,
   reduceLocalUiAction,
 } from "./reducer-local-actions.ts";
+import { mergeAvailableCommands } from "./reducer-session-ready.ts";
 import {
   reduceRunCancelledEvent,
   reduceRunCompletedEvent,

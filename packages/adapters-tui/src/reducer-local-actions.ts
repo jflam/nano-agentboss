@@ -1,40 +1,18 @@
-import type { FrontendCommand } from "@nanoboss/adapters-http";
-
-import { LOCAL_TUI_COMMANDS } from "./commands.ts";
-import {
-  createInitialUiState,
-  type UiState,
-} from "./state.ts";
+import type { UiState } from "./state.ts";
 import { applyLocalProcedurePanel } from "./reducer-procedure-panels.ts";
 import {
   reduceLocalSendFailed,
   reduceLocalUserSubmitted,
 } from "./reducer-local-turns.ts";
 import type { UiLocalAction } from "./reducer-actions.ts";
+import { reduceSessionReady } from "./reducer-session-ready.ts";
 
 export const STOP_REQUESTED_STATUS = "[run] ESC received - stopping at next tool boundary...";
 
 export function reduceLocalUiAction(state: UiState, action: UiLocalAction): UiState {
   switch (action.type) {
     case "session_ready":
-      return {
-        ...createInitialUiState({
-          cwd: action.cwd,
-          buildLabel: action.buildLabel,
-          agentLabel: action.agentLabel,
-          showToolCalls: state.showToolCalls,
-          expandedToolOutput: state.expandedToolOutput,
-          toolCardThemeMode: state.toolCardThemeMode,
-          simplify2AutoApprove: action.autoApprove,
-          toolCardsHidden: state.toolCardsHidden,
-        }),
-        sessionId: action.sessionId,
-        buildLabel: action.buildLabel,
-        agentLabel: action.agentLabel,
-        simplify2AutoApprove: action.autoApprove,
-        defaultAgentSelection: action.defaultAgentSelection,
-        availableCommands: mergeAvailableCommands(action.commands),
-      };
+      return reduceSessionReady(state, action);
     case "local_user_submitted":
       return reduceLocalUserSubmitted(state, action);
     case "local_send_failed":
@@ -138,15 +116,4 @@ export function reduceLocalUiAction(state: UiState, action: UiLocalAction): UiSt
 
   const _exhaustive: never = action;
   return _exhaustive;
-}
-
-export function mergeAvailableCommands(commands: FrontendCommand[]): string[] {
-  return uniqueStrings([
-    ...commands.map((command) => `/${command.name}`),
-    ...LOCAL_TUI_COMMANDS.map((command) => command.name),
-  ]);
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values)];
 }
