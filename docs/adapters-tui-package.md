@@ -136,6 +136,8 @@ are:
   components
 - `components/tool-card-expanded.ts`: expanded tool-card payload
   normalization helpers
+- `components/tool-card-diff.ts`: tool-card diff detection and line styling
+  helpers
 - `components/tool-card-format.ts`: shared tool-card rendering and line
   formatting helpers
 - `theme-languages.ts`: file-extension language inference for syntax
@@ -161,8 +163,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 84
-- source lines: 9,019
+- source files: 85
+- source lines: 9,027
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -247,6 +249,8 @@ Measured during the 2026-05 TUI adapter review:
   - split app-level inline model picker and persistence confirmation flow out
     of the TUI app
   - split expanded tool-card payload normalization helpers out of shared
+    tool-card formatting
+  - split tool-card diff detection and line styling helpers out of shared
     tool-card formatting
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter

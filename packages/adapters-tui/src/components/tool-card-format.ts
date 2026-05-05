@@ -12,6 +12,10 @@ import {
   getExpandedToolErrorBlock,
   getExpandedToolResultBlock,
 } from "./tool-card-expanded.ts";
+import {
+  formatDiffLine,
+  looksLikeDiffBlock,
+} from "./tool-card-diff.ts";
 
 export {
   formatExpandedToolHeader,
@@ -19,6 +23,9 @@ export {
   getExpandedToolInputBlock,
   getExpandedToolResultBlock,
 } from "./tool-card-expanded.ts";
+export {
+  formatDiffLine,
+} from "./tool-card-diff.ts";
 
 const DEFAULT_COLLAPSED_LINES = 6;
 
@@ -185,32 +192,6 @@ export function formatWarnings(theme: NanobossTuiTheme, block: ToolPreviewBlock 
   );
 }
 
-export function formatDiffLine(theme: NanobossTuiTheme, line: string): string {
-  if (
-    line.startsWith("diff --git ")
-    || line.startsWith("index ")
-    || line.startsWith("--- ")
-    || line.startsWith("+++ ")
-    || line.startsWith("*** ")
-  ) {
-    return theme.toolCardMeta(line);
-  }
-
-  if (line.startsWith("@@")) {
-    return theme.toolCardAccent(line);
-  }
-
-  if (line.startsWith("+")) {
-    return theme.toolCardSuccess(line);
-  }
-
-  if (line.startsWith("-")) {
-    return theme.toolCardError(line);
-  }
-
-  return theme.toolCardBody(line);
-}
-
 export function formatErrorLines(
   theme: NanobossTuiTheme,
   block: ToolPreviewBlock | undefined,
@@ -240,33 +221,6 @@ function getToolCodeContext(toolCall: UiToolCall): { shouldHighlight: boolean; l
     shouldHighlight: toolName === "read" || toolName === "write" || explicitLanguage !== undefined || inferredLanguage !== undefined,
     language: explicitLanguage ?? inferredLanguage,
   };
-}
-
-function looksLikeDiffBlock(lines: string[]): boolean {
-  let hasUnifiedFileHeaders = false;
-  let hasUnifiedHunk = false;
-  let hasGitDiffHeader = false;
-  let hasApplyPatchHeader = false;
-
-  for (const line of lines) {
-    if (line.startsWith("diff --git ")) {
-      hasGitDiffHeader = true;
-    } else if (line.startsWith("--- ") || line.startsWith("+++ ")) {
-      hasUnifiedFileHeaders = true;
-    } else if (line.startsWith("@@")) {
-      hasUnifiedHunk = true;
-    } else if (
-      line.startsWith("*** Begin Patch")
-      || line.startsWith("*** Update File:")
-      || line.startsWith("*** Add File:")
-      || line.startsWith("*** Delete File:")
-      || line.startsWith("*** Move to:")
-    ) {
-      hasApplyPatchHeader = true;
-    }
-  }
-
-  return hasApplyPatchHeader || (hasUnifiedFileHeaders && hasUnifiedHunk) || (hasGitDiffHeader && (hasUnifiedFileHeaders || hasUnifiedHunk));
 }
 
 export function joinToolContent(...groups: Array<string[] | string | undefined>): string[] {
