@@ -32,7 +32,6 @@ import {
   executeProcedure,
   procedureDispatchResultFromRecoveredRun,
   type RuntimeBindings,
-  runProcedureCancelHook,
   type SessionUpdateEmitter,
   startProcedureDispatchProgressBridge,
   ProcedureCancelledError,
@@ -65,6 +64,7 @@ import {
   resolveCommand,
   toRuntimeContinuation,
 } from "./continuations.ts";
+import { requestContinuationCancel as requestContinuationCancelInternal } from "./continuation-cancel.ts";
 import { prepareDefaultPrompt } from "./default-agent-policy.ts";
 import {
   capturePersistedRuntimeEvents,
@@ -307,49 +307,14 @@ export class NanobossService {
       return false;
     }
 
-    const pending = session.pendingContinuation;
-    if (!pending) {
-      return false;
-    }
-
-    const procedure = this.registry.get(pending.procedure);
-    const cancelResult = procedure
-      ? await runProcedureCancelHook(procedure, pending.state, {
-          sessionId,
-          cwd: session.cwd,
-        })
-      : { ok: true as const };
-
-    if (!cancelResult.ok) {
-      const message = formatErrorMessage(cancelResult.error);
-      session.events.publish(sessionId, {
-        type: "procedure_panel",
-        runId: pending.run.runId,
-        procedure: pending.procedure,
-        panelId: `panel-${pending.run.runId}-cancel-error`,
-        rendererId: "nb/error@1",
-        payload: {
-          procedure: pending.procedure,
-          message: `cancelling /${pending.procedure}: ${message}`,
-        },
-        severity: "error",
-        dismissible: false,
-      });
-    }
-
-    const cancellationMessage = defaultCancellationMessage("soft_stop");
-    publishRunCancelled({
+    return await requestContinuationCancelInternal({
       session,
       sessionId,
-      runId: pending.run.runId,
-      procedure: pending.procedure,
-      message: cancellationMessage,
-      markRunActivity: () => {},
-      run: pending.run,
+      registry: this.registry,
+      setPendingContinuation: (continuation) => {
+        this.setPendingContinuation(sessionId, session, continuation);
+      },
     });
-    this.setPendingContinuation(sessionId, session, undefined);
-    persistSessionState(session);
-    return true;
   }
 
   destroySession(sessionId: string): void {

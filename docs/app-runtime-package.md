@@ -120,6 +120,9 @@ entrypoint APIs. Generic data helpers belong in `@nanoboss/procedure-sdk` or
   Live session state and persisted descriptor helpers.
 - `src/continuations.ts`
   Continuation command conversion and pending continuation state.
+- `src/continuation-cancel.ts`
+  Paused continuation cancel-hook execution, error panel publication, and
+  terminal cancellation persistence.
 - `src/default-agent-policy.ts`
   Default downstream-agent prewarm and prompt preparation policy.
 - `src/memory-cards.ts`
@@ -193,9 +196,9 @@ HTTP/frontend flow:
 
 Measured during the 2026-05 app-runtime review:
 
-- source files: 21
-- source lines: 4,051
-- largest file: `src/service.ts` at 881 lines
+- source files: 22
+- source lines: 4,073
+- largest file: `src/service.ts` at 846 lines
 - public barrel wildcard exports: reduced from 2 to 0
 - public app-runtime symbols: reduced from 58 to 57 by removing the accidental
   `UiApiImpl` value re-export
@@ -203,6 +206,8 @@ Measured during the 2026-05 app-runtime review:
   preview helper exports, unused runtime-event guard aliases, prompt/memory
   presentation helpers, async dispatch-result parsing/guards, and the session
   event-log implementation
+- code simplification applied: split paused continuation cancellation handling
+  into a private helper while preserving the `NanobossService` method
 
 The small surface reduction matters more than the raw symbol count: the package
 now exports runtime abstractions intentionally instead of forwarding every
