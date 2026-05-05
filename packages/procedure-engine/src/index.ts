@@ -33,8 +33,11 @@ export {
   isProcedureDispatchCancellationRequested,
   ProcedureDispatchJobManager,
   requestProcedureDispatchCancellation,
-  runProcedureDispatchWorkerCommand,
 } from "./dispatch/jobs.ts";
+
+export {
+  runProcedureDispatchWorkerCommand,
+} from "./dispatch/worker-command.ts";
 
 export {
   buildProcedureDispatchProgressPath,

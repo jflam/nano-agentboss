@@ -16,7 +16,6 @@ import {
   ProcedureExecutionError,
   executeProcedure,
 } from "../procedure-runner.ts";
-import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { SessionStore } from "@nanoboss/store";
 import type {
   DownstreamAgentSelection,
@@ -32,7 +31,6 @@ import { resolveDownstreamAgentConfig } from "../agent-config.ts";
 import type { RuntimeBindings } from "../context/shared.ts";
 import { runResultFromRunRecord } from "../run-result.ts";
 import { appendTimingTraceEvent, createRunTimingTrace } from "@nanoboss/app-support";
-import { parseProcedureDispatchWorkerArgs } from "./worker-args.ts";
 import {
   isDeadWorkerJob,
   isTerminalStatus,
@@ -510,24 +508,6 @@ export class ProcedureDispatchJobManager {
       clearInterval(timer);
     };
   }
-}
-
-export async function runProcedureDispatchWorkerCommand(argv: string[]): Promise<void> {
-  const params = parseProcedureDispatchWorkerArgs(argv);
-  const manager = new ProcedureDispatchJobManager({
-    cwd: params.cwd,
-    sessionId: params.sessionId,
-    rootDir: params.rootDir,
-    getRegistry: () => loadProcedureDispatchRegistry(params.cwd),
-  });
-  await manager.run(params.dispatchId);
-}
-
-async function loadProcedureDispatchRegistry(cwd: string): Promise<ProcedureRegistryLike> {
-  const registry = new ProcedureRegistry({ cwd });
-  registry.loadBuiltins();
-  await registry.loadFromDisk();
-  return registry;
 }
 
 function clampWaitMs(value: number | undefined): number {

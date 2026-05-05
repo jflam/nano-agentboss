@@ -93,6 +93,8 @@ The central type is `ProcedureDispatchJobManager`.
   Dispatch job/cancellation path helpers and cancellation marker writes.
 - `src/dispatch/worker-args.ts`
   Detached dispatch worker CLI argument parsing.
+- `src/dispatch/worker-command.ts`
+  Detached dispatch worker command entrypoint and registry loading.
 - `src/dispatch/status.ts`
   Dispatch terminal-status checks, dead-worker detection, cancellation marking,
   and status result shaping.
@@ -135,7 +137,7 @@ The CLI does call this package directly for the internal worker entrypoint:
 
 - `nanoboss procedure-dispatch-worker`
 - routed by [nanoboss.ts](/Users/jflam/agentboss/workspaces/nanoboss/nanoboss.ts:56)
-- implemented by [runProcedureDispatchWorkerCommand(...)](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/jobs.ts:517)
+- implemented by [runProcedureDispatchWorkerCommand(...)](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/worker-command.ts:6)
 
 So the package has two runtime-facing roles:
 
@@ -405,11 +407,13 @@ If new execution logic is added outside these paths, that is usually a sign that
 
 Measured during the 2026-05 compatibility re-export review:
 
-- source files: 24
-- source lines: 3,127
-- largest file: `src/dispatch/jobs.ts` at 539 lines
+- source files: 25
+- source lines: 3,133
+- largest file: `src/dispatch/jobs.ts` at 519 lines
 - runtime value exports: 36 -> 30
 - public wildcard exports: 0
 - code simplification applied: removed compatibility re-exports for data-shape
   helpers and self-command helpers; centralized the duplicated timing trace
   writer and public timing trace imports in `@nanoboss/app-support`
+- code simplification applied: split the detached dispatch worker command and
+  disk registry loading out of the job manager module
