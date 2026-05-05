@@ -12,8 +12,6 @@ export type {
 } from "./session-runtime.ts";
 
 export {
-  isProcedureDispatchResult,
-  isProcedureDispatchStatusResult,
   type ListRunsArgs,
   type ProcedureDispatchResult,
   type ProcedureDispatchStartToolResult,

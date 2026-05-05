@@ -3,7 +3,6 @@ import {
   type ProcedureDispatchStartToolResult,
   type ProcedureDispatchStatusToolResult,
   type ProcedureListResult,
-  isProcedureDispatchStatusResult,
 } from "@nanoboss/app-runtime";
 import type { ProcedureMetadata } from "@nanoboss/procedure-sdk";
 
@@ -101,6 +100,16 @@ function isProcedureDispatchStartResult(value: unknown): value is ProcedureDispa
     ((value as { status?: unknown }).status === "queued" ||
       (value as { status?: unknown }).status === "running" ||
       (value as { status?: unknown }).status === "completed")
+  );
+}
+
+function isProcedureDispatchStatusResult(value: unknown): value is ProcedureDispatchStatusToolResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { dispatchId?: unknown }).dispatchId === "string" &&
+    typeof (value as { procedure?: unknown }).procedure === "string" &&
+    typeof (value as { status?: unknown }).status === "string"
   );
 }
 
