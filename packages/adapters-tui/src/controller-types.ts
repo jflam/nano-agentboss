@@ -1,7 +1,5 @@
 import {
   type FrontendCommand,
-  type FrontendEventEnvelope,
-  type SessionStreamHandle,
 } from "@nanoboss/adapters-http";
 import type { DownstreamAgentSelection } from "@nanoboss/contracts";
 import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
@@ -12,6 +10,7 @@ import type { ControllerModelSelectionDeps } from "./controller-model-selection.
 import type { ControllerPromptFlowDeps } from "./controller-prompt-flow.ts";
 import type { ControllerSessionDeps } from "./controller-session.ts";
 import type { ControllerStopDeps } from "./controller-stop.ts";
+import type { ControllerStreamDeps } from "./controller-stream.ts";
 
 export interface SessionResponse {
   sessionId: string;
@@ -36,13 +35,8 @@ export interface NanobossTuiControllerDeps
     ControllerModelSelectionDeps,
     ControllerSessionDeps,
     ControllerStopDeps,
-    ControllerPromptFlowDeps {
-  startSessionEventStream?: (params: {
-    baseUrl: string;
-    sessionId: string;
-    onEvent: (event: FrontendEventEnvelope) => void;
-    onError?: (error: unknown) => void;
-  }) => SessionStreamHandle;
+    ControllerPromptFlowDeps,
+    ControllerStreamDeps {
   promptForModelSelection?: (
     currentSelection?: DownstreamAgentSelection,
   ) => Promise<DownstreamAgentSelection | undefined>;

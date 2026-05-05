@@ -1,6 +1,4 @@
 import {
-  startSessionEventStream,
-  isRenderedFrontendEvent,
   type FrontendEventEnvelope,
   type SessionStreamHandle,
 } from "@nanoboss/adapters-http";
@@ -53,6 +51,10 @@ import {
   maybeFlushPendingPrompt as maybeFlushPendingPromptInternal,
 } from "./controller-prompt-flow.ts";
 import { toggleSessionAutoApprove as toggleSessionAutoApproveInternal } from "./controller-auto-approve.ts";
+import {
+  applyControllerSessionStream,
+  closeControllerStream,
+} from "./controller-stream.ts";
 export type {
   NanobossTuiControllerDeps,
   NanobossTuiControllerParams,
@@ -289,11 +291,7 @@ export class NanobossTuiController {
     }
 
     this.stopped = true;
-    if (this.stream) {
-      this.stream.close();
-      await this.stream.closed;
-      this.stream = undefined;
-    }
+    this.stream = await closeControllerStream(this.stream);
   }
 
   private dispatch(action: UiAction): void {
@@ -302,35 +300,15 @@ export class NanobossTuiController {
   }
 
   private async applySession(session: SessionResponse): Promise<void> {
-    if (this.stream) {
-      this.stream.close();
-      await this.stream.closed;
-    }
-
-    this.dispatch({
-      type: "session_ready",
-      sessionId: session.sessionId,
-      cwd: session.cwd,
-      buildLabel: session.buildLabel,
-      agentLabel: session.agentLabel,
-      autoApprove: session.autoApprove,
-      commands: session.commands,
-      defaultAgentSelection: session.defaultAgentSelection,
-    });
-
-    this.stream = (this.deps.startSessionEventStream ?? startSessionEventStream)({
-      baseUrl: this.params.serverUrl,
-      sessionId: session.sessionId,
+    this.stream = await applyControllerSessionStream({
+      deps: this.deps,
+      serverUrl: this.params.serverUrl,
+      stream: this.stream,
+      session,
+      dispatch: (action) => this.dispatch(action),
       onEvent: (event) => {
-        if (isRenderedFrontendEvent(event)) {
-          this.dispatch({ type: "frontend_event", event });
-        }
         this.maybeSendLatchedStopRequest(event);
         void this.maybeFlushPendingPrompt(event);
-      },
-      onError: (error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.dispatch({ type: "local_status", text: `[stream] ${message}` });
       },
     });
   }

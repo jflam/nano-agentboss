@@ -109,6 +109,8 @@ are:
 - `controller-session.ts`: controller-owned HTTP session connect/create helpers
 - `controller-stop.ts`: controller-owned run stop and continuation cancel
   helpers
+- `controller-stream.ts`: controller-owned session event stream lifecycle
+  helpers
 - `controller-types.ts`: controller public and app-facing dependency contracts
 - `views.ts`: transcript, chrome, and panel composition
 - `views-panels.ts`: non-transcript ui_panel chrome host components
@@ -135,9 +137,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 71
-- source lines: 8,566
-- largest file: `src/controller.ts` at 517 lines
+- source files: 72
+- source lines: 8,610
+- largest file: `src/app.ts` at 504 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -194,6 +196,8 @@ Measured during the 2026-05 TUI adapter review:
     controller
   - split controller-owned run stop and continuation cancel helpers out of
     the TUI controller
+  - split controller-owned session event stream lifecycle helpers out of the
+    TUI controller
   - split controller public and app-facing dependency contracts out of the
     TUI controller
   - split the slash-aware app autocomplete provider out of the TUI app
