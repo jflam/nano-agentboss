@@ -9,9 +9,6 @@
     "packages/adapters-mcp/src/stdio-jsonrpc.ts": [
       "exports",
       "types"
-    ],
-    "packages/adapters-mcp/src/server.ts": [
-      "exports"
     ]
   },
   "workspaces": {
