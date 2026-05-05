@@ -127,6 +127,8 @@ entrypoint APIs. Generic data helpers belong in `@nanoboss/procedure-sdk` or
 - `src/procedure-dispatch-result.ts`
   Internal async procedure dispatch result parsing from downstream agent tool
   payloads.
+- `src/procedure-dispatch-manager.ts`
+  Async procedure dispatch wait/cancel manager helpers.
 - `src/tool-call-preview.ts`
   Adapter-neutral tool-call summary blocks.
 - `src/turn-display.ts`
@@ -188,9 +190,9 @@ HTTP/frontend flow:
 
 Measured during the 2026-05 app-runtime review:
 
-- source files: 19
-- source lines: 4,009
-- largest file: `src/service.ts` at 1,101 lines
+- source files: 20
+- source lines: 4,032
+- largest file: `src/service.ts` at 1,044 lines
 - public barrel wildcard exports: reduced from 2 to 0
 - public app-runtime symbols: reduced from 58 to 57 by removing the accidental
   `UiApiImpl` value re-export

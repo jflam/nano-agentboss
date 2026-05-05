@@ -31,8 +31,6 @@ import {
 import { readStoredSessionMetadata } from "@nanoboss/store";
 import {
   executeProcedure,
-  ProcedureDispatchJobManager,
-  type ProcedureDispatchStatusResult,
   procedureDispatchResultFromRecoveredRun,
   type RuntimeBindings,
   runProcedureCancelHook,
@@ -43,6 +41,10 @@ import {
   waitForRecoveredProcedureDispatchRun,
 } from "@nanoboss/procedure-engine";
 import { CompositeSessionUpdateEmitter } from "./composite-session-update-emitter.ts";
+import {
+  cancelActiveProcedureDispatches,
+  waitForProcedureDispatchResult,
+} from "./procedure-dispatch-manager.ts";
 import {
   buildRunCancelledEvent,
   buildRunCompletedEvent,
@@ -72,7 +74,6 @@ import {
   extractProcedureDispatchFailure,
   extractProcedureDispatchId,
   extractProcedureDispatchResult,
-  extractProcedureDispatchStatus,
 } from "./procedure-dispatch-result.ts";
 import type { AgentTokenUsage } from "@nanoboss/contracts";
 import {
@@ -290,7 +291,7 @@ export class NanobossService {
 
     activeRun.softStopRequested = true;
     activeRun.softStopController.abort();
-    this.cancelActiveProcedureDispatches(sessionId, session, activeRun);
+    cancelActiveProcedureDispatches(sessionId, session, activeRun);
   }
 
   /**
@@ -357,7 +358,7 @@ export class NanobossService {
       return;
     }
 
-    this.cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
+    cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
     session.activeRun?.abortController.abort();
     session.activeRun?.softStopController.abort();
     session.defaultAgentSession.close();
@@ -461,7 +462,8 @@ export class NanobossService {
         });
       }
 
-      const dispatchStatus = await this.waitForProcedureDispatchResult({
+      const dispatchStatus = await waitForProcedureDispatchResult({
+        registry: this.registry,
         session,
         promptUpdates: promptResult.updates,
         signal: options.signal,
@@ -525,65 +527,6 @@ export class NanobossService {
       options.activeRun?.dispatchCorrelationIds.delete(dispatchCorrelationId);
       await stopProgressBridge();
     }
-  }
-
-  private cancelActiveProcedureDispatches(
-    sessionId: string,
-    session: SessionState,
-    activeRun: ActiveRunState | undefined,
-  ): void {
-    if (!activeRun || activeRun.dispatchCorrelationIds.size === 0) {
-      return;
-    }
-
-    const manager = new ProcedureDispatchJobManager({
-      cwd: session.cwd,
-      sessionId,
-      rootDir: session.store.rootDir,
-      getRegistry: async () => {
-        throw new Error("Procedure registry is unavailable during cancellation.");
-      },
-    });
-
-    for (const dispatchCorrelationId of activeRun.dispatchCorrelationIds) {
-      manager.cancelByCorrelationId(dispatchCorrelationId);
-    }
-  }
-
-  private async waitForProcedureDispatchResult(params: {
-    session: SessionState;
-    promptUpdates: acp.SessionUpdate[];
-    signal?: AbortSignal;
-    softStopSignal?: AbortSignal;
-  }): Promise<ProcedureDispatchStatusResult | undefined> {
-    const dispatchId = extractProcedureDispatchId(params.promptUpdates);
-    if (!dispatchId) {
-      return undefined;
-    }
-
-    const manager = this.createProcedureDispatchManager(params.session);
-    let latest = extractProcedureDispatchStatus(params.promptUpdates) ?? await manager.status(dispatchId);
-    while (latest.status === "queued" || latest.status === "running") {
-      if (params.softStopSignal?.aborted) {
-        throw new RunCancelledError(defaultCancellationMessage("soft_stop"), "soft_stop");
-      }
-      if (params.signal?.aborted) {
-        throw new RunCancelledError(defaultCancellationMessage("abort"), "abort");
-      }
-
-      latest = await manager.wait(dispatchId, 1_000);
-    }
-
-    return latest;
-  }
-
-  private createProcedureDispatchManager(session: SessionState): ProcedureDispatchJobManager {
-    return new ProcedureDispatchJobManager({
-      cwd: session.cwd,
-      sessionId: session.store.sessionId,
-      rootDir: session.store.rootDir,
-      getRegistry: async () => this.registry,
-    });
   }
 
   private applyDefaultAgentSelection(
@@ -763,7 +706,7 @@ export class NanobossService {
       throw new Error("prompt is required");
     }
 
-    this.cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
+    cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
     session.activeRun?.abortController.abort();
     session.activeRun?.softStopController.abort();
 
