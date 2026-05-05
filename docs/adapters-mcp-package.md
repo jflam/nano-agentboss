@@ -80,7 +80,10 @@ Those seams are intentionally not exported from the package entrypoint.
 ## Package Structure
 
 - `src/server.ts`
-  MCP tool definitions, runtime method dispatch, and stdio server entrypoint.
+  MCP tool listing/calling, runtime method dispatch, and stdio server
+  entrypoint.
+- `src/tool-definitions.ts`
+  Runtime-service-backed MCP tool definitions.
 - `src/tool-args.ts`
   MCP tool input schemas and argument parsing helpers.
 - `src/jsonrpc.ts`
@@ -126,9 +129,9 @@ only parse MCP arguments, call runtime methods, and format MCP tool results.
 
 Measured during the 2026-05 MCP adapter review:
 
-- source files: 8
-- source lines: 1,236
-- largest file: `src/server.ts` at 434 lines
+- source files: 9
+- source lines: 1,240
+- largest file: `src/tool-definitions.ts` at 374 lines
 - public barrel wildcard exports: reduced from 4 to 0
 - public package symbols: reduced from 26 to 10
 - internalized package-entrypoint test seams:
@@ -139,14 +142,14 @@ This is a public-surface cleanup. Runtime behavior is unchanged; tests still
 cover the lower-level seams through direct source imports. MCP result
 formatting now lives outside the server entrypoint in `src/tool-result-format.ts`,
 and stdio framing lives outside the server loop in
-`src/stdio-jsonrpc-framing.ts`. Tool argument schemas and parsing now live in
-`src/tool-args.ts`, keeping `src/server.ts` focused on the tool table and MCP
-dispatch.
+`src/stdio-jsonrpc-framing.ts`. Tool definitions and tool argument parsing now
+live in `src/tool-definitions.ts` and `src/tool-args.ts`, keeping
+`src/server.ts` focused on list/call dispatch and stdio server wiring.
 
 ## Good Future Targets
 
-- Split the large tool table in `src/server.ts` if more tools are added, while
-  keeping the public `runMcpServer(...)` and `callMcpTool(...)` entrypoints.
+- Keep `src/tool-definitions.ts` as the runtime-backed tool table while
+  preserving the public `runMcpServer(...)` and `callMcpTool(...)` entrypoints.
 - Move per-agent config writers into private files if registration logic grows.
 - Keep MCP result formatting close to the tool table unless another adapter
   needs the same formatting.
