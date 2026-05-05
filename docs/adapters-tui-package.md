@@ -145,6 +145,9 @@ are:
 - `controller-types.ts`: controller public and app-facing dependency contracts
 - `boot-extension-context.ts`: extension context factory and contribution
   namespacing helpers
+- `build-freshness-rules.ts`: TUI build-freshness evaluation and git-status
+  path filtering rules
+- `build-freshness.ts`: TUI build-freshness filesystem and git probing helper
 - `run-terminal.ts`: CLI terminal control-character and process signal helpers
 - `core-bindings.ts`: core keybinding registration manifest
 - `core-bindings-actions.ts`: core keybinding app/controller action
@@ -198,8 +201,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 107
-- source lines: 9,333
+- source files: 108
+- source lines: 9,341
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -284,6 +287,8 @@ Measured during the 2026-05 TUI adapter review:
     helpers out of the TUI controller
   - split controller public and app-facing dependency contracts out of the
     TUI controller
+  - split TUI build-freshness evaluation and git-status path filtering rules
+    out of filesystem/git probing
   - split the slash-aware app autocomplete provider and command-list
     synchronization helper out of the TUI app
   - split app-level inline model picker and persistence confirmation flow out
