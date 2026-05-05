@@ -4,14 +4,7 @@ import {
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
 
-import {
-  isExitRequest,
-  isExtensionsListRequest,
-  isModelPickerRequest,
-  isNewSessionRequest,
-  parseModelSelectionCommand,
-  parseToolCardThemeCommand,
-} from "./commands.ts";
+import { parseModelSelectionCommand } from "./commands.ts";
 import {
   applyInlineModelSelection,
   type ControllerModelSelectionDeps,
@@ -19,6 +12,10 @@ import {
 import type { ControllerLocalCardOptions } from "./controller-local-cards.ts";
 import type { UiAction } from "./reducer-actions.ts";
 import type { UiPendingPrompt, UiState } from "./state.ts";
+import {
+  handleIdleLocalSubmitCommand,
+  handleImmediateLocalSubmitCommand,
+} from "./controller-submit-local-commands.ts";
 
 interface ControllerSubmitDeps extends ControllerModelSelectionDeps {
   onClearInput?: () => void;
@@ -52,22 +49,13 @@ export async function handleControllerSubmit(params: {
     return;
   }
 
-  if (isExitRequest(trimmed)) {
-    params.deps.onClearInput?.();
-    params.requestExit();
-    return;
-  }
-
-  const toolCardThemeMode = parseToolCardThemeCommand(trimmed);
-  if (toolCardThemeMode) {
-    params.deps.onClearInput?.();
-    params.dispatch({ type: "local_tool_card_theme_mode", mode: toolCardThemeMode });
-    params.showLocalCard({
-      key: "local:tool-theme",
-      title: "Tool cards",
-      markdown: `Theme set to **${toolCardThemeMode}**.`,
-      severity: "info",
-    });
+  if (handleImmediateLocalSubmitCommand({
+    trimmed,
+    onClearInput: params.deps.onClearInput,
+    requestExit: params.requestExit,
+    dispatch: params.dispatch,
+    showLocalCard: params.showLocalCard,
+  })) {
     return;
   }
 
@@ -77,20 +65,13 @@ export async function handleControllerSubmit(params: {
     }
   }
 
-  if (isNewSessionRequest(trimmed)) {
-    params.deps.onClearInput?.();
-    await params.createNewSession();
-    return;
-  }
-
-  if (isExtensionsListRequest(trimmed)) {
-    params.deps.onClearInput?.();
-    params.emitExtensionsList();
-    return;
-  }
-
-  if (isModelPickerRequest(trimmed)) {
-    await params.openModelPicker();
+  if (await handleIdleLocalSubmitCommand({
+    trimmed,
+    onClearInput: params.deps.onClearInput,
+    createNewSession: params.createNewSession,
+    emitExtensionsList: params.emitExtensionsList,
+    openModelPicker: params.openModelPicker,
+  })) {
     return;
   }
 
