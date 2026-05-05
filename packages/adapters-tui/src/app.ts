@@ -10,14 +10,18 @@ import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
 import { createClipboardImageProvider, type ClipboardImageProvider } from "./clipboard/provider.ts";
 import {
   attachClipboardImage,
-  buildPromptInputFromComposer,
   clearComposerState,
   findImageTokenRangeAtCursor,
-  type ComposerImageRecord,
   type ComposerState,
   createComposerState,
   reconcileComposerState,
 } from "./composer.ts";
+import {
+  applyEditorTextAndCursor,
+  buildPromptInputForSubmit,
+  cloneComposerState,
+  cursorToTextIndex,
+} from "./app-composer.ts";
 
 import {
   NanobossTuiController,
@@ -764,70 +768,6 @@ export class NanobossTuiApp {
     clearIntervalFn(this.liveRefreshInterval);
     this.liveRefreshInterval = undefined;
   }
-}
-
-function buildPromptInputForSubmit(
-  composerState: ComposerState,
-  text: string,
-  clearedSnapshot?: ComposerState,
-): PromptInput {
-  const promptInput = buildPromptInputFromComposer(composerState, text);
-  if (promptInput.parts.some((part) => part.type === "image") || !clearedSnapshot) {
-    return promptInput;
-  }
-
-  return buildPromptInputFromComposer(clearedSnapshot, text);
-}
-
-function cloneComposerState(state: ComposerState): ComposerState {
-  return {
-    nextImageNumber: state.nextImageNumber,
-    imagesByToken: new Map<string, ComposerImageRecord>(state.imagesByToken),
-  };
-}
-
-function applyEditorTextAndCursor(editor: EditorLike, text: string, cursorIndex: number): void {
-  editor.setText(text);
-  const targetCursor = textIndexToCursor(text, cursorIndex);
-  if (editor.setCursor) {
-    editor.setCursor(targetCursor.line, targetCursor.col);
-    return;
-  }
-
-  const editorImpl = editor as EditorLike & {
-    state?: { cursorLine: number; cursorCol: number };
-    setCursorCol?: (col: number) => void;
-  };
-  if (!editorImpl.state) {
-    return;
-  }
-
-  editorImpl.state.cursorLine = targetCursor.line;
-  if (typeof editorImpl.setCursorCol === "function") {
-    editorImpl.setCursorCol(targetCursor.col);
-  } else {
-    editorImpl.state.cursorCol = targetCursor.col;
-  }
-}
-
-function cursorToTextIndex(text: string, cursor: { line: number; col: number }): number {
-  const lines = text.split("\n");
-  let index = 0;
-
-  for (let lineIndex = 0; lineIndex < cursor.line; lineIndex += 1) {
-    index += (lines[lineIndex] ?? "").length + 1;
-  }
-
-  return index + cursor.col;
-}
-
-function textIndexToCursor(text: string, index: number): { line: number; col: number } {
-  const clampedIndex = Math.max(0, Math.min(index, text.length));
-  const before = text.slice(0, clampedIndex);
-  const lines = before.split("\n");
-  const line = Math.max(0, lines.length - 1);
-  const col = (lines.at(-1) ?? "").length;
-  return { line, col };
 }
 
 interface FrontendContinuationWithFormId {
