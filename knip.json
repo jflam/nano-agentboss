@@ -10,9 +10,6 @@
       "exports",
       "types"
     ],
-    "packages/adapters-mcp/src/registration.ts": [
-      "exports"
-    ],
     "packages/adapters-mcp/src/server.ts": [
       "exports"
     ]

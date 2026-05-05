@@ -63,8 +63,8 @@ runtime setup uses `buildGlobalMcpStdioServer(...)` to mount the global
 inspection server.
 
 Individual helpers such as `registerMcpClaude(...)`, `registerMcpCodex(...)`,
-`registerMcpGemini(...)`, and `registerMcpCopilot(...)` stay internal test
-seams. Callers should use `registerSupportedAgentMcp(...)`.
+`registerMcpGemini(...)`, and `registerMcpCopilot(...)` are private
+implementation details. Tests cover them through `registerSupportedAgentMcp(...)`.
 
 ## Internal Seams
 
