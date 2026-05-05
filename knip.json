@@ -5,12 +5,6 @@
     "exports",
     "types"
   ],
-  "ignoreIssues": {
-    "packages/adapters-mcp/src/stdio-jsonrpc.ts": [
-      "exports",
-      "types"
-    ]
-  },
   "workspaces": {
     ".": {
       "entry": [

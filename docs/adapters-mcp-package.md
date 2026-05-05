@@ -125,8 +125,8 @@ only parse MCP arguments, call runtime methods, and format MCP tool results.
 
 Measured during the 2026-05 MCP adapter review:
 
-- source files: 6
-- source lines: 1,211
+- source files: 7
+- source lines: 1,216
 - largest file: `src/server.ts` at 538 lines
 - public barrel wildcard exports: reduced from 4 to 0
 - public package symbols: reduced from 26 to 10
@@ -136,7 +136,9 @@ Measured during the 2026-05 MCP adapter review:
 
 This is a public-surface cleanup. Runtime behavior is unchanged; tests still
 cover the lower-level seams through direct source imports. MCP result
-formatting now lives outside the server entrypoint in `src/tool-result-format.ts`.
+formatting now lives outside the server entrypoint in `src/tool-result-format.ts`,
+and stdio framing lives outside the server loop in
+`src/stdio-jsonrpc-framing.ts`.
 
 ## Good Future Targets
 

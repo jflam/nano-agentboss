@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   serializeStdioJsonRpcMessage,
   tryReadStdioJsonRpcMessage,
-} from "../src/stdio-jsonrpc.ts";
+} from "../src/stdio-jsonrpc-framing.ts";
 
 describe("stdio JSON-RPC framing", () => {
   test("reads newline-delimited JSON-RPC messages", () => {
