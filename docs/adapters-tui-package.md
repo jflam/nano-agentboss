@@ -144,6 +144,8 @@ are:
   namespacing helpers
 - `run-terminal.ts`: CLI terminal control-character and process signal helpers
 - `core-bindings.ts`: core keybinding registration manifest
+- `core-bindings-actions.ts`: core keybinding app/controller action
+  dispatch helpers
 - `core-bindings-help.ts`: core keybinding help-card markdown formatter
 - `core-chrome.ts`: core chrome contribution registration manifest
 - `core-chrome-components.ts`: core chrome component factories and line
@@ -190,8 +192,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 102
-- source lines: 9,280
+- source files: 103
+- source lines: 9,304
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -293,6 +295,8 @@ Measured during the 2026-05 TUI adapter review:
     reducer run cleanup
   - split core keybinding help-card formatting out of the registration
     manifest
+  - split core keybinding app/controller action dispatch helpers out of the
+    registration manifest
   - split app-to-controller dependency adapter wiring out of the TUI app
     constructor
   - split tool-card code language and highlighting context inference out of
