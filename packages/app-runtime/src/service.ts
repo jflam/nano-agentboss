@@ -22,7 +22,6 @@ import { resolveDownstreamAgentConfig } from "@nanoboss/procedure-engine";
 
 import {
   SessionEventLog,
-  toRuntimeCommands,
 } from "./runtime-events.ts";
 import { readStoredSessionMetadata } from "@nanoboss/store";
 import {
@@ -64,6 +63,11 @@ import {
   capturePersistedRuntimeEvents,
   restorePersistedSessionHistory,
 } from "./replay.ts";
+import {
+  mapRuntimeCommands,
+  publishSessionCommands,
+  refreshSessionCommands,
+} from "./runtime-commands.ts";
 import {
   buildSessionDescriptor,
   createSessionState,
@@ -117,7 +121,7 @@ export class NanobossService {
     const state = createSessionState({
       sessionId,
       cwd: params.cwd,
-      commands: mapAvailableCommands(this.registry),
+      commands: mapRuntimeCommands(this.registry),
       resolveDefaultAgentConfig: this.resolveDefaultAgentConfig,
       autoApprove: params.autoApprove,
       defaultAgentSelection: params.defaultAgentSelection,
@@ -125,10 +129,7 @@ export class NanobossService {
 
     this.sessions.set(sessionId, state);
     persistSessionState(state);
-    state.events.publish(sessionId, {
-      type: "commands_updated",
-      commands: state.commands,
-    });
+    publishSessionCommands(sessionId, state);
     publishPendingContinuation(sessionId, state);
 
     return buildSessionDescriptor(sessionId, state);
@@ -170,7 +171,7 @@ export class NanobossService {
     const state = createSessionState({
       sessionId: params.sessionId,
       cwd,
-      commands: mapAvailableCommands(this.registry),
+      commands: mapRuntimeCommands(this.registry),
       resolveDefaultAgentConfig: this.resolveDefaultAgentConfig,
       defaultAgentSelection: params.defaultAgentSelection ?? stored?.defaultAgentSelection,
       defaultAgentSessionId: stored?.defaultAgentSessionId,
@@ -185,10 +186,7 @@ export class NanobossService {
 
     this.sessions.set(params.sessionId, state);
     persistSessionState(state);
-    state.events.publish(params.sessionId, {
-      type: "commands_updated",
-      commands: state.commands,
-    });
+    publishSessionCommands(params.sessionId, state);
     publishPendingContinuation(params.sessionId, state);
 
     return buildSessionDescriptor(params.sessionId, state);
@@ -610,12 +608,10 @@ export class NanobossService {
       }
     } finally {
       heartbeat.stop();
-      const availableCommands = buildAvailableCommands(this.registry);
-      const commands = mapAvailableCommands(availableCommands);
-      session.commands = commands;
-      session.events.publish(sessionId, {
-        type: "commands_updated",
-        commands,
+      const availableCommands = refreshSessionCommands({
+        sessionId,
+        session,
+        registry: this.registry,
       });
       delegate?.emit({
         sessionUpdate: "available_commands_update",
@@ -638,13 +634,4 @@ export class NanobossService {
 
     return { stopReason: "end_turn", runId };
   }
-}
-
-function mapAvailableCommands(
-  registryOrCommands: ProcedureRegistry | acp.AvailableCommand[],
-): SessionState["commands"] {
-  const availableCommands = Array.isArray(registryOrCommands)
-    ? registryOrCommands
-    : buildAvailableCommands(registryOrCommands);
-  return toRuntimeCommands(availableCommands);
 }

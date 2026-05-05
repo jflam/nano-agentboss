@@ -116,6 +116,8 @@ entrypoint APIs. Generic data helpers belong in `@nanoboss/procedure-sdk` or
 - `src/runtime-tool-events.ts`
   Tool-call runtime event projection, preview shaping, cancellation status, and
   token usage extraction.
+- `src/runtime-commands.ts`
+  Command metadata projection and session command-update publication.
 - `src/composite-session-update-emitter.ts`
   Session update fanout into runtime events, token snapshots, and delegate
   emitters.
@@ -200,9 +202,9 @@ HTTP/frontend flow:
 
 Measured during the 2026-05 app-runtime review:
 
-- source files: 23
-- source lines: 3,532
-- largest file: `src/service.ts` at 650 lines
+- source files: 24
+- source lines: 3,552
+- largest file: `src/service.ts` at 637 lines
 - public barrel wildcard exports: reduced from 2 to 0
 - public app-runtime symbols: reduced from 58 to 57 by removing the accidental
   `UiApiImpl` value re-export
@@ -223,6 +225,8 @@ Measured during the 2026-05 app-runtime review:
   of `NanobossService`
 - code simplification applied: split pending continuation event publication
   out of `NanobossService`
+- code simplification applied: split runtime command projection and command
+  update publication out of `NanobossService`
 
 The small surface reduction matters more than the raw symbol count: the package
 now exports runtime abstractions intentionally instead of forwarding every
