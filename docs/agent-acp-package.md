@@ -244,9 +244,9 @@ The strongest package-level usage examples are in [packages/agent-acp/tests/agen
 
 Measured during the 2026-05 agent-acp boundary reviews:
 
-- source files: 17
-- source lines: 3,581
-- largest file: `src/token-metrics.ts` at 646 lines
+- source files: 18
+- source lines: 3,580
+- largest file: `src/session.ts` at 553 lines
 - runtime value exports: 51 -> 31
 - public wildcard exports: 0
 - code simplification applied:
@@ -265,6 +265,8 @@ Measured during the 2026-05 agent-acp boundary reviews:
     keeping `collectTokenSnapshot(...)` public for diagnostics
   - split model catalog discovery cache/persistence into a private helper while
     keeping refresh APIs unchanged
+  - split Copilot process-log discovery out of token metric parsing and
+    snapshot merging
 
 Those tests demonstrate:
 
