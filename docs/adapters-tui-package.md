@@ -75,6 +75,8 @@ are:
   queued-prompt behavior
 - `app-autocomplete.ts`: slash-aware app autocomplete provider and command
   list synchronization helper
+- `commands.ts`: local slash-command list, parsing, and submit-state helpers
+- `command-extensions-card.ts`: `/extensions` local command card formatting
 - `app-clipboard.ts`: app-level clipboard image paste and image-token deletion
   helpers
 - `app-composer.ts`: app-level composer snapshot, prompt-input, and cursor
@@ -188,7 +190,7 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 101
+- source files: 102
 - source lines: 9,280
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
@@ -308,6 +310,8 @@ Measured during the 2026-05 TUI adapter review:
     of controller model validation/picker flow
   - split core identity activity-bar segments out of the run-state
     registration manifest
+  - split `/extensions` local command card formatting out of generic command
+    parsing
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad
