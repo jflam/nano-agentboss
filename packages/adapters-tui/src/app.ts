@@ -39,7 +39,8 @@ import "./core-bindings.ts";
 // nb/simplify2-checkpoint@1 and nb/simplify2-focus-picker@1 without
 // the caller having to wire individual handlers.
 import "./core-form-renderers.ts";
-import { SelectOverlay, type SelectOverlayOptions } from "./overlays/select-overlay.ts";
+import { AppInlineSelect } from "./app-inline-select.ts";
+import type { SelectOverlayOptions } from "./overlays/select-overlay.ts";
 import type { UiState } from "./state.ts";
 import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
 import { NanobossAppView } from "./views.ts";
@@ -75,6 +76,7 @@ export class NanobossTuiApp {
   private readonly continuationComposer: AppContinuationComposer;
   private readonly autocomplete: AppAutocompleteSync;
   private readonly sigintExit: AppSigintExit;
+  private readonly inlineSelect: AppInlineSelect;
   private readonly now: () => number;
   private state: UiState;
   private readonly composerState = createComposerState();
@@ -139,6 +141,13 @@ export class NanobossTuiApp {
       controller: this.controller,
       theme: this.theme,
       getState: () => this.state,
+      requestRender: (force) => this.requestRender(force),
+    });
+    this.inlineSelect = new AppInlineSelect({
+      tui: this.tui,
+      view: this.view,
+      theme: this.theme,
+      continuationComposer: this.continuationComposer,
       requestRender: (force) => this.requestRender(force),
     });
     this.liveUpdates = new AppLiveUpdates({
@@ -291,21 +300,7 @@ export class NanobossTuiApp {
   private async promptWithInlineSelect<T extends string>(
     options: SelectOverlayOptions<T>,
   ): Promise<T | undefined> {
-    return await new Promise<T | undefined>((resolve) => {
-      this.continuationComposer.beginSelect();
-      const component = new SelectOverlay<T>(
-        this.tui as TUI,
-        this.theme,
-        options,
-        (value) => {
-          this.continuationComposer.restoreEditorComposer();
-          resolve(value);
-        },
-      );
-      this.view.showComposer(component);
-      this.tui.setFocus(component);
-      this.requestRender(true);
-    });
+    return await this.inlineSelect.prompt(options);
   }
 
   private createBindingAppHooks() {
