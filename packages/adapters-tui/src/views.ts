@@ -16,7 +16,7 @@ import {
 // NanobossAppView instance iterates them.
 import "./core-chrome.ts";
 import "./core-activity-bar.ts";
-import "./core-panels.ts";
+import "./core-panel-fallbacks.ts";
 import "./views-transcript.ts";
 import "./views-panels.ts";
 

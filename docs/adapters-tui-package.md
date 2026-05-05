@@ -229,6 +229,8 @@ are:
 - `core-chrome-lines.ts`: core chrome header, session, status, and footer line
   formatting helpers
 - `core-activity-identity.ts`: core identity activity-bar segment helpers
+- `core-panel-fallbacks.ts`: adapter-private error and notice panel renderer
+  registrations
 - `overlays/select-overlay.ts`: reusable select overlay component
 - `overlays/select-overlay-prompt.ts`: process-terminal select overlay prompt
   runner
@@ -292,8 +294,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 157
-- source lines: 10,400
+- source files: 158
+- source lines: 10,407
 - largest file: `src/controller.ts` at 315 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -303,6 +305,8 @@ Measured during the 2026-05 TUI adapter review:
     barrel while preserving the existing public surface
   - internalized transcript/select-overlay/core-card renderer helpers from the
     package entrypoint while keeping direct source-level tests for those seams
+  - split adapter-private error/notice panel renderer registration out of the
+    extension-contributed nb/card renderer module
   - split process-terminal select overlay prompting out of the reusable select
     overlay component
   - internalized local command parser/formatter helpers behind controller/app
