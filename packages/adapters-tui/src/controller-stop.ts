@@ -4,7 +4,7 @@ import {
   type FrontendEventEnvelope,
 } from "@nanoboss/adapters-http";
 
-import type { UiAction } from "./reducer.ts";
+import type { UiAction } from "./reducer-actions.ts";
 import type { UiState } from "./state.ts";
 
 export interface ControllerStopDeps {

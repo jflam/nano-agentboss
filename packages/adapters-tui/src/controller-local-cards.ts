@@ -1,7 +1,7 @@
 import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
 
 import { formatExtensionsCard } from "./commands.ts";
-import type { UiAction } from "./reducer.ts";
+import type { UiAction } from "./reducer-actions.ts";
 
 export interface ControllerLocalCardOptions {
   key?: string;

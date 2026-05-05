@@ -86,6 +86,8 @@ are:
   confirmation flow
 - `app-types.ts`: app-local dependency adapter contracts
 - `reducer.ts`: frontend event reduction and state transition logic
+- `reducer-actions.ts`: reducer action contracts shared by controller and
+  reducer helper modules
 - `reducer-local-actions.ts`: reducer-owned local/controller action handling
 - `reducer-tool-calls.ts`: reducer-owned tool-call list and preview helpers
 - `reducer-turns.ts`: reducer-owned assistant turn and transcript helpers
@@ -131,9 +133,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 69
-- source lines: 8,508
-- largest file: `src/controller.ts` at 545 lines
+- source files: 70
+- source lines: 8,515
+- largest file: `src/controller.ts` at 546 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -151,6 +153,7 @@ Measured during the 2026-05 TUI adapter review:
     behind adapter source modules and extension boot context wiring
   - split reducer-owned tool-call list and preview helpers out of the central
     reducer
+  - split reducer action contracts out of the central reducer
   - split reducer-owned local/controller action handling out of the central
     reducer
   - split reducer-owned assistant turn and transcript helpers out of the

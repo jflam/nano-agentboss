@@ -22,7 +22,8 @@ import {
   parseModelSelectionCommand,
   parseToolCardThemeCommand,
 } from "./commands.ts";
-import { reduceUiState, type UiAction } from "./reducer.ts";
+import { reduceUiState } from "./reducer.ts";
+import type { UiAction } from "./reducer-actions.ts";
 import { createInitialUiState, type UiPendingPrompt, type UiState } from "./state.ts";
 import {
   getBusyLocalCommandLabel,

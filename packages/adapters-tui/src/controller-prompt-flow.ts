@@ -8,7 +8,7 @@ import {
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
 
-import type { UiAction } from "./reducer.ts";
+import type { UiAction } from "./reducer-actions.ts";
 import type { UiPendingPrompt, UiState } from "./state.ts";
 import {
   formatPendingPromptClearStatus,

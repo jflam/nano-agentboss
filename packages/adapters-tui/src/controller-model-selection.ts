@@ -8,7 +8,7 @@ import {
 } from "@nanoboss/agent-acp";
 
 import { formatAgentSelectionLabel } from "./agent-label.ts";
-import type { UiAction } from "./reducer.ts";
+import type { UiAction } from "./reducer-actions.ts";
 import type { ControllerLocalCardOptions } from "./controller-local-cards.ts";
 
 export interface ControllerModelSelectionDeps {
