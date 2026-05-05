@@ -4,10 +4,10 @@ import type {
 import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
 import { createClipboardImageProvider, type ClipboardImageProvider } from "./clipboard/provider.ts";
 import {
-  clearComposerState,
   type ComposerState,
   createComposerState,
 } from "./composer.ts";
+import { createAppControllerDeps } from "./app-controller-deps.ts";
 import {
   handleCtrlVImagePaste as handleCtrlVImagePasteInternal,
   handleImageTokenDeletion as handleImageTokenDeletionInternal,
@@ -99,28 +99,19 @@ export class NanobossTuiApp {
     });
     this.clipboardImageProvider = deps.createClipboardImageProvider?.() ?? createClipboardImageProvider();
 
-    const controllerDeps: NanobossTuiControllerDeps = {
-      promptForModelSelection: async (currentSelection) => {
-        return await this.promptForInlineModelSelection(currentSelection);
-      },
-      confirmPersistDefaultAgentSelection: async (selection) => {
-        return await this.promptToPersistInlineModelSelection(selection);
-      },
-      persistDefaultAgentSelection: (selection) => {
-        writePersistedDefaultAgentSelection(selection);
-      },
-      listExtensionEntries: params.listExtensionEntries,
+    const controllerDeps: NanobossTuiControllerDeps = createAppControllerDeps({
+      appParams: params,
+      composerState: this.composerState,
+      editor: this.editor,
+      promptForModelSelection: async (currentSelection) =>
+        await this.promptForInlineModelSelection(currentSelection),
+      confirmPersistDefaultAgentSelection: async (selection) =>
+        await this.promptToPersistInlineModelSelection(selection),
+      persistDefaultAgentSelection: writePersistedDefaultAgentSelection,
       onStateChange: (state) => {
         this.syncState(state);
       },
-      onAddHistory: (text) => {
-        this.editor.addToHistory(text);
-      },
-      onClearInput: () => {
-        clearComposerState(this.composerState);
-        this.editor.setText("");
-      },
-    };
+    });
     this.controller = deps.createController?.(params, controllerDeps) ?? new NanobossTuiController(params, controllerDeps);
     this.state = this.controller.getState();
     this.view = deps.createView?.(this.editor, this.theme, this.state) ?? new NanobossAppView(this.editor as Editor, this.theme, this.state);

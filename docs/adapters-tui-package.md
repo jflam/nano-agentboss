@@ -79,6 +79,7 @@ are:
   helpers
 - `app-composer.ts`: app-level composer snapshot, prompt-input, and cursor
   helpers
+- `app-controller-deps.ts`: app-to-controller dependency adapter helper
 - `app-continuation-composer.ts`: app-level inline continuation composer
   lifecycle helpers
 - `app-continuation-form.ts`: app-level continuation form extraction and
@@ -175,8 +176,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 92
-- source lines: 9,171
+- source files: 93
+- source lines: 9,193
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -278,6 +279,8 @@ Measured during the 2026-05 TUI adapter review:
     reducer run cleanup
   - split core keybinding help-card formatting out of the registration
     manifest
+  - split app-to-controller dependency adapter wiring out of the TUI app
+    constructor
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
 exports should be deliberate additions, not accidental leakage from broad
