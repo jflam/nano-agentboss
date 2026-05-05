@@ -1,6 +1,5 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import {
-  normalizeAgentTokenUsage,
   toDownstreamAgentSelection,
 } from "@nanoboss/agent-acp";
 import {
@@ -9,7 +8,6 @@ import {
   type RunTimingTrace,
 } from "@nanoboss/app-support";
 import {
-  createTextPromptInput,
   RunCancelledError,
   defaultCancellationMessage,
   formatErrorMessage,
@@ -22,7 +20,6 @@ import {
 } from "@nanoboss/procedure-sdk";
 import { resolveDownstreamAgentConfig } from "@nanoboss/procedure-engine";
 
-import { buildMcpProcedureDispatchPrompt } from "./agent-runtime-instructions.ts";
 import {
   SessionEventLog,
   toRuntimeCommands,
@@ -30,19 +27,13 @@ import {
 import { readStoredSessionMetadata } from "@nanoboss/store";
 import {
   executeProcedure,
-  procedureDispatchResultFromRecoveredRun,
   type RuntimeBindings,
   type SessionUpdateEmitter,
-  startProcedureDispatchProgressBridge,
   ProcedureCancelledError,
   ProcedureExecutionError,
-  waitForRecoveredProcedureDispatchRun,
 } from "@nanoboss/procedure-engine";
 import { CompositeSessionUpdateEmitter } from "./composite-session-update-emitter.ts";
-import {
-  cancelActiveProcedureDispatches,
-  waitForProcedureDispatchResult,
-} from "./procedure-dispatch-manager.ts";
+import { cancelActiveProcedureDispatches } from "./procedure-dispatch-manager.ts";
 import {
   publishRunCancelled,
   publishRunCompleted,
@@ -53,7 +44,6 @@ import { ProcedureRegistry } from "@nanoboss/procedure-catalog";
 import { shouldLoadDiskCommands } from "./runtime-mode.ts";
 import {
   createActiveRunState,
-  type ActiveRunState,
   startRunHeartbeat,
 } from "./active-run.ts";
 import {
@@ -71,12 +61,6 @@ import {
   restorePersistedSessionHistory,
 } from "./replay.ts";
 import {
-  extractProcedureDispatchFailure,
-  extractProcedureDispatchId,
-  extractProcedureDispatchResult,
-} from "./procedure-dispatch-result.ts";
-import type { AgentTokenUsage } from "@nanoboss/contracts";
-import {
   buildSessionDescriptor,
   createSessionState,
   persistSessionState,
@@ -89,7 +73,6 @@ import type {
   PendingContinuation,
   PromptInput,
   RunRef,
-  RunResult,
 } from "@nanoboss/procedure-sdk";
 
 export class NanobossService {
@@ -337,161 +320,6 @@ export class NanobossService {
     timingTrace?: RunTimingTrace,
   ) {
     return prepareDefaultPrompt(session, promptInput, runId, timingTrace);
-  }
-
-  private async dispatchProcedureIntoDefaultConversation(
-    session: SessionState,
-    procedureName: string,
-    procedurePrompt: string,
-    emitter: CompositeSessionUpdateEmitter,
-    timingTrace: RunTimingTrace,
-    options: {
-      dispatchCorrelationId: string;
-      signal?: AbortSignal;
-      softStopSignal?: AbortSignal;
-      assertCanStartBoundary?: () => void;
-      activeRun?: ActiveRunState;
-    },
-  ): Promise<{ result: RunResult; tokenUsage?: AgentTokenUsage }> {
-    const dispatchCorrelationId = options.dispatchCorrelationId;
-    options.activeRun?.dispatchCorrelationIds.add(dispatchCorrelationId);
-    appendTimingTraceEvent(timingTrace, "service", "dispatch_via_default_started", {
-      procedure: procedureName,
-      dispatchCorrelationId,
-    });
-    const stopProgressBridge = startProcedureDispatchProgressBridge(
-      session.store.rootDir,
-      dispatchCorrelationId,
-      emitter,
-    );
-
-    try {
-      options.assertCanStartBoundary?.();
-      let sawDefaultPromptUpdate = false;
-      appendTimingTraceEvent(timingTrace, "service", "default_dispatch_prompt_started", {
-        procedure: procedureName,
-      });
-      const promptResult = await session.defaultAgentSession.prompt(
-        createTextPromptInput(buildMcpProcedureDispatchPrompt(
-          session.store.sessionId,
-          procedureName,
-          procedurePrompt,
-          toDownstreamAgentSelection(session.defaultAgentConfig),
-          dispatchCorrelationId,
-        )),
-        {
-          signal: options.signal,
-          softStopSignal: options.softStopSignal,
-          timingTrace,
-          onUpdate: async (update) => {
-            if (!sawDefaultPromptUpdate) {
-              sawDefaultPromptUpdate = true;
-              appendTimingTraceEvent(timingTrace, "service", "default_dispatch_prompt_first_update", {
-                updateType: update.sessionUpdate,
-              });
-            }
-            if (
-              update.sessionUpdate === "agent_message_chunk" ||
-              update.sessionUpdate === "tool_call" ||
-              update.sessionUpdate === "tool_call_update" ||
-              update.sessionUpdate === "usage_update"
-            ) {
-              emitter.emit(update);
-            }
-          },
-        },
-      );
-      appendTimingTraceEvent(timingTrace, "service", "default_dispatch_prompt_completed", {
-        updateCount: promptResult.updates.length,
-      });
-
-      const result = extractProcedureDispatchResult(promptResult.updates);
-      if (result) {
-        appendTimingTraceEvent(timingTrace, "service", "dispatch_result_extracted_from_prompt", {
-          procedure: procedureName,
-        });
-        session.syncedProcedureMemoryRunIds.add(result.run.runId);
-        return {
-          result,
-          tokenUsage: normalizeAgentTokenUsage(
-            promptResult.tokenSnapshot ?? await session.defaultAgentSession.getCurrentTokenSnapshot(),
-            session.defaultAgentConfig,
-          ),
-        };
-      }
-
-      const dispatchId = extractProcedureDispatchId(promptResult.updates);
-      if (dispatchId) {
-        appendTimingTraceEvent(timingTrace, "service", "dispatch_id_received", {
-          dispatchId,
-        });
-      }
-
-      const dispatchStatus = await waitForProcedureDispatchResult({
-        registry: this.registry,
-        session,
-        promptUpdates: promptResult.updates,
-        signal: options.signal,
-        softStopSignal: options.softStopSignal,
-      });
-      if (dispatchStatus) {
-        appendTimingTraceEvent(timingTrace, "service", "dispatch_wait_completed", {
-          dispatchId: dispatchStatus.dispatchId,
-          status: dispatchStatus.status,
-        });
-      }
-      if (dispatchStatus?.status === "completed" && dispatchStatus.result) {
-        session.syncedProcedureMemoryRunIds.add(dispatchStatus.result.run.runId);
-        return {
-          result: dispatchStatus.result,
-          tokenUsage: normalizeAgentTokenUsage(
-            promptResult.tokenSnapshot ?? await session.defaultAgentSession.getCurrentTokenSnapshot(),
-            session.defaultAgentConfig,
-          ),
-        };
-      }
-      if (dispatchStatus?.status === "cancelled") {
-        throw new RunCancelledError(
-          dispatchStatus.error?.trim() || defaultCancellationMessage("soft_stop"),
-          "soft_stop",
-        );
-      }
-      if (dispatchStatus?.status === "failed") {
-        throw new Error(
-          dispatchStatus.error?.trim() || `Default session async dispatch failed for /${procedureName}.`,
-        );
-      }
-
-      const recoveredRun = await waitForRecoveredProcedureDispatchRun(session.store, {
-        procedureName,
-        dispatchCorrelationId,
-        signal: options.signal,
-        softStopSignal: options.softStopSignal,
-      });
-      if (recoveredRun) {
-        appendTimingTraceEvent(timingTrace, "service", "dispatch_result_recovered_from_store", {
-          procedure: procedureName,
-          runId: recoveredRun.run.runId,
-        });
-        return {
-          result: procedureDispatchResultFromRecoveredRun(recoveredRun),
-          tokenUsage: normalizeAgentTokenUsage(
-            promptResult.tokenSnapshot ?? await session.defaultAgentSession.getCurrentTokenSnapshot(),
-            session.defaultAgentConfig,
-          ),
-        };
-      }
-
-      const failureMessage = extractProcedureDispatchFailure(promptResult.updates);
-      throw new Error(
-        failureMessage
-          ? `Default session did not complete async dispatch for /${procedureName}: ${failureMessage}`
-          : `Default session did not complete async dispatch for /${procedureName}.`,
-      );
-    } finally {
-      options.activeRun?.dispatchCorrelationIds.delete(dispatchCorrelationId);
-      await stopProgressBridge();
-    }
   }
 
   private applyDefaultAgentSelection(

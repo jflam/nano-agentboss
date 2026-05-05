@@ -127,11 +127,8 @@ entrypoint APIs. Generic data helpers belong in `@nanoboss/procedure-sdk` or
   Default downstream-agent prewarm and prompt preparation policy.
 - `src/memory-cards.ts`
   Procedure memory-card extraction and prompt rendering.
-- `src/procedure-dispatch-result.ts`
-  Internal async procedure dispatch result parsing from downstream agent tool
-  payloads.
 - `src/procedure-dispatch-manager.ts`
-  Async procedure dispatch wait/cancel manager helpers.
+  Async procedure dispatch cancellation helpers.
 - `src/tool-call-preview.ts`
   Adapter-neutral tool-call summary blocks.
 - `src/turn-display.ts`
@@ -196,9 +193,9 @@ HTTP/frontend flow:
 
 Measured during the 2026-05 app-runtime review:
 
-- source files: 22
-- source lines: 4,073
-- largest file: `src/service.ts` at 846 lines
+- source files: 20
+- source lines: 3,442
+- largest file: `src/service.ts` at 674 lines
 - public barrel wildcard exports: reduced from 2 to 0
 - public app-runtime symbols: reduced from 58 to 57 by removing the accidental
   `UiApiImpl` value re-export
@@ -208,6 +205,9 @@ Measured during the 2026-05 app-runtime review:
   event-log implementation
 - code simplification applied: split paused continuation cancellation handling
   into a private helper while preserving the `NanobossService` method
+- code simplification applied: removed an obsolete private default-session
+  dispatch path from `NanobossService` and deleted its unused prompt, polling,
+  dispatch-result, and failure-parsing helpers
 
 The small surface reduction matters more than the raw symbol count: the package
 now exports runtime abstractions intentionally instead of forwarding every
