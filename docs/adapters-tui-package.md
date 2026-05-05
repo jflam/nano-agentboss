@@ -130,6 +130,8 @@ are:
 - `controller-types.ts`: controller public and app-facing dependency contracts
 - `views.ts`: transcript, chrome, and panel composition
 - `views-panels.ts`: non-transcript ui_panel chrome host components
+- `views-procedure-panels.ts`: transcript procedure-panel rendering and
+  replay fallback helpers
 - `views-transcript.ts`: transcript turn, tool, and procedure-panel rendering
   components
 - `components/tool-card-expanded.ts`: expanded tool-card payload
@@ -159,8 +161,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 83
-- source lines: 9,014
+- source files: 84
+- source lines: 9,019
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -204,6 +206,8 @@ Measured during the 2026-05 TUI adapter review:
   - split app-local dependency adapter contracts out of the TUI app
   - split transcript turn, tool, and procedure-panel rendering out of the
     TUI view shell
+  - split transcript procedure-panel rendering and replay fallback helpers out
+    of the transcript component
   - split non-transcript ui_panel chrome hosts out of the TUI view shell
   - split app-level continuation form extraction and signature helpers out of
     the TUI app
