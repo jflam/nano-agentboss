@@ -226,7 +226,7 @@ are:
 - `core-chrome-lines.ts`: core chrome header, session, status, and footer line
   formatting helpers
 - `core-activity-identity.ts`: core identity activity-bar segment helpers
-- `core-panel-fallbacks.ts`: adapter-private error and notice panel renderer
+- `core-system-panels.ts`: adapter-private error and notice panel renderer
   registrations
 - `overlays/select-overlay.ts`: reusable select overlay component
 - `overlays/select-overlay-prompt.ts`: process-terminal select overlay prompt
@@ -287,6 +287,22 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
   extension activation bypass namespacing or catalog precedence rules.
 - Keep protocol-level HTTP behavior in `@nanoboss/adapters-http`.
 
+## Fallback And Compatibility Paths
+
+- Required persisted-data compatibility: `views-procedure-panels.ts` keeps a
+  replay fallback for stored procedure panels whose renderer is no longer
+  installed. Removing this would risk hiding historical session output.
+- Required user-facing resilience: `reducer-panels.ts` reports unknown or invalid
+  live panel renderers in the status line instead of mutating UI state with an
+  unusable panel.
+- Current system renderers, not legacy fallbacks: `core-system-panels.ts`
+  registers `nb/error@1` and `nb/notice@1`, which are active protocol renderers
+  for run errors and procedure notices.
+- Removed entropy in this convergence pass: the one-caller
+  `app-inline-select.ts` and `app-model-prompts.ts` glue modules were folded into
+  their durable owners, and the model-selection lower-level helpers were made
+  module-private.
+
 ## Current Review Metrics
 
 Measured during the 2026-05 TUI adapter review:
@@ -304,6 +320,8 @@ Measured during the 2026-05 TUI adapter review:
     package entrypoint while keeping direct source-level tests for those seams
   - split adapter-private error/notice panel renderer registration out of the
     extension-contributed nb/card renderer module
+  - renamed the error/notice registration owner to `core-system-panels.ts` to
+    avoid treating active protocol renderers as legacy fallback code
   - split process-terminal select overlay prompting out of the reusable select
     overlay component
   - folded the one-caller inline select mounting helper into the continuation
