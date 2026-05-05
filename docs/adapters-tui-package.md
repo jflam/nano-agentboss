@@ -73,6 +73,8 @@ are:
 - `app.ts`: terminal app wiring, editor behavior, and local command dispatch
 - `app-composer.ts`: app-level composer snapshot, prompt-input, and cursor
   helpers
+- `app-continuation-form.ts`: app-level continuation form extraction and
+  signature helpers
 - `reducer.ts`: frontend event reduction and state transition logic
 - `reducer-tool-calls.ts`: reducer-owned tool-call list and preview helpers
 - `reducer-turns.ts`: reducer-owned assistant turn and transcript helpers
@@ -103,9 +105,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 52
-- source lines: 7,941
-- largest file: `src/app.ts` at 815 lines
+- source files: 53
+- source lines: 7,947
+- largest file: `src/controller.ts` at 789 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -130,6 +132,8 @@ Measured during the 2026-05 TUI adapter review:
   - split procedure-card, procedure-panel, and ui-panel helpers out of the
     central reducer
   - split app-level composer snapshot, prompt-input, and cursor helpers out of
+    the TUI app
+  - split app-level continuation form extraction and signature helpers out of
     the TUI app
 
 The useful outcome of this pass is the entrypoint baseline: future TUI adapter
