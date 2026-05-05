@@ -96,6 +96,8 @@ are:
 - `reducer-panels.ts`: reducer-owned procedure-card, procedure-panel, and
   ui-panel helpers
 - `controller.ts`: session/runtime orchestration for the TUI
+- `controller-auto-approve.ts`: controller-owned session auto-approve toggle
+  helper
 - `controller-input-flow.ts`: controller-owned busy-input, pending-prompt,
   and terminal-event helpers
 - `controller-local-cards.ts`: controller-owned local card action and
@@ -133,9 +135,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 70
-- source lines: 8,515
-- largest file: `src/controller.ts` at 546 lines
+- source files: 71
+- source lines: 8,542
+- largest file: `src/controller.ts` at 535 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -182,6 +184,8 @@ Measured during the 2026-05 TUI adapter review:
     helpers out of the TUI controller
   - split controller-owned model validation and default persistence helpers
     out of the TUI controller
+  - split controller-owned session auto-approve toggle helper out of the TUI
+    controller
   - split controller-owned prompt forwarding and pending-prompt flushing
     helpers out of the TUI controller
   - split controller-owned HTTP session connect/create helpers out of the TUI

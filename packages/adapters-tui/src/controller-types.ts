@@ -1,5 +1,4 @@
 import {
-  setSessionAutoApprove,
   type FrontendCommand,
   type FrontendEventEnvelope,
   type SessionStreamHandle,
@@ -8,6 +7,7 @@ import type { DownstreamAgentSelection } from "@nanoboss/contracts";
 import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
 
 import type { UiState } from "./state.ts";
+import type { ControllerAutoApproveDeps } from "./controller-auto-approve.ts";
 import type { ControllerModelSelectionDeps } from "./controller-model-selection.ts";
 import type { ControllerPromptFlowDeps } from "./controller-prompt-flow.ts";
 import type { ControllerSessionDeps } from "./controller-session.ts";
@@ -32,8 +32,11 @@ export interface NanobossTuiControllerParams {
 }
 
 export interface NanobossTuiControllerDeps
-  extends ControllerModelSelectionDeps, ControllerSessionDeps, ControllerStopDeps, ControllerPromptFlowDeps {
-  setSessionAutoApprove?: typeof setSessionAutoApprove;
+  extends ControllerAutoApproveDeps,
+    ControllerModelSelectionDeps,
+    ControllerSessionDeps,
+    ControllerStopDeps,
+    ControllerPromptFlowDeps {
   startSessionEventStream?: (params: {
     baseUrl: string;
     sessionId: string;

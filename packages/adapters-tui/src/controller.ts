@@ -1,5 +1,4 @@
 import {
-  setSessionAutoApprove,
   startSessionEventStream,
   isRenderedFrontendEvent,
   type FrontendEventEnvelope,
@@ -54,6 +53,7 @@ import {
   forwardPrompt as forwardPromptInternal,
   maybeFlushPendingPrompt as maybeFlushPendingPromptInternal,
 } from "./controller-prompt-flow.ts";
+import { toggleSessionAutoApprove as toggleSessionAutoApproveInternal } from "./controller-auto-approve.ts";
 export type {
   NanobossTuiControllerDeps,
   NanobossTuiControllerParams,
@@ -525,22 +525,11 @@ export class NanobossTuiController {
   }
 
   private async toggleSessionAutoApprove(): Promise<void> {
-    const sessionId = this.state.sessionId;
-    if (!sessionId) {
-      return;
-    }
-
-    const enabled = !this.state.simplify2AutoApprove;
-    try {
-      const session = await (this.deps.setSessionAutoApprove ?? setSessionAutoApprove)(
-        this.params.serverUrl,
-        sessionId,
-        enabled,
-      );
-      this.dispatch({ type: "session_auto_approve", enabled: session.autoApprove });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.dispatch({ type: "local_status", text: `[session] failed to update auto-approve: ${message}` });
-    }
+    await toggleSessionAutoApproveInternal({
+      deps: this.deps,
+      serverUrl: this.params.serverUrl,
+      state: this.state,
+      dispatch: (action) => this.dispatch(action),
+    });
   }
 }
