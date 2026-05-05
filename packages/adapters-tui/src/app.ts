@@ -63,6 +63,7 @@ import {
   promptToPersistInlineModelSelection as promptToPersistInlineModelSelectionInternal,
   type InlineModelSelectionDeps,
 } from "./app-model-selection.ts";
+import { AppLiveUpdates } from "./app-live-updates.ts";
 
 export interface NanobossTuiAppParams {
   cwd?: string;
@@ -164,20 +165,19 @@ export class NanobossTuiApp {
   private readonly view: ViewLike;
   private readonly controller: ControllerLike;
   private readonly clipboardImageProvider: ClipboardImageProvider;
+  private readonly liveUpdates: AppLiveUpdates;
   private readonly now: () => number;
   private state: UiState;
   private readonly composerState = createComposerState();
   private clearedComposerStateSnapshot?: ComposerState;
   private autocompleteSignature = "";
   private stopped = false;
-  private liveRefreshInterval?: ReturnType<typeof setInterval>;
   private lastToolOutputToggleAt = Number.NEGATIVE_INFINITY;
   private lastCtrlCAt = Number.NEGATIVE_INFINITY;
   private inlineComposerMode: "editor" | "select" | "simplify2" = "editor";
   private openSimplify2ContinuationSignature?: string;
   private lastSeenSimplify2ContinuationSignature?: string;
   private dismissedSimplify2ContinuationSignature?: string;
-  private liveUpdatesPaused = false;
 
   constructor(
     private readonly params: NanobossTuiAppParams,
@@ -219,6 +219,17 @@ export class NanobossTuiApp {
     this.controller = deps.createController?.(params, controllerDeps) ?? new NanobossTuiController(params, controllerDeps);
     this.state = this.controller.getState();
     this.view = deps.createView?.(this.editor, this.theme, this.state) ?? new NanobossAppView(this.editor as Editor, this.theme, this.state);
+    this.liveUpdates = new AppLiveUpdates({
+      tui: this.tui,
+      view: this.view,
+      getState: () => this.state,
+      setState: (state) => {
+        this.state = state;
+      },
+      isStopped: () => this.stopped,
+      setInterval: deps.setInterval ?? globalThis.setInterval,
+      clearInterval: deps.clearInterval ?? globalThis.clearInterval,
+    });
 
     this.editor.onSubmit = (text) => {
       const promptInput = buildPromptInputForSubmit(
@@ -283,7 +294,7 @@ export class NanobossTuiApp {
     this.tui.start();
     this.terminal.setTitle("nanoboss");
     this.tui.requestRender(true);
-    this.startLiveRefresh();
+    this.liveUpdates.start();
 
     try {
       return await this.controller.run();
@@ -323,7 +334,7 @@ export class NanobossTuiApp {
     if (this.theme.getToolCardMode() !== state.toolCardThemeMode) {
       this.theme.setToolCardMode(state.toolCardThemeMode);
     }
-    this.state = { ...state, liveUpdatesPaused: this.liveUpdatesPaused };
+    this.state = this.liveUpdates.withPauseState(state);
     this.updateEditorSubmitState();
     this.refreshAutocompleteProvider();
     this.view.setState(this.state);
@@ -332,32 +343,11 @@ export class NanobossTuiApp {
   }
 
   private requestRender(force?: boolean): void {
-    if (this.liveUpdatesPaused) {
-      if (!force) {
-        return;
-      }
-      // A forced render (e.g. user-triggered overlay/composer change) implicitly
-      // resumes live updates so the user can see the UI change they just requested.
-      this.setLiveUpdatesPaused(false);
-      return;
-    }
-    this.tui.requestRender(force);
+    this.liveUpdates.requestRender(force);
   }
 
   private toggleLiveUpdatesPaused(): void {
-    this.setLiveUpdatesPaused(!this.liveUpdatesPaused);
-  }
-
-  private setLiveUpdatesPaused(paused: boolean): void {
-    if (this.liveUpdatesPaused === paused) {
-      return;
-    }
-    this.liveUpdatesPaused = paused;
-    this.state = { ...this.state, liveUpdatesPaused: paused };
-    this.view.setState(this.state);
-    // Force a single render on every transition: entering pause draws the
-    // indicator; leaving pause flushes all updates accumulated while paused.
-    this.tui.requestRender(true);
+    this.liveUpdates.togglePaused();
   }
 
   private updateEditorSubmitState(): void {
@@ -583,7 +573,7 @@ export class NanobossTuiApp {
     }
 
     this.stopped = true;
-    this.stopLiveRefresh();
+    this.liveUpdates.stop();
     await this.controller.stop();
 
     try {
@@ -593,30 +583,5 @@ export class NanobossTuiApp {
     }
 
     this.tui.stop();
-  }
-
-  private startLiveRefresh(): void {
-    if (this.liveRefreshInterval) {
-      return;
-    }
-
-    const setIntervalFn = this.deps.setInterval ?? globalThis.setInterval;
-    this.liveRefreshInterval = setIntervalFn(() => {
-      if (this.stopped || !this.state.inputDisabled || this.state.runStartedAtMs === undefined) {
-        return;
-      }
-
-      this.requestRender();
-    }, 1_000);
-  }
-
-  private stopLiveRefresh(): void {
-    if (!this.liveRefreshInterval) {
-      return;
-    }
-
-    const clearIntervalFn = this.deps.clearInterval ?? globalThis.clearInterval;
-    clearIntervalFn(this.liveRefreshInterval);
-    this.liveRefreshInterval = undefined;
   }
 }
