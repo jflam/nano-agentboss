@@ -27,7 +27,6 @@ import {
 import { readStoredSessionMetadata } from "@nanoboss/store";
 import {
   executeProcedure,
-  type RuntimeBindings,
   type SessionUpdateEmitter,
   ProcedureCancelledError,
   ProcedureExecutionError,
@@ -55,6 +54,10 @@ import {
   toRuntimeContinuation,
 } from "./continuations.ts";
 import { requestContinuationCancel as requestContinuationCancelInternal } from "./continuation-cancel.ts";
+import {
+  applyDefaultAgentSelection as applyDefaultAgentSelectionInternal,
+  createProcedureRuntimeBindings,
+} from "./procedure-runtime-bindings.ts";
 import { prepareDefaultPrompt } from "./default-agent-policy.ts";
 import {
   capturePersistedRuntimeEvents,
@@ -326,19 +329,12 @@ export class NanobossService {
     session: SessionState,
     selection: DownstreamAgentSelection | undefined,
   ): void {
-    if (!selection) {
-      return;
-    }
-
-    const currentSelection = toDownstreamAgentSelection(session.defaultAgentConfig);
-    if (JSON.stringify(currentSelection) === JSON.stringify(selection)) {
-      return;
-    }
-
-    const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
-    session.defaultAgentConfig = nextConfig;
-    session.defaultAgentSession.updateConfig(nextConfig);
-    persistSessionState(session, { preserveDefaultAcpSessionId: false });
+    applyDefaultAgentSelectionInternal({
+      session,
+      selection,
+      resolveDefaultAgentConfig: this.resolveDefaultAgentConfig,
+      currentSelection: toDownstreamAgentSelection(session.defaultAgentConfig),
+    });
   }
 
   async promptSession(
@@ -494,17 +490,12 @@ export class NanobossService {
 
       try {
         const timingTrace = directTimingTrace;
-        const bindings = {
-          agentSession: session.defaultAgentSession,
-          getDefaultAgentConfig: () => session.defaultAgentConfig,
-          setDefaultAgentSelection: (selection) => {
-            const nextConfig = this.resolveDefaultAgentConfig(session.cwd, selection);
-            session.defaultAgentConfig = nextConfig;
-            session.defaultAgentSession.updateConfig(nextConfig);
-            return nextConfig;
-          },
-          prepareDefaultPrompt: (prompt) => prepareDefaultPrompt(session, prompt, runId, timingTrace),
-        } satisfies RuntimeBindings;
+        const bindings = createProcedureRuntimeBindings({
+          session,
+          runId,
+          timingTrace,
+          resolveDefaultAgentConfig: this.resolveDefaultAgentConfig,
+        });
         appendTimingTraceEvent(timingTrace, "service", "prompt_started", {
           runId,
           procedure: procedure.name,

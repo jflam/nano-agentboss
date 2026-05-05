@@ -128,6 +128,8 @@ entrypoint APIs. Generic data helpers belong in `@nanoboss/procedure-sdk` or
   terminal cancellation persistence.
 - `src/default-agent-policy.ts`
   Default downstream-agent prewarm and prompt preparation policy.
+- `src/procedure-runtime-bindings.ts`
+  Foreground procedure runtime bindings and default-agent selection updates.
 - `src/memory-cards.ts`
   Procedure memory-card extraction and prompt rendering.
 - `src/procedure-dispatch-manager.ts`
@@ -198,9 +200,9 @@ HTTP/frontend flow:
 
 Measured during the 2026-05 app-runtime review:
 
-- source files: 22
-- source lines: 3,475
-- largest file: `src/service.ts` at 674 lines
+- source files: 23
+- source lines: 3,527
+- largest file: `src/service.ts` at 665 lines
 - public barrel wildcard exports: reduced from 2 to 0
 - public app-runtime symbols: reduced from 58 to 57 by removing the accidental
   `UiApiImpl` value re-export
@@ -217,6 +219,8 @@ Measured during the 2026-05 app-runtime review:
   the central runtime event mapper
 - code simplification applied: split text normalization and bounded preview
   helpers out of the tool-call preview policy module
+- code simplification applied: split foreground procedure runtime bindings out
+  of `NanobossService`
 
 The small surface reduction matters more than the raw symbol count: the package
 now exports runtime abstractions intentionally instead of forwarding every
