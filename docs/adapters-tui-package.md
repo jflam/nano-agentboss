@@ -109,7 +109,9 @@ are:
   inline-select, and live-update helper construction bundle
 - `app-sigint-exit.ts`: app-level ctrl-c double-press exit helper
 - `app-types.ts`: app-local dependency adapter contracts
-- `reducer.ts`: frontend event reduction and state transition logic
+- `reducer.ts`: top-level local-vs-frontend reducer router
+- `reducer-frontend-events.ts`: frontend event dispatch and run-id mismatch
+  filtering
 - `reducer-actions.ts`: reducer action contracts shared by controller and
   reducer helper modules
 - `reducer-session-ready.ts`: reducer-owned session-ready state reset and
@@ -266,8 +268,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 143
-- source lines: 10,181
+- source files: 144
+- source lines: 10,175
 - largest file: `src/controller.ts` at 315 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -291,6 +293,8 @@ Measured during the 2026-05 TUI adapter review:
   - split reducer-owned tool start/update record construction out of tool
     event state transitions
   - split reducer action contracts out of the central reducer
+  - split frontend event dispatch and run-id mismatch filtering out of the
+    central reducer
   - split initial TUI state construction defaults out of state contracts
   - split transcript, tool-call, and panel record contracts out of top-level
     TUI state contracts
