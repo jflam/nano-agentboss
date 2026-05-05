@@ -151,7 +151,8 @@ Measured during the 2026-05 HTTP adapter review:
   guard aliases
 
 This is a public-surface cleanup. Runtime behavior is unchanged; focused tests
-still cover the internal parsing/supervisor seams through source imports.
+still cover the internal parsing seams through source imports and the
+supervisor build/workspace checks through `ensureMatchingHttpServer(...)`.
 
 ## Good Future Targets
 
