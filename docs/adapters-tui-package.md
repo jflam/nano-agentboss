@@ -239,8 +239,10 @@ are:
 - `views-transcript-entries.ts`: transcript item indexing and entry component
   dispatch
 - `views-transcript.ts`: core transcript chrome component host
-- `components/tool-card-expanded.ts`: expanded tool-card payload
+- `components/tool-card-expanded.ts`: expanded tool-card tool-specific payload
   normalization helpers
+- `components/tool-card-expanded-text.ts`: expanded tool-card full-text
+  cleanup and preview block helpers
 - `components/tool-card-diff.ts`: tool-card diff detection and line styling
   helpers
 - `components/tool-card-code-preview.ts`: tool-card code preview rendering,
@@ -282,8 +284,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 153
-- source lines: 10,362
+- source files: 154
+- source lines: 10,367
 - largest file: `src/controller.ts` at 315 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -338,6 +340,8 @@ Measured during the 2026-05 TUI adapter review:
     theme constructor
   - split tool-card code highlighting adapter wiring out of the TUI theme
     constructor
+  - split expanded tool-card full-text cleanup out of tool-specific expanded
+    payload normalization
   - split app-level composer snapshot, prompt-input, and cursor helpers out of
     the TUI app
   - split app-level concrete component construction and run/stop lifecycle
