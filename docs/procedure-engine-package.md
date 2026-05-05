@@ -70,6 +70,8 @@ The central type is `ProcedureDispatchJobManager`.
   Concrete `ProcedureApi` implementation.
 - [src/context/agent-api.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/context/agent-api.ts:1)
   Implements `ctx.agent`.
+- `src/context/agent-run-recorder.ts`
+  Agent child-run persistence, logging, and tool-call event publication.
 - `src/context/bound-agent-invocation.ts`
   Bound `ctx.agent.session(mode).run(...)` wrapper.
 - `src/context/agent-output-events.ts`
@@ -421,8 +423,8 @@ If new execution logic is added outside these paths, that is usually a sign that
 
 Measured during the 2026-05 compatibility re-export review:
 
-- source files: 32
-- source lines: 3,197
+- source files: 33
+- source lines: 3,209
 - largest file: `src/dispatch/jobs.ts` at 465 lines
 - runtime value exports: 36 -> 30
 - public wildcard exports: 0
@@ -443,3 +445,5 @@ Measured during the 2026-05 compatibility re-export review:
   implementation module
 - code simplification applied: split bound agent session invocation and the
   shared type-descriptor guard out of the agent API implementation module
+- code simplification applied: split agent child-run recording and event
+  publication out of the agent API implementation module

@@ -1,6 +1,7 @@
 import type { SessionStore } from "@nanoboss/store";
 import type { CreateAgentSession } from "@nanoboss/agent-acp";
-import { AgentInvocationApiImpl, AgentRunRecorder } from "./agent-api.ts";
+import { AgentInvocationApiImpl } from "./agent-api.ts";
+import { AgentRunRecorder } from "./agent-run-recorder.ts";
 import { type RuntimeBindings, type SessionUpdateEmitter } from "./shared.ts";
 import { ProcedureInvocationApiImpl, type ChildContextBindingParams } from "./procedure-api.ts";
 import { ContextSessionApiImpl } from "./session-api.ts";
