@@ -2,7 +2,7 @@ import type {
   DownstreamAgentSelection,
 } from "@nanoboss/contracts";
 import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
-import { createClipboardImageProvider, type ClipboardImageProvider } from "./clipboard/provider.ts";
+import type { ClipboardImageProvider } from "./clipboard/provider.ts";
 import {
   type ComposerState,
   createComposerState,
@@ -21,12 +21,6 @@ import {
   type NanobossTuiControllerDeps,
 } from "./controller.ts";
 import { shouldDisableEditorSubmit } from "./commands.ts";
-
-import {
-  Editor,
-  ProcessTerminal,
-  TUI,
-} from "./pi-tui.ts";
 import { AppAutocompleteSync } from "./app-autocomplete.ts";
 import { createAppBindingHooks as createAppBindingHooksInternal } from "./app-binding-hooks.ts";
 import { bindAppInputListener } from "./app-input-listener.ts";
@@ -42,13 +36,20 @@ import "./core-form-renderers.ts";
 import { AppInlineSelect } from "./app-inline-select.ts";
 import type { SelectOverlayOptions } from "./overlays/select-overlay.ts";
 import type { UiState } from "./state.ts";
-import { createNanobossTuiTheme, type NanobossTuiTheme } from "./theme.ts";
-import { NanobossAppView } from "./views.ts";
+import type { NanobossTuiTheme } from "./theme.ts";
 import {
   promptForInlineModelSelection as promptForInlineModelSelectionInternal,
   promptToPersistInlineModelSelection as promptToPersistInlineModelSelectionInternal,
 } from "./app-model-selection.ts";
 import { AppLiveUpdates } from "./app-live-updates.ts";
+import {
+  createAppCoreComponents,
+  createAppView,
+} from "./app-components.ts";
+import {
+  runAppLifecycle,
+  stopAppLifecycle,
+} from "./app-lifecycle.ts";
 export type { NanobossTuiAppParams } from "./app-types.ts";
 import type {
   ControllerLike,
@@ -90,14 +91,12 @@ export class NanobossTuiApp {
   ) {
     this.cwd = params.cwd ?? process.cwd();
     this.now = deps.now ?? Date.now;
-    this.theme = deps.createTheme?.() ?? createNanobossTuiTheme();
-    this.terminal = deps.createTerminal?.() ?? new ProcessTerminal();
-    this.tui = deps.createTui?.(this.terminal) ?? new TUI(this.terminal as ProcessTerminal, false);
-    this.editor = deps.createEditor?.(this.tui, this.theme) ?? new Editor(this.tui as TUI, this.theme.editor, {
-      paddingX: 1,
-      autocompleteMaxVisible: 8,
-    });
-    this.clipboardImageProvider = deps.createClipboardImageProvider?.() ?? createClipboardImageProvider();
+    const components = createAppCoreComponents(deps);
+    this.theme = components.theme;
+    this.terminal = components.terminal;
+    this.tui = components.tui;
+    this.editor = components.editor;
+    this.clipboardImageProvider = components.clipboardImageProvider;
 
     const controllerDeps: NanobossTuiControllerDeps = createAppControllerDeps({
       appParams: params,
@@ -114,7 +113,12 @@ export class NanobossTuiApp {
     });
     this.controller = deps.createController?.(params, controllerDeps) ?? new NanobossTuiController(params, controllerDeps);
     this.state = this.controller.getState();
-    this.view = deps.createView?.(this.editor, this.theme, this.state) ?? new NanobossAppView(this.editor as Editor, this.theme, this.state);
+    this.view = createAppView({
+      deps,
+      editor: this.editor,
+      theme: this.theme,
+      state: this.state,
+    });
     this.autocomplete = new AppAutocompleteSync({
       editor: this.editor,
       cwd: this.cwd,
@@ -182,16 +186,13 @@ export class NanobossTuiApp {
   }
 
   async run(): Promise<string | undefined> {
-    this.tui.start();
-    this.terminal.setTitle("nanoboss");
-    this.tui.requestRender(true);
-    this.liveUpdates.start();
-
-    try {
-      return await this.controller.run();
-    } finally {
-      await this.stop();
-    }
+    return await runAppLifecycle({
+      tui: this.tui,
+      terminal: this.terminal,
+      liveUpdates: this.liveUpdates,
+      controller: this.controller,
+      stop: async () => await this.stop(),
+    });
   }
 
   requestExit(): void {
@@ -318,20 +319,15 @@ export class NanobossTuiApp {
   }
 
   private async stop(): Promise<void> {
-    if (this.stopped) {
-      return;
-    }
-
-    this.stopped = true;
-    this.liveUpdates.stop();
-    await this.controller.stop();
-
-    try {
-      await this.terminal.drainInput(100, 20);
-    } catch {
-      // Ignore drain failures during shutdown.
-    }
-
-    this.tui.stop();
+    await stopAppLifecycle({
+      stopped: this.stopped,
+      setStopped: (stopped) => {
+        this.stopped = stopped;
+      },
+      liveUpdates: this.liveUpdates,
+      controller: this.controller,
+      terminal: this.terminal,
+      tui: this.tui,
+    });
   }
 }

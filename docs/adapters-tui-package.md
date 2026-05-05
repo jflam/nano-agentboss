@@ -71,6 +71,8 @@ The package is currently the largest Nanoboss package. The main size drivers
 are:
 
 - `app.ts`: terminal app wiring, editor behavior, and local command dispatch
+- `app-components.ts`: app-level default theme, terminal, TUI, editor,
+  clipboard, and view component construction helper
 - `app-binding-hooks.ts`: app-level keybinding hook wiring for cooldown and
   queued-prompt behavior
 - `app-autocomplete.ts`: slash-aware app autocomplete provider and command
@@ -93,6 +95,8 @@ are:
 - `app-input-listener.ts`: app-level terminal input listener and keybinding
   dispatch wiring
 - `app-inline-select.ts`: app-level inline select overlay mounting helper
+- `app-lifecycle.ts`: app-level start, stop, render-start, and terminal drain
+  lifecycle helper
 - `app-live-updates.ts`: app-level live-update pause and refresh timer
   behavior
 - `app-model-selection.ts`: app-level inline model picker and persistence
@@ -241,8 +245,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 129
-- source lines: 9,765
+- source files: 131
+- source lines: 9,868
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -293,6 +297,8 @@ Measured during the 2026-05 TUI adapter review:
     constructor
   - split app-level composer snapshot, prompt-input, and cursor helpers out of
     the TUI app
+  - split app-level concrete component construction and run/stop lifecycle
+    helpers out of the TUI app
   - split composer text and image-token prompt-input assembly out of composer
     image state
   - split app-level keybinding hook wiring for cooldown and queued-prompt
