@@ -84,7 +84,9 @@ The central type is `ProcedureDispatchJobManager`.
 ### Dispatch and frontend helpers
 
 - [src/dispatch/jobs.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/jobs.ts:1)
-  Job files, worker launch, wait/cancel/status reconciliation.
+  Dispatch lifecycle orchestration, worker launch, wait/cancel/status reconciliation.
+- `src/dispatch/job-store.ts`
+  Internal JSON file persistence and reusable correlation-id lookup for dispatch jobs.
 - `src/dispatch/files.ts`
   Dispatch job/cancellation path helpers and cancellation marker writes.
 - `src/dispatch/worker-args.ts`
@@ -131,7 +133,7 @@ The CLI does call this package directly for the internal worker entrypoint:
 
 - `nanoboss procedure-dispatch-worker`
 - routed by [nanoboss.ts](/Users/jflam/agentboss/workspaces/nanoboss/nanoboss.ts:56)
-- implemented by [runProcedureDispatchWorkerCommand(...)](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/jobs.ts:594)
+- implemented by [runProcedureDispatchWorkerCommand(...)](/Users/jflam/agentboss/workspaces/nanoboss/packages/procedure-engine/src/dispatch/jobs.ts:517)
 
 So the package has two runtime-facing roles:
 
@@ -401,8 +403,8 @@ If new execution logic is added outside these paths, that is usually a sign that
 
 Measured during the 2026-05 compatibility re-export review:
 
-- source files: 22
-- source lines: 3,100
+- source files: 23
+- source lines: 3,115
 - largest file: `src/context/agent-api.ts` at 617 lines
 - runtime value exports: 36 -> 30
 - public wildcard exports: 0
