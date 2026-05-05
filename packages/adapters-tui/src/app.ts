@@ -37,10 +37,6 @@ import { AppInlineSelect } from "./app-inline-select.ts";
 import type { SelectOverlayOptions } from "./overlays/select-overlay.ts";
 import type { UiState } from "./state.ts";
 import type { NanobossTuiTheme } from "./theme.ts";
-import {
-  promptForInlineModelSelection as promptForInlineModelSelectionInternal,
-  promptToPersistInlineModelSelection as promptToPersistInlineModelSelectionInternal,
-} from "./app-model-selection.ts";
 import { AppLiveUpdates } from "./app-live-updates.ts";
 import {
   createAppCoreComponents,
@@ -50,6 +46,7 @@ import {
   runAppLifecycle,
   stopAppLifecycle,
 } from "./app-lifecycle.ts";
+import { AppModelPrompts } from "./app-model-prompts.ts";
 export type { NanobossTuiAppParams } from "./app-types.ts";
 import type {
   ControllerLike,
@@ -78,6 +75,7 @@ export class NanobossTuiApp {
   private readonly autocomplete: AppAutocompleteSync;
   private readonly sigintExit: AppSigintExit;
   private readonly inlineSelect: AppInlineSelect;
+  private readonly modelPrompts: AppModelPrompts;
   private readonly now: () => number;
   private state: UiState;
   private readonly composerState = createComposerState();
@@ -91,6 +89,7 @@ export class NanobossTuiApp {
   ) {
     this.cwd = params.cwd ?? process.cwd();
     this.now = deps.now ?? Date.now;
+
     const components = createAppCoreComponents(deps);
     this.theme = components.theme;
     this.terminal = components.terminal;
@@ -155,6 +154,13 @@ export class NanobossTuiApp {
       isStopped: () => this.stopped,
       setInterval: deps.setInterval ?? globalThis.setInterval,
       clearInterval: deps.clearInterval ?? globalThis.clearInterval,
+    });
+    this.modelPrompts = new AppModelPrompts({
+      cwd: this.cwd,
+      deps: this.deps,
+      controller: this.controller,
+      promptWithInlineSelect: async (options) =>
+        await this.promptWithInlineSelect(options),
     });
 
     bindAppEditorHandlers({
@@ -271,22 +277,13 @@ export class NanobossTuiApp {
   private async promptForInlineModelSelection(
     currentSelection?: DownstreamAgentSelection,
   ): Promise<DownstreamAgentSelection | undefined> {
-    return await promptForInlineModelSelectionInternal({
-      cwd: this.cwd,
-      currentSelection,
-      deps: this.deps,
-      showStatus: (text) => this.controller.showStatus(text),
-      promptWithInlineSelect: async (options) => await this.promptWithInlineSelect(options),
-    });
+    return await this.modelPrompts.promptForModelSelection(currentSelection);
   }
 
   private async promptToPersistInlineModelSelection(
     selection: DownstreamAgentSelection,
   ): Promise<boolean> {
-    return await promptToPersistInlineModelSelectionInternal({
-      selection,
-      promptWithInlineSelect: async (options) => await this.promptWithInlineSelect(options),
-    });
+    return await this.modelPrompts.confirmPersistDefaultAgentSelection(selection);
   }
 
   private async promptWithInlineSelect<T extends string>(

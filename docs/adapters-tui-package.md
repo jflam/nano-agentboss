@@ -99,6 +99,8 @@ are:
   lifecycle helper
 - `app-live-updates.ts`: app-level live-update pause and refresh timer
   behavior
+- `app-model-prompts.ts`: app-level inline model selection prompt adapter for
+  controller dependency wiring
 - `app-model-selection.ts`: app-level inline model picker and persistence
   confirmation flow
 - `app-sigint-exit.ts`: app-level ctrl-c double-press exit helper
@@ -255,9 +257,9 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 136
-- source lines: 10,000
-- largest file: `src/app.ts` at 333 lines
+- source files: 137
+- source lines: 10,049
+- largest file: `src/app.ts` at 330 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -374,6 +376,7 @@ Measured during the 2026-05 TUI adapter review:
     synchronization helper out of the TUI app
   - split app-level inline model picker and persistence confirmation flow out
     of the TUI app
+  - split app-level inline model prompt adapter wiring out of the TUI app
   - split expanded tool-card payload normalization helpers out of shared
     tool-card formatting
   - split tool-card diff detection and line styling helpers out of shared
