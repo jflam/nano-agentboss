@@ -1,6 +1,4 @@
-import type { RenderedFrontendEventEnvelope } from "@nanoboss/adapters-http";
-
-import type { UiState, UiToolCall } from "./state.ts";
+import type { UiState } from "./state.ts";
 import {
   appendToolCallBlockToActiveTurn,
   markAssistantTextBoundary,
@@ -12,21 +10,19 @@ import {
 import {
   appendUniqueString,
   isTerminalToolStatus,
-  mergeToolPreview,
   recomputeToolCallDepths,
   removeToolCallAndReparent,
   upsertToolCall,
 } from "./reducer-tool-calls.ts";
-
-type ToolStartedEvent = Extract<RenderedFrontendEventEnvelope, { type: "tool_started" }>;
-type ToolUpdatedEvent = Extract<RenderedFrontendEventEnvelope, { type: "tool_updated" }>;
+import {
+  buildStartedToolCall,
+  buildUpdatedToolCall,
+  type ToolStartedEvent,
+  type ToolUpdatedEvent,
+} from "./reducer-tool-event-records.ts";
 
 export function reduceToolStartedEvent(state: UiState, event: ToolStartedEvent): UiState {
   const existing = state.toolCalls.find((toolCall) => toolCall.id === event.data.toolCallId);
-  const parentToolCallId = event.data.parentToolCallId ?? existing?.parentToolCallId;
-  const transcriptVisible = event.data.transcriptVisible ?? existing?.transcriptVisible ?? true;
-  const removeOnTerminal = event.data.removeOnTerminal ?? existing?.removeOnTerminal ?? false;
-  const toolName = existing?.toolName ?? event.data.toolName;
   const activeRunAttemptedToolCallIds = state.activeRunId === event.data.runId
     ? appendUniqueString(state.activeRunAttemptedToolCallIds, event.data.toolCallId)
     : state.activeRunAttemptedToolCallIds;
@@ -38,25 +34,7 @@ export function reduceToolStartedEvent(state: UiState, event: ToolStartedEvent):
     };
   }
 
-  const nextToolCall: UiToolCall = {
-    id: event.data.toolCallId,
-    runId: event.data.runId,
-    ...(parentToolCallId ? { parentToolCallId } : {}),
-    ...(transcriptVisible === false ? { transcriptVisible } : {}),
-    ...(removeOnTerminal ? { removeOnTerminal } : {}),
-    title: event.data.title,
-    kind: event.data.kind,
-    toolName,
-    status: event.data.status ?? existing?.status ?? "pending",
-    depth: existing?.depth ?? 0,
-    isWrapper: existing?.isWrapper ?? event.data.kind === "wrapper",
-    callPreview: mergeToolPreview(existing?.callPreview, event.data.callPreview),
-    resultPreview: existing?.resultPreview,
-    errorPreview: existing?.errorPreview,
-    rawInput: event.data.rawInput ?? existing?.rawInput,
-    rawOutput: existing?.rawOutput,
-    durationMs: existing?.durationMs,
-  };
+  const { toolCall: nextToolCall, transcriptVisible } = buildStartedToolCall(event, existing);
 
   const nextState = {
     ...state,
@@ -73,11 +51,6 @@ export function reduceToolStartedEvent(state: UiState, event: ToolStartedEvent):
 
 export function reduceToolUpdatedEvent(state: UiState, event: ToolUpdatedEvent): UiState {
   const existing = state.toolCalls.find((toolCall) => toolCall.id === event.data.toolCallId);
-  const title = event.data.title ?? existing?.title ?? event.data.toolCallId;
-  const parentToolCallId = event.data.parentToolCallId ?? existing?.parentToolCallId;
-  const transcriptVisible = event.data.transcriptVisible ?? existing?.transcriptVisible ?? true;
-  const removeOnTerminal = event.data.removeOnTerminal ?? existing?.removeOnTerminal ?? false;
-  const toolName = existing?.toolName ?? event.data.toolName;
   const activeRunSucceededToolCallIds = state.activeRunId === event.data.runId && event.data.status === "completed"
     ? appendUniqueString(state.activeRunSucceededToolCallIds, event.data.toolCallId)
     : state.activeRunSucceededToolCallIds;
@@ -89,25 +62,10 @@ export function reduceToolUpdatedEvent(state: UiState, event: ToolUpdatedEvent):
     };
   }
 
-  const nextToolCall: UiToolCall = {
-    id: event.data.toolCallId,
-    runId: event.data.runId,
-    ...(parentToolCallId ? { parentToolCallId } : {}),
-    ...(transcriptVisible === false ? { transcriptVisible } : {}),
-    ...(removeOnTerminal ? { removeOnTerminal } : {}),
-    title,
-    kind: existing?.kind ?? "other",
-    toolName,
-    status: event.data.status,
-    depth: existing?.depth ?? 0,
-    isWrapper: existing?.isWrapper ?? existing?.kind === "wrapper",
-    callPreview: existing?.callPreview,
-    resultPreview: mergeToolPreview(existing?.resultPreview, event.data.resultPreview),
-    errorPreview: mergeToolPreview(existing?.errorPreview, event.data.errorPreview),
-    rawInput: existing?.rawInput,
-    rawOutput: event.data.rawOutput ?? existing?.rawOutput,
-    durationMs: event.data.durationMs ?? existing?.durationMs,
-  };
+  const { toolCall: nextToolCall, transcriptVisible, removeOnTerminal } = buildUpdatedToolCall(
+    event,
+    existing,
+  );
 
   let toolCalls = state.toolCalls;
   let transcriptItems = state.transcriptItems;

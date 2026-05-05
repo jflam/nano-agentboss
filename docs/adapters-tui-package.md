@@ -109,6 +109,8 @@ are:
 - `reducer-local-turns.ts`: reducer-owned local submitted/send-failed turn
   construction
 - `reducer-tool-calls.ts`: reducer-owned tool-call list and preview helpers
+- `reducer-tool-event-records.ts`: reducer-owned tool start/update record
+  construction helpers
 - `reducer-tool-events.ts`: reducer-owned tool start/update event reducers
 - `reducer-turn-factory.ts`: reducer-owned generic turn id, construction,
   and assistant meta helpers
@@ -229,8 +231,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 123
-- source lines: 9,530
+- source files: 124
+- source lines: 9,572
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -251,6 +253,8 @@ Measured during the 2026-05 TUI adapter review:
     reducer
   - split reducer-owned tool start/update event reducers out of the central
     reducer
+  - split reducer-owned tool start/update record construction out of tool
+    event state transitions
   - split reducer action contracts out of the central reducer
   - split initial TUI state construction defaults out of state contracts
   - split session-ready state reset and available-command merge helpers out
