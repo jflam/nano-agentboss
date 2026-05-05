@@ -173,6 +173,7 @@ are:
 - `components/tool-card-format.ts`: shared tool-card rendering assembly helpers
 - `theme-languages.ts`: file-extension language inference for syntax
   highlighting
+- `theme-tool-card.ts`: tool-card palette data and RGB styling helpers
 - `theme.ts`: adapter theme construction
 
 Keep changes in those files focused. When behavior naturally has its own
@@ -194,8 +195,8 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 104
-- source lines: 9,310
+- source files: 105
+- source lines: 9,321
 - largest file: `src/controller.ts` at 355 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
@@ -228,6 +229,8 @@ Measured during the 2026-05 TUI adapter review:
   - split reducer-owned procedure-card and transcript card rendering helpers
     out of the panel reducer
   - split file-extension language inference out of the TUI theme constructor
+  - split tool-card palette data and RGB styling helpers out of the TUI
+    theme constructor
   - split app-level composer snapshot, prompt-input, and cursor helpers out of
     the TUI app
   - split app-level keybinding hook wiring for cooldown and queued-prompt
