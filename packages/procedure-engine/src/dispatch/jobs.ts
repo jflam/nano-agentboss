@@ -1,22 +1,4 @@
-import { spawn } from "node:child_process";
-
-import { resolveSelfCommand } from "@nanoboss/app-support";
-import { findRecoveredProcedureDispatchRun } from "./recovery.ts";
-import {
-  ProcedureDispatchProgressEmitter,
-  buildProcedureDispatchProgressPath,
-} from "./progress.ts";
-import {
-  clearProcedureDispatchCancellation,
-  isProcedureDispatchCancellationRequested,
-  requestProcedureDispatchCancellation,
-} from "./files.ts";
-import {
-  ProcedureCancelledError,
-  ProcedureExecutionError,
-  executeProcedure,
-} from "../procedure-runner.ts";
-import { SessionStore } from "@nanoboss/store";
+import { appendTimingTraceEvent, createRunTimingTrace } from "@nanoboss/app-support";
 import type {
   DownstreamAgentSelection,
   RunRef,
@@ -26,11 +8,27 @@ import type {
   RunResult,
 } from "@nanoboss/procedure-sdk";
 import { defaultCancellationMessage } from "@nanoboss/procedure-sdk";
+import { SessionStore } from "@nanoboss/store";
 
 import { resolveDownstreamAgentConfig } from "../agent-config.ts";
 import type { RuntimeBindings } from "../context/shared.ts";
+import {
+  ProcedureCancelledError,
+  ProcedureExecutionError,
+  executeProcedure,
+} from "../procedure-runner.ts";
 import { runResultFromRunRecord } from "../run-result.ts";
-import { appendTimingTraceEvent, createRunTimingTrace } from "@nanoboss/app-support";
+import {
+  clearProcedureDispatchCancellation,
+  isProcedureDispatchCancellationRequested,
+  requestProcedureDispatchCancellation,
+} from "./files.ts";
+import { ProcedureDispatchJobStore } from "./job-store.ts";
+import {
+  ProcedureDispatchProgressEmitter,
+  buildProcedureDispatchProgressPath,
+} from "./progress.ts";
+import { findRecoveredProcedureDispatchRun } from "./recovery.ts";
 import {
   isDeadWorkerJob,
   isTerminalStatus,
@@ -38,7 +36,7 @@ import {
   markJobCancelled,
   toProcedureDispatchStatusResult,
 } from "./status.ts";
-import { ProcedureDispatchJobStore } from "./job-store.ts";
+import { spawnProcedureDispatchWorker } from "./worker-process.ts";
 
 const DEFAULT_WAIT_MS = 1_000;
 const MAX_WAIT_MS = 2_000;
@@ -373,24 +371,12 @@ export class ProcedureDispatchJobManager {
   }
 
   private spawnWorker(dispatchId: string): number | undefined {
-    const command = resolveSelfCommand("procedure-dispatch-worker", [
-      "--session-id",
-      this.params.sessionId,
-      "--cwd",
-      this.params.cwd,
-      "--root-dir",
-      this.params.rootDir,
-      "--dispatch-id",
-      dispatchId,
-    ]);
-    const child = spawn(command.command, command.args, {
+    return spawnProcedureDispatchWorker({
       cwd: this.params.cwd,
-      env: process.env,
-      detached: true,
-      stdio: "ignore",
+      sessionId: this.params.sessionId,
+      rootDir: this.params.rootDir,
+      dispatchId,
     });
-    child.unref();
-    return child.pid;
   }
 
   private touchRunningJob(dispatchId: string): void {

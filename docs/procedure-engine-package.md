@@ -95,6 +95,8 @@ The central type is `ProcedureDispatchJobManager`.
   Detached dispatch worker CLI argument parsing.
 - `src/dispatch/worker-command.ts`
   Detached dispatch worker command entrypoint and registry loading.
+- `src/dispatch/worker-process.ts`
+  Detached dispatch worker process spawning.
 - `src/dispatch/status.ts`
   Dispatch terminal-status checks, dead-worker detection, cancellation marking,
   and status result shaping.
@@ -407,9 +409,9 @@ If new execution logic is added outside these paths, that is usually a sign that
 
 Measured during the 2026-05 compatibility re-export review:
 
-- source files: 25
-- source lines: 3,133
-- largest file: `src/dispatch/jobs.ts` at 519 lines
+- source files: 26
+- source lines: 3,148
+- largest file: `src/dispatch/jobs.ts` at 505 lines
 - runtime value exports: 36 -> 30
 - public wildcard exports: 0
 - code simplification applied: removed compatibility re-exports for data-shape
@@ -417,3 +419,5 @@ Measured during the 2026-05 compatibility re-export review:
   writer and public timing trace imports in `@nanoboss/app-support`
 - code simplification applied: split the detached dispatch worker command and
   disk registry loading out of the job manager module
+- code simplification applied: split detached worker process spawning out of
+  the job manager module
