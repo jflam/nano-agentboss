@@ -1,6 +1,4 @@
 import {
-  cancelSessionContinuation,
-  cancelSessionRun,
   setSessionAutoApprove,
   sendSessionPrompt,
   startSessionEventStream,
@@ -51,6 +49,13 @@ import {
   createControllerSession,
   type ControllerSessionDeps,
 } from "./controller-session.ts";
+import {
+  cancelActiveRun as cancelActiveRunInternal,
+  handleContinuationCancel as handleContinuationCancelInternal,
+  maybeSendLatchedStopRequest as maybeSendLatchedStopRequestInternal,
+  sendStopRequest as sendStopRequestInternal,
+  type ControllerStopDeps,
+} from "./controller-stop.ts";
 
 import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
 
@@ -72,11 +77,10 @@ export interface NanobossTuiControllerParams {
   simplify2AutoApprove?: boolean;
 }
 
-export interface NanobossTuiControllerDeps extends ControllerModelSelectionDeps, ControllerSessionDeps {
+export interface NanobossTuiControllerDeps
+  extends ControllerModelSelectionDeps, ControllerSessionDeps, ControllerStopDeps {
   setSessionAutoApprove?: typeof setSessionAutoApprove;
   sendSessionPrompt?: typeof sendSessionPrompt;
-  cancelSessionRun?: typeof cancelSessionRun;
-  cancelSessionContinuation?: typeof cancelSessionContinuation;
   startSessionEventStream?: (params: {
     baseUrl: string;
     sessionId: string;
@@ -281,35 +285,12 @@ export class NanobossTuiController {
   }
 
   async cancelActiveRun(): Promise<void> {
-    if (!this.state.sessionId) {
-      return;
-    }
-
-    if (this.state.inputDisabledReason !== "run") {
-      if (!this.state.inputDisabled && this.state.pendingContinuation) {
-        await this.handleContinuationCancel();
-      }
-      return;
-    }
-
-    // If no active run is in flight but a continuation is paused, route the
-    // soft-stop through the engine-authoritative continuation cancel path so
-    // form-esc and ctrl+c share a single terminal transition.
-    const activeRunId = this.state.activeRunId;
-    const stopAlreadyLatched = this.state.pendingStopRequest
-      || (activeRunId !== undefined && this.state.stopRequestedRunId === activeRunId);
-    if (stopAlreadyLatched) {
-      return;
-    }
-
-    this.dispatch({
-      type: "local_stop_requested",
-      runId: activeRunId,
+    await cancelActiveRunInternal({
+      state: this.state,
+      dispatch: (action) => this.dispatch(action),
+      handleContinuationCancel: async () => await this.handleContinuationCancel(),
+      sendStopRequest: async (runId) => await this.sendStopRequest(runId),
     });
-
-    if (activeRunId) {
-      await this.sendStopRequest(activeRunId);
-    }
   }
 
   /**
@@ -320,23 +301,12 @@ export class NanobossTuiController {
    * default session.
    */
   async handleContinuationCancel(): Promise<void> {
-    const sessionId = this.state.sessionId;
-    if (!sessionId || !this.state.pendingContinuation) {
-      return;
-    }
-
-    try {
-      await (this.deps.cancelSessionContinuation ?? cancelSessionContinuation)(
-        this.params.serverUrl,
-        sessionId,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.dispatch({
-        type: "local_status",
-        text: `[run] continuation cancel failed: ${message}`,
-      });
-    }
+    await handleContinuationCancelInternal({
+      deps: this.deps,
+      serverUrl: this.params.serverUrl,
+      state: this.state,
+      dispatch: (action) => this.dispatch(action),
+    });
   }
 
   toggleToolOutput(): void {
@@ -441,33 +411,23 @@ export class NanobossTuiController {
   }
 
   private maybeSendLatchedStopRequest(event: FrontendEventEnvelope): void {
-    if (event.type !== "run_started" || this.state.stopRequestedRunId !== event.data.runId) {
-      return;
-    }
-
-    void this.sendStopRequest(event.data.runId);
+    maybeSendLatchedStopRequestInternal({
+      event,
+      state: this.state,
+      sendStopRequest: (runId) => {
+        void this.sendStopRequest(runId);
+      },
+    });
   }
 
   private async sendStopRequest(runId: string): Promise<void> {
-    const sessionId = this.state.sessionId;
-    if (!sessionId) {
-      return;
-    }
-
-    try {
-      await (this.deps.cancelSessionRun ?? cancelSessionRun)(
-        this.params.serverUrl,
-        sessionId,
-        runId,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.dispatch({
-        type: "local_stop_request_failed",
-        runId,
-        text: `[run] cancel failed: ${message}`,
-      });
-    }
+    await sendStopRequestInternal({
+      deps: this.deps,
+      serverUrl: this.params.serverUrl,
+      state: this.state,
+      runId,
+      dispatch: (action) => this.dispatch(action),
+    });
   }
 
   private async enqueuePendingPrompt(promptInput: PromptInput, kind: UiPendingPrompt["kind"]): Promise<void> {
