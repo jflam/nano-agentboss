@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import { writeJsonFileAtomicSync } from "@nanoboss/app-support";
@@ -18,11 +17,11 @@ import {
   materializeForFile,
   serializeValue,
 } from "./stored-value-access.ts";
+import { PromptImageAttachmentStore } from "./prompt-image-attachments.ts";
 import type {
   Continuation,
   DownstreamAgentSelection,
   KernelValue,
-  PromptImagePart,
   PromptImageSummary,
   PromptInput,
   Ref,
@@ -136,8 +135,6 @@ interface StoredRunRecord extends RunRecord {
   };
 }
 
-const STALE_ATTACHMENT_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
 export function normalizeProcedureResult<T extends KernelValue = KernelValue>(
   result: ProcedureResult<T> | string | void,
 ): ProcedureResult<T> {
@@ -157,8 +154,7 @@ export class SessionStore {
   readonly rootDir: string;
 
   private readonly cellsDir: string;
-  private readonly attachmentsDir: string;
-  private readonly pendingAttachmentStages = new Map<string, { tempPath: string; refCount: number }>();
+  private readonly attachments: PromptImageAttachmentStore;
   private readonly cells = new Map<string, CellRecord>();
   private readonly cellFilePaths = new Map<string, string>();
   private readonly order: string[] = [];
@@ -171,20 +167,14 @@ export class SessionStore {
     this.cwd = params.cwd;
     this.rootDir = params.rootDir ?? getSessionDir(params.sessionId);
     this.cellsDir = join(this.rootDir, "cells");
-    this.attachmentsDir = join(this.rootDir, "attachments");
+    this.attachments = new PromptImageAttachmentStore(this.rootDir);
     mkdirSync(this.cellsDir, { recursive: true });
     this.loadExistingCells();
-    this.cleanupStaleAttachmentTemps();
+    this.attachments.cleanupStaleAttachmentTemps();
   }
 
   persistPromptImages(input: PromptInput): PromptImageSummary[] | undefined {
-    const images = input.parts.filter((part): part is PromptImagePart => part.type === "image");
-    if (images.length === 0) {
-      return undefined;
-    }
-
-    mkdirSync(this.attachmentsDir, { recursive: true });
-    return images.map((image) => this.persistPromptImage(image));
+    return this.attachments.persistPromptImages(input);
   }
 
   startRun(params: {
@@ -265,7 +255,7 @@ export class SessionStore {
     const filePath = join(this.cellsDir, `${Date.now()}-${record.cellId}.json`);
     writeJsonFileAtomicSync(filePath, record);
     try {
-      this.promotePendingPromptImages(draft.meta.promptImages);
+      this.attachments.promotePendingPromptImages(draft.meta.promptImages);
     } catch (error) {
       unlinkSync(filePath);
       throw error;
@@ -628,188 +618,14 @@ export class SessionStore {
         continue;
       }
 
-      this.promotePersistedPromptImages(record.meta.promptImages);
+      this.attachments.promotePersistedPromptImages(record.meta.promptImages);
       this.storeCellRecord(record, filePath);
     }
   }
 
-  private persistPromptImage(image: PromptImagePart): PromptImageSummary {
-    const bytes = Buffer.from(image.data, "base64");
-    const digest = createHash("sha256")
-      .update(image.mimeType)
-      .update("\0")
-      .update(bytes)
-      .digest("hex");
-    const extension = fileExtensionForMimeType(image.mimeType);
-    const attachmentId = extension ? `${digest}.${extension}` : digest;
-    const attachmentPath = `attachments/${attachmentId}`;
-    const filePath = join(this.rootDir, attachmentPath);
-    const tempPath = buildAttachmentTempPath(filePath);
-    const pendingStage = this.pendingAttachmentStages.get(attachmentPath);
-
-    if (!existsSync(filePath)) {
-      if (pendingStage && existsSync(pendingStage.tempPath)) {
-        pendingStage.refCount += 1;
-      } else if (existsSync(tempPath)) {
-        this.pendingAttachmentStages.set(attachmentPath, {
-          tempPath,
-          refCount: 1,
-        });
-      } else {
-        writeFileSync(tempPath, bytes);
-        this.pendingAttachmentStages.set(attachmentPath, {
-          tempPath,
-          refCount: 1,
-        });
-      }
-    }
-
-    return {
-      token: image.token,
-      mimeType: image.mimeType,
-      width: image.width,
-      height: image.height,
-      byteLength: image.byteLength,
-      attachmentId,
-      attachmentPath,
-    };
-  }
-
   discardPendingPromptImages(promptImages: CellRecord["meta"]["promptImages"]): void {
-    for (const image of promptImages ?? []) {
-      const attachmentPath = image.attachmentPath;
-      if (!attachmentPath) {
-        continue;
-      }
-
-      const filePath = join(this.rootDir, attachmentPath);
-      if (existsSync(filePath)) {
-        this.pendingAttachmentStages.delete(attachmentPath);
-        continue;
-      }
-
-      const stage = this.pendingAttachmentStages.get(attachmentPath);
-      if (!stage || !existsSync(stage.tempPath)) {
-        continue;
-      }
-
-      stage.refCount -= 1;
-      if (stage.refCount <= 0) {
-        unlinkSync(stage.tempPath);
-        this.pendingAttachmentStages.delete(attachmentPath);
-      }
-    }
+    this.attachments.discardPendingPromptImages(promptImages);
   }
-
-  private promotePersistedPromptImages(promptImages: CellRecord["meta"]["promptImages"]): void {
-    for (const image of promptImages ?? []) {
-      const attachmentPath = image.attachmentPath;
-      if (!attachmentPath) {
-        continue;
-      }
-
-      const filePath = join(this.rootDir, attachmentPath);
-      if (existsSync(filePath)) {
-        continue;
-      }
-
-      const tempPath = buildAttachmentTempPath(filePath);
-      if (existsSync(tempPath)) {
-        renameSync(tempPath, filePath);
-      }
-    }
-  }
-
-  private promotePendingPromptImages(promptImages: CellRecord["meta"]["promptImages"]): void {
-    const promotions = new Map<string, { attachmentPath: string; filePath: string; tempPath: string }>();
-
-    for (const image of promptImages ?? []) {
-      const attachmentPath = image.attachmentPath;
-      if (!attachmentPath) {
-        continue;
-      }
-
-      const filePath = join(this.rootDir, attachmentPath);
-      if (existsSync(filePath)) {
-        this.pendingAttachmentStages.delete(attachmentPath);
-        continue;
-      }
-
-      const tempPath = buildAttachmentTempPath(filePath);
-      if (!existsSync(tempPath)) {
-        throw new Error(`Missing staged prompt image attachment: ${attachmentPath}`);
-      }
-
-      promotions.set(attachmentPath, { attachmentPath, filePath, tempPath });
-    }
-
-    const uniquePromotions = [...promotions.values()];
-    const promoted = new Map<string, { attachmentPath: string; filePath: string; tempPath: string }>();
-    try {
-      for (const promotion of uniquePromotions) {
-        renameSync(promotion.tempPath, promotion.filePath);
-        promoted.set(promotion.attachmentPath, promotion);
-      }
-    } catch (error) {
-      const promotedEntries = [...promoted.values()];
-      for (let index = promotedEntries.length - 1; index >= 0; index -= 1) {
-        const promotion = promotedEntries[index];
-        if (promotion && existsSync(promotion.filePath) && !existsSync(promotion.tempPath)) {
-          renameSync(promotion.filePath, promotion.tempPath);
-        }
-      }
-      throw error;
-    }
-
-    for (const promotion of uniquePromotions) {
-      this.pendingAttachmentStages.delete(promotion.attachmentPath);
-    }
-  }
-
-  private cleanupStaleAttachmentTemps(now = Date.now()): void {
-    if (!existsSync(this.attachmentsDir)) {
-      return;
-    }
-
-    for (const entry of readdirSync(this.attachmentsDir)) {
-      if (!entry.endsWith(".tmp")) {
-        continue;
-      }
-
-      const path = join(this.attachmentsDir, entry);
-      let stats;
-      try {
-        stats = statSync(path);
-      } catch {
-        continue;
-      }
-
-      if (now - stats.mtimeMs <= STALE_ATTACHMENT_TEMP_MAX_AGE_MS) {
-        continue;
-      }
-
-      unlinkSync(path);
-    }
-  }
-}
-
-function fileExtensionForMimeType(mimeType: string): string | undefined {
-  switch (mimeType) {
-    case "image/png":
-      return "png";
-    case "image/jpeg":
-      return "jpg";
-    case "image/webp":
-      return "webp";
-    case "image/gif":
-      return "gif";
-    default:
-      return undefined;
-  }
-}
-
-function buildAttachmentTempPath(path: string): string {
-  return `${path}.tmp`;
 }
 
 function matchesCell(record: CellRecord, options: Pick<RunFilterOptions, "kind" | "procedure">): boolean {
