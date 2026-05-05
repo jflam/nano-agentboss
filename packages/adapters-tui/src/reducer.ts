@@ -3,24 +3,7 @@ import {
 } from "@nanoboss/adapters-http";
 import { formatProcedureStatusText } from "@nanoboss/procedure-engine";
 
-import { formatTokenUsageLine, toTokenUsageSummary } from "./format.ts";
-import {
-  type UiState,
-  type UiTranscriptItem,
-  type UiTurn,
-} from "./state.ts";
-import {
-  appendAssistantText,
-  appendTranscriptItem,
-  buildAssistantTurnMeta,
-  createTurn,
-  nextTurnId,
-} from "./reducer-turns.ts";
-import {
-  buildContinuationStatusLine,
-  buildDismissContinuationStatusLine,
-  finishRun,
-} from "./reducer-run-completion.ts";
+import { type UiState } from "./state.ts";
 import {
   appendProcedureCard,
   applyProcedurePanel,
@@ -29,8 +12,18 @@ import {
 import {
   mergeAvailableCommands,
   reduceLocalUiAction,
-  STOP_REQUESTED_STATUS,
 } from "./reducer-local-actions.ts";
+import {
+  reduceRunCancelledEvent,
+  reduceRunCompletedEvent,
+  reduceRunFailedEvent,
+  reduceRunHeartbeatEvent,
+  reduceRunPausedEvent,
+  reduceRunRestoredEvent,
+  reduceRunStartedEvent,
+  reduceTextDeltaEvent,
+  reduceTokenUsageEvent,
+} from "./reducer-run-events.ts";
 import {
   reduceToolStartedEvent,
   reduceToolUpdatedEvent,
@@ -53,84 +46,10 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
         ...state,
         availableCommands: mergeAvailableCommands(event.data.commands),
       };
-    case "run_restored": {
-      const pendingContinuation = event.data.status === "paused"
-        ? {
-            procedure: event.data.procedure,
-            question: "",
-          }
-        : state.pendingContinuation;
-      const userTurn = createTurn({
-        id: nextTurnId("user", state.turns.length),
-        role: "user",
-        markdown: event.data.prompt,
-        status: "complete",
-      });
-      const nextTurns: UiTurn[] = [...state.turns, userTurn];
-      const nextTranscriptItems: UiTranscriptItem[] = appendTranscriptItem(
-        state.transcriptItems,
-        { type: "turn", id: userTurn.id },
-      );
-      if (!event.data.text) {
-        return {
-          ...state,
-          turns: nextTurns,
-          transcriptItems: nextTranscriptItems,
-          activeRunId: event.data.runId,
-          activeProcedure: event.data.procedure,
-          activeAssistantTurnId: undefined,
-          assistantParagraphBreakPending: undefined,
-          pendingContinuation,
-        };
-      }
-
-      const assistantTurn = createTurn({
-        id: nextTurnId("assistant", nextTurns.length),
-        role: "assistant",
-        markdown: event.data.text,
-        blocks: event.data.text.length > 0
-          ? [{ kind: "text", text: event.data.text, origin: "replay" }]
-          : [],
-        status: event.data.status === "paused" ? "complete" : event.data.status,
-        runId: event.data.runId,
-        meta: buildAssistantTurnMeta({
-          procedure: event.data.procedure,
-        }),
-      });
-
-      return {
-        ...state,
-        turns: [...nextTurns, assistantTurn],
-        transcriptItems: appendTranscriptItem(nextTranscriptItems, { type: "turn", id: assistantTurn.id }),
-        pendingContinuation,
-      };
-    }
-    case "run_started": {
-      const stopRequestedRunId = state.pendingStopRequest || state.stopRequestedRunId === event.data.runId
-        ? event.data.runId
-        : undefined;
-      const parsedStartedAtMs = Date.parse(event.data.startedAt);
-      const runStartedAtMs = Number.isFinite(parsedStartedAtMs)
-        ? state.runStartedAtMs !== undefined
-          ? Math.min(state.runStartedAtMs, parsedStartedAtMs)
-          : parsedStartedAtMs
-        : state.runStartedAtMs ?? Date.now();
-      return {
-        ...state,
-        activeRunId: event.data.runId,
-        activeProcedure: event.data.procedure,
-        activeAssistantTurnId: undefined,
-        assistantParagraphBreakPending: undefined,
-        runStartedAtMs,
-        activeRunAttemptedToolCallIds: [],
-        activeRunSucceededToolCallIds: [],
-        pendingStopRequest: false,
-        stopRequestedRunId,
-        statusLine: stopRequestedRunId ? STOP_REQUESTED_STATUS : `[run] invoking /${event.data.procedure}…`,
-        inputDisabled: true,
-        inputDisabledReason: "run",
-      };
-    }
+    case "run_restored":
+      return reduceRunRestoredEvent(state, event);
+    case "run_started":
+      return reduceRunStartedEvent(state, event);
     case "continuation_updated":
       return {
         ...state,
@@ -163,32 +82,17 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
       }
-      return appendAssistantText(state, event.data.text);
+      return reduceTextDeltaEvent(state, event);
     case "token_usage":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
       }
-      return {
-        ...state,
-        tokenUsageLine: formatTokenUsageLine(event.data.usage),
-        tokenUsage: toTokenUsageSummary(event.data.usage),
-      };
-    case "run_heartbeat": {
+      return reduceTokenUsageEvent(state, event);
+    case "run_heartbeat":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
       }
-      if (isStopRequestedForRun(state, event.data.runId)) {
-        return state;
-      }
-
-      const now = Date.parse(event.data.at) || Date.now();
-      const startedAt = state.runStartedAtMs ?? now;
-      const elapsedSeconds = Math.max(1, Math.round((now - startedAt) / 1_000));
-      return {
-        ...state,
-        statusLine: `[run] /${event.data.procedure} still working (${elapsedSeconds}s)`,
-      };
-    }
+      return reduceRunHeartbeatEvent(state, event);
     case "tool_started": {
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
@@ -198,82 +102,29 @@ function reduceFrontendEvent(state: UiState, event: RenderedFrontendEventEnvelop
     case "tool_updated": {
       return reduceToolUpdatedEvent(state, event);
     }
-    case "run_completed": {
+    case "run_completed":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
       }
-      const tokenUsageLine = event.data.tokenUsage ? formatTokenUsageLine(event.data.tokenUsage) : state.tokenUsageLine;
-      const tokenUsage = event.data.tokenUsage ? toTokenUsageSummary(event.data.tokenUsage) : state.tokenUsage;
-      const statusLine = event.data.procedure === "dismiss"
-        ? buildDismissContinuationStatusLine(event.data.display)
-        : `[run] ${event.data.procedure} completed`;
-      return finishRun(state, {
-        turnStatus: "complete",
-        completionText: event.data.display,
-        tokenUsageLine,
-        tokenUsage,
-        completedAt: event.data.completedAt,
-        statusLine,
-      });
-    }
-    case "run_paused": {
+      return reduceRunCompletedEvent(state, event);
+    case "run_paused":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
       }
-      const tokenUsageLine = event.data.tokenUsage ? formatTokenUsageLine(event.data.tokenUsage) : state.tokenUsageLine;
-      const tokenUsage = event.data.tokenUsage ? toTokenUsageSummary(event.data.tokenUsage) : state.tokenUsage;
-      const nextState = finishRun(state, {
-        turnStatus: "complete",
-        completionText: event.data.display ?? event.data.question,
-        tokenUsageLine,
-        tokenUsage,
-        completedAt: event.data.pausedAt,
-        statusLine: buildContinuationStatusLine(event.data.procedure),
-      });
-      return {
-        ...nextState,
-        pendingContinuation: {
-          procedure: event.data.procedure,
-          question: event.data.question,
-          inputHint: event.data.inputHint,
-          suggestedReplies: event.data.suggestedReplies,
-          form: event.data.form,
-        },
-      };
-    }
-    case "run_failed": {
+      return reduceRunPausedEvent(state, event);
+    case "run_failed":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
       }
-      const nextState = finishRun(state, {
-        turnStatus: "failed",
-        completionText: event.data.error,
-        failureMessage: event.data.error,
-        completedAt: event.data.completedAt,
-        statusLine: `[run] ${event.data.error}`,
-      });
-      return { ...nextState, pendingContinuation: undefined };
-    }
-    case "run_cancelled": {
+      return reduceRunFailedEvent(state, event);
+    case "run_cancelled":
       if (shouldIgnoreMismatchedRunEvent(state, event.data.runId)) {
         return state;
       }
-      const nextState = finishRun(state, {
-        turnStatus: "cancelled",
-        completionText: event.data.message,
-        statusMessage: event.data.message,
-        completedAt: event.data.completedAt,
-        statusLine: `[run] ${event.data.procedure} stopped`,
-      });
-      return { ...nextState, pendingContinuation: undefined };
-    }
+      return reduceRunCancelledEvent(state, event);
   }
 }
 
 function shouldIgnoreMismatchedRunEvent(state: UiState, runId: string): boolean {
   return state.activeRunId !== undefined && state.activeRunId !== runId;
-}
-
-function isStopRequestedForRun(state: UiState, runId: string): boolean {
-  return state.stopRequestedRunId === runId;
 }
