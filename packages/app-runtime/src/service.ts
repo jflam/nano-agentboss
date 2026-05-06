@@ -15,7 +15,6 @@ import {
   promptInputAttachmentSummaries,
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
-import { resolveDownstreamAgentConfig } from "@nanoboss/procedure-engine";
 
 import {
   SessionEventLog,
@@ -25,9 +24,10 @@ import {
   executeProcedure,
   type SessionUpdateEmitter,
   ProcedureCancelledError,
+  ProcedureDispatchJobManager,
   ProcedureExecutionError,
+  resolveDownstreamAgentConfig,
 } from "@nanoboss/procedure-engine";
-import { cancelActiveProcedureDispatches } from "./procedure-dispatch-manager.ts";
 import {
   publishRunCancelled,
   publishRunCompleted,
@@ -252,7 +252,7 @@ export class NanobossService {
 
     activeRun.softStopRequested = true;
     activeRun.softStopController.abort();
-    cancelActiveProcedureDispatches(sessionId, session, activeRun);
+    this.cancelActiveProcedureDispatches(sessionId, session, activeRun);
   }
 
   /**
@@ -284,11 +284,34 @@ export class NanobossService {
       return;
     }
 
-    cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
+    this.cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
     session.activeRun?.abortController.abort();
     session.activeRun?.softStopController.abort();
     session.defaultAgentSession.close();
     this.sessions.delete(sessionId);
+  }
+
+  private cancelActiveProcedureDispatches(
+    sessionId: string,
+    session: SessionState,
+    activeRun: SessionState["activeRun"],
+  ): void {
+    if (!activeRun || activeRun.dispatchCorrelationIds.size === 0) {
+      return;
+    }
+
+    const manager = new ProcedureDispatchJobManager({
+      cwd: session.cwd,
+      sessionId,
+      rootDir: session.store.rootDir,
+      getRegistry: async () => {
+        throw new Error("Procedure registry is unavailable during cancellation.");
+      },
+    });
+
+    for (const dispatchCorrelationId of activeRun.dispatchCorrelationIds) {
+      manager.cancelByCorrelationId(dispatchCorrelationId);
+    }
   }
 
   private prepareDefaultPrompt(
@@ -327,7 +350,7 @@ export class NanobossService {
       throw new Error("prompt is required");
     }
 
-    cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
+    this.cancelActiveProcedureDispatches(sessionId, session, session.activeRun);
     session.activeRun?.abortController.abort();
     session.activeRun?.softStopController.abort();
 
