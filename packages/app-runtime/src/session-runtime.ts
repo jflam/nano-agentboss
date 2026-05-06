@@ -16,7 +16,6 @@ import {
   readStoredSessionMetadata,
   writeStoredSessionMetadata,
 } from "@nanoboss/store";
-import { shouldPrewarmDefaultAgentSession } from "./default-agent-prewarm.ts";
 import { SessionEventLog, type RuntimeCommand } from "./runtime-events.ts";
 import type { ActiveRunState } from "./active-run.ts";
 
@@ -69,7 +68,7 @@ export function createSessionState(params: {
     config: defaultAgentConfig,
     persistedSessionId: params.defaultAgentSessionId,
   });
-  if (shouldPrewarmDefaultAgentSession()) {
+  if (process.env.NANOBOSS_PREWARM_DEFAULT_SESSION !== "0") {
     void defaultAgentSession.warm?.();
   }
 

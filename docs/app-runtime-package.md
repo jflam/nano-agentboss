@@ -128,14 +128,15 @@ entrypoint APIs. Generic data helpers belong in `@nanoboss/procedure-sdk` or
   Session update fanout into runtime events, token snapshots, and delegate
   emitters.
 - `src/session-runtime.ts`
-  Live session state and persisted descriptor helpers.
+  Live session state, default-agent prewarm policy, and persisted descriptor
+  helpers.
 - `src/continuations.ts`
   Continuation command conversion and pending continuation state publication.
 - `src/continuation-cancel.ts`
   Paused continuation cancel-hook execution, error panel publication, and
   terminal cancellation persistence.
 - `src/default-agent-policy.ts`
-  Default downstream-agent prewarm and prompt preparation policy.
+  Default downstream-agent prompt preparation policy.
 - `src/procedure-runtime-bindings.ts`
   Foreground procedure runtime bindings and default-agent selection updates.
 - `src/memory-cards.ts`
