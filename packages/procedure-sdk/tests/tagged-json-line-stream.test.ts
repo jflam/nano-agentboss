@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { createTaggedJsonLineStream } from "@nanoboss/procedure-sdk";
+import {
+  PROCEDURE_UI_MARKER_PREFIX,
+  createTaggedJsonLineStream,
+  parseProcedureUiMarkerPayload,
+} from "@nanoboss/procedure-sdk";
 
 describe("createTaggedJsonLineStream", () => {
   test("renders text lines while extracting structured marker lines", () => {
@@ -46,5 +50,15 @@ describe("createTaggedJsonLineStream", () => {
     const rendered = stream.consume("[[marker]] {not json}\nplain\n");
 
     expect(rendered).toBe("plain\n");
+  });
+});
+
+describe("procedure UI marker payload parsing", () => {
+  test("parses the shared procedure UI marker prefix", () => {
+    expect(parseProcedureUiMarkerPayload(`${PROCEDURE_UI_MARKER_PREFIX}{"type":"status"}`)).toEqual({
+      type: "status",
+    });
+    expect(parseProcedureUiMarkerPayload("regular assistant text")).toBeUndefined();
+    expect(parseProcedureUiMarkerPayload(`${PROCEDURE_UI_MARKER_PREFIX}{not-json`)).toBeUndefined();
   });
 });

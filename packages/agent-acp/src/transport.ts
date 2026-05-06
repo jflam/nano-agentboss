@@ -4,6 +4,7 @@ import {
   createTextPromptInput,
   defaultCancellationMessage,
   hasPromptInputImages,
+  parseProcedureUiMarkerPayload,
 } from "@nanoboss/procedure-sdk";
 
 import { collectFinalTextSessionOutput, parseAssistantNoticeText } from "./updates.ts";
@@ -26,7 +27,6 @@ import type {
   CallAgentTransport,
   TypeDescriptor,
 } from "./types.ts";
-import { parseProcedureUiMarker } from "./ui-marker.ts";
 
 const MAX_PARSE_RETRIES = 2;
 
@@ -354,7 +354,7 @@ async function runAcpPrompt(
         update.sessionUpdate === "agent_message_chunk" &&
         update.content.type === "text"
       ) {
-        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarker(update.content.text)) {
+        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarkerPayload(update.content.text)) {
           raw += update.content.text;
         }
       }

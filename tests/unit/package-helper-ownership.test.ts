@@ -122,6 +122,29 @@ const HELPER_FAMILIES = [
     ],
   },
   {
+    family: "procedure UI marker payload",
+    canonicalOwner: "@nanoboss/procedure-sdk",
+    implementationNames: [
+      "PROCEDURE_UI_MARKER_PREFIX",
+      "parseProcedureUiMarkerPayload",
+    ],
+    allowedImplementations: [
+      {
+        packageName: "@nanoboss/procedure-sdk",
+        path: "packages/procedure-sdk/src/procedure-ui-marker.ts",
+        reason: "Canonical untyped marker prefix and payload detector shared by engine and adapters.",
+      },
+    ],
+    publicExports: [
+      {
+        packageName: "@nanoboss/procedure-sdk",
+        barrel: "packages/procedure-sdk/src/index.ts",
+        names: ["PROCEDURE_UI_MARKER_PREFIX", "parseProcedureUiMarkerPayload"],
+        source: "./procedure-ui-marker.ts",
+      },
+    ],
+  },
+  {
     family: "tool payload normalization",
     canonicalOwner: "@nanoboss/procedure-sdk",
     implementationNames: [

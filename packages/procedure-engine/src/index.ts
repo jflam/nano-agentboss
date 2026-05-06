@@ -80,7 +80,6 @@ export {
   createProcedureUiMarkerStream,
   formatProcedureStatusText,
   parseProcedureUiMarker,
-  PROCEDURE_UI_MARKER_PREFIX,
   renderProcedureUiMarker,
   toProcedureUiSessionUpdate,
 } from "./ui-events.ts";

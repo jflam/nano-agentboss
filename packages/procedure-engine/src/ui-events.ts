@@ -1,30 +1,21 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import {
   createTaggedJsonLineStream,
+  parseProcedureUiMarkerPayload,
+  PROCEDURE_UI_MARKER_PREFIX,
   type TaggedJsonLineStream,
   type TaggedJsonLineStreamOptions,
 } from "@nanoboss/procedure-sdk";
 
 import type { ProcedureUiEvent } from "./context/shared.ts";
 
-export const PROCEDURE_UI_MARKER_PREFIX = "[[nanoboss-ui]] ";
-
 export function renderProcedureUiMarker(event: ProcedureUiEvent): string {
   return `${PROCEDURE_UI_MARKER_PREFIX}${JSON.stringify(event)}\n`;
 }
 
 export function parseProcedureUiMarker(text: string): ProcedureUiEvent | undefined {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith(PROCEDURE_UI_MARKER_PREFIX)) {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed.slice(PROCEDURE_UI_MARKER_PREFIX.length));
-    return isProcedureUiEvent(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
+  const parsed = parseProcedureUiMarkerPayload(text);
+  return isProcedureUiEvent(parsed) ? parsed : undefined;
 }
 
 export function toProcedureUiSessionUpdate(event: ProcedureUiEvent): acp.SessionUpdate {

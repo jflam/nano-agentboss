@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const EXPECTED_RUNTIME_EXPORTS = [
+  "PROCEDURE_UI_MARKER_PREFIX",
   "RunCancelledError",
   "asRecord",
   "buildImageTokenLabel",
@@ -27,6 +28,7 @@ const EXPECTED_RUNTIME_EXPORTS = [
   "normalizeToolName",
   "normalizeToolResultPayload",
   "parsePromptInputPayload",
+  "parseProcedureUiMarkerPayload",
   "promptInputAttachmentSummaries",
   "promptInputDisplayText",
   "promptInputToPlainText",

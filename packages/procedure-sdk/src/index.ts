@@ -314,6 +314,11 @@ export {
 } from "./tagged-json-line-stream.ts";
 
 export {
+  parseProcedureUiMarkerPayload,
+  PROCEDURE_UI_MARKER_PREFIX,
+} from "./procedure-ui-marker.ts";
+
+export {
   defaultCancellationMessage,
   normalizeRunCancelledError,
   RunCancelledError,
