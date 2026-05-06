@@ -89,6 +89,39 @@ const HELPER_FAMILIES = [
     ],
   },
   {
+    family: "cancellation policy",
+    canonicalOwner: "@nanoboss/procedure-sdk",
+    implementationNames: [
+      "RunCancelledError",
+      "defaultCancellationMessage",
+      "normalizeRunCancelledError",
+      "toCancelledError",
+      "throwIfCancelled",
+    ],
+    allowedImplementations: [
+      {
+        packageName: "@nanoboss/procedure-sdk",
+        path: "packages/procedure-sdk/src/cancellation.ts",
+        reason: "Canonical cancellation error, reason, and message policy owner.",
+      },
+    ],
+    publicExports: [
+      {
+        packageName: "@nanoboss/procedure-sdk",
+        barrel: "packages/procedure-sdk/src/index.ts",
+        names: [
+          "RunCancelledError",
+          "RunCancellationReason",
+          "defaultCancellationMessage",
+          "normalizeRunCancelledError",
+          "throwIfCancelled",
+          "toCancelledError",
+        ],
+        source: "./cancellation.ts",
+      },
+    ],
+  },
+  {
     family: "tool payload normalization",
     canonicalOwner: "@nanoboss/procedure-sdk",
     implementationNames: [
@@ -241,6 +274,10 @@ function collectPackageHelperImplementations(): HelperImplementation[] {
 
     const visit = (node: ts.Node): void => {
       if (ts.isFunctionDeclaration(node) && node.name !== undefined && GUARDED_HELPER_NAMES.has(node.name.text)) {
+        implementations.push({ name: node.name.text, path: relativePath });
+      }
+
+      if (ts.isClassDeclaration(node) && node.name !== undefined && GUARDED_HELPER_NAMES.has(node.name.text)) {
         implementations.push({ name: node.name.text, path: relativePath });
       }
 
