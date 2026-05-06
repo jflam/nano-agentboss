@@ -75,7 +75,8 @@ files are grouped by owner directory so future changes have an obvious home:
 
 The main size drivers are:
 
-- `app.ts`: terminal app wiring, editor behavior, and local command dispatch
+- `app.ts`: terminal app wiring, runtime helper construction, editor behavior,
+  and local command dispatch
 - `app-components.ts`: app-level default theme, terminal, TUI, editor,
   clipboard, and view component construction helper
 - `app-binding-hooks.ts`: app-level keybinding hook wiring for cooldown and
@@ -109,10 +110,6 @@ The main size drivers are:
   behavior
 - `app-model-selection.ts`: app-level inline model picker, persistence
   confirmation flow, and controller prompt adapter
-- `app-runtime-helpers.ts`: app-level autocomplete, SIGINT, continuation, and
-  live-update helper construction bundle
-- `app-runtime-wiring.ts`: app-level view, runtime helper, and model-prompt
-  construction wiring
 - `app-sigint-exit.ts`: app-level ctrl-c double-press exit helper
 - `app-types.ts`: app-local dependency adapter contracts
 - `reducer.ts`: top-level local-vs-frontend reducer router

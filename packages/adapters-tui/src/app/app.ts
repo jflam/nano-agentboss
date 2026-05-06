@@ -2,6 +2,7 @@ import type {
   DownstreamAgentSelection,
 } from "@nanoboss/contracts";
 import type { ClipboardImageProvider } from "../clipboard/provider.ts";
+import { AppAutocompleteSync } from "./app-autocomplete.ts";
 import {
   type ComposerState,
   createComposerState,
@@ -25,15 +26,19 @@ import "../core/core-form-renderers.ts";
 import type { SelectOverlayOptions } from "../overlays/select-overlay.ts";
 import type { UiState } from "../state/state.ts";
 import type { NanobossTuiTheme } from "../theme/theme.ts";
-import { createAppCoreComponents } from "./app-components.ts";
+import {
+  createAppCoreComponents,
+  createAppView,
+} from "./app-components.ts";
+import { AppContinuationComposer } from "./app-continuation-composer.ts";
 import {
   runAppLifecycle,
   stopAppLifecycle,
 } from "./app-lifecycle.ts";
+import { AppLiveUpdates } from "./app-live-updates.ts";
 import { AppModelPrompts } from "./app-model-selection.ts";
 import { bindAppInteractions } from "./app-interaction-wiring.ts";
-import { type AppRuntimeHelpers } from "./app-runtime-helpers.ts";
-import { createAppRuntimeWiring } from "./app-runtime-wiring.ts";
+import { AppSigintExit } from "./app-sigint-exit.ts";
 export type { NanobossTuiAppParams } from "./app-types.ts";
 import type {
   ControllerLike,
@@ -46,6 +51,14 @@ import type {
 } from "./app-types.ts";
 
 const TOOL_OUTPUT_TOGGLE_COOLDOWN_MS = 150;
+
+interface AppRuntimeHelpers {
+  autocomplete: AppAutocompleteSync;
+  sigintExit: AppSigintExit;
+  continuationComposer: AppContinuationComposer;
+  liveUpdates: AppLiveUpdates;
+}
+
 export class NanobossTuiApp {
   private readonly cwd: string;
   private readonly theme: NanobossTuiTheme;
@@ -92,27 +105,52 @@ export class NanobossTuiApp {
       },
     });
     this.state = this.controller.getState();
-    const runtimeWiring = createAppRuntimeWiring({
+
+    this.view = createAppView({
       deps,
-      cwd: this.cwd,
-      tui: this.tui,
       editor: this.editor,
-      controller: this.controller,
       theme: this.theme,
       state: this.state,
-      getState: () => this.state,
-      setState: (state) => {
-        this.state = state;
-      },
-      isStopped: () => this.stopped,
-      now: this.now,
-      requestRender: (force) => this.requestRender(force),
+    });
+    this.helpers = {
+      autocomplete: new AppAutocompleteSync({
+        editor: this.editor,
+        cwd: this.cwd,
+      }),
+      sigintExit: new AppSigintExit({
+        controller: this.controller,
+        editor: this.editor,
+        now: this.now,
+        exitWindowMs: 500,
+      }),
+      continuationComposer: new AppContinuationComposer({
+        tui: this.tui,
+        view: this.view,
+        editor: this.editor,
+        controller: this.controller,
+        theme: this.theme,
+        getState: () => this.state,
+        requestRender: (force) => this.requestRender(force),
+      }),
+      liveUpdates: new AppLiveUpdates({
+        tui: this.tui,
+        view: this.view,
+        getState: () => this.state,
+        setState: (state) => {
+          this.state = state;
+        },
+        isStopped: () => this.stopped,
+        setInterval: deps.setInterval ?? globalThis.setInterval,
+        clearInterval: deps.clearInterval ?? globalThis.clearInterval,
+      }),
+    };
+    this.modelPrompts = new AppModelPrompts({
+      cwd: this.cwd,
+      deps,
+      controller: this.controller,
       promptWithInlineSelect: async (options) =>
         await this.promptWithInlineSelect(options),
     });
-    this.view = runtimeWiring.view;
-    this.helpers = runtimeWiring.helpers;
-    this.modelPrompts = runtimeWiring.modelPrompts;
 
     bindAppInteractions({
       tui: this.tui,
