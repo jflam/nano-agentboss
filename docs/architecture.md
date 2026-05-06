@@ -1,263 +1,333 @@
-# nanoboss architecture
+# Nanoboss Architecture and Refactor Review
 
-This document describes the transport-level architecture of nanoboss.
+Date: 2026-05-06
 
-The key distinction is:
+Review range: `15ae394..HEAD` on branch
+`audit/15ae394-to-head-20260505`.
 
-- **frontend transport**: how a user or UI talks to nanoboss
-- **agent transport**: how nanoboss talks to downstream agents
-- **session inspection transport**: how downstream agents inspect nanoboss session state
+This document describes how Nanoboss operates after the package-boundary and
+simplification refactor. It also records a code-review opinion on whether the
+branch achieves the refactor goal of simplifying the implementation.
 
-## Transport inventory
+## Executive Opinion
 
-### 1. Frontend HTTP/SSE
-Used when nanoboss runs as an HTTP server.
+The refactor achieves the most important simplification goal: ownership is now
+much clearer. Public package surfaces are explicit, helper-policy ownership is
+guarded by tests, TUI internals are grouped by owner directory, and package
+dependency layering is both declared and tested.
 
-- request/response API:
-  - `POST /v1/sessions`
-  - `POST /v1/sessions/:id/prompts`
-  - `POST /v1/sessions/:id/cancel`
-  - `GET /v1/sessions/:id`
-- streaming API:
-  - `GET /v1/sessions/:id/stream` via **SSE**
+The refactor is not a pure reduction in implementation size. It trades a few
+large mixed-concern files for more files and more package-level structure:
 
-Relevant files:
-- `src/http/server.ts`
-- `src/http/client.ts`
-- `src/http/frontend-events.ts`
-- `src/core/service.ts`
+- package `src` TypeScript files increased from 161 to 316
+- package `src` TypeScript lines increased from about 27,801 to 30,143
+- `packages/adapters-tui/src` files increased from 47 to 159
+- `packages/adapters-tui/src` lines increased from about 7,917 to 10,414
 
-### 2. ACP over stdio
-Used in two places:
+That tradeoff is acceptable because the new files mostly encode durable
+ownership, and the branch adds tests that prevent the old duplicate-helper and
+cross-layer drift from returning. I would commit this PR ahead of the remaining
+follow-on work if pre-commit is green. The follow-ons are worthwhile, but they
+are not blockers for this branch.
 
-- the local CLI launches nanoboss's internal ACP server over stdio
-- nanoboss launches downstream agents over stdio ACP
-
-Relevant files:
-- nanoboss ACP server:
-  - `@nanoboss/adapters-acp-server`
-  - `@nanoboss/adapters-tui`
-- downstream ACP client/runtime:
-  - `src/agent/acp-runtime.ts`
-  - `src/agent/call-agent.ts`
-  - `src/agent/default-session.ts`
-
-### 3. Global nanoboss MCP over stdio
-Used so downstream agents can inspect durable nanoboss session runs and refs and dispatch slash commands through one shared MCP surface.
-
-This is **not** ACP. It is a globally registered MCP server surfaced as `nanoboss` over stdio.
-
-Relevant files:
-- `nanoboss.ts`
-- `src/mcp/registration.ts`
-- `src/mcp/server.ts`
-- `src/session/store.ts`
-
----
-
-## High-level picture
+## Whole-Project Shape
 
 ```mermaid
 flowchart TD
-  U[User] -->|local terminal| CLI[TUI / CLI adapter\n@nanoboss/adapters-tui]
-  U -->|HTTP requests| HTTPClient[HTTP client / UI\nsrc/http/client.ts]
+  User[User or external client]
+  CLI[nanoboss cli]
+  HTTPCommand[nanoboss http]
+  ACPCommand[nanoboss acp-server]
+  MCPCommand[nanoboss mcp]
 
-  CLI -->|stdio ACP| ACPServer[nanoboss ACP server\n@nanoboss/adapters-acp-server]
-  HTTPClient -->|HTTP + SSE| HTTPServer[nanoboss HTTP/SSE server\nsrc/http/server.ts]
+  TUI[@nanoboss/adapters-tui\ninteractive terminal frontend]
+  HTTP[@nanoboss/adapters-http\nHTTP/SSE protocol]
+  ACPServer[@nanoboss/adapters-acp-server\ninternal ACP stdio adapter]
+  MCP[@nanoboss/adapters-mcp\nMCP stdio tools]
 
-  ACPServer --> Service[NanobossService\nsrc/core/service.ts]
-  HTTPServer --> Service
+  Runtime[@nanoboss/app-runtime\nlive sessions and runtime tools]
+  Catalog[@nanoboss/procedure-catalog\nprocedure registry and discovery]
+  Engine[@nanoboss/procedure-engine\nprocedure execution and dispatch jobs]
+  Store[@nanoboss/store\ndurable sessions, runs, refs]
+  Agent[@nanoboss/agent-acp\ndownstream ACP agents]
+  SDK[@nanoboss/procedure-sdk\nauthor-facing contracts and helpers]
+  Contracts[@nanoboss/contracts\nshared durable types]
+  Support[@nanoboss/app-support\nfilesystem, build, process helpers]
 
-  Service --> Context[ProcedureApi / procedures\nsrc/core/context.ts + context-*.ts]
-  Context --> AgentRuntime[ACP runtime\nsrc/agent/acp-runtime.ts]
+  ExtCatalog[@nanoboss/tui-extension-catalog\nTUI extension discovery]
+  ExtSDK[@nanoboss/tui-extension-sdk\nTUI extension authoring types]
 
-  AgentRuntime -->|stdio ACP| Downstream[Downstream agent\nclaude / gemini / codex / copilot]
-  Downstream -->|stdio MCP tool calls| GlobalMcp[Global nanoboss MCP stdio server\nnanoboss.ts mcp]
-  GlobalMcp --> SessionStore[SessionStore\nsrc/session/store.ts]
+  Downstream[Downstream ACP agent\nCodex, Claude, Gemini, Copilot]
+  Disk[(~/.nanoboss\nsessions, cells, attachments, settings)]
+
+  User --> CLI
+  User --> HTTPCommand
+  User --> ACPCommand
+  User --> MCPCommand
+
+  CLI --> TUI
+  TUI --> HTTP
+  HTTPCommand --> HTTP
+  ACPCommand --> ACPServer
+  MCPCommand --> MCP
+
+  HTTP --> Runtime
+  ACPServer --> Runtime
+  MCP --> Runtime
+
+  Runtime --> Catalog
+  Runtime --> Engine
+  Runtime --> Store
+  Runtime --> Agent
+
+  Engine --> Store
+  Engine --> Agent
+  Engine --> SDK
+  Catalog --> SDK
+  Agent --> Downstream
+  Store --> Disk
+
+  TUI --> ExtCatalog
+  ExtCatalog --> ExtSDK
+
+  SDK --> Contracts
+  Store --> Contracts
+  Runtime --> Contracts
+  Engine --> Contracts
+
+  HTTP --> Support
+  ACPServer --> Support
+  MCP --> Support
+  Runtime --> Support
+  Store --> Support
+  Agent --> Support
 ```
 
----
+The project now has four adapter entry paths into one runtime core:
 
-## Default CLI path
+| Entry path | Adapter package | Runtime call path |
+| --- | --- | --- |
+| `nanoboss cli` | `@nanoboss/adapters-tui` plus `@nanoboss/adapters-http` | private local HTTP/SSE server to `NanobossService` |
+| `nanoboss http` | `@nanoboss/adapters-http` | direct HTTP/SSE calls to `NanobossService` |
+| `nanoboss acp-server` | `@nanoboss/adapters-acp-server` | ACP stdio calls to `NanobossService` |
+| `nanoboss mcp` | `@nanoboss/adapters-mcp` | MCP stdio calls to `NanobossRuntimeService` |
 
-When you run `nanoboss cli` without `--server-url`, the CLI first starts an
-owned private loopback HTTP/SSE server on an ephemeral port and then connects to
-that exact server. If you pass `--server-url`, the CLI switches to explicit
-connect-only mode and validates the target server without killing or restarting
-it.
+## Runtime Flow
 
 ```mermaid
 sequenceDiagram
-  participant User
-  participant CLI as CLI
-  participant Server as nanoboss HTTP server
-  participant Service as NanobossService
+  participant Frontend as TUI / HTTP / ACP client
+  participant Adapter as Adapter package
+  participant Runtime as NanobossService
+  participant Catalog as ProcedureRegistry
+  participant Engine as ProcedureEngine
+  participant Store as SessionStore
+  participant Agent as Agent ACP runtime
+  participant Child as Downstream agent
 
-  User->>CLI: start
-  CLI->>Server: spawn private loopback server
-  Server-->>CLI: readiness payload with baseUrl
-  User->>CLI: type prompt / command
-  CLI->>Server: HTTP + SSE
-  Server->>Service: createSession / promptSession / cancel
-  Service-->>Server: frontend events
-  Server-->>CLI: SSE updates
-  CLI-->>User: render output and tool traces
+  Frontend->>Adapter: create or resume session
+  Adapter->>Runtime: createSessionReady / resumeSessionReady
+  Runtime->>Catalog: load builtins and disk procedures
+  Runtime->>Store: persist session metadata
+  Runtime-->>Adapter: session descriptor and commands
+
+  Frontend->>Adapter: prompt or slash command
+  Adapter->>Runtime: promptSession(...)
+  Runtime->>Engine: executeProcedure(...)
+  Engine->>Store: write root and child run records
+  Engine->>Agent: ctx.agent.run(...) when needed
+  Agent->>Child: ACP prompt over stdio
+  Child-->>Agent: streamed ACP updates
+  Agent-->>Engine: text, tool calls, token metrics
+  Engine-->>Runtime: procedure updates and result
+  Runtime-->>Adapter: runtime/frontend event stream
+  Adapter-->>Frontend: rendered updates
 ```
 
-Relevant files:
-- `@nanoboss/adapters-tui`
-- `@nanoboss/adapters-acp-server`
-- `src/core/service.ts`
+Foreground sessions use `NanobossService`. Tool-style clients use
+`NanobossRuntimeService`, a narrower service for MCP operations such as listing
+runs, reading refs, getting schemas, and starting or waiting on async dispatch
+jobs.
 
----
-
-## HTTP/SSE frontend path
-
-When you run `nanoboss http`, frontend clients talk to nanoboss over HTTP, and live updates come back over SSE.
+## Package Layers
 
 ```mermaid
-sequenceDiagram
-  participant User
-  participant Client as HTTP client / UI
-  participant HTTP as nanoboss HTTP server
-  participant Service as NanobossService
-  participant SSE as SSE stream
+flowchart TB
+  subgraph Adapters
+    TUI2[adapters-tui]
+    HTTP2[adapters-http]
+    ACP2[adapters-acp-server]
+    MCP2[adapters-mcp]
+  end
 
-  User->>Client: send prompt
-  Client->>HTTP: POST /v1/sessions/:id/prompts
-  HTTP->>Service: promptSession(...)
-  Service-->>HTTP: accept request
-  Client->>HTTP: GET /v1/sessions/:id/stream
-  HTTP-->>SSE: event stream
-  Service-->>SSE: run_started / chunks / tool updates / run_completed
-  SSE-->>Client: frontend events
-  Client-->>User: render updates
+  subgraph Application
+    Runtime2[app-runtime]
+  end
+
+  subgraph Domain
+    Engine2[procedure-engine]
+    Catalog2[procedure-catalog]
+    Agent2[agent-acp]
+    Store2[store]
+  end
+
+  subgraph ContractsAndSupport
+    SDK2[procedure-sdk]
+    Contracts2[contracts]
+    Support2[app-support]
+  end
+
+  subgraph Extensions
+    TuiCatalog2[tui-extension-catalog]
+    TuiSdk2[tui-extension-sdk]
+  end
+
+  Adapters --> Application
+  Application --> Domain
+  Domain --> ContractsAndSupport
+  Application --> ContractsAndSupport
+  Adapters --> ContractsAndSupport
+  TUI2 --> TuiCatalog2
+  TuiCatalog2 --> TuiSdk2
+  TuiSdk2 --> SDK2
 ```
 
-Relevant files:
-- `src/http/server.ts`
-- `src/http/client.ts`
-- `src/http/frontend-events.ts`
-- `src/core/service.ts`
+The current branch adds tests for this shape:
 
----
+- package manifests must declare only allowed workspace dependencies
+- the allowed workspace dependency graph must stay acyclic
+- package entrypoints must be explicit instead of wildcard barrels
+- root code must import packages through package APIs, not package-internal paths
+- guarded implementation packages must be free of relative import cycles
 
-## Downstream agent path
+## TUI Internal Shape
 
-Nanoboss talks to downstream agents using **ACP over stdio**.
-
-This path is used by:
-- one-shot `ctx.agent.run(...)` with the default `session: "fresh"` mode
-- `ctx.agent.run(..., { session: "default" })` and `/default` for persistent conversation reuse
-
-Both session modes share the same prompt-building, named-ref injection, and typed JSON parse/retry machinery. The difference is only the transport:
-
-- **fresh**: starts a new ACP session for an isolated downstream call
-- **default**: reuses the session-wide default ACP conversation when continuity is desired
-
-For procedure authors, the namespace split is:
-
-- `ctx.state`: durable stored runs, structural traversal, and refs
-- `ctx.session`: live default-agent control and token usage for the current binding
+`@nanoboss/adapters-tui` remains the largest package. The refactor moves it from
+a flat prefix field into owner directories:
 
 ```mermaid
 flowchart LR
-  Service[NanobossService / RuntimeService] --> Runtime[ACP runtime\nsrc/agent/acp-runtime.ts]
-  Runtime -->|spawn + stdio ACP| Agent[Downstream agent]
+  Run[run\nCLI startup, private server, TTY]
+  App[app\nterminal app and composer wiring]
+  Controller[controller\nsession and prompt control flow]
+  Reducer[reducer\nfrontend event state transitions]
+  State[state\nUI records and initial state]
+  Views[views\nterminal rendering]
+  Core[core\nbuilt-in chrome, bindings, panels]
+  Components[components\ntool cards and messages]
+  Theme[theme\npalette and ANSI formatting]
+  Extensions[extensions\nadapter contribution boot]
+  Overlays[overlays\npickers and continuations]
+  Clipboard[clipboard\nplatform providers]
+
+  Run --> App
+  App --> Controller
+  Controller --> Reducer
+  Reducer --> State
+  App --> Views
+  Views --> State
+  Views --> Components
+  Views --> Theme
+  Core --> Theme
+  Extensions --> Core
+  App --> Overlays
+  App --> Clipboard
 ```
 
-Relevant files:
-- `src/agent/acp-runtime.ts`
-- `src/agent/call-agent.ts`
-- `src/agent/default-session.ts`
-- `src/runtime/service.ts`
-- `src/runtime/api.ts`
-- `src/core/context.ts`
-- `src/core/context-agent.ts`
-- `src/core/context-session.ts`
-- `src/core/context-state.ts`
+This is a meaningful improvement over large root files such as `app.ts`,
+`controller.ts`, `reducer.ts`, and `views.ts`. The cost is navigation surface:
+the TUI package now has 159 source files. The next TUI work should optimize for
+stable directory-level ownership and import rules, not for additional splitting.
 
----
+## Review: Modularity
 
-## Global nanoboss MCP path
+The branch improves modularity in three concrete ways.
 
-Nanoboss standardizes on one **globally registered stdio MCP server** named `nanoboss` so every downstream agent can inspect stored session state and dispatch slash commands through the same surfaced tool path.
+First, packages now have documented ownership. Each package has a boundary doc
+in `docs/*-package.md` explaining what it owns, what it does not own, and which
+neighbor owns adjacent behavior.
 
-This is the current shape:
+Second, public package surfaces are explicit. The branch removes or avoids
+wildcard package barrels, deletes root shims, and guards canonical imports in
+`tests/unit/public-package-entrypoints.test.ts`.
 
-- downstream agent connection to nanoboss: **ACP over stdio**
-- downstream agent connection to nanoboss MCP: **MCP over stdio**
-- session targeting: **explicit in the tool arguments and prompt protocol**
+Third, helper-policy ownership is no longer informal. Tests guard canonical
+owners for support helpers, procedure SDK helpers, cancellation policy, procedure
+UI marker payloads, timing traces, tool payload normalization, and TUI helper
+families.
 
-```mermaid
-sequenceDiagram
-  participant Ctx as ProcedureApi named APIs
-  participant ACP as ACP runtime
-  participant Agent as Downstream agent
-  participant MCP as Global nanoboss MCP stdio server
-  participant Store as SessionStore
+Remaining modularity concern: `@nanoboss/adapters-tui` and
+`@nanoboss/app-runtime` are still coordination-heavy packages. That is mostly
+inherent, but new behavior should enter them through existing owner directories
+and runtime APIs rather than new top-level helper concepts.
 
-  Ctx->>ACP: open/reuse downstream agent session
-  ACP->>Agent: stdio ACP session
+## Review: Accidental Complexity
 
-  Agent->>MCP: tools/list
-  MCP-->>Agent: nanoboss MCP tool definitions
+The refactor removes several forms of accidental complexity:
 
-  Agent->>MCP: tools/call procedure_dispatch_start / list_runs / get_run / read_ref ...
-  MCP->>Store: read runs / refs or start async dispatch jobs
-  Store-->>MCP: durable session data
-  MCP-->>Agent: MCP tool result
-```
+- duplicate helpers are collapsed behind canonical owners
+- fallback paths are explicitly classified and covered by tests
+- package dependency direction is encoded in a test instead of reviewer memory
+- known import cycles across guarded package implementations are blocked
+- the old root shim paths are gone
 
-Relevant files:
-- `nanoboss.ts`
-- `src/mcp/registration.ts`
-- `src/mcp/server.ts`
-- `src/session/store.ts`
+The main accidental-complexity risk is over-decomposition. Some modules now
+exist because large files were split, not because the module name is an obvious
+domain concept. That is acceptable for this branch because the hardening commits
+converted the worst cases into directory-owned implementation files and removed
+several thin duplicate owners.
 
----
+The branch should not start another broad "split more files" campaign. The next
+campaign should be convergence: fewer concepts, stronger import rules, and
+folding thin helpers into durable owners when they have only one reason to
+change.
 
-## What is *not* split today
+## Review: Correctness
 
-### ACP is not HTTP + stdio in this repo
-ACP is currently **stdio-only** in nanoboss.
+I did not find a blocking correctness issue in the current branch state.
 
-- nanoboss ACP server: stdio only
-- downstream agent ACP runtime: stdio only
+The current branch specifically addresses the earlier high-risk correctness
+concerns:
 
-There is no parallel HTTP ACP implementation in nanoboss.
+- `getNanobossHome()` now has a single canonical owner in
+  `@nanoboss/app-support`
+- cancellation policy now has a single canonical owner in
+  `@nanoboss/procedure-sdk`
+- the untyped procedure UI marker payload prefix/parser now has a single
+  canonical owner in `@nanoboss/procedure-sdk`
+- relative import cycles are guarded in TUI, runtime, engine, store, and agent
+  implementation code
+- intentional fallbacks are classified as persisted-data compatibility,
+  user-facing resilience, or tool-server convenience
 
-### Nanoboss MCP is not stdio + HTTP
-The global `nanoboss` MCP server is currently **stdio-only**.
+Correctness residual risk is mostly integration risk. The branch changes 355
+files across adapters, runtime, procedure execution, agent transport, store, and
+tests. Existing tests cover the intended architecture properties, but manual
+TUI smoke testing is still useful because much of the TUI behavior is
+interaction-heavy and visually rendered.
 
-There is no parallel HTTP MCP implementation in nanoboss.
+## Follow-On Work
 
----
+Recommended follow-on work, in priority order:
 
-## Transport matrix
+1. Add a TUI directory import-layer test. The package is now directory-grouped,
+   but the allowed import direction between `app`, `controller`, `reducer`,
+   `views`, `core`, and `run` is not yet encoded.
+2. Consolidate thin one-caller helper modules after the branch lands. Prefer
+   folding helpers into durable owners over continuing to split by line count.
+3. Add more adapter-level smoke tests for the full CLI/private-server path and
+   the ACP-server path. The current unit coverage is strong on architecture
+   guards, but full adapter integration remains the highest-risk behavior.
+4. Keep fallback classification current. New fallback behavior should carry a
+   category and a test, or it should be deleted.
+5. Periodically review TUI source-file count. A large number of small files is
+   only simpler if ownership remains obvious.
 
-| Layer | Protocol | Transport | Direction |
-|---|---|---|---|
-| Local CLI ↔ nanoboss | ACP | stdio | bidirectional |
-| HTTP client ↔ nanoboss | nanoboss frontend API | HTTP | request/response |
-| HTTP client ↔ nanoboss | frontend events | SSE | server → client |
-| nanoboss ↔ downstream agent | ACP | stdio | bidirectional |
-| downstream agent ↔ global nanoboss MCP | MCP | stdio | bidirectional |
+## Commit Decision
 
----
+This PR can be committed ahead of the follow-on work if `bun run
+check:precommit` passes.
 
-## Mental model
-
-A useful way to think about the stack is:
-
-1. **Users talk to nanoboss** either through:
-   - local CLI over **ACP/stdin-stdout**, or
-   - remote HTTP API over **HTTP + SSE**
-2. **Nanoboss talks to downstream agents** over **ACP/stdin-stdout**
-3. **Downstream agents inspect nanoboss session state and dispatch slash commands** through the globally registered **`nanoboss` MCP over stdio**
-
-So the current architecture is intentionally mixed:
-
-- **ACP for agent orchestration**
-- **HTTP/SSE for frontend integration**
-- **global stdio MCP for slash-command dispatch and session-state inspection**
+Reason: the branch now improves the durable architecture rather than merely
+moving code around. The remaining work is refinement and additional guardrails,
+not a blocker to accepting the current refactor.
