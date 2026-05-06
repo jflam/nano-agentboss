@@ -93,6 +93,56 @@ Start with modules called out by the review as likely wiring bundles:
 Deliverable: an implementation checklist that names the files to keep, fold,
 rename, move, or guard.
 
+### Consolidation inventory checklist
+
+Inventory scope reviewed on 2026-05-06:
+
+- `packages/adapters-tui/src`
+- `packages/app-runtime/src`
+- `packages/procedure-engine/src`
+- `packages/store/src`
+
+Screening focused on review-called-out wiring bundles and thin files that
+either have one real caller or sit on package/owner-directory boundaries. Large
+owner modules and public entrypoints were not treated as fold candidates unless
+they were only routing to a stronger owner.
+
+#### Review-called-out candidates
+
+| Classification | File | Checklist item and reason |
+| --- | --- | --- |
+| fold | `packages/adapters-tui/src/app/app-runtime-wiring.ts` | Fold into `app/app.ts`. It has one real caller and only assembles the app view, runtime helper bundle, and model prompt helper for the `NanobossTuiApp` constructor; the durable owner is the app composition root. |
+| guard | `packages/adapters-tui/src/app/app-controller-wiring.ts` | Keep the shape but guard it with the TUI owner import-layer test. It is a deliberate app-to-controller adapter and the controlled place where app-level store persistence is injected into controller deps; future edits should not create alternate app/controller construction paths. |
+| fold | `packages/adapters-tui/src/app/app-runtime-helpers.ts` | Fold into `app/app.ts` after or with `app-runtime-wiring.ts`. It is a one-caller construction bundle for app-local helper classes and exports no concept that changes independently from the app composition root. |
+| keep | `packages/adapters-tui/src/controller/controller-initial-state.ts` | Keep for now, despite one caller, because it is the controller-owned bridge from TUI state defaults to the canonical `@nanoboss/app-support` build label helper and is already named in helper-ownership coverage. Ambiguous folds default to keep. |
+| keep | `packages/adapters-tui/src/run/run-tty.ts` | Keep because it defines public interactive-TTY capability guards re-exported by the package entrypoint; the user-facing automation error is a stable adapter boundary. |
+| keep | `packages/procedure-engine/src/dispatch/wait.ts` | Keep because dispatch wait bounds and poll timing are shared by job waiting and cancellation watching, and they encode async dispatch protocol behavior rather than caller-local glue. |
+
+#### Additional thin-module candidates by package
+
+| Classification | File | Checklist item and reason |
+| --- | --- | --- |
+| fold | `packages/adapters-tui/src/app/app-controller-deps.ts` | Fold into `app-controller-wiring.ts` if that file remains separate. It has one real caller and only maps app/editor/composer dependencies into controller deps. |
+| keep | `packages/adapters-tui/src/shared/connection-mode.ts` | Keep because it is the exported adapter connection-mode contract used by `run` and the package entrypoint. |
+| keep | `packages/adapters-tui/src/shared/tool-preview.ts` | Keep because it centralizes the TUI-side tool preview block type consumed by state and multiple tool-card component owners. |
+| fold | `packages/app-runtime/src/default-agent-prewarm.ts` | Fold into `session-runtime.ts`. It has one caller and only wraps a single environment gate for session startup policy. |
+| keep | `packages/app-runtime/src/runtime-mode.ts` | Keep because the disk-command loading gate is used by both foreground service and tool runtime service paths and has focused test coverage. |
+| keep | `packages/app-runtime/src/runtime-prompt.ts` | Keep because prompt-input prefixing is a tested runtime prompt policy and is pinned as the canonical helper owner by package-entrypoint coverage. |
+| fold | `packages/app-runtime/src/procedure-dispatch-manager.ts` | Fold into `service.ts`. It has one owner and only adapts active-run dispatch correlation ids into procedure-engine cancellation calls. |
+| fold | `packages/procedure-engine/src/argv.ts` | Fold into `dispatch/worker-args.ts`. It has one package caller and only validates missing worker flag values. |
+| keep | `packages/procedure-engine/src/testing.ts` | Keep because it is the explicit `@nanoboss/procedure-engine/testing` subpath that prevents test-only internals from leaking through the main package entrypoint. |
+| keep | `packages/procedure-engine/src/context/type-descriptor.ts` | Keep because it is shared by multiple context APIs and guards the procedure-sdk type-descriptor contract. |
+| keep | `packages/procedure-engine/src/dispatch/runtime-bindings.ts` | Keep for now because it isolates detached-dispatch default-agent binding behavior from job orchestration; although it has one caller, the worker/runtime boundary makes the fold ambiguous. |
+| keep | `packages/store/src/paths.ts` | Keep because `getSessionDir` is exported from `@nanoboss/store`, shared by store internals and tests, and centralizes the store-specific path under `getNanobossHome`. |
+| keep | `packages/store/src/ref-store.ts` | Keep because it carries the internal cell/ref conversion contract shared by session records and session store persistence. |
+| keep | `packages/store/src/session-picker-format.ts` | Keep because it is a public store formatting surface for session selection, used outside the store package by the TUI picker tests. |
+| guard | `packages/store/src/agent-selection.ts`, `packages/store/src/settings.ts`, `packages/store/src/stored-values.ts` | Keep the existing files and preserve the helper-convergence guard. These are canonical store-owned helpers already protected against duplicate implementations outside `@nanoboss/store`. |
+
+No rename/move candidates were identified in this pass. The ambiguous thin
+modules above default to keep unless a later consolidation slice can prove the
+module is caller-local glue rather than a package API, owner API, fallback, or
+tested boundary.
+
 ## Workstream 2: TUI directory import-layer guard
 
 Add a TUI architecture test that encodes allowed import direction between owner
