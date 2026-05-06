@@ -4,6 +4,16 @@ Nanoboss is a procedure-oriented runtime for agent workflows. Instead of
 centering one generic inner agent loop, it lets workflow code decide
 continuity, checkpoints, validation, recovery, and what counts as "done".
 
+## Architecture
+
+At a high level, nanoboss has adapter entrypoints for the TUI, HTTP/SSE, ACP
+stdio, and MCP stdio. Those adapters converge on `@nanoboss/app-runtime`, which
+coordinates procedure discovery, procedure execution, durable run/ref storage,
+and downstream ACP agent sessions through the package layer below it.
+
+For the full package map, runtime flow, and refactor review, see
+[docs/architecture.md](docs/architecture.md).
+
 ## Prerequisites
 
 You need all of the following before nanoboss will be useful:

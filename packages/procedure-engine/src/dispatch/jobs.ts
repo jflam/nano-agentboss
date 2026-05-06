@@ -3,10 +3,7 @@ import type {
   DownstreamAgentSelection,
   RunRef,
 } from "@nanoboss/contracts";
-import type {
-  ProcedureRegistryLike,
-  RunResult,
-} from "@nanoboss/procedure-sdk";
+import type { ProcedureRegistryLike } from "@nanoboss/procedure-sdk";
 import { defaultCancellationMessage } from "@nanoboss/procedure-sdk";
 import { SessionStore } from "@nanoboss/store";
 
@@ -29,6 +26,11 @@ import {
 } from "./progress.ts";
 import { findRecoveredProcedureDispatchRun } from "./recovery.ts";
 import { createProcedureDispatchRuntimeBindings } from "./runtime-bindings.ts";
+import type {
+  ProcedureDispatchJob,
+  ProcedureDispatchStartResult,
+  ProcedureDispatchStatusResult,
+} from "./job-types.ts";
 import {
   isDeadWorkerJob,
   isTerminalStatus,
@@ -52,43 +54,12 @@ export {
   requestProcedureDispatchCancellation,
 } from "./files.ts";
 
-export type ProcedureDispatchJobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-
-export interface ProcedureDispatchJob {
-  dispatchId: string;
-  sessionId: string;
-  procedure: string;
-  prompt: string;
-  status: ProcedureDispatchJobStatus;
-  createdAt: string;
-  updatedAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  dispatchCorrelationId: string;
-  defaultAgentSelection?: DownstreamAgentSelection;
-  run?: RunRef;
-  result?: RunResult;
-  error?: string;
-  workerPid?: number;
-}
-
-export interface ProcedureDispatchStartResult {
-  dispatchId: string;
-  status: Extract<ProcedureDispatchJobStatus, "queued" | "running" | "completed">;
-}
-
-export interface ProcedureDispatchStatusResult {
-  dispatchId: string;
-  status: ProcedureDispatchJobStatus;
-  procedure: string;
-  createdAt: string;
-  updatedAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  run?: RunRef;
-  result?: RunResult;
-  error?: string;
-}
+export type {
+  ProcedureDispatchJob,
+  ProcedureDispatchJobStatus,
+  ProcedureDispatchStartResult,
+  ProcedureDispatchStatusResult,
+} from "./job-types.ts";
 
 interface ProcedureDispatchJobManagerParams {
   cwd: string;

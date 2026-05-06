@@ -1,12 +1,14 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import {
+  RunCancelledError,
   createTextPromptInput,
+  defaultCancellationMessage,
   hasPromptInputImages,
+  parseProcedureUiMarkerPayload,
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
 
 import { collectFinalTextSessionOutput, parseAssistantNoticeText } from "./updates.ts";
-import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
 import { waitForSettledUpdateQueue } from "./prompt-settle.ts";
 import {
   promptInputToAcpBlocks,
@@ -31,7 +33,6 @@ import type {
   DownstreamAgentConfig,
   PromptInput,
 } from "./types.ts";
-import { parseProcedureUiMarker } from "./ui-marker.ts";
 
 interface PromptCollector {
   raw: string;
@@ -470,7 +471,7 @@ class PersistentAcpSession {
         update.sessionUpdate === "agent_message_chunk" &&
         update.content.type === "text"
       ) {
-        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarker(update.content.text)) {
+        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarkerPayload(update.content.text)) {
           collector.raw += update.content.text;
         }
       }

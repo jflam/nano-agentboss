@@ -1,16 +1,21 @@
 import { parseFrontendConnectionOptions } from "./src/options/frontend-connection.ts";
 import { assertInteractiveTty, runTuiCli } from "@nanoboss/adapters-tui";
 
-export async function runCliCommand(argv: string[] = []): Promise<void> {
+export interface RunCliCommandDeps {
+  assertInteractiveTty?: typeof assertInteractiveTty;
+  runTuiCli?: typeof runTuiCli;
+}
+
+export async function runCliCommand(argv: string[] = [], deps: RunCliCommandDeps = {}): Promise<void> {
   const options = parseFrontendConnectionOptions(argv);
   if (options.showHelp) {
     printHelp();
     return;
   }
 
-  assertInteractiveTty("cli");
+  (deps.assertInteractiveTty ?? assertInteractiveTty)("cli");
 
-  await runTuiCli({
+  await (deps.runTuiCli ?? runTuiCli)({
     connectionMode: options.connectionMode,
     serverUrl: options.serverUrl,
     showToolCalls: options.showToolCalls,

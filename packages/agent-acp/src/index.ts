@@ -1,6 +1,5 @@
 export {
   getAgentTranscriptDir,
-  getNanobossHome,
   resolveDefaultDownstreamAgentConfig,
   resolveSelectedDownstreamAgentConfig,
   toDownstreamAgentSelection,

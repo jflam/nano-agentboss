@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { getNanobossHome } from "@nanoboss/app-support";
 import type { DownstreamAgentProvider } from "@nanoboss/contracts";
 
-import { getNanobossHome } from "./config.ts";
 import type { AgentCatalogEntry } from "./model-catalog.ts";
 import type { DownstreamAgentConfig } from "./types.ts";
 

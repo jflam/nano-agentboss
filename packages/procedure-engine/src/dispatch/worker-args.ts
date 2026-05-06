@@ -1,5 +1,3 @@
-import { requireValue } from "../argv.ts";
-
 export function parseProcedureDispatchWorkerArgs(argv: string[]): {
   sessionId: string;
   cwd: string;
@@ -17,19 +15,19 @@ export function parseProcedureDispatchWorkerArgs(argv: string[]): {
 
     switch (arg) {
       case "--session-id":
-        sessionId = requireValue(next, "--session-id");
+        sessionId = requireWorkerArgValue(next, "--session-id");
         index += 1;
         break;
       case "--cwd":
-        cwd = requireValue(next, "--cwd");
+        cwd = requireWorkerArgValue(next, "--cwd");
         index += 1;
         break;
       case "--root-dir":
-        rootDir = requireValue(next, "--root-dir");
+        rootDir = requireWorkerArgValue(next, "--root-dir");
         index += 1;
         break;
       case "--dispatch-id":
-        dispatchId = requireValue(next, "--dispatch-id");
+        dispatchId = requireWorkerArgValue(next, "--dispatch-id");
         index += 1;
         break;
       default:
@@ -54,4 +52,12 @@ export function parseProcedureDispatchWorkerArgs(argv: string[]): {
   }
 
   return { sessionId, cwd, rootDir, dispatchId };
+}
+
+function requireWorkerArgValue(value: string | undefined, flag: string): string {
+  if (!value) {
+    throw new Error(`Missing value for ${flag}`);
+  }
+
+  return value;
 }

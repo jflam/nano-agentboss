@@ -4,7 +4,11 @@ import { normalizeAgentTokenUsage } from "@nanoboss/agent-acp";
 import type { AgentTokenUsage } from "@nanoboss/contracts";
 import { normalizeToolName } from "@nanoboss/procedure-sdk";
 
-import type { RuntimeEvent } from "./runtime-events.ts";
+import type {
+  RuntimeTokenUsageEvent,
+  RuntimeToolStartedEvent,
+  RuntimeToolUpdatedEvent,
+} from "./runtime-tool-event-types.ts";
 import {
   summarizeToolCallStart,
   summarizeToolCallUpdate,
@@ -20,7 +24,7 @@ interface NanobossToolMeta {
 export function mapToolCallToRuntimeEvent(
   runId: string,
   update: Extract<acp.SessionUpdate, { sessionUpdate: "tool_call" }>,
-): RuntimeEvent {
+): RuntimeToolStartedEvent {
   const toolMeta = getNanobossToolMeta(update);
   const toolKind = toolMeta.toolKind ?? String(update.kind);
   const toolName = normalizeToolName({ title: update.title, kind: toolKind });
@@ -49,7 +53,7 @@ export function mapToolCallToRuntimeEvent(
 export function mapToolCallUpdateToRuntimeEvents(
   runId: string,
   update: Extract<acp.SessionUpdate, { sessionUpdate: "tool_call_update" }>,
-): RuntimeEvent[] {
+): Array<RuntimeToolUpdatedEvent | RuntimeTokenUsageEvent> {
   const toolMeta = getNanobossToolMeta(update);
   const status = normalizeToolUpdateStatus(update);
   const toolName = update.title ? normalizeToolName({ title: update.title }) : undefined;
@@ -57,7 +61,7 @@ export function mapToolCallUpdateToRuntimeEvents(
     toolName,
     title: update.title ?? undefined,
   }, update.rawOutput);
-  const events: RuntimeEvent[] = [
+  const events: Array<RuntimeToolUpdatedEvent | RuntimeTokenUsageEvent> = [
     {
       type: "tool_updated",
       runId,

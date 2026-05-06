@@ -13,7 +13,11 @@ import {
   mapToolCallToRuntimeEvent,
   mapToolCallUpdateToRuntimeEvents,
 } from "./runtime-tool-events.ts";
-import type { ToolPreviewBlock } from "./tool-call-preview.ts";
+import type {
+  RuntimeTokenUsageEvent,
+  RuntimeToolStartedEvent,
+  RuntimeToolUpdatedEvent,
+} from "./runtime-tool-event-types.ts";
 
 export interface RuntimeCommand {
   name: string;
@@ -102,49 +106,15 @@ export type RuntimeEvent =
       dismissible: boolean;
       key?: string;
     }
-  | {
-      type: "token_usage";
-      runId: string;
-      usage: AgentTokenUsage;
-      sourceUpdate: "usage_update" | "tool_call_update" | "run_completed" | "run_paused";
-      toolCallId?: string;
-      status?: string;
-    }
+  | RuntimeTokenUsageEvent
   | {
       type: "run_heartbeat";
       runId: string;
       procedure: string;
       at: string;
     }
-  | {
-      type: "tool_started";
-      runId: string;
-      toolCallId: string;
-      parentToolCallId?: string;
-      transcriptVisible?: boolean;
-      removeOnTerminal?: boolean;
-      title: string;
-      kind: string;
-      toolName?: string;
-      status?: string;
-      callPreview?: ToolPreviewBlock;
-      rawInput?: unknown;
-    }
-  | {
-      type: "tool_updated";
-      runId: string;
-      toolCallId: string;
-      parentToolCallId?: string;
-      transcriptVisible?: boolean;
-      removeOnTerminal?: boolean;
-      title?: string;
-      toolName?: string;
-      status: string;
-      resultPreview?: ToolPreviewBlock;
-      errorPreview?: ToolPreviewBlock;
-      durationMs?: number;
-      rawOutput?: unknown;
-    }
+  | RuntimeToolStartedEvent
+  | RuntimeToolUpdatedEvent
   | {
       type: "run_completed";
       runId: string;

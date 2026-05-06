@@ -5,7 +5,7 @@ import type {
   ProcedureDispatchJob,
   ProcedureDispatchJobStatus,
   ProcedureDispatchStatusResult,
-} from "./jobs.ts";
+} from "./job-types.ts";
 
 export function isTerminalStatus(status: ProcedureDispatchJobStatus): boolean {
   return status === "completed" || status === "failed" || status === "cancelled";

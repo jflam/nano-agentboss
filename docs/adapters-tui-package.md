@@ -67,10 +67,16 @@ surface without wildcard barrels, grouped around:
 
 ## Internal Shape
 
-The package is currently the largest Nanoboss package. The main size drivers
-are:
+The package is currently the largest Nanoboss package. Internal implementation
+files are grouped by owner directory so future changes have an obvious home:
+`app/`, `controller/`, `reducer/`, `run/`, `state/`, `theme/`, `core/`,
+`extensions/`, `views/`, `shared/`, `components/`, `overlays/`, and
+`clipboard/`.
 
-- `app.ts`: terminal app wiring, editor behavior, and local command dispatch
+The main size drivers are:
+
+- `app.ts`: terminal app wiring, runtime helper construction, editor behavior,
+  and local command dispatch
 - `app-components.ts`: app-level default theme, terminal, TUI, editor,
   clipboard, and view component construction helper
 - `app-binding-hooks.ts`: app-level keybinding hook wiring for cooldown and
@@ -84,9 +90,10 @@ are:
 - `app-composer.ts`: app-level composer snapshot and cursor helpers
 - `composer-prompt-input.ts`: composer text and image-token prompt-input
   assembly helper
-- `app-controller-deps.ts`: app-to-controller dependency adapter helper
-- `app-continuation-composer.ts`: app-level inline continuation composer
-  lifecycle helpers
+- `app-controller-wiring.ts`: app-level controller dependency and construction
+  wiring
+- `app-continuation-composer.ts`: app-level inline continuation and select
+  composer lifecycle helpers
 - `app-continuation-form.ts`: app-level continuation form extraction and
   signature helpers
 - `app-continuation-renderer.ts`: app-level continuation form renderer lookup,
@@ -96,17 +103,12 @@ are:
   dispatch wiring
 - `app-interaction-wiring.ts`: app-level editor handler and terminal input
   listener binding helper
-- `app-inline-select.ts`: app-level inline select overlay mounting helper
 - `app-lifecycle.ts`: app-level start, stop, render-start, and terminal drain
   lifecycle helper
 - `app-live-updates.ts`: app-level live-update pause and refresh timer
   behavior
-- `app-model-prompts.ts`: app-level inline model selection prompt adapter for
-  controller dependency wiring
-- `app-model-selection.ts`: app-level inline model picker and persistence
-  confirmation flow
-- `app-runtime-helpers.ts`: app-level autocomplete, SIGINT, continuation,
-  inline-select, and live-update helper construction bundle
+- `app-model-selection.ts`: app-level inline model picker, persistence
+  confirmation flow, and controller prompt adapter
 - `app-sigint-exit.ts`: app-level ctrl-c double-press exit helper
 - `app-types.ts`: app-local dependency adapter contracts
 - `reducer.ts`: top-level local-vs-frontend reducer router
@@ -121,6 +123,8 @@ are:
 - `state-tools.ts`: TUI tool-call state record contract
 - `state-transcript.ts`: TUI transcript turn and item state record contracts
 - `reducer-local-actions.ts`: reducer-owned local/controller action dispatch
+- `reducer-local-status.ts`: reducer-owned local status, busy, and stop-request
+  action transitions
 - `reducer-local-turns.ts`: reducer-owned local submitted/send-failed turn
   construction
 - `reducer-local-procedure-panels.ts`: reducer-owned local procedure-panel
@@ -129,6 +133,8 @@ are:
 - `reducer-tool-event-records.ts`: reducer-owned tool start/update record
   construction helpers
 - `reducer-tool-events.ts`: reducer-owned tool start/update event reducers
+- `reducer-assistant-turn-text.ts`: reducer-owned assistant turn text-block
+  mutation and construction helpers
 - `reducer-turn-factory.ts`: reducer-owned generic turn id, construction,
   and assistant meta helpers
 - `reducer-turns.ts`: reducer-owned streamed assistant turn and active-turn
@@ -203,6 +209,8 @@ are:
 - `build-freshness.ts`: TUI build-freshness filesystem and git probing helper
 - `run.ts`: public CLI runner and terminal/server lifecycle orchestration
 - `run-app.ts`: CLI app construction plus extension boot status replay
+- `run-cleanup.ts`: CLI signal, terminal, and private-server cleanup ordering
+- `run-exit-report.ts`: CLI session-id output and signal exit-code reporting
 - `run-extensions.ts`: CLI TUI extension boot status buffering and replay
 - `run-signals.ts`: CLI TUI process signal handling helpers
 - `run-terminal.ts`: CLI terminal control-character and process signal helpers
@@ -219,17 +227,30 @@ are:
 - `core-chrome-lines.ts`: core chrome header, session, status, and footer line
   formatting helpers
 - `core-activity-identity.ts`: core identity activity-bar segment helpers
+- `core-system-panels.ts`: adapter-private error and notice panel renderer
+  registrations
+- `overlays/select-overlay.ts`: reusable select overlay component
+- `overlays/select-overlay-prompt.ts`: process-terminal select overlay prompt
+  runner
+- `overlays/session-picker.ts`: stored session selection overlay adapter
 - `views.ts`: transcript, chrome, and panel composition
 - `views-chrome-mount.ts`: chrome contribution mounting, render gating, and
   stateful child registration helper
 - `views-panels.ts`: non-transcript ui_panel chrome host components
 - `views-procedure-panels.ts`: transcript procedure-panel rendering and
   replay fallback helpers
-- `views-turns.ts`: transcript turn rendering components
-- `views-transcript.ts`: transcript item composition and tool entry rendering
-  components
-- `components/tool-card-expanded.ts`: expanded tool-card payload
+- `views-turn-rendering.ts`: transcript turn label, body, and card-tone
+  rendering helpers
+- `views-turns.ts`: transcript turn component lifecycle wrapper
+- `views-tool-transcript.ts`: transcript tool-card entry component lifecycle
+  wrapper
+- `views-transcript-entries.ts`: transcript item indexing and entry component
+  dispatch
+- `views-transcript.ts`: core transcript chrome component host
+- `components/tool-card-expanded.ts`: expanded tool-card tool-specific payload
   normalization helpers
+- `components/tool-card-expanded-text.ts`: expanded tool-card full-text
+  cleanup and preview block helpers
 - `components/tool-card-diff.ts`: tool-card diff detection and line styling
   helpers
 - `components/tool-card-code-preview.ts`: tool-card code preview rendering,
@@ -252,9 +273,10 @@ are:
 - `theme-tool-card.ts`: tool-card palette data and RGB styling helpers
 - `theme.ts`: adapter theme construction
 
-Keep changes in those files focused. When behavior naturally has its own
-ownership boundary, prefer adding or extending a smaller sibling module instead
-of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
+Keep changes in those directories focused. When behavior naturally has its own
+ownership boundary, prefer adding or extending a smaller sibling module in the
+same owner directory instead of growing `reducer/reducer.ts`, `app/app.ts`, or
+`controller/controller.ts` further.
 
 ## Simplification Rules
 
@@ -267,13 +289,29 @@ of growing `reducer.ts`, `app.ts`, or `controller.ts` further.
   extension activation bypass namespacing or catalog precedence rules.
 - Keep protocol-level HTTP behavior in `@nanoboss/adapters-http`.
 
+## Fallback And Compatibility Paths
+
+- Required persisted-data compatibility: `views-procedure-panels.ts` keeps a
+  replay fallback for stored procedure panels whose renderer is no longer
+  installed. Removing this would risk hiding historical session output.
+- Required user-facing resilience: `reducer-panels.ts` reports unknown or invalid
+  live panel renderers in the status line instead of mutating UI state with an
+  unusable panel.
+- Current system renderers, not legacy fallbacks: `core-system-panels.ts`
+  registers `nb/error@1` and `nb/notice@1`, which are active protocol renderers
+  for run errors and procedure notices.
+- Removed entropy in this convergence pass: the one-caller
+  `app-inline-select.ts` and `app-model-prompts.ts` glue modules were folded into
+  their durable owners, and the model-selection lower-level helpers were made
+  module-private.
+
 ## Current Review Metrics
 
 Measured during the 2026-05 TUI adapter review:
 
-- source files: 146
-- source lines: 10,198
-- largest file: `src/controller.ts` at 315 lines
+- source files: 156
+- source lines: 10,358
+- largest file: `src/controller/controller.ts` at 315 lines
 - workspace package dependencies: 9
 - runtime value exports: 46 -> 12
 - public wildcard exports: 8 -> 0
@@ -282,6 +320,16 @@ Measured during the 2026-05 TUI adapter review:
     barrel while preserving the existing public surface
   - internalized transcript/select-overlay/core-card renderer helpers from the
     package entrypoint while keeping direct source-level tests for those seams
+  - split adapter-private error/notice panel renderer registration out of the
+    extension-contributed nb/card renderer module
+  - renamed the error/notice registration owner to `core-system-panels.ts` to
+    avoid treating active protocol renderers as legacy fallback code
+  - split process-terminal select overlay prompting out of the reusable select
+    overlay component
+  - folded the one-caller inline select mounting helper into the continuation
+    composer owner, reducing app helper indirection and one source file
+  - folded the one-caller app model prompt adapter into the model-selection
+    owner, reducing controller prompt wiring indirection and one source file
   - internalized local command parser/formatter helpers behind controller/app
     behavior
   - internalized form renderer registry helpers behind TUI app behavior
@@ -305,8 +353,12 @@ Measured during the 2026-05 TUI adapter review:
     of local action dispatch
   - split reducer-owned local/controller action handling out of the central
     reducer
+  - split reducer-owned local status, busy, and stop-request transitions out
+    of local action dispatch
   - split reducer-owned assistant turn and transcript helpers out of the
     central reducer
+  - split reducer-owned assistant turn text-block mutation and construction
+    out of streamed assistant turn state transitions
   - split reducer-owned transcript item add/remove helpers out of streamed
     assistant turn mutation
   - split reducer-owned generic turn construction and assistant meta helpers
@@ -327,11 +379,15 @@ Measured during the 2026-05 TUI adapter review:
     theme constructor
   - split tool-card code highlighting adapter wiring out of the TUI theme
     constructor
+  - split expanded tool-card full-text cleanup out of tool-specific expanded
+    payload normalization
   - split app-level composer snapshot, prompt-input, and cursor helpers out of
     the TUI app
   - split app-level concrete component construction and run/stop lifecycle
     helpers out of the TUI app
   - split app-level runtime helper construction bundle out of the TUI app
+  - split app-level view, runtime helper, and model-prompt construction
+    wiring out of the TUI app
   - split composer text and image-token prompt-input assembly out of composer
     image state
   - split app-level keybinding hook wiring for cooldown and queued-prompt
@@ -341,8 +397,16 @@ Measured during the 2026-05 TUI adapter review:
   - split app-level live-update pause and refresh timer behavior out of the
     TUI app
   - split app-local dependency adapter contracts out of the TUI app
+  - split app-level controller dependency and construction wiring out of the
+    TUI app
   - split transcript turn, tool, and procedure-panel rendering out of the
     TUI view shell
+  - split transcript turn label, body, and card-tone rendering out of the
+    transcript turn component wrapper
+  - split transcript tool-card entry component lifecycle out of transcript
+    item composition
+  - split transcript item indexing and entry component dispatch out of the
+    transcript chrome host
   - split chrome contribution mounting and gated stateful-child registration
     out of the TUI view shell
   - split transcript procedure-panel rendering and replay fallback helpers out
@@ -386,6 +450,10 @@ Measured during the 2026-05 TUI adapter review:
   - split controller-owned session event stream lifecycle helpers out of the
     TUI controller
   - split CLI app construction and extension boot status replay out of the
+    public TUI runner
+  - split CLI signal, terminal, and private-server cleanup ordering out of
+    the public TUI runner
+  - split CLI session-id output and signal exit-code reporting out of the
     public TUI runner
   - split public interactive-TTY guards out of the public TUI runner
   - split controller-owned session stream event reactions out of the TUI

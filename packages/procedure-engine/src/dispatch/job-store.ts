@@ -12,7 +12,7 @@ import {
   buildProcedureDispatchJobPath,
   buildProcedureDispatchJobsDir,
 } from "./files.ts";
-import type { ProcedureDispatchJob } from "./jobs.ts";
+import type { ProcedureDispatchJob } from "./job-types.ts";
 
 export class ProcedureDispatchJobStore {
   private readonly jobsDir: string;

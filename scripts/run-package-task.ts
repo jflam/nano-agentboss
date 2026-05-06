@@ -1,5 +1,6 @@
-import { existsSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
+
+import { listPackageDirectories } from "./package-graph.ts";
 
 interface PackageManifest {
   name?: string;
@@ -17,13 +18,9 @@ if (!task) {
   console.error("Usage: bun run scripts/run-package-task.ts <task>");
   process.exit(1);
 }
+const taskName = task;
 
-const packagesRoot = join(process.cwd(), "packages");
-const packageDirs = readdirSync(packagesRoot, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => join(packagesRoot, entry.name))
-  .filter((packageDir) => existsSync(join(packageDir, "package.json")))
-  .sort((left, right) => basename(left).localeCompare(basename(right)));
+const packageDirs = listPackageDirectories(process.cwd());
 
 const concurrency = Math.min(
   packageDirs.length,
@@ -33,25 +30,26 @@ const failures: PackageTaskFailure[] = [];
 let completed = 0;
 let nextIndex = 0;
 
-console.log(`Running "${task}" in ${packageDirs.length} packages with concurrency ${concurrency}.`);
+console.log(`Running "${taskName}" in ${packageDirs.length} packages with concurrency ${concurrency}.`);
 
 async function runPackageTask(packageDir: string): Promise<void> {
   const manifest = await Bun.file(join(packageDir, "package.json")).json() as PackageManifest;
   const name = manifest.name ?? basename(packageDir);
+  const startedAt = performance.now();
 
-  if (!manifest.scripts?.[task]) {
+  if (!manifest.scripts?.[taskName]) {
     failures.push({
       name,
-      output: `Missing scripts.${task} in ${join(packageDir, "package.json")}`,
+      output: `Missing scripts.${taskName} in ${join(packageDir, "package.json")}`,
     });
-    console.log(`[${name}] missing script`);
+    console.log(`[${name}] missing script ${formatDuration(performance.now() - startedAt)}`);
     return;
   }
 
   console.log(`[${name}] starting`);
 
   const processHandle = Bun.spawn({
-    cmd: ["bun", "run", task],
+    cmd: ["bun", "run", taskName],
     cwd: packageDir,
     stdout: "pipe",
     stderr: "pipe",
@@ -64,7 +62,7 @@ async function runPackageTask(packageDir: string): Promise<void> {
 
   if (exitCode === 0) {
     completed += 1;
-    console.log(`[${name}] ok`);
+    console.log(`[${name}] ok ${formatDuration(performance.now() - startedAt)}`);
     return;
   }
 
@@ -72,13 +70,16 @@ async function runPackageTask(packageDir: string): Promise<void> {
     name,
     output: [stdout.trim(), stderr.trim()].filter(Boolean).join("\n"),
   });
-  console.log(`[${name}] failed`);
+  console.log(`[${name}] failed ${formatDuration(performance.now() - startedAt)}`);
 }
 
 await Promise.all(
   Array.from({ length: concurrency }, async () => {
     while (nextIndex < packageDirs.length) {
       const packageDir = packageDirs[nextIndex];
+      if (!packageDir) {
+        throw new Error(`Missing package directory at index ${nextIndex}`);
+      }
       nextIndex += 1;
       await runPackageTask(packageDir);
     }
@@ -86,7 +87,7 @@ await Promise.all(
 );
 
 if (failures.length > 0) {
-  console.error(`\n${failures.length} package task${failures.length === 1 ? "" : "s"} failed for "${task}".`);
+  console.error(`\n${failures.length} package task${failures.length === 1 ? "" : "s"} failed for "${taskName}".`);
   for (const failure of failures) {
     console.error(`\n[${failure.name}]`);
     if (failure.output.length > 0) {
@@ -96,4 +97,12 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Completed "${task}" in ${completed} packages.`);
+console.log(`Completed "${taskName}" in ${completed} packages.`);
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1_000) {
+    return `${Math.round(durationMs)}ms`;
+  }
+
+  return `${(durationMs / 1_000).toFixed(1)}s`;
+}

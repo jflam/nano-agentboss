@@ -1,7 +1,9 @@
 import type * as acp from "@agentclientprotocol/sdk";
 
-import { summarizeText } from "@nanoboss/procedure-sdk";
-import { parseProcedureUiMarker } from "./ui-marker.ts";
+import {
+  parseProcedureUiMarkerPayload,
+  summarizeText,
+} from "@nanoboss/procedure-sdk";
 
 interface AssistantNotice {
   text: string;
@@ -33,7 +35,7 @@ export function collectTextSessionUpdates(updates: acp.SessionUpdate[]): string 
       continue;
     }
 
-    if (parseAssistantNoticeText(update.content.text) || parseProcedureUiMarker(update.content.text)) {
+    if (parseAssistantNoticeText(update.content.text) || parseProcedureUiMarkerPayload(update.content.text)) {
       continue;
     }
 
@@ -56,7 +58,7 @@ export function collectFinalTextSessionOutput(updates: acp.SessionUpdate[]): str
       continue;
     }
 
-    if (parseAssistantNoticeText(update.content.text) || parseProcedureUiMarker(update.content.text)) {
+    if (parseAssistantNoticeText(update.content.text) || parseProcedureUiMarkerPayload(update.content.text)) {
       continue;
     }
 

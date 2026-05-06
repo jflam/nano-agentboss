@@ -84,7 +84,6 @@ These define how nanoboss prompt inputs and streamed updates map to ACP wire dat
 ### 3. Runtime/config helpers
 
 - `resolveDefaultDownstreamAgentConfig(...)`
-- `getNanobossHome()`
 - `getAgentTranscriptDir()`
 - `buildAgentRuntimeSessionRuntime(...)`
 - `setAgentRuntimeSessionRuntimeFactory(...)`
@@ -93,6 +92,8 @@ These define how nanoboss prompt inputs and streamed updates map to ACP wire dat
 Important boundary:
 
 - `resolveDefaultDownstreamAgentConfig(...)` is only the env/default-command resolver owned by this package.
+- Nanoboss home path policy is implemented in `@nanoboss/app-support`; this
+  package only derives agent-specific diagnostic transcript paths from it.
 - Higher-level session-aware selection policy, including persisted default-agent selection, lives in `procedure-engine` and `store`, not here.
 
 ### 4. Token and model helpers

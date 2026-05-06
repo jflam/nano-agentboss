@@ -36,10 +36,6 @@ function renderSessionToolGuidance(): string {
   return SESSION_TOOL_GUIDANCE;
 }
 
-export function shouldPrewarmDefaultAgentSession(): boolean {
-  return process.env.NANOBOSS_PREWARM_DEFAULT_SESSION !== "0";
-}
-
 export function prepareDefaultPrompt(
   session: SessionState,
   promptInput: PromptInput,

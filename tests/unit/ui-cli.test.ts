@@ -3,10 +3,10 @@ import { describe, expect, test } from "bun:test";
 import {
   createProcedureUiMarkerStream,
   parseProcedureUiMarker,
-  PROCEDURE_UI_MARKER_PREFIX,
   renderProcedureUiMarker,
   toProcedureUiSessionUpdate,
 } from "@nanoboss/procedure-engine";
+import { PROCEDURE_UI_MARKER_PREFIX } from "@nanoboss/procedure-sdk";
 
 describe("ui-cli", () => {
   test("renders and parses procedure ui markers", () => {

@@ -4,7 +4,8 @@ import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
 
-import { getAgentTranscriptDir, getNanobossHome } from "./config.ts";
+import { getNanobossHome } from "@nanoboss/app-support";
+import { getAgentTranscriptDir } from "./config.ts";
 import type { DownstreamAgentConfig } from "./types.ts";
 
 export type AcpSessionUpdateHandler = (params: acp.SessionNotification) => Promise<void> | void;

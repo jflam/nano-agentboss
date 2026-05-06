@@ -160,11 +160,14 @@ These are store-owned because they are durable local persistence, but they are g
 - prompt-image attachment helpers:
   internal staging, promotion, rollback, and stale-temp cleanup
 - path helpers:
-  `getNanobossHome`, `getSessionDir`
+  `getSessionDir`
 - validation helper:
   `parseRequiredDownstreamAgentSelection`
 
-These support store-adjacent workflows, but `SessionStore` plus the metadata helpers are the main contract.
+`getNanobossHome` is implemented and exported by `@nanoboss/app-support`; store
+uses that canonical helper internally to derive store-specific paths. These support
+store-adjacent workflows, but `SessionStore` plus the metadata helpers are the
+main contract.
 
 ## Interface contract
 
