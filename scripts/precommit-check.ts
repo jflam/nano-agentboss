@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import {
   PRE_COMMIT_MARKER_PREFIX,
-  type PreCommitPhaseName as PhaseName,
   type PreCommitPhaseResult as PhaseResult,
   type PreCommitPhaseStatus as PhaseStatus,
 } from "../procedures/nanoboss/pre-commit-checks-protocol.ts";
@@ -11,47 +10,9 @@ import {
   persistPreCommitChecksRun,
   type CommandExecutionResult,
 } from "../procedures/nanoboss/test-cache-lib.ts";
+import { PRE_COMMIT_PHASES } from "./precommit-phases.ts";
 
-const phases: Array<{
-  phase: PhaseName;
-  argv: string[];
-  cwd?: string;
-}> = [
-  {
-    phase: "lint",
-    argv: ["bun", "run", "--silent", "lint"],
-  },
-  {
-    phase: "typecheck",
-    argv: ["bun", "run", "--silent", "typecheck"],
-  },
-  {
-    phase: "typecheck:packages",
-    argv: ["bun", "run", "--silent", "typecheck:packages"],
-  },
-  {
-    phase: "knip",
-    argv: ["bun", "run", "--silent", "knip"],
-  },
-  {
-    phase: "procedure-sdk:build",
-    argv: ["bun", "run", "--silent", "build"],
-    cwd: "packages/procedure-sdk",
-  },
-  {
-    phase: "procedure-sdk:test:hermetic",
-    argv: ["bun", "run", "--silent", "test:hermetic"],
-    cwd: "packages/procedure-sdk",
-  },
-  {
-    phase: "test:packages",
-    argv: ["bun", "run", "--silent", "test:packages"],
-  },
-  {
-    phase: "test",
-    argv: ["bun", "run", "--silent", "test"],
-  },
-];
+const phases = PRE_COMMIT_PHASES;
 
 const results: PhaseResult[] = [];
 const startedAt = Date.now();
@@ -61,6 +22,9 @@ let overallStderr = "";
 
 for (let index = 0; index < phases.length; index += 1) {
   const current = phases[index];
+  if (!current) {
+    throw new Error(`Missing pre-commit phase at index ${index}`);
+  }
   const [command, ...args] = current.argv;
 
   if (!command) {
@@ -71,10 +35,10 @@ for (let index = 0; index < phases.length; index += 1) {
     type: "phase_start",
     phase: current.phase,
   });
+  const phaseStartedAt = Date.now();
 
   const streamLive = current.phase === "test"
-    || current.phase === "test:packages"
-    || current.phase === "procedure-sdk:test:hermetic";
+    || current.phase === "test:packages";
   const child = spawn(command, args, {
     cwd: current.cwd ? join(process.cwd(), current.cwd) : process.cwd(),
     env: {
@@ -108,18 +72,21 @@ for (let index = 0; index < phases.length; index += 1) {
     });
   });
   const status: PhaseStatus = exitCode === 0 ? "passed" : "failed";
+  const durationMs = Date.now() - phaseStartedAt;
   overallExitCode = exitCode;
 
   results.push({
     phase: current.phase,
     status,
     exitCode,
+    durationMs,
   });
   emitMarker({
     type: "phase_result",
     phase: current.phase,
     status,
     exitCode,
+    durationMs,
   });
 
   if (!streamLive && stdout.length > 0) {
@@ -132,6 +99,9 @@ for (let index = 0; index < phases.length; index += 1) {
   if (status === "failed") {
     for (let skippedIndex = index + 1; skippedIndex < phases.length; skippedIndex += 1) {
       const skippedPhase = phases[skippedIndex];
+      if (!skippedPhase) {
+        throw new Error(`Missing pre-commit phase at index ${skippedIndex}`);
+      }
       results.push({
         phase: skippedPhase.phase,
         status: "not_run",
@@ -146,6 +116,7 @@ for (let index = 0; index < phases.length; index += 1) {
       type: "run_result",
       phases: results,
     });
+    printPhaseSummary(results);
     process.exitCode = exitCode;
     break;
   }
@@ -155,6 +126,7 @@ for (let index = 0; index < phases.length; index += 1) {
       type: "run_result",
       phases: results,
     });
+    printPhaseSummary(results);
   }
 }
 
@@ -185,4 +157,27 @@ function writeStdout(text: string): void {
 function writeStderr(text: string): void {
   overallStderr += text;
   process.stderr.write(text);
+}
+
+function printPhaseSummary(phaseResults: PhaseResult[]): void {
+  const rows = phaseResults.map((result) => {
+    const duration = typeof result.durationMs === "number" ? formatDuration(result.durationMs) : "-";
+    const exit = typeof result.exitCode === "number" ? String(result.exitCode) : "-";
+    return `${result.phase.padEnd(30)} ${result.status.padEnd(7)} ${exit.padStart(4)} ${duration.padStart(8)}`;
+  });
+
+  writeStdout([
+    "",
+    "Pre-commit phase durations:",
+    "phase                          status  exit duration",
+    ...rows,
+  ].join("\n") + "\n");
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1_000) {
+    return `${durationMs}ms`;
+  }
+
+  return `${(durationMs / 1_000).toFixed(1)}s`;
 }

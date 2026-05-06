@@ -6,6 +6,7 @@ export type PreCommitPhaseName =
   | "typecheck:packages"
   | "knip"
   | "procedure-sdk:build"
+  | "procedure-sdk:verify:consumer"
   | "procedure-sdk:test:hermetic"
   | "test:packages"
   | "test";
@@ -15,6 +16,7 @@ export interface PreCommitPhaseResult {
   phase: PreCommitPhaseName;
   status: PreCommitPhaseStatus;
   exitCode?: number;
+  durationMs?: number;
 }
 
 export type PreCommitMarkerEvent =
@@ -27,6 +29,7 @@ export type PreCommitMarkerEvent =
       phase: PreCommitPhaseName;
       status: PreCommitPhaseStatus;
       exitCode?: number;
+      durationMs?: number;
     }
   | {
       type: "run_result";
@@ -82,6 +85,7 @@ export function parsePreCommitMarkerPayload(payload: string): PreCommitMarkerEve
       phase: candidate.phase,
       status: candidate.status,
       ...(typeof candidate.exitCode === "number" ? { exitCode: candidate.exitCode } : {}),
+      ...(typeof candidate.durationMs === "number" ? { durationMs: candidate.durationMs } : {}),
     };
   }
 
@@ -116,6 +120,7 @@ function normalizePreCommitPhaseResult(value: unknown): PreCommitPhaseResult[] {
       phase: candidate.phase,
       status: candidate.status,
       ...(typeof candidate.exitCode === "number" ? { exitCode: candidate.exitCode } : {}),
+      ...(typeof candidate.durationMs === "number" ? { durationMs: candidate.durationMs } : {}),
     }];
   }
 
@@ -128,6 +133,7 @@ function isPreCommitPhaseName(value: unknown): value is PreCommitPhaseName {
     || value === "typecheck:packages"
     || value === "knip"
     || value === "procedure-sdk:build"
+    || value === "procedure-sdk:verify:consumer"
     || value === "procedure-sdk:test:hermetic"
     || value === "test:packages"
     || value === "test";

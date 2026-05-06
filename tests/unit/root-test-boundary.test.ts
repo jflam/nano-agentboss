@@ -45,6 +45,7 @@ const ROOT_OWNED_TESTS = [
   "test-home-isolation.test.ts",
   "tui-helper-convergence.test.ts",
   "ui-cli.test.ts",
+  "validate-changed.test.ts",
 ] as const;
 
 test("root unit tests stay within the approved cleanup boundary", () => {
