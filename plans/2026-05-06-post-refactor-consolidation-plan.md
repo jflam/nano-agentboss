@@ -45,12 +45,41 @@ Build an inventory of thin modules in the highest-surface packages:
 - `packages/procedure-engine/src`
 - `packages/store/src`
 
-Classify each candidate:
+Classify each candidate using the smallest change that improves ownership
+clarity. The classification is about reducing weak navigation surface, not
+creating a new taxonomy of files.
 
-- **keep**: stable domain owner with an obvious reason to change independently
-- **fold**: one-caller helper or routing bundle better owned by its caller
-- **rename/move**: real concept with misleading ownership or location
-- **guard**: acceptable shape that needs an import or ownership test
+- **keep**: stable owner module with a reason to change independently. Keep
+  modules that define a package API or local owner API, are used by multiple
+  owners, isolate a tested behavior seam, carry protocol or persistence
+  contracts, or preserve an explicit compatibility/resilience fallback.
+- **fold**: same-owner implementation detail that is easier to understand at
+  its caller. Fold modules that have one real caller, only pass configuration or
+  route to other helpers, export no durable concept, and are not a public
+  package entrypoint or documented local API. Prefer folding into the closest
+  durable owner over introducing a replacement helper.
+- **rename/move**: real concept with misleading ownership, name, or location.
+  Use this only when the concept should stay separate but belongs to an
+  existing owner directory or package that already changes with it. Moves should
+  preserve package boundaries and dependency direction; do not use this category
+  to start a broader split or to collapse ownership across packages.
+- **guard**: acceptable shape that is valuable but under-protected. Guard
+  modules that encode package or owner-directory boundaries, deliberate
+  fallbacks, import-direction assumptions, or cross-adapter/runtime contracts
+  that should fail fast if future edits bypass the intended path.
+
+Inventory rules:
+
+- Classify each candidate once, and record the concrete reason for the
+  decision.
+- Default ambiguous cases to **keep** with a note rather than forcing a fold.
+- Do not propose new files unless the candidate is a **rename/move** into an
+  existing owner or a **guard** test/documented pattern.
+- Do not fold across package boundaries, public package entrypoints, or owner
+  directories that encode the architecture in `docs/architecture.md`.
+- Do not delete or fold alternate execution paths until they are identified as
+  unused glue rather than persisted-data compatibility, user-facing resilience,
+  or tool-server convenience.
 
 Start with modules called out by the review as likely wiring bundles:
 
