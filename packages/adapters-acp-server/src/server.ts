@@ -14,10 +14,33 @@ import {
 import { QueuedSessionUpdateEmitter } from "./session-update-emitter.ts";
 import { Readable, Writable } from "node:stream";
 
+interface AcpServerNanobossService {
+  createSessionReady(params: {
+    cwd: string;
+    defaultAgentSelection?: Parameters<NanobossService["createSessionReady"]>[0]["defaultAgentSelection"];
+    sessionId?: string;
+  }): Promise<{ sessionId: string }>;
+  getAvailableCommands(): acp.AvailableCommand[];
+  promptSession(
+    sessionId: string,
+    promptInput: Parameters<NanobossService["promptSession"]>[1],
+    emitter: Parameters<NanobossService["promptSession"]>[2],
+  ): Promise<unknown>;
+  cancel(sessionId: string): void;
+}
+
+export interface AcpServerStdioAdapterDeps {
+  input: ReadableStream<Uint8Array>;
+  output: WritableStream<Uint8Array>;
+  createService?: () => Promise<AcpServerNanobossService>;
+  configureRuntime?: () => void;
+  logReady?: (message: string) => void;
+}
+
 class Nanoboss implements acp.Agent {
   constructor(
     private readonly connection: acp.AgentSideConnection,
-    private readonly service: NanobossService,
+    private readonly service: AcpServerNanobossService,
   ) {}
 
   async initialize(_params: acp.InitializeRequest): Promise<acp.InitializeResponse> {
@@ -74,14 +97,27 @@ class Nanoboss implements acp.Agent {
 }
 
 export async function runAcpServerCommand(): Promise<void> {
-  console.error(`${getBuildLabel()} acp-server ready`);
-  setAgentRuntimeSessionRuntimeFactory(() => ({
-    mcpServers: [buildGlobalMcpStdioServer()],
-  }));
-  const service = await NanobossService.create();
+  await runAcpServerStdioAdapter({
+    input: Readable.toWeb(process.stdin),
+    output: Writable.toWeb(process.stdout),
+  });
+}
+
+export async function runAcpServerStdioAdapter(deps: AcpServerStdioAdapterDeps): Promise<void> {
+  const logReady = deps.logReady ?? console.error;
+  const configureRuntime = deps.configureRuntime ?? (() => {
+    setAgentRuntimeSessionRuntimeFactory(() => ({
+      mcpServers: [buildGlobalMcpStdioServer()],
+    }));
+  });
+  const createService = deps.createService ?? NanobossService.create;
+
+  logReady(`${getBuildLabel()} acp-server ready`);
+  configureRuntime();
+  const service = await createService();
   const stream = acp.ndJsonStream(
-    Writable.toWeb(process.stdout),
-    Readable.toWeb(process.stdin),
+    deps.output,
+    deps.input,
   );
   const connection = new acp.AgentSideConnection(
     (connection) => new Nanoboss(connection, service),
