@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import { getNanobossHome } from "@nanoboss/app-support";
 import {
   describeBlockedNanobossAccess,
   getAgentTranscriptDir,
-  getNanobossHome,
 } from "@nanoboss/agent-acp";
 
 describe("describeBlockedNanobossAccess", () => {

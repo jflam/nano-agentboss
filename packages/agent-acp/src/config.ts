@@ -1,6 +1,6 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { getNanobossHome } from "@nanoboss/app-support";
 import type {
   DownstreamAgentConfig,
   DownstreamAgentProvider,
@@ -13,10 +13,6 @@ import {
 
 const DEFAULT_AGENT_COMMAND = "copilot";
 const DEFAULT_AGENT_ARGS = ["--acp", "--allow-all-tools"];
-
-export function getNanobossHome(): string {
-  return join(process.env.HOME?.trim() || homedir(), ".nanoboss");
-}
 
 export function getAgentTranscriptDir(): string {
   return join(getNanobossHome(), "agent-logs");

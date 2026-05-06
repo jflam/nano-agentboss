@@ -6,7 +6,11 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import { resolveWorkspaceKey, writeTextFileAtomicSync } from "@nanoboss/app-support";
+import {
+  getNanobossHome,
+  resolveWorkspaceKey,
+  writeTextFileAtomicSync,
+} from "@nanoboss/app-support";
 import type {
   JsonValue,
   KernelValue,
@@ -16,7 +20,7 @@ import type {
 import { createSessionRef } from "@nanoboss/contracts";
 import { formatErrorMessage } from "@nanoboss/procedure-sdk";
 import { parseDownstreamAgentSelection } from "./agent-selection.ts";
-import { getNanobossHome, getSessionDir } from "./paths.ts";
+import { getSessionDir } from "./paths.ts";
 
 const SESSION_METADATA_FILE = "session.json";
 const CURRENT_SESSION_INDEX_FILE = "current-sessions.json";
