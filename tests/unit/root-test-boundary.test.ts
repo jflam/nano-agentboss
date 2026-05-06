@@ -23,6 +23,7 @@ const ROOT_OWNED_TESTS = [
   "linter.test.ts",
   "mcp-server.test.ts",
   "model-command.test.ts",
+  "nanoboss-cli-smoke.test.ts",
   "nanoboss.test.ts",
   "package-dependency-direction.test.ts",
   "package-helper-ownership.test.ts",
