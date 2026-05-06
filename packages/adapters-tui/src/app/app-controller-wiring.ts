@@ -1,9 +1,11 @@
 import type { DownstreamAgentSelection } from "@nanoboss/contracts";
 import { writePersistedDefaultAgentSelection } from "@nanoboss/store";
 
-import { createAppControllerDeps } from "./app-controller-deps.ts";
-import { NanobossTuiController } from "../controller/controller.ts";
-import type { ComposerState } from "./composer.ts";
+import {
+  NanobossTuiController,
+  type NanobossTuiControllerDeps,
+} from "../controller/controller.ts";
+import { clearComposerState, type ComposerState } from "./composer.ts";
 import type {
   ControllerLike,
   EditorLike,
@@ -25,15 +27,20 @@ interface AppControllerWiringOptions {
 }
 
 export function createAppController(options: AppControllerWiringOptions): ControllerLike {
-  const controllerDeps = createAppControllerDeps({
-    appParams: options.appParams,
-    composerState: options.composerState,
-    editor: options.editor,
+  const controllerDeps: NanobossTuiControllerDeps = {
     promptForModelSelection: options.promptForModelSelection,
     confirmPersistDefaultAgentSelection: options.confirmPersistDefaultAgentSelection,
     persistDefaultAgentSelection: writePersistedDefaultAgentSelection,
+    listExtensionEntries: options.appParams.listExtensionEntries,
     onStateChange: options.onStateChange,
-  });
+    onAddHistory: (text) => {
+      options.editor.addToHistory(text);
+    },
+    onClearInput: () => {
+      clearComposerState(options.composerState);
+      options.editor.setText("");
+    },
+  };
 
   return options.appDeps.createController?.(options.appParams, controllerDeps)
     ?? new NanobossTuiController(options.appParams, controllerDeps);

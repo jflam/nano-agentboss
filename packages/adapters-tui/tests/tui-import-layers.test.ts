@@ -98,14 +98,10 @@ type FocusedImportAllowlistEntry = {
 
 const FOCUSED_IMPORT_ALLOWLIST = [
   {
-    from: "src/app/app-controller-deps.ts",
-    to: "src/controller/controller.ts",
-    reason: "App-controller wiring is the single app-owned controller dependency adapter.",
-  },
-  {
     from: "src/app/app-controller-wiring.ts",
     to: "src/controller/controller.ts",
-    reason: "App-controller wiring is the single app-owned controller construction path.",
+    reason:
+      "App-controller wiring is the single app-owned controller dependency and construction path.",
   },
   {
     from: "src/app/app-types.ts",

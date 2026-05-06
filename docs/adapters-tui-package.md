@@ -90,7 +90,6 @@ The main size drivers are:
 - `app-composer.ts`: app-level composer snapshot and cursor helpers
 - `composer-prompt-input.ts`: composer text and image-token prompt-input
   assembly helper
-- `app-controller-deps.ts`: app-to-controller dependency adapter helper
 - `app-controller-wiring.ts`: app-level controller dependency and construction
   wiring
 - `app-continuation-composer.ts`: app-level inline continuation and select
