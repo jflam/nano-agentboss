@@ -16,15 +16,18 @@ const ROOT_OWNED_TESTS = [
   "delete-remaining-src-core.test.ts",
   "doctor.test.ts",
   "execute-plan.test.ts",
+  "fallback-classification.test.ts",
   "frontend-events.test.ts",
   "http-server-options.test.ts",
   "knowledge-base-commands.test.ts",
   "linter.test.ts",
   "mcp-server.test.ts",
   "model-command.test.ts",
+  "nanoboss-cli-smoke.test.ts",
   "nanoboss.test.ts",
   "package-dependency-direction.test.ts",
   "package-helper-ownership.test.ts",
+  "package-import-cycles.test.ts",
   "pre-commit-checks.test.ts",
   "procedure-dispatch-jobs.test.ts",
   "procedure-engine-helper-convergence.test.ts",
@@ -41,7 +44,9 @@ const ROOT_OWNED_TESTS = [
   "simplify2-command.test.ts",
   "store-helper-convergence.test.ts",
   "test-home-isolation.test.ts",
+  "tui-helper-convergence.test.ts",
   "ui-cli.test.ts",
+  "validate-changed.test.ts",
 ] as const;
 
 test("root unit tests stay within the approved cleanup boundary", () => {

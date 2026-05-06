@@ -1,263 +1,252 @@
-# nanoboss architecture
+# Nanoboss Architecture
 
-This document describes the transport-level architecture of nanoboss.
+Last updated: 2026-05-06
 
-The key distinction is:
+This document describes the current Nanoboss runtime architecture, package
+layers, entry paths, and major ownership boundaries.
 
-- **frontend transport**: how a user or UI talks to nanoboss
-- **agent transport**: how nanoboss talks to downstream agents
-- **session inspection transport**: how downstream agents inspect nanoboss session state
-
-## Transport inventory
-
-### 1. Frontend HTTP/SSE
-Used when nanoboss runs as an HTTP server.
-
-- request/response API:
-  - `POST /v1/sessions`
-  - `POST /v1/sessions/:id/prompts`
-  - `POST /v1/sessions/:id/cancel`
-  - `GET /v1/sessions/:id`
-- streaming API:
-  - `GET /v1/sessions/:id/stream` via **SSE**
-
-Relevant files:
-- `src/http/server.ts`
-- `src/http/client.ts`
-- `src/http/frontend-events.ts`
-- `src/core/service.ts`
-
-### 2. ACP over stdio
-Used in two places:
-
-- the local CLI launches nanoboss's internal ACP server over stdio
-- nanoboss launches downstream agents over stdio ACP
-
-Relevant files:
-- nanoboss ACP server:
-  - `@nanoboss/adapters-acp-server`
-  - `@nanoboss/adapters-tui`
-- downstream ACP client/runtime:
-  - `src/agent/acp-runtime.ts`
-  - `src/agent/call-agent.ts`
-  - `src/agent/default-session.ts`
-
-### 3. Global nanoboss MCP over stdio
-Used so downstream agents can inspect durable nanoboss session runs and refs and dispatch slash commands through one shared MCP surface.
-
-This is **not** ACP. It is a globally registered MCP server surfaced as `nanoboss` over stdio.
-
-Relevant files:
-- `nanoboss.ts`
-- `src/mcp/registration.ts`
-- `src/mcp/server.ts`
-- `src/session/store.ts`
-
----
-
-## High-level picture
+## Whole-Project Shape
 
 ```mermaid
 flowchart TD
-  U[User] -->|local terminal| CLI[TUI / CLI adapter\n@nanoboss/adapters-tui]
-  U -->|HTTP requests| HTTPClient[HTTP client / UI\nsrc/http/client.ts]
+  User[User or external client]
+  CLI[nanoboss cli]
+  HTTPCommand[nanoboss http]
+  ACPCommand[nanoboss acp-server]
+  MCPCommand[nanoboss mcp]
 
-  CLI -->|stdio ACP| ACPServer[nanoboss ACP server\n@nanoboss/adapters-acp-server]
-  HTTPClient -->|HTTP + SSE| HTTPServer[nanoboss HTTP/SSE server\nsrc/http/server.ts]
+  TUI["@nanoboss/adapters-tui<br/>interactive terminal frontend"]
+  HTTP["@nanoboss/adapters-http<br/>HTTP/SSE protocol"]
+  ACPServer["@nanoboss/adapters-acp-server<br/>internal ACP stdio adapter"]
+  MCP["@nanoboss/adapters-mcp<br/>MCP stdio tools"]
 
-  ACPServer --> Service[NanobossService\nsrc/core/service.ts]
-  HTTPServer --> Service
+  Runtime["@nanoboss/app-runtime<br/>live sessions and runtime tools"]
+  Catalog["@nanoboss/procedure-catalog<br/>procedure registry and discovery"]
+  Engine["@nanoboss/procedure-engine<br/>procedure execution and dispatch jobs"]
+  Store["@nanoboss/store<br/>durable sessions, runs, refs"]
+  Agent["@nanoboss/agent-acp<br/>downstream ACP agents"]
+  SDK["@nanoboss/procedure-sdk<br/>author-facing contracts and helpers"]
+  Contracts["@nanoboss/contracts<br/>shared durable types"]
+  Support["@nanoboss/app-support<br/>filesystem, build, process helpers"]
 
-  Service --> Context[ProcedureApi / procedures\nsrc/core/context.ts + context-*.ts]
-  Context --> AgentRuntime[ACP runtime\nsrc/agent/acp-runtime.ts]
+  ExtCatalog["@nanoboss/tui-extension-catalog<br/>TUI extension discovery"]
+  ExtSDK["@nanoboss/tui-extension-sdk<br/>TUI extension authoring types"]
 
-  AgentRuntime -->|stdio ACP| Downstream[Downstream agent\nclaude / gemini / codex / copilot]
-  Downstream -->|stdio MCP tool calls| GlobalMcp[Global nanoboss MCP stdio server\nnanoboss.ts mcp]
-  GlobalMcp --> SessionStore[SessionStore\nsrc/session/store.ts]
+  Downstream[Downstream ACP agent\nCodex, Claude, Gemini, Copilot]
+  Disk[(~/.nanoboss\nsessions, cells, attachments, settings)]
+
+  User --> CLI
+  User --> HTTPCommand
+  User --> ACPCommand
+  User --> MCPCommand
+
+  CLI --> TUI
+  TUI --> HTTP
+  HTTPCommand --> HTTP
+  ACPCommand --> ACPServer
+  MCPCommand --> MCP
+
+  HTTP --> Runtime
+  ACPServer --> Runtime
+  MCP --> Runtime
+
+  Runtime --> Catalog
+  Runtime --> Engine
+  Runtime --> Store
+  Runtime --> Agent
+
+  Engine --> Store
+  Engine --> Agent
+  Engine --> SDK
+  Catalog --> SDK
+  Agent --> Downstream
+  Store --> Disk
+
+  TUI --> ExtCatalog
+  ExtCatalog --> ExtSDK
+
+  SDK --> Contracts
+  Store --> Contracts
+  Runtime --> Contracts
+  Engine --> Contracts
+
+  HTTP --> Support
+  ACPServer --> Support
+  MCP --> Support
+  Runtime --> Support
+  Store --> Support
+  Agent --> Support
 ```
 
----
+The project now has four adapter entry paths into one runtime core:
 
-## Default CLI path
+| Entry path | Adapter package | Runtime call path |
+| --- | --- | --- |
+| `nanoboss cli` | `@nanoboss/adapters-tui` plus `@nanoboss/adapters-http` | private local HTTP/SSE server to `NanobossService` |
+| `nanoboss http` | `@nanoboss/adapters-http` | direct HTTP/SSE calls to `NanobossService` |
+| `nanoboss acp-server` | `@nanoboss/adapters-acp-server` | ACP stdio calls to `NanobossService` |
+| `nanoboss mcp` | `@nanoboss/adapters-mcp` | MCP stdio calls to `NanobossRuntimeService` |
 
-When you run `nanoboss cli` without `--server-url`, the CLI first starts an
-owned private loopback HTTP/SSE server on an ephemeral port and then connects to
-that exact server. If you pass `--server-url`, the CLI switches to explicit
-connect-only mode and validates the target server without killing or restarting
-it.
+## Runtime Flow
 
 ```mermaid
 sequenceDiagram
-  participant User
-  participant CLI as CLI
-  participant Server as nanoboss HTTP server
-  participant Service as NanobossService
+  participant Frontend as TUI / HTTP / ACP client
+  participant Adapter as Adapter package
+  participant Runtime as NanobossService
+  participant Catalog as ProcedureRegistry
+  participant Engine as ProcedureEngine
+  participant Store as SessionStore
+  participant Agent as Agent ACP runtime
+  participant Child as Downstream agent
 
-  User->>CLI: start
-  CLI->>Server: spawn private loopback server
-  Server-->>CLI: readiness payload with baseUrl
-  User->>CLI: type prompt / command
-  CLI->>Server: HTTP + SSE
-  Server->>Service: createSession / promptSession / cancel
-  Service-->>Server: frontend events
-  Server-->>CLI: SSE updates
-  CLI-->>User: render output and tool traces
+  Frontend->>Adapter: create or resume session
+  Adapter->>Runtime: createSessionReady / resumeSessionReady
+  Runtime->>Catalog: load builtins and disk procedures
+  Runtime->>Store: persist session metadata
+  Runtime-->>Adapter: session descriptor and commands
+
+  Frontend->>Adapter: prompt or slash command
+  Adapter->>Runtime: promptSession(...)
+  Runtime->>Engine: executeProcedure(...)
+  Engine->>Store: write root and child run records
+  Engine->>Agent: ctx.agent.run(...) when needed
+  Agent->>Child: ACP prompt over stdio
+  Child-->>Agent: streamed ACP updates
+  Agent-->>Engine: text, tool calls, token metrics
+  Engine-->>Runtime: procedure updates and result
+  Runtime-->>Adapter: runtime/frontend event stream
+  Adapter-->>Frontend: rendered updates
 ```
 
-Relevant files:
-- `@nanoboss/adapters-tui`
-- `@nanoboss/adapters-acp-server`
-- `src/core/service.ts`
+Foreground sessions use `NanobossService`. Tool-style clients use
+`NanobossRuntimeService`, a narrower service for MCP operations such as listing
+runs, reading refs, getting schemas, and starting or waiting on async dispatch
+jobs.
 
----
-
-## HTTP/SSE frontend path
-
-When you run `nanoboss http`, frontend clients talk to nanoboss over HTTP, and live updates come back over SSE.
+## Package Layers
 
 ```mermaid
-sequenceDiagram
-  participant User
-  participant Client as HTTP client / UI
-  participant HTTP as nanoboss HTTP server
-  participant Service as NanobossService
-  participant SSE as SSE stream
+flowchart TB
+  subgraph Adapters
+    TUI2[adapters-tui]
+    HTTP2[adapters-http]
+    ACP2[adapters-acp-server]
+    MCP2[adapters-mcp]
+  end
 
-  User->>Client: send prompt
-  Client->>HTTP: POST /v1/sessions/:id/prompts
-  HTTP->>Service: promptSession(...)
-  Service-->>HTTP: accept request
-  Client->>HTTP: GET /v1/sessions/:id/stream
-  HTTP-->>SSE: event stream
-  Service-->>SSE: run_started / chunks / tool updates / run_completed
-  SSE-->>Client: frontend events
-  Client-->>User: render updates
+  subgraph Application
+    Runtime2[app-runtime]
+  end
+
+  subgraph Domain
+    Engine2[procedure-engine]
+    Catalog2[procedure-catalog]
+    Agent2[agent-acp]
+    Store2[store]
+  end
+
+  subgraph ContractsAndSupport
+    SDK2[procedure-sdk]
+    Contracts2[contracts]
+    Support2[app-support]
+  end
+
+  subgraph Extensions
+    TuiCatalog2[tui-extension-catalog]
+    TuiSdk2[tui-extension-sdk]
+  end
+
+  Adapters --> Application
+  Application --> Domain
+  Domain --> ContractsAndSupport
+  Application --> ContractsAndSupport
+  Adapters --> ContractsAndSupport
+  TUI2 --> TuiCatalog2
+  TuiCatalog2 --> TuiSdk2
+  TuiSdk2 --> SDK2
 ```
 
-Relevant files:
-- `src/http/server.ts`
-- `src/http/client.ts`
-- `src/http/frontend-events.ts`
-- `src/core/service.ts`
+The package architecture is guarded by tests that require:
 
----
+- package manifests must declare only allowed workspace dependencies
+- the allowed workspace dependency graph must stay acyclic
+- package entrypoints must be explicit instead of wildcard barrels
+- root code must import packages through package APIs, not package-internal paths
+- guarded implementation packages must be free of relative import cycles
 
-## Downstream agent path
+## Package Responsibilities
 
-Nanoboss talks to downstream agents using **ACP over stdio**.
+| Package | Owns |
+| --- | --- |
+| `@nanoboss/adapters-tui` | Interactive terminal frontend, private local server boot, terminal rendering, TUI state, and extension contribution boot |
+| `@nanoboss/adapters-http` | HTTP and SSE protocol surface for foreground runtime sessions |
+| `@nanoboss/adapters-acp-server` | Internal ACP stdio adapter for runtime sessions |
+| `@nanoboss/adapters-mcp` | MCP stdio tools for session, run, ref, schema, and async procedure dispatch operations |
+| `@nanoboss/app-runtime` | Live session orchestration, runtime event publication, prompt execution entrypoints, and runtime service APIs |
+| `@nanoboss/procedure-engine` | Procedure execution, child run recording, dispatch jobs, cancellation watching, and procedure result shaping |
+| `@nanoboss/procedure-catalog` | Built-in and disk procedure discovery and registry loading |
+| `@nanoboss/store` | Durable session, run, cell, attachment, and ref persistence |
+| `@nanoboss/agent-acp` | Downstream ACP agent process management and streamed agent interaction |
+| `@nanoboss/procedure-sdk` | Procedure author contracts, helper APIs, cancellation policy, procedure UI marker contracts, and procedure-facing result types |
+| `@nanoboss/contracts` | Shared durable data contracts used across runtime, engine, store, and SDK boundaries |
+| `@nanoboss/app-support` | Filesystem, build, process, environment, and shared app support helpers |
+| `@nanoboss/tui-extension-catalog` | TUI extension discovery and loading |
+| `@nanoboss/tui-extension-sdk` | TUI extension authoring types and contracts |
 
-This path is used by:
-- one-shot `ctx.agent.run(...)` with the default `session: "fresh"` mode
-- `ctx.agent.run(..., { session: "default" })` and `/default` for persistent conversation reuse
+## TUI Internal Shape
 
-Both session modes share the same prompt-building, named-ref injection, and typed JSON parse/retry machinery. The difference is only the transport:
-
-- **fresh**: starts a new ACP session for an isolated downstream call
-- **default**: reuses the session-wide default ACP conversation when continuity is desired
-
-For procedure authors, the namespace split is:
-
-- `ctx.state`: durable stored runs, structural traversal, and refs
-- `ctx.session`: live default-agent control and token usage for the current binding
+`@nanoboss/adapters-tui` is organized by owner directory:
 
 ```mermaid
 flowchart LR
-  Service[NanobossService / RuntimeService] --> Runtime[ACP runtime\nsrc/agent/acp-runtime.ts]
-  Runtime -->|spawn + stdio ACP| Agent[Downstream agent]
+  Run[run\nCLI startup, private server, TTY]
+  App[app\nterminal app and composer wiring]
+  Controller[controller\nsession and prompt control flow]
+  Reducer[reducer\nfrontend event state transitions]
+  State[state\nUI records and initial state]
+  Views[views\nterminal rendering]
+  Core[core\nbuilt-in chrome, bindings, panels]
+  Components[components\ntool cards and messages]
+  Theme[theme\npalette and ANSI formatting]
+  Extensions[extensions\nadapter contribution boot]
+  Overlays[overlays\npickers and continuations]
+  Clipboard[clipboard\nplatform providers]
+
+  Run --> App
+  App --> Controller
+  Controller --> Reducer
+  Reducer --> State
+  App --> Views
+  Views --> State
+  Views --> Components
+  Views --> Theme
+  Core --> Theme
+  Extensions --> Core
+  App --> Overlays
+  App --> Clipboard
 ```
 
-Relevant files:
-- `src/agent/acp-runtime.ts`
-- `src/agent/call-agent.ts`
-- `src/agent/default-session.ts`
-- `src/runtime/service.ts`
-- `src/runtime/api.ts`
-- `src/core/context.ts`
-- `src/core/context-agent.ts`
-- `src/core/context-session.ts`
-- `src/core/context-state.ts`
+Each directory owns a stable TUI concern. New TUI behavior should enter through
+the existing owner directory and public local APIs for that concern.
 
----
+## Persistence
 
-## Global nanoboss MCP path
+Nanoboss persists workspace-independent runtime state under `~/.nanoboss`.
+Session, run, cell, attachment, and stored ref materialization are owned by
+`@nanoboss/store`; runtime packages should use store APIs instead of shaping
+durable records directly.
 
-Nanoboss standardizes on one **globally registered stdio MCP server** named `nanoboss` so every downstream agent can inspect stored session state and dispatch slash commands through the same surfaced tool path.
+## Agent Execution
 
-This is the current shape:
+Procedure execution that needs a downstream model flows through
+`@nanoboss/procedure-engine` into `@nanoboss/agent-acp`. The engine owns
+Nanoboss run records, dispatch job lifecycle, cancellation observation, and
+procedure-facing output events. The agent package owns ACP process transport,
+model selection at the ACP boundary, and streamed child-agent communication.
 
-- downstream agent connection to nanoboss: **ACP over stdio**
-- downstream agent connection to nanoboss MCP: **MCP over stdio**
-- session targeting: **explicit in the tool arguments and prompt protocol**
+## Extensions
 
-```mermaid
-sequenceDiagram
-  participant Ctx as ProcedureApi named APIs
-  participant ACP as ACP runtime
-  participant Agent as Downstream agent
-  participant MCP as Global nanoboss MCP stdio server
-  participant Store as SessionStore
-
-  Ctx->>ACP: open/reuse downstream agent session
-  ACP->>Agent: stdio ACP session
-
-  Agent->>MCP: tools/list
-  MCP-->>Agent: nanoboss MCP tool definitions
-
-  Agent->>MCP: tools/call procedure_dispatch_start / list_runs / get_run / read_ref ...
-  MCP->>Store: read runs / refs or start async dispatch jobs
-  Store-->>MCP: durable session data
-  MCP-->>Agent: MCP tool result
-```
-
-Relevant files:
-- `nanoboss.ts`
-- `src/mcp/registration.ts`
-- `src/mcp/server.ts`
-- `src/session/store.ts`
-
----
-
-## What is *not* split today
-
-### ACP is not HTTP + stdio in this repo
-ACP is currently **stdio-only** in nanoboss.
-
-- nanoboss ACP server: stdio only
-- downstream agent ACP runtime: stdio only
-
-There is no parallel HTTP ACP implementation in nanoboss.
-
-### Nanoboss MCP is not stdio + HTTP
-The global `nanoboss` MCP server is currently **stdio-only**.
-
-There is no parallel HTTP MCP implementation in nanoboss.
-
----
-
-## Transport matrix
-
-| Layer | Protocol | Transport | Direction |
-|---|---|---|---|
-| Local CLI ↔ nanoboss | ACP | stdio | bidirectional |
-| HTTP client ↔ nanoboss | nanoboss frontend API | HTTP | request/response |
-| HTTP client ↔ nanoboss | frontend events | SSE | server → client |
-| nanoboss ↔ downstream agent | ACP | stdio | bidirectional |
-| downstream agent ↔ global nanoboss MCP | MCP | stdio | bidirectional |
-
----
-
-## Mental model
-
-A useful way to think about the stack is:
-
-1. **Users talk to nanoboss** either through:
-   - local CLI over **ACP/stdin-stdout**, or
-   - remote HTTP API over **HTTP + SSE**
-2. **Nanoboss talks to downstream agents** over **ACP/stdin-stdout**
-3. **Downstream agents inspect nanoboss session state and dispatch slash commands** through the globally registered **`nanoboss` MCP over stdio**
-
-So the current architecture is intentionally mixed:
-
-- **ACP for agent orchestration**
-- **HTTP/SSE for frontend integration**
-- **global stdio MCP for slash-command dispatch and session-state inspection**
+TUI extension discovery is separate from extension authoring contracts.
+`@nanoboss/tui-extension-catalog` locates and loads contributions, while
+`@nanoboss/tui-extension-sdk` defines the types extension authors consume.

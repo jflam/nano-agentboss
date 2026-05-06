@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ const tempDirs: string[] = [];
 const MCP_SERVER_BOOTSTRAP = [
   'import { MCP_INSTRUCTIONS, MCP_SERVER_NAME, runMcpServer } from "@nanoboss/adapters-mcp";',
   'import { createCurrentSessionBackedNanobossRuntimeService } from "@nanoboss/app-runtime";',
-  "const runtime = createCurrentSessionBackedNanobossRuntimeService(process.cwd());",
+  "const runtime = createCurrentSessionBackedNanobossRuntimeService(process.env.NANOBOSS_MCP_TEST_CWD ?? process.cwd());",
   "await runMcpServer(runtime, { serverName: MCP_SERVER_NAME, instructions: MCP_INSTRUCTIONS });",
 ].join("\n");
 
@@ -128,6 +128,138 @@ describe("global nanoboss MCP stdio transport", () => {
       }
     }
   }, 30_000);
+
+  test("dispatches a procedure through MCP stdio start and wait calls", async () => {
+    const home = mkdtempSync(join(tmpdir(), "nanoboss-mcp-home-"));
+    const rootDir = mkdtempSync(join(tmpdir(), "nanoboss-mcp-root-"));
+    const cwd = mkdtempSync(join(tmpdir(), "nanoboss-mcp-workspace-"));
+    const procedureDir = join(cwd, ".nanoboss", "procedures", "review");
+    mkdirSync(procedureDir, { recursive: true });
+    tempDirs.push(home, rootDir, cwd);
+
+    await Bun.write(join(procedureDir, "index.ts"), [
+      "export default {",
+      '  name: "review",',
+      '  description: "store a durable review result",',
+      '  inputHint: "subject to review",',
+      '  async execute(prompt) {',
+      "    return {",
+      '      data: { subject: prompt, verdict: "mixed" },',
+      "      display: `reviewed: ${prompt}\\n`,",
+      "      summary: `review ${prompt}`,",
+      "      memory: `Reviewed ${prompt}.`,",
+      "    };",
+      "  },",
+      "};",
+    ].join("\n"));
+
+    const originalHome = process.env.HOME;
+    process.env.HOME = home;
+
+    const sessionId = `session-mcp-${crypto.randomUUID()}`;
+    writeStoredSessionMetadata({
+      session: { sessionId },
+      cwd,
+      rootDir,
+      createdAt: "2026-04-03T00:00:00.000Z",
+      updatedAt: "2026-04-03T00:00:00.000Z",
+    });
+
+    const child = spawn(process.execPath, ["--eval", MCP_SERVER_BOOTSTRAP], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: home,
+        NANOBOSS_MCP_TEST_CWD: cwd,
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const frames = new StdioFrameReader(child.stdout);
+
+    try {
+      writeMcpMessage(child.stdin, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: {
+            name: "test-client",
+            version: "0.0.0",
+          },
+        },
+      });
+      const initialize = await readMcpMessage(frames);
+      expect(initialize.result?.serverInfo?.name).toBe("nanoboss");
+
+      writeMcpMessage(child.stdin, {
+        jsonrpc: "2.0",
+        method: "notifications/initialized",
+      });
+
+      writeMcpMessage(child.stdin, {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "procedure_dispatch_start",
+          arguments: {
+            name: "review",
+            prompt: "patch",
+          },
+        },
+      });
+      const started = await readMcpMessage(frames);
+      const dispatchId = expectString(started.result?.structuredContent?.dispatchId);
+      expect(dispatchId).toMatch(/^dispatch_/);
+      expect(started.result?.structuredContent?.status).toBe("queued");
+
+      let completed: McpMessage | undefined;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        writeMcpMessage(child.stdin, {
+          jsonrpc: "2.0",
+          id: 3 + attempt,
+          method: "tools/call",
+          params: {
+            name: "procedure_dispatch_wait",
+            arguments: {
+              dispatchId,
+              waitMs: 100,
+            },
+          },
+        });
+
+        const waitResult = await readMcpMessage(frames);
+        if (waitResult.result?.structuredContent?.status === "completed") {
+          completed = waitResult;
+          break;
+        }
+      }
+
+      expect(completed?.result?.content?.[0]?.text).toBe("reviewed: patch\n");
+      expect(completed?.result?.structuredContent?.result).toMatchObject({
+        run: { sessionId },
+        summary: "review patch",
+        display: "reviewed: patch\n",
+        memory: "Reviewed patch.",
+        dataShape: {
+          subject: "patch",
+          verdict: "mixed",
+        },
+      });
+    } finally {
+      child.kill();
+      await new Promise<void>((resolve) => {
+        child.once("exit", () => resolve());
+      });
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  }, 30_000);
 });
 
 function writeMcpMessage(
@@ -139,11 +271,20 @@ function writeMcpMessage(
 
 async function readMcpMessage(
   frames: StdioFrameReader,
-): Promise<{
+): Promise<McpMessage> {
+  const body = await frames.read();
+  return JSON.parse(body) as McpMessage;
+}
+
+interface McpMessage {
   result?: {
     serverInfo?: { name?: string };
     tools?: Array<{ name: string }>;
+    content?: Array<{ type: string; text: string }>;
     structuredContent?: {
+      dispatchId?: unknown;
+      status?: unknown;
+      result?: unknown;
       items?: Array<{
         run: { sessionId: string; runId: string };
         procedure: string;
@@ -154,24 +295,11 @@ async function readMcpMessage(
   error?: {
     message?: string;
   };
-}> {
-  const body = await frames.read();
-  return JSON.parse(body) as {
-    result?: {
-      serverInfo?: { name?: string };
-      tools?: Array<{ name: string }>;
-      structuredContent?: {
-        items?: Array<{
-          run: { sessionId: string; runId: string };
-          procedure: string;
-          summary?: string;
-        }>;
-      };
-    };
-    error?: {
-      message?: string;
-    };
-  };
+}
+
+function expectString(value: unknown): string {
+  expect(typeof value).toBe("string");
+  return value as string;
 }
 
 class StdioFrameReader {

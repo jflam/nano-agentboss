@@ -30,7 +30,7 @@ export {
   writeStoredSessionMetadata,
 } from "./session-repository.ts";
 
-export { getNanobossHome, getSessionDir } from "./paths.ts";
+export { getSessionDir } from "./paths.ts";
 
 export {
   deleteCleanupCandidates,
@@ -49,5 +49,4 @@ export {
   formatSessionDetailLine,
   formatSessionInitialPrompt,
   formatSessionLine,
-  formatTimestamp,
 } from "./session-picker-format.ts";

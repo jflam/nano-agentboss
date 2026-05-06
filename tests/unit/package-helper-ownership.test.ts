@@ -46,13 +46,6 @@ const HELPER_FAMILIES = [
         names: ["inferDataShape", "stringifyCompactShape"],
         source: "./data-shape.ts",
       },
-      {
-        packageName: "@nanoboss/procedure-engine",
-        barrel: "packages/procedure-engine/src/index.ts",
-        names: ["inferDataShape", "stringifyCompactShape"],
-        source: "@nanoboss/procedure-sdk",
-        removalNote: "Compatibility re-export: data shape helpers moved to @nanoboss/procedure-sdk.",
-      },
     ],
   },
   {
@@ -92,6 +85,62 @@ const HELPER_FAMILIES = [
         barrel: "packages/procedure-sdk/src/index.ts",
         names: ["formatErrorMessage"],
         source: "./error-format.ts",
+      },
+    ],
+  },
+  {
+    family: "cancellation policy",
+    canonicalOwner: "@nanoboss/procedure-sdk",
+    implementationNames: [
+      "RunCancelledError",
+      "defaultCancellationMessage",
+      "normalizeRunCancelledError",
+      "toCancelledError",
+      "throwIfCancelled",
+    ],
+    allowedImplementations: [
+      {
+        packageName: "@nanoboss/procedure-sdk",
+        path: "packages/procedure-sdk/src/cancellation.ts",
+        reason: "Canonical cancellation error, reason, and message policy owner.",
+      },
+    ],
+    publicExports: [
+      {
+        packageName: "@nanoboss/procedure-sdk",
+        barrel: "packages/procedure-sdk/src/index.ts",
+        names: [
+          "RunCancelledError",
+          "RunCancellationReason",
+          "defaultCancellationMessage",
+          "normalizeRunCancelledError",
+          "throwIfCancelled",
+          "toCancelledError",
+        ],
+        source: "./cancellation.ts",
+      },
+    ],
+  },
+  {
+    family: "procedure UI marker payload",
+    canonicalOwner: "@nanoboss/procedure-sdk",
+    implementationNames: [
+      "PROCEDURE_UI_MARKER_PREFIX",
+      "parseProcedureUiMarkerPayload",
+    ],
+    allowedImplementations: [
+      {
+        packageName: "@nanoboss/procedure-sdk",
+        path: "packages/procedure-sdk/src/procedure-ui-marker.ts",
+        reason: "Canonical untyped marker prefix and payload detector shared by engine and adapters.",
+      },
+    ],
+    publicExports: [
+      {
+        packageName: "@nanoboss/procedure-sdk",
+        barrel: "packages/procedure-sdk/src/index.ts",
+        names: ["PROCEDURE_UI_MARKER_PREFIX", "parseProcedureUiMarkerPayload"],
+        source: "./procedure-ui-marker.ts",
       },
     ],
   },
@@ -154,12 +203,25 @@ const HELPER_FAMILIES = [
         names: ["resolveSelfCommand", "resolveSelfCommandWithRuntime", "SelfCommand", "SelfCommandRuntime"],
         source: "./self-command.ts",
       },
+    ],
+  },
+  {
+    family: "timing traces",
+    canonicalOwner: "@nanoboss/app-support",
+    implementationNames: ["appendTimingTraceEvent", "createRunTimingTrace"],
+    allowedImplementations: [
       {
-        packageName: "@nanoboss/procedure-engine",
-        barrel: "packages/procedure-engine/src/index.ts",
-        names: ["resolveSelfCommand", "resolveSelfCommandWithRuntime"],
-        source: "@nanoboss/app-support",
-        removalNote: "Compatibility re-export: self-command helpers moved to @nanoboss/app-support.",
+        packageName: "@nanoboss/app-support",
+        path: "packages/app-support/src/timing-trace.ts",
+        reason: "Canonical low-level timing trace writer owner.",
+      },
+    ],
+    publicExports: [
+      {
+        packageName: "@nanoboss/app-support",
+        barrel: "packages/app-support/src/index.ts",
+        names: ["appendTimingTraceEvent", "createRunTimingTrace", "RunTimingTrace"],
+        source: "./timing-trace.ts",
       },
     ],
   },
@@ -235,6 +297,10 @@ function collectPackageHelperImplementations(): HelperImplementation[] {
 
     const visit = (node: ts.Node): void => {
       if (ts.isFunctionDeclaration(node) && node.name !== undefined && GUARDED_HELPER_NAMES.has(node.name.text)) {
+        implementations.push({ name: node.name.text, path: relativePath });
+      }
+
+      if (ts.isClassDeclaration(node) && node.name !== undefined && GUARDED_HELPER_NAMES.has(node.name.text)) {
         implementations.push({ name: node.name.text, path: relativePath });
       }
 

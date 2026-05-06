@@ -8,6 +8,11 @@ import { join } from "node:path";
 import { createNanobossCommitProcedure } from "../../procedures/nanoboss/commit.ts";
 import { createPreCommitChecksProcedure } from "../../procedures/nanoboss/pre-commit-checks.ts";
 import {
+  extractPreCommitPhaseResults,
+  parsePreCommitMarkerLine,
+  PRE_COMMIT_MARKER_PREFIX,
+} from "../../procedures/nanoboss/pre-commit-checks-protocol.ts";
+import {
   PRE_COMMIT_CHECKS_COMMAND,
   computeRuntimeFingerprint,
   computeWorkspaceStateFingerprint,
@@ -18,9 +23,49 @@ import {
   type PreCommitChecksResult,
   type PreCommitChecksFreshRunReason,
 } from "../../procedures/nanoboss/test-cache-lib.ts";
+import { PRE_COMMIT_PHASES } from "../../scripts/precommit-phases.ts";
 import type { ProcedureApi, Ref, RunResult } from "@nanoboss/procedure-sdk";
 
 describe("pre-commit test cache helper", () => {
+  test("pre-commit marker parsing preserves phase durations", () => {
+    const line = `${PRE_COMMIT_MARKER_PREFIX}${JSON.stringify({
+      type: "phase_result",
+      phase: "lint",
+      status: "passed",
+      exitCode: 0,
+      durationMs: 123,
+    })}`;
+
+    expect(parsePreCommitMarkerLine(line)).toEqual({
+      type: "phase_result",
+      phase: "lint",
+      status: "passed",
+      exitCode: 0,
+      durationMs: 123,
+    });
+    expect(extractPreCommitPhaseResults(`${PRE_COMMIT_MARKER_PREFIX}${JSON.stringify({
+      type: "run_result",
+      phases: [{ phase: "lint", status: "passed", exitCode: 0, durationMs: 123 }],
+    })}\n`)).toEqual([{ phase: "lint", status: "passed", exitCode: 0, durationMs: 123 }]);
+  });
+
+  test("pre-commit builds procedure-sdk once before consumer verification and package fan-out", () => {
+    expect(PRE_COMMIT_PHASES.map((phase) => phase.phase)).toEqual([
+      "lint",
+      "typecheck",
+      "typecheck:packages",
+      "knip",
+      "procedure-sdk:build",
+      "procedure-sdk:verify:consumer",
+      "test:packages",
+      "test",
+    ]);
+    expect(PRE_COMMIT_PHASES.find((phase) => phase.phase === "procedure-sdk:verify:consumer")).toMatchObject({
+      argv: ["bun", "run", "--silent", "verify:consumer"],
+      cwd: "packages/procedure-sdk",
+    });
+  });
+
   test("returns the same fingerprint for the same workspace state", () => {
     const cwd = createGitRepo();
 

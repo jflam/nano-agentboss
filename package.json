@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit --pretty false",
     "typecheck:packages": "bun run scripts/run-package-task.ts typecheck",
     "check:precommit": "bun run scripts/precommit-check.ts",
+    "validate:changed": "bun run scripts/validate-changed.ts",
     "test": "bun run scripts/compact-test.ts",
     "test:packages": "bun run scripts/run-package-task.ts test",
     "test:raw": "bun test",

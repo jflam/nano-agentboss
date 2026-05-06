@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { getNanobossHome } from "@nanoboss/app-support";
 import { formatErrorMessage } from "@nanoboss/procedure-sdk";
-import { getNanobossHome } from "./paths.ts";
 import { readStoredSessionMetadata } from "./session-repository.ts";
 
 export type SessionCleanupReason =

@@ -2,9 +2,9 @@ import type { DownstreamAgentSelection } from "@nanoboss/contracts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { getNanobossHome } from "@nanoboss/app-support";
 import { formatErrorMessage } from "@nanoboss/procedure-sdk";
 import { parseRequiredDownstreamAgentSelection } from "./agent-selection.ts";
-import { getNanobossHome } from "./paths.ts";
 
 export interface NanobossSettings {
   defaultAgentSelection?: DownstreamAgentSelection;

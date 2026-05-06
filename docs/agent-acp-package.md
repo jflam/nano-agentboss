@@ -57,10 +57,6 @@ The surface breaks down into a few groups.
 
 - `createAgentSession(...)`
 - `invokeAgent(...)`
-- `buildPrompt(...)`
-- `parseAgentResponse(...)`
-- `sanitizeJsonResponse(...)`
-- `MAX_PARSE_RETRIES`
 
 These are the core client APIs.
 
@@ -88,7 +84,6 @@ These define how nanoboss prompt inputs and streamed updates map to ACP wire dat
 ### 3. Runtime/config helpers
 
 - `resolveDefaultDownstreamAgentConfig(...)`
-- `getNanobossHome()`
 - `getAgentTranscriptDir()`
 - `buildAgentRuntimeSessionRuntime(...)`
 - `setAgentRuntimeSessionRuntimeFactory(...)`
@@ -97,12 +92,19 @@ These define how nanoboss prompt inputs and streamed updates map to ACP wire dat
 Important boundary:
 
 - `resolveDefaultDownstreamAgentConfig(...)` is only the env/default-command resolver owned by this package.
+- Nanoboss home path policy is implemented in `@nanoboss/app-support`; this
+  package only derives agent-specific diagnostic transcript paths from it.
 - Higher-level session-aware selection policy, including persisted default-agent selection, lives in `procedure-engine` and `store`, not here.
 
 ### 4. Token and model helpers
 
-- token usage helpers from `token-usage.ts` and `token-metrics.ts`
+- token usage helpers from `token-usage.ts`
+- `collectTokenSnapshot(...)` for best-effort provider token snapshots
 - model catalog helpers from `model-catalog.ts` and `catalog-discovery.ts`
+
+Provider-specific log parsers such as Claude debug parsing and Copilot log
+parsing are private `token-metrics.ts` implementation details covered through
+`collectTokenSnapshot(...)`; they are not package entrypoint APIs.
 
 The model catalog is discovered from the installed ACP harness for the effective
 provider config, with a short-lived cache to avoid reprobing on every caller
@@ -143,7 +145,7 @@ Important invariants:
 - A material `updateConfig(...)` change resets conversation continuity.
 - Fresh `invokeAgent(...)` calls create a new child/session unless `persistedSessionId` is supplied.
 - `agentSessionId` is the ACP session id for the downstream agent, not the nanoboss session id.
-- Typed calls retry parsing up to `MAX_PARSE_RETRIES + 1` total attempts by sending a corrective follow-up prompt.
+- Typed calls retry parsing with corrective follow-up prompts before surfacing a contract failure.
 - Token metrics are best-effort. Clients must not depend on them being present.
 
 ## Runtime and on-disk model
@@ -238,6 +240,39 @@ Clients should code to that split:
 ## Executable examples
 
 The strongest package-level usage examples are in [packages/agent-acp/tests/agent-acp-package.test.ts](/Users/jflam/agentboss/workspaces/nanoboss/packages/agent-acp/tests/agent-acp-package.test.ts).
+
+## Current Review Metrics
+
+Measured during the 2026-05 agent-acp boundary reviews:
+
+- source files: 21
+- source lines: 3,597
+- largest file: `src/session.ts` at 485 lines
+- runtime value exports: 51 -> 31
+- public wildcard exports: 0
+- code simplification applied:
+  - removed provider-specific token parser helpers from the package entrypoint
+    while keeping direct source-level tests for those parser seams
+  - removed model-selection parser/constants that are only used by
+    `agent-acp` implementation modules from the package entrypoint
+  - removed typed-response prompt/parser helpers from the package entrypoint
+    while keeping behavior coverage through the public `invokeAgent(...)` API
+  - centralized the duplicated timing trace writer in `@nanoboss/app-support`
+  - removed provider-taking model catalog wrappers; callers use refreshed
+    catalog-aware helpers for selection checks and option lookup
+  - internalized the reasoning model selection string builder behind model
+    option construction
+  - internalized token-usage enrichment behind session/transport behavior while
+    keeping `collectTokenSnapshot(...)` public for diagnostics
+  - split model catalog discovery cache/persistence into a private helper while
+    keeping refresh APIs unchanged
+  - split Copilot process-log discovery out of token metric parsing and
+    snapshot merging
+  - split default-session model/reasoning config RPCs out of session lifecycle
+    code
+  - split ACP usage/prompt-response token snapshot merging and raw-output
+    enrichment out of provider log collection
+  - split default-agent config equality out of session lifecycle code
 
 Those tests demonstrate:
 

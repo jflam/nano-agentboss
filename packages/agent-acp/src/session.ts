@@ -1,12 +1,14 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import {
+  RunCancelledError,
   createTextPromptInput,
+  defaultCancellationMessage,
   hasPromptInputImages,
+  parseProcedureUiMarkerPayload,
   promptInputDisplayText,
 } from "@nanoboss/procedure-sdk";
 
 import { collectFinalTextSessionOutput, parseAssistantNoticeText } from "./updates.ts";
-import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
 import { waitForSettledUpdateQueue } from "./prompt-settle.ts";
 import {
   promptInputToAcpBlocks,
@@ -19,7 +21,9 @@ import {
 } from "./runtime.ts";
 import { buildAgentRuntimeSessionRuntime } from "./runtime-capability.ts";
 import { collectTokenSnapshot, enrichToolCallUpdateWithTokenUsage } from "./token-metrics.ts";
-import { appendTimingTraceEvent, type RunTimingTrace } from "./timing-trace.ts";
+import { appendTimingTraceEvent, type RunTimingTrace } from "@nanoboss/app-support";
+import { applyConfiguredSessionOptions } from "./session-config-options.ts";
+import { sameAgentConfig } from "./agent-config-equality.ts";
 import type {
   AgentSession,
   AgentSessionPromptOptions,
@@ -29,7 +33,6 @@ import type {
   DownstreamAgentConfig,
   PromptInput,
 } from "./types.ts";
-import { parseProcedureUiMarker } from "./ui-marker.ts";
 
 interface PromptCollector {
   raw: string;
@@ -468,7 +471,7 @@ class PersistentAcpSession {
         update.sessionUpdate === "agent_message_chunk" &&
         update.content.type === "text"
       ) {
-        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarker(update.content.text)) {
+        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarkerPayload(update.content.text)) {
           collector.raw += update.content.text;
         }
       }
@@ -480,74 +483,4 @@ class PersistentAcpSession {
     this.updateQueue = task.catch(() => {});
     await task;
   }
-}
-
-async function applyConfiguredSessionOptions(
-  connection: acp.ClientSideConnection,
-  sessionId: acp.SessionId,
-  config: DownstreamAgentConfig,
-  timingTrace?: RunTimingTrace,
-): Promise<void> {
-  if (config.model) {
-    appendTimingTraceEvent(timingTrace, "default_session", "set_session_model_started", {
-      sessionId,
-      model: config.model,
-    });
-    await connection.unstable_setSessionModel({
-      sessionId,
-      modelId: config.model,
-    });
-    appendTimingTraceEvent(timingTrace, "default_session", "set_session_model_completed", {
-      sessionId,
-      model: config.model,
-    });
-  }
-
-  if (config.reasoningEffort) {
-    appendTimingTraceEvent(timingTrace, "default_session", "set_reasoning_effort_started", {
-      sessionId,
-      reasoningEffort: config.reasoningEffort,
-    });
-    await connection.setSessionConfigOption({
-      sessionId,
-      configId: "reasoning_effort",
-      value: config.reasoningEffort,
-    });
-    appendTimingTraceEvent(timingTrace, "default_session", "set_reasoning_effort_completed", {
-      sessionId,
-      reasoningEffort: config.reasoningEffort,
-    });
-  }
-}
-
-function sameAgentConfig(left: DownstreamAgentConfig, right: DownstreamAgentConfig): boolean {
-  return (
-    left.provider === right.provider &&
-    left.command === right.command &&
-    left.cwd === right.cwd &&
-    left.model === right.model &&
-    left.reasoningEffort === right.reasoningEffort &&
-    sameStringArray(left.args, right.args) &&
-    sameStringRecord(left.env, right.env)
-  );
-}
-
-function sameStringArray(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function sameStringRecord(
-  left: Record<string, string> | undefined,
-  right: Record<string, string> | undefined,
-): boolean {
-  const leftEntries = Object.entries(left ?? {}).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
-  const rightEntries = Object.entries(right ?? {}).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
-
-  return (
-    leftEntries.length === rightEntries.length &&
-    leftEntries.every(([key, value], index) => {
-      const rightEntry = rightEntries[index];
-      return rightEntry !== undefined && key === rightEntry[0] && value === rightEntry[1];
-    })
-  );
 }

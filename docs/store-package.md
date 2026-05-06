@@ -152,15 +152,22 @@ These are store-owned because they are durable local persistence, but they are g
 - cleanup helpers:
   `inspectSessionCleanupCandidates`, `selectCleanupCandidates`, `summarizeCleanupCandidates`, `deleteCleanupCandidates`
 - formatting helpers:
-  `formatSessionLine`, `formatSessionDetailLine`, `formatSessionInitialPrompt`, `formatTimestamp`
+  `formatSessionLine`, `formatSessionDetailLine`, `formatSessionInitialPrompt`
 - value normalization helpers:
   `publicKernelValueFromStored`, `publicContinuationFromStored`
+- stored value access helpers:
+  internal path lookup, stat preview, and file materialization helpers
+- prompt-image attachment helpers:
+  internal staging, promotion, rollback, and stale-temp cleanup
 - path helpers:
-  `getNanobossHome`, `getSessionDir`
+  `getSessionDir`
 - validation helper:
   `parseRequiredDownstreamAgentSelection`
 
-These support store-adjacent workflows, but `SessionStore` plus the metadata helpers are the main contract.
+`getNanobossHome` is implemented and exported by `@nanoboss/app-support`; store
+uses that canonical helper internally to derive store-specific paths. These support
+store-adjacent workflows, but `SessionStore` plus the metadata helpers are the
+main contract.
 
 ## Interface contract
 
@@ -251,3 +258,16 @@ Current package tests are strongest when they behave like contract examples:
   Settings parsing failure behavior.
 
 The right standard for future tests is: if a new client capability depends on the store package, the first place a reader should be able to learn that capability is a store-package test.
+
+## Current Review Metrics
+
+Measured during the 2026-05 store boundary review:
+
+- source files: 13
+- source lines: 1,886
+- largest file: `src/session-store.ts` at 509 lines
+- runtime value exports: 24 -> 23
+- public wildcard exports: 0
+- code simplification applied: made `formatTimestamp(...)` a module-private
+  helper behind the public session-picker formatting functions
+  and split session record/result shaping into private `session-records.ts`.

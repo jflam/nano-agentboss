@@ -189,6 +189,9 @@ export class NanobossRuntimeService {
     }
 
     if (this.params.allowCurrentSessionFallback) {
+      // Classification: tool-server convenience. MCP stdio tools may be
+      // launched from a workspace without an explicit session id, so they can
+      // bind to that workspace's current session pointer.
       const current = readCurrentWorkspaceSessionMetadata(this.params.cwd);
       if (current) {
         return {

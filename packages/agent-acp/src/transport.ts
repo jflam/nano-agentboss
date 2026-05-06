@@ -1,11 +1,13 @@
 import type * as acp from "@agentclientprotocol/sdk";
 import {
+  RunCancelledError,
   createTextPromptInput,
+  defaultCancellationMessage,
   hasPromptInputImages,
+  parseProcedureUiMarkerPayload,
 } from "@nanoboss/procedure-sdk";
 
 import { collectFinalTextSessionOutput, parseAssistantNoticeText } from "./updates.ts";
-import { RunCancelledError, defaultCancellationMessage } from "./cancellation.ts";
 import { resolveDefaultDownstreamAgentConfig } from "./config.ts";
 import { waitForSettledUpdateQueue } from "./prompt-settle.ts";
 import {
@@ -25,9 +27,8 @@ import type {
   CallAgentTransport,
   TypeDescriptor,
 } from "./types.ts";
-import { parseProcedureUiMarker } from "./ui-marker.ts";
 
-export const MAX_PARSE_RETRIES = 2;
+const MAX_PARSE_RETRIES = 2;
 
 interface InvokedAgentResult<T> {
   agentSessionId?: string;
@@ -101,7 +102,7 @@ export async function invokeAgent<T = string>(
   );
 }
 
-export function buildPrompt<T>(
+function buildPrompt<T>(
   prompt: string,
   descriptor: TypeDescriptor<T> | undefined,
   attempt = 0,
@@ -152,13 +153,13 @@ export function buildPrompt<T>(
   return parts.join("\n");
 }
 
-export function sanitizeJsonResponse(raw: string): string {
+function sanitizeJsonResponse(raw: string): string {
   const trimmed = raw.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return fenced?.[1]?.trim() ?? trimmed;
 }
 
-export function parseAgentResponse<T>(
+function parseAgentResponse<T>(
   raw: string,
   descriptor: TypeDescriptor<T>,
 ): T {
@@ -353,7 +354,7 @@ async function runAcpPrompt(
         update.sessionUpdate === "agent_message_chunk" &&
         update.content.type === "text"
       ) {
-        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarker(update.content.text)) {
+        if (!parseAssistantNoticeText(update.content.text) && !parseProcedureUiMarkerPayload(update.content.text)) {
           raw += update.content.text;
         }
       }

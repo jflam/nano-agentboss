@@ -3,73 +3,22 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
 
-const PACKAGE_NAMES = [
-  "adapters-acp-server",
-  "adapters-http",
-  "adapters-mcp",
-  "adapters-tui",
-  "agent-acp",
-  "app-runtime",
-  "app-support",
-  "contracts",
-  "procedure-catalog",
-  "procedure-engine",
-  "procedure-sdk",
-  "store",
-  "tui-extension-catalog",
-  "tui-extension-sdk",
-] as const;
-
-type PackageName = (typeof PACKAGE_NAMES)[number];
+import {
+  ALLOWED_LAYERING,
+  PACKAGE_NAMES,
+  findAllowedLayeringCycles,
+  formatWorkspaceDependency,
+  isWorkspacePackageName,
+  parseWorkspaceDependencySpecifier,
+  readDeclaredWorkspaceDependencyNames,
+  type PackageName,
+} from "../../scripts/package-graph.ts";
 
 const REPO_ROOT = process.cwd();
-const PACKAGE_SCOPE = "@nanoboss/";
-
-const ALLOWED_LAYERING: Record<PackageName, readonly PackageName[]> = {
-  "adapters-acp-server": [
-    "agent-acp",
-    "adapters-mcp",
-    "app-runtime",
-    "app-support",
-    "contracts",
-    "procedure-engine",
-  ],
-  "adapters-http": ["agent-acp", "app-runtime", "app-support", "procedure-sdk"],
-  "adapters-mcp": ["app-runtime", "app-support", "contracts", "procedure-sdk", "store"],
-  "adapters-tui": [
-    "adapters-http",
-    "agent-acp",
-    "app-support",
-    "contracts",
-    "procedure-engine",
-    "procedure-sdk",
-    "store",
-    "tui-extension-catalog",
-    "tui-extension-sdk",
-  ],
-  "agent-acp": ["app-support", "contracts", "procedure-sdk", "store"],
-  "app-runtime": [
-    "agent-acp",
-    "app-support",
-    "contracts",
-    "procedure-catalog",
-    "procedure-engine",
-    "procedure-sdk",
-    "store",
-  ],
-  "app-support": [],
-  contracts: [],
-  "procedure-catalog": ["app-support", "procedure-sdk"],
-  "procedure-engine": ["agent-acp", "app-support", "contracts", "procedure-catalog", "procedure-sdk", "store"],
-  "procedure-sdk": ["contracts"],
-  store: ["app-support", "contracts", "procedure-sdk"],
-  "tui-extension-catalog": ["app-support", "tui-extension-sdk"],
-  "tui-extension-sdk": ["procedure-sdk"],
-};
 
 for (const packageName of PACKAGE_NAMES) {
   test(`${packageName} only uses declared workspace dependencies`, () => {
-    const declaredDependencies = readDeclaredWorkspaceDependencies(packageName);
+    const declaredDependencies = new Set(readDeclaredWorkspaceDependencyNames(REPO_ROOT, packageName));
     const violations = collectWorkspaceImports(packageName)
       .flatMap((usage) => {
         if (usage.targetPackage === packageName) {
@@ -97,7 +46,7 @@ for (const packageName of PACKAGE_NAMES) {
 
   test(`${packageName} only declares allowed workspace dependencies`, () => {
     const allowedDependencies = new Set(ALLOWED_LAYERING[packageName]);
-    const violations = [...readDeclaredWorkspaceDependencies(packageName)]
+    const violations = readDeclaredWorkspaceDependencyNames(REPO_ROOT, packageName)
       .flatMap((dependency) => {
         if (!isWorkspacePackageName(dependency)) {
           return [
@@ -122,25 +71,6 @@ for (const packageName of PACKAGE_NAMES) {
 test("allowed workspace layering graph is acyclic", () => {
   expect(findAllowedLayeringCycles()).toEqual([]);
 });
-
-function readDeclaredWorkspaceDependencies(packageName: PackageName): Set<string> {
-  const packageJson = JSON.parse(
-    readFileSync(join(REPO_ROOT, "packages", packageName, "package.json"), "utf8"),
-  ) as {
-    dependencies?: Record<string, string>;
-  };
-
-  const dependencies = new Set<string>();
-  for (const specifier of Object.keys(packageJson.dependencies ?? {})) {
-    const dependency = parseWorkspaceDependencySpecifier(specifier);
-    if (dependency === null || dependency === packageName) {
-      continue;
-    }
-    dependencies.add(dependency);
-  }
-
-  return dependencies;
-}
 
 type WorkspaceImportUsage = {
   location: string;
@@ -222,27 +152,6 @@ function listTypeScriptFilesIn(root: string): string[] {
   return files.sort((left, right) => relative(REPO_ROOT, left).localeCompare(relative(REPO_ROOT, right)));
 }
 
-function parseWorkspaceDependencySpecifier(specifier: string): string | null {
-  if (!specifier.startsWith(PACKAGE_SCOPE)) {
-    return null;
-  }
-
-  const dependency = specifier.slice(PACKAGE_SCOPE.length).split("/")[0];
-  return dependency && dependency.length > 0 ? dependency : null;
-}
-
-function isWorkspacePackageName(value: string): value is PackageName {
-  return (PACKAGE_NAMES as readonly string[]).includes(value);
-}
-
-function isValidatedPackageName(value: string): value is PackageName {
-  return (PACKAGE_NAMES as readonly string[]).includes(value);
-}
-
-function formatWorkspaceDependency(packageName: string): string {
-  return `${PACKAGE_SCOPE}${packageName}`;
-}
-
 function formatDependencyList(packageNames: readonly PackageName[]): string {
   return packageNames.length === 0 ? "(none)" : packageNames.map(formatWorkspaceDependency).join(", ");
 }
@@ -250,45 +159,4 @@ function formatDependencyList(packageNames: readonly PackageName[]): string {
 function formatLocation(relativePath: string, sourceFile: ts.SourceFile, position: number): string {
   const { line } = sourceFile.getLineAndCharacterOfPosition(position);
   return `${relativePath}:${line + 1}`;
-}
-
-function findAllowedLayeringCycles(): string[] {
-  const visited = new Set<PackageName>();
-  const inStack = new Set<PackageName>();
-  const stack: PackageName[] = [];
-  const cycles = new Set<string>();
-
-  const visit = (packageName: PackageName): void => {
-    if (inStack.has(packageName)) {
-      const cycleStartIndex = stack.indexOf(packageName);
-      const cyclePath = [...stack.slice(cycleStartIndex), packageName]
-        .map(formatWorkspaceDependency)
-        .join(" -> ");
-      cycles.add(cyclePath);
-      return;
-    }
-
-    if (visited.has(packageName)) {
-      return;
-    }
-
-    visited.add(packageName);
-    inStack.add(packageName);
-    stack.push(packageName);
-
-    for (const dependency of ALLOWED_LAYERING[packageName]) {
-      if (isValidatedPackageName(dependency)) {
-        visit(dependency);
-      }
-    }
-
-    stack.pop();
-    inStack.delete(packageName);
-  };
-
-  for (const packageName of PACKAGE_NAMES) {
-    visit(packageName);
-  }
-
-  return [...cycles].sort();
 }
