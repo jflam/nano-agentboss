@@ -6,6 +6,21 @@ import { mergeToolPreview } from "./reducer-tool-calls.ts";
 export type ToolStartedEvent = Extract<RenderedFrontendEventEnvelope, { type: "tool_started" }>;
 export type ToolUpdatedEvent = Extract<RenderedFrontendEventEnvelope, { type: "tool_updated" }>;
 
+interface ToolCallEventBaseInput {
+  parentToolCallId?: string;
+  transcriptVisible?: boolean;
+  removeOnTerminal?: boolean;
+  toolName?: string;
+}
+
+interface ToolCallEventBase {
+  parentToolCallId?: string;
+  transcriptVisible: boolean;
+  removeOnTerminal: boolean;
+  toolName?: string;
+  depth: number;
+}
+
 export function buildStartedToolCall(
   event: ToolStartedEvent,
   existing: UiToolCall | undefined,
@@ -14,23 +29,18 @@ export function buildStartedToolCall(
   transcriptVisible: boolean;
   removeOnTerminal: boolean;
 } {
-  const parentToolCallId = event.data.parentToolCallId ?? existing?.parentToolCallId;
-  const transcriptVisible = event.data.transcriptVisible ?? existing?.transcriptVisible ?? true;
-  const removeOnTerminal = event.data.removeOnTerminal ?? existing?.removeOnTerminal ?? false;
-  const toolName = existing?.toolName ?? event.data.toolName;
+  const base = buildToolCallEventBase(event.data, existing);
 
   return {
     toolCall: {
       id: event.data.toolCallId,
       runId: event.data.runId,
-      ...(parentToolCallId ? { parentToolCallId } : {}),
-      ...(transcriptVisible === false ? { transcriptVisible } : {}),
-      ...(removeOnTerminal ? { removeOnTerminal } : {}),
+      ...toToolCallBaseFields(base),
       title: event.data.title,
       kind: event.data.kind,
-      toolName,
+      toolName: base.toolName,
       status: event.data.status ?? existing?.status ?? "pending",
-      depth: existing?.depth ?? 0,
+      depth: base.depth,
       isWrapper: existing?.isWrapper ?? event.data.kind === "wrapper",
       callPreview: mergeToolPreview(existing?.callPreview, event.data.callPreview),
       resultPreview: existing?.resultPreview,
@@ -39,8 +49,8 @@ export function buildStartedToolCall(
       rawOutput: existing?.rawOutput,
       durationMs: existing?.durationMs,
     },
-    transcriptVisible,
-    removeOnTerminal,
+    transcriptVisible: base.transcriptVisible,
+    removeOnTerminal: base.removeOnTerminal,
   };
 }
 
@@ -53,23 +63,18 @@ export function buildUpdatedToolCall(
   removeOnTerminal: boolean;
 } {
   const title = event.data.title ?? existing?.title ?? event.data.toolCallId;
-  const parentToolCallId = event.data.parentToolCallId ?? existing?.parentToolCallId;
-  const transcriptVisible = event.data.transcriptVisible ?? existing?.transcriptVisible ?? true;
-  const removeOnTerminal = event.data.removeOnTerminal ?? existing?.removeOnTerminal ?? false;
-  const toolName = existing?.toolName ?? event.data.toolName;
+  const base = buildToolCallEventBase(event.data, existing);
 
   return {
     toolCall: {
       id: event.data.toolCallId,
       runId: event.data.runId,
-      ...(parentToolCallId ? { parentToolCallId } : {}),
-      ...(transcriptVisible === false ? { transcriptVisible } : {}),
-      ...(removeOnTerminal ? { removeOnTerminal } : {}),
+      ...toToolCallBaseFields(base),
       title,
       kind: existing?.kind ?? "other",
-      toolName,
+      toolName: base.toolName,
       status: event.data.status,
-      depth: existing?.depth ?? 0,
+      depth: base.depth,
       isWrapper: existing?.isWrapper ?? existing?.kind === "wrapper",
       callPreview: existing?.callPreview,
       resultPreview: mergeToolPreview(existing?.resultPreview, event.data.resultPreview),
@@ -78,7 +83,28 @@ export function buildUpdatedToolCall(
       rawOutput: event.data.rawOutput ?? existing?.rawOutput,
       durationMs: event.data.durationMs ?? existing?.durationMs,
     },
-    transcriptVisible,
-    removeOnTerminal,
+    transcriptVisible: base.transcriptVisible,
+    removeOnTerminal: base.removeOnTerminal,
+  };
+}
+
+function buildToolCallEventBase(
+  data: ToolCallEventBaseInput,
+  existing: UiToolCall | undefined,
+): ToolCallEventBase {
+  return {
+    parentToolCallId: data.parentToolCallId ?? existing?.parentToolCallId,
+    transcriptVisible: data.transcriptVisible ?? existing?.transcriptVisible ?? true,
+    removeOnTerminal: data.removeOnTerminal ?? existing?.removeOnTerminal ?? false,
+    toolName: existing?.toolName ?? data.toolName,
+    depth: existing?.depth ?? 0,
+  };
+}
+
+function toToolCallBaseFields(base: ToolCallEventBase): Partial<UiToolCall> {
+  return {
+    ...(base.parentToolCallId ? { parentToolCallId: base.parentToolCallId } : {}),
+    ...(base.transcriptVisible === false ? { transcriptVisible: base.transcriptVisible } : {}),
+    ...(base.removeOnTerminal ? { removeOnTerminal: base.removeOnTerminal } : {}),
   };
 }
