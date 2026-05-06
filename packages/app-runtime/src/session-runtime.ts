@@ -16,7 +16,7 @@ import {
   readStoredSessionMetadata,
   writeStoredSessionMetadata,
 } from "@nanoboss/store";
-import { shouldPrewarmDefaultAgentSession } from "./default-agent-policy.ts";
+import { shouldPrewarmDefaultAgentSession } from "./default-agent-prewarm.ts";
 import { SessionEventLog, type RuntimeCommand } from "./runtime-events.ts";
 import type { ActiveRunState } from "./active-run.ts";
 

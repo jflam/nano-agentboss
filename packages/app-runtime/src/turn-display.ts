@@ -46,7 +46,7 @@ export interface TurnDisplay {
  *   rely on `replayEvents` as the source of truth.
  */
 export function buildTurnDisplay(
-  events: Iterable<Pick<PersistedRuntimeEvent, "type"> & Record<string, unknown>>,
+  events: Iterable<PersistedRuntimeEvent>,
   options: { origin?: "stream" | "replay" } = {},
 ): TurnDisplay {
   const origin = options.origin ?? "replay";
