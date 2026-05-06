@@ -1,13 +1,10 @@
-import type {
-  ActivityBarLine,
-  ActivityBarSegment as SdkActivityBarSegment,
-} from "@nanoboss/tui-extension-sdk";
+import type { ActivityBarLine } from "@nanoboss/tui-extension-sdk";
 import type { UiState } from "../state/state.ts";
 import type { NanobossTuiTheme } from "../theme/theme.ts";
 import { renderActivityBarCascade } from "./activity-bar-cascade.ts";
+import type { ActivityBarSegment } from "./activity-bar-types.ts";
 
-export type ActivityBarSegment =
-  SdkActivityBarSegment<UiState, NanobossTuiTheme>;
+export type { ActivityBarSegment } from "./activity-bar-types.ts";
 
 const registry = new Map<string, ActivityBarSegment>();
 const insertionIndex = new Map<string, number>();

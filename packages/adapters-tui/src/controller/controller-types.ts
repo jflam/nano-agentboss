@@ -1,5 +1,11 @@
 import {
   type FrontendCommand,
+  type FrontendEventEnvelope,
+  type SessionStreamHandle,
+  createHttpSession,
+  ensureMatchingHttpServer,
+  resumeHttpSession,
+  startSessionEventStream,
 } from "@nanoboss/adapters-http";
 import type { DownstreamAgentSelection } from "@nanoboss/contracts";
 import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
@@ -8,9 +14,7 @@ import type { UiState } from "../state/state.ts";
 import type { ControllerAutoApproveDeps } from "./controller-auto-approve.ts";
 import type { ControllerModelSelectionDeps } from "./controller-model-selection.ts";
 import type { ControllerPromptFlowDeps } from "./controller-prompt-flow.ts";
-import type { ControllerSessionDeps } from "./controller-session.ts";
 import type { ControllerStopDeps } from "./controller-stop.ts";
-import type { ControllerStreamDeps } from "./controller-stream.ts";
 
 export interface SessionResponse {
   sessionId: string;
@@ -28,6 +32,21 @@ export interface NanobossTuiControllerParams {
   showToolCalls: boolean;
   sessionId?: string;
   simplify2AutoApprove?: boolean;
+}
+
+export interface ControllerSessionDeps {
+  ensureMatchingHttpServer?: typeof ensureMatchingHttpServer;
+  createHttpSession?: typeof createHttpSession;
+  resumeHttpSession?: typeof resumeHttpSession;
+}
+
+export interface ControllerStreamDeps {
+  startSessionEventStream?: (params: {
+    baseUrl: string;
+    sessionId: string;
+    onEvent: (event: FrontendEventEnvelope) => void;
+    onError?: (error: unknown) => void;
+  }) => SessionStreamHandle;
 }
 
 export interface NanobossTuiControllerDeps

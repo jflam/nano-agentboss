@@ -1,4 +1,4 @@
-import type { ClipboardImageProvider } from "./provider.ts";
+import type { ClipboardImageProvider } from "./types.ts";
 
 import { parseClipboardImageRecord, readJsonFromCommand } from "./shared.ts";
 

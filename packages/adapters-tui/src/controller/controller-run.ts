@@ -1,9 +1,9 @@
 import type { ControllerLocalCardOptions } from "./controller-local-cards.ts";
-import {
-  connectControllerSession,
-  type ControllerSessionDeps,
-} from "./controller-session.ts";
-import type { SessionResponse } from "./controller-types.ts";
+import { connectControllerSession } from "./controller-session.ts";
+import type {
+  ControllerSessionDeps,
+  SessionResponse,
+} from "./controller-types.ts";
 
 export async function runControllerSession(params: {
   deps: ControllerSessionDeps;

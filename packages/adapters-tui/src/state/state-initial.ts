@@ -1,5 +1,5 @@
 import type { ToolCardThemeMode } from "../theme/theme.ts";
-import type { UiState } from "./state.ts";
+import type { UiState } from "./state-types.ts";
 
 export function createInitialUiState(params: {
   cwd?: string;

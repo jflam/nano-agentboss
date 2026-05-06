@@ -7,15 +7,12 @@ import type { DownstreamAgentSelection } from "@nanoboss/contracts";
 
 import { getBuildFreshnessNotice } from "../run/build-freshness.ts";
 import type { ControllerLocalCardOptions } from "./controller-local-cards.ts";
-import type { SessionResponse } from "./controller-types.ts";
+import type {
+  ControllerSessionDeps,
+  SessionResponse,
+} from "./controller-types.ts";
 import type { UiAction } from "../reducer/reducer-actions.ts";
 import type { UiState } from "../state/state.ts";
-
-export interface ControllerSessionDeps {
-  ensureMatchingHttpServer?: typeof ensureMatchingHttpServer;
-  createHttpSession?: typeof createHttpSession;
-  resumeHttpSession?: typeof resumeHttpSession;
-}
 
 export async function connectControllerSession(params: {
   deps: ControllerSessionDeps;

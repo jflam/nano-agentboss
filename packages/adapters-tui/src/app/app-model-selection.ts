@@ -11,13 +11,12 @@ import {
   listSelectableModelOptionsFromCatalog,
 } from "@nanoboss/agent-acp";
 
-import type { ControllerLike, NanobossTuiAppDeps } from "./app-types.ts";
+import type {
+  ControllerLike,
+  InlineModelSelectionDeps,
+  NanobossTuiAppDeps,
+} from "./app-types.ts";
 import type { SelectOverlayOptions } from "../overlays/select-overlay.ts";
-
-export interface InlineModelSelectionDeps {
-  discoverAgentCatalog?: typeof discoverAgentCatalog;
-  hasAgentCatalogRefreshedToday?: typeof hasAgentCatalogRefreshedToday;
-}
 
 type PromptWithInlineSelect = <T extends string>(
   options: SelectOverlayOptions<T>,

@@ -1,13 +1,10 @@
-import type { ClipboardImage } from "../app/composer.ts";
-
 import { createDarwinClipboardImageProvider } from "./darwin.ts";
 import { createLinuxClipboardImageProvider } from "./linux.ts";
 import { createUnsupportedClipboardImageProvider } from "./unsupported.ts";
 import { createWin32ClipboardImageProvider } from "./win32.ts";
+import type { ClipboardImageProvider } from "./types.ts";
 
-export interface ClipboardImageProvider {
-  readImage(): Promise<ClipboardImage | undefined>;
-}
+export type { ClipboardImageProvider } from "./types.ts";
 
 export function createClipboardImageProvider(platform = process.platform): ClipboardImageProvider {
   switch (platform) {

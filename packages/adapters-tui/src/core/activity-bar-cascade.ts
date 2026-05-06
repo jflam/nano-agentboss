@@ -1,7 +1,7 @@
 import type { UiState } from "../state/state.ts";
 import type { NanobossTuiTheme } from "../theme/theme.ts";
 import { visibleWidth } from "../shared/pi-tui.ts";
-import type { ActivityBarSegment } from "./activity-bar.ts";
+import type { ActivityBarSegment } from "./activity-bar-types.ts";
 
 interface SegmentCascadeState {
   segment: ActivityBarSegment;

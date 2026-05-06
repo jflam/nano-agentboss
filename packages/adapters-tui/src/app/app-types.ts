@@ -1,10 +1,13 @@
 import type { PromptInput } from "@nanoboss/procedure-sdk";
+import type {
+  discoverAgentCatalog,
+  hasAgentCatalogRefreshedToday,
+} from "@nanoboss/agent-acp";
 import type { ClipboardImageProvider } from "../clipboard/provider.ts";
 import type { NanobossTuiControllerDeps } from "../controller/controller-types.ts";
 import type { TuiExtensionStatus } from "@nanoboss/tui-extension-catalog";
 import type { UiState } from "../state/state.ts";
 import type { NanobossTuiTheme } from "../theme/theme.ts";
-import type { InlineModelSelectionDeps } from "./app-model-selection.ts";
 
 export interface NanobossTuiAppParams {
   cwd?: string;
@@ -74,6 +77,11 @@ export interface ControllerLike {
   requestExit(): void;
   run(): Promise<string | undefined>;
   stop(): Promise<void>;
+}
+
+export interface InlineModelSelectionDeps {
+  discoverAgentCatalog?: typeof discoverAgentCatalog;
+  hasAgentCatalogRefreshedToday?: typeof hasAgentCatalogRefreshedToday;
 }
 
 export interface NanobossTuiAppDeps {

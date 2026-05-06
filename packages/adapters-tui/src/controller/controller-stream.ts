@@ -6,16 +6,10 @@ import {
 } from "@nanoboss/adapters-http";
 
 import type { UiAction } from "../reducer/reducer-actions.ts";
-import type { SessionResponse } from "./controller-types.ts";
-
-export interface ControllerStreamDeps {
-  startSessionEventStream?: (params: {
-    baseUrl: string;
-    sessionId: string;
-    onEvent: (event: FrontendEventEnvelope) => void;
-    onError?: (error: unknown) => void;
-  }) => SessionStreamHandle;
-}
+import type {
+  ControllerStreamDeps,
+  SessionResponse,
+} from "./controller-types.ts";
 
 type Dispatch = (action: UiAction) => void;
 
