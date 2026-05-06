@@ -27,9 +27,10 @@ export class ProcedurePanelTranscriptComponent implements Component {
       });
     }
     if (!body) {
-      // Compatibility fallback: persisted transcript replay can reference
-      // procedure-panel renderers that are no longer installed. Keep the
-      // original panel visible instead of dropping historical output.
+      // Classification: persisted-data compatibility. Persisted transcript
+      // replay can reference procedure-panel renderers that are no longer
+      // installed, so keep the original panel visible instead of dropping
+      // historical output.
       const tone = procedurePanelTone(this.panel.severity);
       const text = formatProcedurePanelReplayText(this.panel);
       body = new MessageCardComponent(this.theme, text.split("\n"), tone);

@@ -16,6 +16,7 @@ const ROOT_OWNED_TESTS = [
   "delete-remaining-src-core.test.ts",
   "doctor.test.ts",
   "execute-plan.test.ts",
+  "fallback-classification.test.ts",
   "frontend-events.test.ts",
   "http-server-options.test.ts",
   "knowledge-base-commands.test.ts",

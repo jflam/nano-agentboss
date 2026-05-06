@@ -71,6 +71,8 @@ export async function discoverAgentCatalog(
     }
   }
 
+  // Classification: user-facing resilience. A forced refresh failure should
+  // not erase the last known-good catalog for the same provider/config key.
   const fallback = getCachedAgentCatalogValue(cacheKey, now)
     ?? getPersistedAgentCatalogValue(cacheKey, now, true);
   const discovery = discoverAgentCatalogUncached(provider, config);

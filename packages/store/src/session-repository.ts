@@ -131,8 +131,9 @@ function readCurrentWorkspaceIndex(): Record<string, SessionMetadata> {
 }
 
 function parseSessionMetadata(raw: Record<string, unknown>): SessionMetadata | undefined {
-  // Accept both the current nested shape ({ session: { sessionId } }) and the legacy
-  // flat shape ({ sessionId }) so older session directories remain listable.
+  // Classification: persisted-data compatibility. Accept both the current
+  // nested shape ({ session: { sessionId } }) and the legacy flat shape
+  // ({ sessionId }) so older session directories remain listable.
   const sessionId = asNonEmptyString(asRecord(raw.session)?.sessionId)
     ?? asNonEmptyString(raw.sessionId);
   const rootDir = asNonEmptyString(raw.rootDir);
